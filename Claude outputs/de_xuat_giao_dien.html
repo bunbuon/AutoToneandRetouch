@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>AutoTone — đề xuất bố cục giao diện</title>
+<style>
+  :root{
+    --nen:#161616; --tam:#1e1e1e; --noi:#262626; --noi2:#2e2e2e;
+    --vien:#333; --vien2:#3d3d3d; --chu:#e7e7e7; --mo:#9a9a9a; --mo2:#6f6f6f;
+    --nhan:#4c9df0; --chu_nhan:#07203a; --xong:#45b06a; --canh:#e0a33e; --loi:#e2564d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#0e0e0e;color:var(--chu);
+       font:14px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+  .bao{max-width:1500px;margin:0 auto;padding:32px 24px 72px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:19px;margin:44px 0 4px;padding-top:22px;border-top:1px solid var(--vien)}
+  h3{font-size:15px;margin:22px 0 8px;color:var(--chu)}
+  p{color:var(--mo);max-width:78ch;margin:8px 0}
+  .phu{color:var(--mo2);font-size:12.5px}
+  code{font-family:Consolas,ui-monospace,monospace;background:var(--noi);
+       padding:1px 5px;border-radius:3px;font-size:12.5px;color:#cfe6ff}
+  table{border-collapse:collapse;margin:14px 0;font-size:13px}
+  th,td{border:1px solid var(--vien);padding:6px 12px;text-align:left}
+  th{background:var(--noi);color:var(--mo);font-weight:600}
+  td.so{text-align:right;font-family:Consolas,monospace}
+  .canh_bao{color:var(--canh)} .tot{color:var(--xong)} .xau{color:var(--loi)}
+
+  /* ---- khung mo phong app ---- */
+  .app{background:var(--nen);border:1px solid var(--vien2);border-radius:6px;
+       display:flex;overflow:hidden;margin:16px 0}
+  .ray{width:180px;background:var(--tam);border-right:1px solid var(--vien);
+       padding:12px 0;flex:none}
+  .ray b{display:block;font-size:10.5px;letter-spacing:.08em;color:var(--mo2);
+         padding:0 14px 10px;font-weight:600}
+  .ray a{display:flex;gap:9px;align-items:center;padding:7px 14px;color:var(--mo);
+         font-size:12.5px;text-decoration:none}
+  .ray a i{font-style:normal;color:var(--mo2);width:10px}
+  .ray a.dang{background:#202020;color:var(--chu);
+              box-shadow:inset 2px 0 0 var(--nhan)}
+  .ray a s{margin-left:auto;width:7px;height:7px;border-radius:50%;
+           background:var(--vien2);text-decoration:none}
+  .ray a s.ok{background:var(--xong)} .ray a s.cho{background:var(--canh)}
+  .than{flex:1;padding:16px 18px;min-width:0}
+  .tieu{font-size:16px;font-weight:600;margin-bottom:2px}
+  .mota{color:var(--mo2);font-size:12px;margin-bottom:14px}
+
+  .muc{font-size:10.5px;letter-spacing:.09em;color:var(--mo2);font-weight:600;
+       margin:0 0 8px;text-transform:uppercase}
+  .cot3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .cot2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  .o{display:flex;gap:8px;align-items:center;margin:5px 0;font-size:12.5px}
+  .o .h{width:13px;height:13px;border:1px solid var(--vien2);background:var(--noi);
+        border-radius:2px;flex:none;position:relative}
+  .o .h.tick{background:var(--nhan);border-color:var(--nhan)}
+  .o .h.tick::after{content:"";position:absolute;left:4px;top:1px;width:3px;height:7px;
+        border:solid var(--chu_nhan);border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .o .r{width:13px;height:13px;border:1px solid var(--vien2);border-radius:50%;
+        background:var(--noi);flex:none;position:relative}
+  .o .r.tick::after{content:"";position:absolute;inset:3px;border-radius:50%;
+        background:var(--nhan)}
+  .duoi{color:var(--mo2);font-size:11px;margin:-3px 0 7px 21px}
+  .hang{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;margin:5px 0}
+  .hang label{font-size:12.5px;color:var(--mo)}
+  .sel,.num{background:var(--noi);border:1px solid var(--vien2);border-radius:3px;
+       padding:4px 8px;font-size:12px;color:var(--chu)}
+  .num{width:64px;text-align:right;font-family:Consolas,monospace}
+  .nut{display:inline-block;padding:6px 14px;border-radius:3px;font-size:12.5px}
+  .nut.chinh{background:var(--nhan);color:var(--chu_nhan);font-weight:600}
+  .nut.pha{background:transparent;color:var(--mo);border:1px solid var(--vien2)}
+  .bang{border:1px solid var(--vien);border-radius:3px;background:#1a1a1a;
+        padding:8px 10px;color:var(--mo2);font-size:11.5px}
+
+  /* the tong quan */
+  .the{background:var(--tam);border:1px solid var(--vien);border-radius:5px;padding:12px 13px}
+  .the .n{font-size:10.5px;color:var(--mo2);letter-spacing:.06em}
+  .the .t{font-size:13.5px;margin:3px 0 6px}
+  .the .s{font-size:11.5px;color:var(--mo)}
+  .luoi7{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+
+  .canhbao{border-left:3px solid var(--canh);background:#241d10;padding:10px 14px;
+           margin:14px 0;font-size:13px;color:#f0c274;max-width:80ch}
+  .note{border-left:3px solid var(--nhan);background:#10203a;padding:10px 14px;
+        margin:14px 0;font-size:13px;color:#cfe6ff;max-width:80ch}
+  ul{color:var(--mo);max-width:80ch} li{margin:5px 0}
+  .cuon{position:relative}
+  .cuon::after{content:"vùng phải CUỘN mới thấy — 57% số tuỳ chọn nằm dưới đây";
+    position:absolute;left:0;right:0;bottom:0;height:96px;font-size:11.5px;color:var(--loi);
+    display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;
+    background:linear-gradient(to bottom,rgba(22,22,22,0),rgba(226,86,77,.14));
+    border-bottom:1px dashed var(--loi)}
+</style>
+</head>
+<body>
+<div class="bao">
+
+<h1>AutoTone — đề xuất bố cục giao diện</h1>
+<p>Ba phương án. Anh duyệt cái nào tôi làm cái đó; A và B ghép được với nhau.</p>
+
+<h2>1. Vì sao phải cuộn — đo bằng số</h2>
+<p>Không phải cảm tính. Đếm đúng số hàng khâu 2 đang cần, ở đúng độ phân giải máy anh:</p>
+
+<table>
+<tr><th>Nhóm</th><th>Số hàng</th><th>Chiều cao</th></tr>
+<tr><td>Cách cân tone</td><td class="so">7</td><td class="so">182 px</td></tr>
+<tr><td>Ghìm &amp; bảo vệ</td><td class="so">6</td><td class="so">156 px</td></tr>
+<tr><td>Ánh sáng của buổi</td><td class="so">7</td><td class="so">182 px</td></tr>
+<tr><td>Lọc &amp; gom cảnh</td><td class="so">13</td><td class="so">338 px</td></tr>
+<tr><td>giãn cách 4 nhóm</td><td class="so">—</td><td class="so">88 px</td></tr>
+<tr><th>Tổng cần</th><th class="so">33</th><th class="so">946 px</th></tr>
+<tr><td>Chỗ thật sự có (sau tiêu đề, hàng nút, bảng kết quả, thanh trạng thái)</td>
+    <td class="so">—</td><td class="so tot">411 px</td></tr>
+<tr><td><b>Thiếu</b></td><td class="so">—</td><td class="so xau"><b>535 px</b></td></tr>
+</table>
+
+<p><b class="xau">Nhìn thấy 43%. Phải cuộn để thấy 57% còn lại.</b>
+Đó chính xác là cái anh đang gặp.</p>
+
+<div class="canhbao">
+<b>Nguyên nhân không phải là "nhiều tính năng quá".</b> Là vì bốn nhóm đang xếp
+<b>một cột dọc duy nhất</b>, rộng chừng 500 px, trong khi cửa sổ rộng ~1360 px.
+Hơn 60% chiều ngang bỏ trống, và toàn bộ cái giá đó phải trả bằng chiều dọc.
+</div>
+
+<h3>Hiện tại — một cột dọc, hai phần ba màn hình bỏ trống</h3>
+<div class="app">
+  <div class="ray">
+    <b>CHƯA CHỌN BUỔI</b>
+    <a><i>1</i>Nạp ảnh<s></s></a>
+    <a class="dang"><i>2</i>Phân tích<s></s></a>
+    <a><i>3</i>Đẩy vào Lightroom<s></s></a>
+    <a><i>4</i>Export<s></s></a>
+    <a><i>5</i>Retouch<s></s></a>
+    <a><i>6</i>Vì sao tôi sửa<s></s></a>
+    <a><i>7</i>Gu đã học<s></s></a>
+  </div>
+  <div class="than cuon" style="padding-bottom:96px">
+    <div class="tieu">Khâu 2 · Phân tích</div>
+    <div class="mota">Đo sáng từng ảnh rồi tính thông số.</div>
+    <div style="max-width:560px">
+      <p class="muc">Cách cân tone</p>
+      <div class="hang"><label>Chế độ:</label><span class="sel">Đưa mặt về mức sáng chuẩn</span></div>
+      <div class="hang"><label>Đo sáng:</label><span class="sel">Khuôn mặt + điểm bắt nét</span></div>
+      <div class="hang"><label>Cân bằng trắng:</label><span class="sel">Da trắng hồng — máy đo + ngả hồng</span></div>
+      <p class="muc" style="margin-top:16px">Ghìm &amp; bảo vệ</p>
+      <div class="o"><span class="h tick"></span>Tự kéo Highlights khi cháy sáng</div>
+      <div class="o"><span class="h tick"></span>Tự kéo Shadows khi bết tối</div>
+      <div class="o"><span class="h"></span>Đẩy tone về da trắng hồng</div>
+    </div>
+  </div>
+</div>
+<p class="phu">Phần trắng bên phải là chỗ đang bỏ không. “Ánh sáng của buổi” và
+cả nhóm “Lọc &amp; gom cảnh” (7 ô tick) nằm dưới vạch đỏ.</p>
+
+
+<h2>2. Phương án A — ba cột, khâu 2 không còn cuộn</h2>
+<p>Sửa đúng nguyên nhân: dùng chiều ngang đang bỏ trống.
+946 px ÷ 3 cột ≈ <b>315 px</b>, lọt thoải mái trong 411 px chỗ đang có.</p>
+
+<div class="app">
+  <div class="ray">
+    <b>2705 · 2 087 ảnh</b>
+    <a><i>1</i>Nạp ảnh<s class="ok"></s></a>
+    <a class="dang"><i>2</i>Phân tích<s class="cho"></s></a>
+    <a><i>3</i>Đẩy vào Lightroom<s></s></a>
+    <a><i>4</i>Export<s></s></a>
+    <a><i>5</i>Retouch<s></s></a>
+    <a><i>6</i>Vì sao tôi sửa<s></s></a>
+    <a><i>7</i>Gu đã học<s></s></a>
+  </div>
+  <div class="than">
+    <div class="tieu">Khâu 2 · Phân tích</div>
+    <div class="mota">Đo sáng từng ảnh rồi tính thông số. Chưa đụng tới file nào.</div>
+
+    <div class="cot3">
+      <div>
+        <p class="muc">Cách cân tone</p>
+        <div class="hang"><label>Chế độ</label><span class="sel">Đưa mặt về mức sáng chuẩn</span></div>
+        <div class="hang"><label>Đo sáng</label><span class="sel">Khuôn mặt + điểm bắt nét</span></div>
+        <div class="hang"><label>Cân bằng trắng</label><span class="sel">Da trắng hồng</span></div>
+        <div class="hang"><label>Mặt sáng tới</label><span class="num">−1.19</span></div>
+        <div class="hang"><label>Chỉnh tối đa ±</label><span class="num">1.00</span></div>
+        <div class="hang"><label>Kéo sáng tối đa +</label><span class="num">1.00</span></div>
+        <div class="hang"><label>Mức can thiệp</label><span class="num">1.00</span></div>
+      </div>
+
+      <div>
+        <p class="muc">Ánh sáng của buổi</p>
+        <div class="o"><span class="r tick"></span>Trộn — tự tách theo mức sáng thật</div>
+        <div class="duoi">Ngưỡng EV100 8,5 · từ ISO + tốc + khẩu</div>
+        <div class="o"><span class="r"></span>Cả buổi ánh sáng ngày</div>
+        <div class="duoi">Kể cả trong nhà bạt, dưới mái che</div>
+        <div class="o"><span class="r"></span>Cả buổi ánh đèn</div>
+        <div class="duoi">Hội trường, sân khấu, sau khi tối</div>
+
+        <p class="muc" style="margin-top:18px">Ghìm &amp; bảo vệ</p>
+        <div class="o"><span class="h tick"></span>Tự kéo Highlights khi cháy</div>
+        <div class="o"><span class="h tick"></span>Tự kéo Shadows khi bết tối</div>
+        <div class="o"><span class="h"></span>Đẩy tone về da trắng hồng</div>
+        <div class="o"><span class="h tick"></span>Tự chỉnh Curve (parametric)</div>
+      </div>
+
+      <div>
+        <p class="muc">Lọc &amp; gom cảnh</p>
+        <div class="o"><span class="h tick"></span>Tách cảnh theo thời gian</div>
+        <div class="hang" style="margin-left:21px"><label>cách nhau</label><span class="num">5</span></div>
+        <div class="o"><span class="h tick"></span>…chỉ khi bối cảnh cũng đổi</div>
+        <div class="o"><span class="h tick"></span>Tách cảnh theo bối cảnh khung hình</div>
+        <div class="o"><span class="h tick"></span>Đồng bộ sáng + màu trong cùng bối cảnh</div>
+        <div class="o"><span class="h tick"></span>Lọc ảnh trùng khung</div>
+        <div class="o"><span class="h"></span>Lọc ảnh mắt không dùng được</div>
+        <div class="duoi">Chậm thêm ~0,8 s/ảnh</div>
+        <div class="o"><span class="h"></span>Auto Transform ảnh backdrop / LED</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;margin:16px 0 10px">
+      <span class="nut chinh">1 · Phân tích</span>
+      <span class="nut pha">2 · Ghi vào .xmp</span>
+      <span class="nut pha">Dừng</span>
+      <span style="flex:1"></span>
+      <span class="nut pha">Xuất CSV</span>
+      <span class="nut pha">Tự động theo dõi…</span>
+    </div>
+    <p class="muc">Kết quả phân tích</p>
+    <div class="bang">File · Cảnh · Giờ chụp · ΔEV · Exposure · Highl. · Shad. · Temp · Curve · Grade · Cháy % · Tối % · Mặt · Loạt<br><br>
+      <span style="color:var(--vien2)">·<br>·<br>·<br>·<br>·</span></div>
+  </div>
+</div>
+
+<ul>
+  <li><b>Rủi ro thấp.</b> Không đổi một dòng logic nào — chỉ đổi <code>grid()</code>
+      của mấy khối trong <code>_build_options()</code>. Bài kiểm hiện có
+      (<code>kiem_gui_duyet.py</code>) vẫn canh được va chạm hàng.</li>
+  <li><b>Làm được ngay,</b> và bỏ vùng cuộn đi luôn nên không còn chỗ nào giấu tính năng.</li>
+  <li>Cửa sổ hẹp hơn ~1100 px thì tự rơi về 2 cột, hẹp nữa thì 1 cột như cũ.</li>
+</ul>
+
+
+<h2>3. Phương án B — một màn hình tổng quan cả 7 khâu</h2>
+<p>Trả lời phần thứ hai của anh: “nhìn thấy tổng quan tất cả chức năng”.
+Đây là <b>khâu 0</b> — màn hình mở app lên là thấy, chứ không thay thế 7 khâu kia.</p>
+
+<div class="app">
+  <div class="ray">
+    <b>2705 · 2 087 ảnh</b>
+    <a class="dang"><i>·</i>Tổng quan<s></s></a>
+    <a><i>1</i>Nạp ảnh<s class="ok"></s></a>
+    <a><i>2</i>Phân tích<s class="cho"></s></a>
+    <a><i>3</i>Đẩy vào Lightroom<s></s></a>
+    <a><i>4</i>Export<s></s></a>
+    <a><i>5</i>Retouch<s></s></a>
+    <a><i>6</i>Vì sao tôi sửa<s></s></a>
+    <a><i>7</i>Gu đã học<s></s></a>
+  </div>
+  <div class="than">
+    <div class="tieu">Buổi 2705 — 2 087 ảnh</div>
+    <div class="mota">G:\2705 · Sony A7M4 · 13:36 → 19:11</div>
+    <div class="luoi7">
+      <div class="the"><div class="n">1 · NẠP ẢNH</div><div class="t tot">✓ 2 087 ảnh</div>
+        <div class="s">Nguồn: catalog Lightroom<br>Bản xuất 11:02</div></div>
+      <div class="the" style="border-color:var(--nhan)"><div class="n">2 · PHÂN TÍCH</div>
+        <div class="t canh_bao">55 / 2 087 ảnh</div>
+        <div class="s">Bỏ qua 2 032 ảnh sửa tay<br><span class="canh_bao">Bản xuất cũ hơn lần ghi</span></div></div>
+      <div class="the"><div class="n">3 · ĐẨY VÀO LIGHTROOM</div><div class="t">Đang chờ plugin</div>
+        <div class="s">Job 18:54 chưa ai nhận<br><span class="xau">Nhật ký dừng ở 11:04</span></div></div>
+      <div class="the"><div class="n">4 · EXPORT</div><div class="t">Chưa biết chỗ</div>
+        <div class="s">Chọn thư mục Export</div></div>
+      <div class="the"><div class="n">5 · RETOUCH</div><div class="t">Chưa chạy</div>
+        <div class="s">Chạy sau Export</div></div>
+      <div class="the"><div class="n">6 · VÌ SAO TÔI SỬA</div><div class="t">0 ảnh gắn lý do</div>
+        <div class="s">Dữ liệu để học gu</div></div>
+      <div class="the"><div class="n">7 · GU ĐÃ HỌC</div><div class="t tot">12 tham số</div>
+        <div class="s">Đang dùng thay mặc định</div></div>
+      <div class="the" style="border-style:dashed"><div class="n">DUYỆT NHANH</div>
+        <div class="t">0,44 s/ảnh</div><div class="s">≈ 15 phút cho 2 000 ảnh</div></div>
+    </div>
+
+    <div style="margin-top:18px;display:flex;gap:8px;align-items:center">
+      <span class="nut chinh">▶ Chạy hết</span>
+      <span class="nut pha">Chỉ phân tích</span>
+      <span class="nut pha">Bảng tóm tắt buổi…</span>
+    </div>
+    <div class="note" style="margin-top:16px">
+      Mỗi thẻ bấm được — bấm là nhảy thẳng vào khâu đó. Thẻ nào có vấn đề thì
+      <span class="canh_bao">đổi màu ngay tại đây</span>, không phải đi từng khâu mới biết.
+    </div>
+  </div>
+</div>
+
+<ul>
+  <li><b>Giá trị thật:</b> hôm nay hai lỗi lớn (bản xuất cũ, plugin chết) đều
+      <i>im lặng</i> — phải đọc file mới biết. Màn hình này là chỗ chúng phải hiện ra.</li>
+  <li><b>Việc phải làm thêm:</b> <code>trang_thai.tinh()</code> đã có sẵn trạng thái
+      từng khâu, nên phần lớn là dựng giao diện chứ không phải nghĩ lại logic.</li>
+  <li><b>Rủi ro:</b> trung bình. Thêm một khâu mới thì phải đụng bảng <code>KHAU</code>
+      — chỗ mà chú thích trong mã đã cảnh báo là lệch một chữ thì im lặng hỏng.</li>
+</ul>
+
+
+<h2>4. Phương án C — gộp 7 khâu còn 4</h2>
+<p>Cách triệt để hơn: bớt số nơi phải đi tới.</p>
+<table>
+<tr><th>Gộp thành</th><th>Từ</th><th>Lý do</th></tr>
+<tr><td><b>1 · Chuẩn bị</b></td><td>Nạp ảnh</td><td>Giữ nguyên</td></tr>
+<tr><td><b>2 · Cân màu</b></td><td>Phân tích + Đẩy vào Lightroom + Duyệt nhanh</td>
+    <td>Ba việc này luôn làm liền một mạch, không bao giờ tách</td></tr>
+<tr><td><b>3 · Xuất &amp; sửa da</b></td><td>Export + Retouch</td>
+    <td>Retouch chạy ngay sau Export, không có gì ở giữa</td></tr>
+<tr><td><b>4 · Dạy tool</b></td><td>Vì sao tôi sửa + Gu đã học</td>
+    <td>Gắn lý do rồi bấm học — hai nửa của một việc</td></tr>
+</table>
+<div class="canhbao">
+<b>Tôi không khuyên làm C bây giờ.</b> Mã khâu đang gắn với
+<code>trang_thai.tinh()</code>, với dữ liệu gu đã học và với file trạng thái từng
+buổi. Gộp khâu là đụng cả ba, để đổi một thứ đang chạy đúng. Nếu sau khi làm A
+mà anh vẫn thấy phải đi lại nhiều thì tính tiếp — lúc đó có lý do thật.
+</div>
+
+
+<h2>5. Đề nghị của tôi</h2>
+<div class="note">
+<b>Làm A trước, rồi B.</b><br><br>
+<b>A</b> sửa đúng cái đang đau (phải cuộn), rủi ro gần bằng không, xong nhanh.<br>
+<b>B</b> trả lời phần “nhìn tổng quan”, và quan trọng hơn: nó là chỗ để mấy lỗi
+im lặng hôm nay có nơi hiện ra.<br>
+<b>C</b> để đó, chưa có đủ lý do.
+</div>
+<p>Anh duyệt <b>A</b>, <b>A + B</b>, hay muốn sửa gì trong bố cục trên thì nói,
+tôi làm theo.</p>
+
+</div>
+</body>
+</html>

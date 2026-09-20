@@ -1,0 +1,54 @@
+# ===========================================================================
+#  KHONG BAO GIO DAY LEN GITHUB
+#
+#  tao_ma.py dung chung khoa bi mat voi khoa.py. Ai co no thi tu sinh duoc ma
+#  gia han, tuc ca co che han dung thanh vo nghia. Kho rieng tu van la mot ban
+#  sao nam o may nguoi khac — nen file nay o lai may Windows, khong di dau ca.
+#
+#  khoa.json la giay phep cua RIENG mot may. Day len chi gay lan.
+# ===========================================================================
+tao_ma.py
+khoa.json
+
+# kiem_khoa.py can tao_ma.py nen khong chay duoc tren ban tren GitHub.
+# Day la co y — xem ghi chu tren.
+
+# --- ket qua build -------------------------------------------------------
+dist/
+build/
+*.spec
+.python_rieng/
+*.dmg
+*.zip
+
+# --- trang thai luc chay, rieng cua tung may -----------------------------
+gu/
+trang_thai/
+jobs/
+AutoTone.lrplugin/jobs/
+retouch.json
+corrections.csv
+ear.csv
+de_xuat_*.json
+
+# --- ban chep de mang sang may khac --------------------------------------
+#
+#  ChuyenSangMac/ la BAN CHEP cua chinh ma nguon nay, dung de bung sang Mac.
+#  Day len GitHub thi kho co HAI ban autotone.py, autotone_gui.py... Sua nham
+#  ban chep thi code chay van la ban goc, va nguoc lai — kieu lang phi thoi gian
+#  te nhat khi hai nguoi (hoac hai phien Claude) cung lam mot du an.
+#  Clone ve Mac la co day du roi, khong can ban chep nay.
+ChuyenSangMac/
+
+# bao cao chan doan — moi may mot khac, khong phai ma nguon
+chan_doan.txt
+
+# --- rac -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+
+# Moi truong dong goi — KHONG day len
+# moi truong dong goi 3.9 GB — dung lai giua cac lan build, xem chu thich trong dong_goi.py
+venv_build/

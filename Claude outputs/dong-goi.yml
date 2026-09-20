@@ -1,0 +1,171 @@
+# ---------------------------------------------------------------------------
+#  Đóng gói AutoTone trên máy của GitHub.
+#
+#  VÌ SAO CÓ FILE NÀY
+#      PyInstaller không dịch chéo được: .app phải dựng trên máy Mac, .exe phải
+#      dựng trên máy Windows. File này thuê máy Mac / máy Windows của GitHub làm
+#      việc đó, nên máy mình chỉ còn việc tải kết quả về và cài.
+#
+#  CHỈ CHẠY KHI BẤM TAY — CÓ LÝ DO
+#      Gói Free cho 2.000 phút/tháng với kho riêng tư, mà máy Mac tính giá gấp
+#      ~10 lần máy Linux ($0,062 so với $0,006 mỗi phút). Tức thực chất chỉ còn
+#      khoảng 200 phút Mac. Một lần build Mac mất 15-20 phút.
+#
+#      Nếu để nó tự chạy mỗi lần đẩy mã thì hết quota sau 4-5 lần, và phần lớn
+#      những lần đó chỉ là sửa vài dòng chứ chưa cần gói mới. Nên mặc định là
+#      BẤM TAY, và mặc định chỉ dựng MỘT kiến trúc.
+#
+#  DÙNG THẾ NÀO
+#      Tab Actions -> "Dong goi AutoTone" -> Run workflow -> chọn máy -> Run.
+#      Xong thì kéo xuống mục Artifacts của lần chạy đó để tải về.
+# ---------------------------------------------------------------------------
+name: Dong goi AutoTone
+
+on:
+  workflow_dispatch:
+    inputs:
+      muc_tieu:
+        description: 'Dong goi cho may nao'
+        type: choice
+        default: mac-arm64
+        options:
+          - mac-arm64      # MacBook/iMac doi M1, M2, M3, M4
+          - mac-intel      # Mac doi cu chay chip Intel
+          - mac-ca-hai
+          - windows
+          - tat-ca
+
+# Bấm nhầm hai lần thì lần trước bị huỷ, khỏi đốt quota gấp đôi.
+concurrency:
+  group: dong-goi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  #[[ Job nay chay tren Linux (gia goc, vai giay) chi de dich lua chon cua
+  #   nguoi dung thanh danh sach may can dung. Nho no ma phan viec cua macOS
+  #   khong bi viet lap lai hai lan trong file nay.
+  #]]
+  chon:
+    name: Chon may
+    runs-on: ubuntu-latest
+    outputs:
+      mac: ${{ steps.d.outputs.mac }}
+      win: ${{ steps.d.outputs.win }}
+    steps:
+      - id: d
+        run: |
+          ARM='{"may":"macos-14","nhan":"arm64"}'
+          INT='{"may":"macos-13","nhan":"x86_64"}'
+          mac='[]'; win='false'
+          case "${{ inputs.muc_tieu }}" in
+            mac-arm64)  mac="[$ARM]" ;;
+            mac-intel)  mac="[$INT]" ;;
+            mac-ca-hai) mac="[$ARM,$INT]" ;;
+            windows)    win='true' ;;
+            tat-ca)     mac="[$ARM,$INT]"; win='true' ;;
+          esac
+          echo "mac=$mac" >> "$GITHUB_OUTPUT"
+          echo "win=$win" >> "$GITHUB_OUTPUT"
+          echo "Se dung: mac=$mac  windows=$win"
+
+  mac:
+    name: macOS ${{ matrix.ch.nhan }}
+    needs: chon
+    if: needs.chon.outputs.mac != '[]'
+    runs-on: ${{ matrix.ch.may }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ch: ${{ fromJSON(needs.chon.outputs.mac) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      #[[ Cung mot rao chan nhu ban chay tay: Tk duoi 8.6 thi giao dien hong ma
+      #   luc build KHONG bao loi gi. Tha dung o day con hon ra mot goi hong ma
+      #   40 phut sau moi biet.
+      #]]
+      - name: Kiem Tk 8.6
+        run: python -c "import sys,tkinter; v=float(tkinter.TkVersion); print('Tk',v); sys.exit(0 if v>=8.6 else 'Tk qua cu, giao dien se hong — dung lai')"
+
+      - name: Cai thu vien
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller pillow numpy opencv-python-headless
+
+      - name: Chay bai kiem truoc khi dong goi
+        run: |
+          python kiem_da_tien_trinh.py
+          python kiem_do_mat.py
+          python kiem_ban_xuat.py
+          python test_tach_canh.py
+          python test_san_phang.py
+          python test_trang_thai.py
+
+      - name: Dong goi
+        run: python dong_goi.py --khong-retouch --khong-nen
+
+      - name: Ky ad-hoc va tao .dmg
+        run: |
+          codesign --force --deep --sign - dist/AutoTone.app || true
+          mkdir -p dist/dmg
+          ditto dist/AutoTone.app dist/dmg/AutoTone.app
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname AutoTone -srcfolder dist/dmg -ov \
+                 -format UDZO "dist/AutoTone-${{ matrix.ch.nhan }}.dmg"
+          rm -rf dist/dmg
+
+      #[[ Chay CHINH con app vua dong: do anh that, ghi .xmp that roi hoan tac.
+      #   Dat o day nghia la app chay duoc that, khong phai chi "build khong
+      #   bao loi". Hong o day thi khong tai artifact len — thu ta muon la
+      #   khong bao gio giao mot goi chua duoc kiem.
+      #]]
+      - name: Tu kiem goi vua tao
+        run: python kiem_goi.py dist/AutoTone.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoTone-macOS-${{ matrix.ch.nhan }}
+          path: dist/AutoTone-${{ matrix.ch.nhan }}.dmg
+          retention-days: 30
+
+  windows:
+    name: Windows x86_64
+    needs: chon
+    if: needs.chon.outputs.win == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cai thu vien
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller pillow numpy opencv-python-headless
+
+      - name: Chay bai kiem truoc khi dong goi
+        run: |
+          python kiem_da_tien_trinh.py
+          python kiem_do_mat.py
+          python kiem_ban_xuat.py
+          python test_tach_canh.py
+          python test_san_phang.py
+          python test_trang_thai.py
+
+      - name: Dong goi
+        run: python dong_goi.py --khong-retouch
+
+      - name: Tu kiem goi vua tao
+        run: python kiem_goi.py dist/AutoTone
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoTone-Windows-x86_64
+          path: dist/AutoTone-win.zip
+          retention-days: 30
