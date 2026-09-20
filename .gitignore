@@ -10,6 +10,12 @@
 tao_ma.py
 khoa.json
 
+#  cap_key.py dung chung khoa bi mat voi ban_quyen.py — ai co no thi sinh
+#  duoc key vinh vien, tuc ca he thong ban quyen thanh vo nghia.
+#  so_key.csv la so ban hang: ai mua goi nao, key nao. Khong day len.
+cap_key.py
+so_key.csv
+
 # kiem_khoa.py can tao_ma.py nen khong chay duoc tren ban tren GitHub.
 # Day la co y — xem ghi chu tren.
 

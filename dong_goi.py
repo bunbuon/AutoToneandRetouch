@@ -41,6 +41,11 @@ TEN = "AutoTone"
 #]]
 LOAI_TRU = [
     "tao_ma.py",           # ⚠ khoá bí mật — xem trên
+    #[[ cap_key.py dung chung khoa bi mat voi ban_quyen.py. Lot vao goi thi
+    #   khach hang tu sinh key vinh vien duoc, va ca he thong ban quyen thanh
+    #   vo nghia. so_key.csv la so ban hang — khong viec gi phai di theo app.
+    #]]
+    "cap_key.py", "so_key.csv", "kiem_ban_quyen.py",
     "kiem_khoa.py", "kiem_gu.py", "kiem_luat.py", "kiem_san.py",
     "kiem_do_mat.py", "kiem_goi.py", "kiem_ban_xuat.py", "do_trong_ngoai.py", "do_wb.py", "hoc_mau_da.py", "kiem_mau_da.py",
     "test_tach_canh.py", "test_cull_split.py", "test_san_phang.py",
@@ -75,7 +80,8 @@ DIEM_VAO = "autotone_gui.py"
 #]]
 NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         "retouch", "learn_corrections", "khoi_phuc", "tu_kiem",
-        "duyet", "duyet_ui", "xuat_lr", "thongso_lr", "tai_nguyen"]
+        "duyet", "duyet_ui", "xuat_lr", "thongso_lr", "tai_nguyen",
+        "ban_quyen"]
 
 #[[ `tai_nguyen` PHAI co trong NGAM, ke ca o ban day du.
 #

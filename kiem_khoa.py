@@ -40,6 +40,14 @@ def chay(moc):
 
 
 def main() -> int:
+    #[[ Console cp1252 khong in noi chu Viet — bai kiem DAT van chet o dong
+    #   tong ket, trong y het bai kiem hong. Xem ghi chu trong _cua_saytool(). ]]
+    for _l in (sys.stdout, sys.stderr):
+        try:
+            _l.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:                                    # noqa: BLE001
+            pass
+
     loi = []
     #[[ Dat AUTOTONE_DATA thay vi va de len ham: nhu vay bai kiem di qua DUNG
     #   con duong ma app that su dung, ke ca khi da dong goi.

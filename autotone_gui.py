@@ -37,6 +37,7 @@ import duong_dan as dd
 import duyet
 import duyet_ui
 import giao_dien as gd
+import ban_quyen as bq
 import khoa
 
 
@@ -448,6 +449,26 @@ class App(ttk.Frame):
             mà tới tối vẫn dùng bình thường, miễn đừng đóng cửa sổ — tức cái hạn
             gần như không có tác dụng.
         """
+        #[[ BAN QUYEN DUNG TRUOC HAN DUNG THU.
+        #
+        #   Hai he thong cung ton tai: ban_quyen (key ban cho khach) va khoa
+        #   (han dung thu 72 gio ghi cung trong ma nguon). May da kich hoat key
+        #   thi khong con lien quan gi toi han dung thu nua — kiem ca hai roi
+        #   lay cai nghiem hon la sai, vi key 1 nam se bi han 72 gio chan.
+        #]]
+        g = bq.kiem()
+        if g["co_phep"]:
+            con = bq.mo_ta_con_lai(g["con_lai"])
+            gap = bool(g["con_lai"] and g["con_lai"].days < 7)
+            self.lbl_han.configure(
+                text=f"Bản quyền {g['goi']} · còn {con}   ·   máy {g['may']}",
+                foreground=gd.MAU["canh"] if gap else gd.MAU["mo2"])
+            self._go_lop_khoa()
+            self.after(60_000, self._soi_khoa)
+            return
+
+        #[[ CHUA KICH HOAT KEY thi roi ve han dung thu cu — de nguoi ta thu
+        #   truoc khi mua. Het ca hai thi moi chan. ]]
         k = khoa.kiem()
         if k["chay_duoc"]:
             if k.get("tat"):
@@ -465,16 +486,19 @@ class App(ttk.Frame):
                 self.lbl_han.configure(
                     text=f"Bản dùng thử · còn {con}   ·   máy {k['may']}",
                     foreground=gd.MAU["canh"] if gap else gd.MAU["mo2"])
-            cu = getattr(self, "_lop_khoa", None)
-            if cu is not None:
-                try:
-                    cu.destroy()
-                except tk.TclError:
-                    pass
-                self._lop_khoa = None
+            self._go_lop_khoa()
         else:
             self._hien_khoa(k)
         self.after(60_000, self._soi_khoa)
+
+    def _go_lop_khoa(self):
+        cu = getattr(self, "_lop_khoa", None)
+        if cu is not None:
+            try:
+                cu.destroy()
+            except tk.TclError:
+                pass
+            self._lop_khoa = None
 
     def _khoa_chan(self) -> bool:
         """True = đang khoá, đã báo rồi. Gọi ở ĐẦU mọi việc nặng.
@@ -483,7 +507,7 @@ class App(ttk.Frame):
         Lớp phủ có thể bị né (một phím tắt, một nút tôi quên tắt); chốt này thì
         không — mọi đường vào việc thật đều đi qua đây.
         """
-        if khoa.kiem()["chay_duoc"]:
+        if bq.kiem()["co_phep"] or khoa.kiem()["chay_duoc"]:
             return False
         self._hien_khoa(khoa.kiem())
         return True
@@ -495,6 +519,16 @@ class App(ttk.Frame):
             cu.lift()
             return
         m = gd.MAU
+        #[[ LOP PHU CHE KHUNG VIEC, KHONG CHE CA CUA SO.
+        #
+        #   Chinh sach: het han thi khoa viec MOI, van cho xem va xuat viec cu.
+        #   Lop phu cu che row=1 (khung viec) — dung y do. Nhung cac nut "Xuat
+        #   CSV" va "Khoi phuc" nam TRONG khung do, nen che het la mau thuan
+        #   voi chinh sach vua neu.
+        #
+        #   Nen lop phu them mot hang nut o duoi, de nguoi dung van lam duoc
+        #   hai viec khong bi khoa ma khong phai tat app di mo lai.
+        #]]
         lop = tk.Frame(self, background=m["nen"])
         lop.grid(row=1, column=0, sticky="nsew")
         lop.lift()
@@ -503,13 +537,34 @@ class App(ttk.Frame):
                        highlightthickness=1, highlightbackground=m["loi"])
         hop.place(relx=0.5, rely=0.42, anchor="center")
 
-        tk.Label(hop, text="Hết hạn dùng thử", background=m["tam"],
+        #[[ TIEU DE THEO DUNG TINH HUONG.
+        #
+        #   "Het han dung thu" la sai khi khach da mua key va key het han —
+        #   ho khong dung thu, ho la khach hang. Bao sai tinh huong thi ho
+        #   tuong app hong, hoac tuong minh bi tinh phi nham.
+        #]]
+        gp = bq.kiem()
+        da_mua = bool(gp["het_han"])
+        tieu_de = "Bản quyền đã hết hạn" if da_mua else "Hết hạn dùng thử"
+        ly_do = gp["ly_do"] if da_mua else k["ly_do"]
+
+        tk.Label(hop, text=tieu_de, background=m["tam"],
                  foreground=m["loi"], font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        tk.Label(hop, text=k["ly_do"], background=m["tam"], foreground=m["chu"],
+        tk.Label(hop, text=ly_do, background=m["tam"], foreground=m["chu"],
                  font=gd.CHU, justify="left", wraplength=520
                  ).pack(anchor="w", pady=(8, 16))
 
-        tk.Label(hop, text="Đọc mã máy này cho người cấp mã:", background=m["tam"],
+        #[[ NOI RO ANH CU VAN CON. Day la cau hoi dau tien cua bat ky ai gap
+        #   man hinh khoa giua mot job: "the anh toi lam ca sang thi sao?"
+        #   Khong tra loi truoc thi ho hoang, va cai hoang do dat hon tien key.
+        #]]
+        tk.Label(hop, background=m["tam"], foreground=m["xong"], font=gd.CHU,
+                 justify="left", wraplength=520,
+                 text="Ảnh đã xử lý vẫn còn nguyên trên đĩa. Chỉ việc MỚI bị "
+                      "khoá — mở xem và xuất lại kết quả cũ vẫn bình thường."
+                 ).pack(anchor="w", pady=(0, 16))
+
+        tk.Label(hop, text="Mã máy của máy này:", background=m["tam"],
                  foreground=m["mo"], font=gd.CHU).pack(anchor="w")
         e_may = tk.Entry(hop, font=("Consolas", 14), width=16, justify="center",
                          relief="flat", background=m["noi"], foreground=m["chu"])
@@ -517,7 +572,8 @@ class App(ttk.Frame):
         e_may.configure(state="readonly")
         e_may.pack(anchor="w", pady=(4, 16))
 
-        tk.Label(hop, text="Mã gia hạn:", background=m["tam"], foreground=m["mo"],
+        tk.Label(hop, text="Key bản quyền (hoặc mã gia hạn dùng thử):",
+                 background=m["tam"], foreground=m["mo"],
                  font=gd.CHU).pack(anchor="w")
         hang = tk.Frame(hop, background=m["tam"])
         hang.pack(anchor="w", pady=(4, 0))
@@ -530,7 +586,24 @@ class App(ttk.Frame):
                        wraplength=520)
 
         def gui():
-            ok, _moi, nhan = khoa.nhap_ma(self.v_ma.get())
+            #[[ THU KEY BAN QUYEN TRUOC, ma gia han dung thu sau.
+            #
+            #   Hai loai ma khac hinh dang (key 20 ky tu chia 4 nhom 5; ma gia
+            #   han 20 ky tu chia 5 nhom 4) nhung deu la chu so viet hoa, nen
+            #   khong the nhin ma doan. Thu ca hai va lay cai nao nhan — de
+            #   nguoi dung khoi phai biet minh dang cam loai giay to nao.
+            #]]
+            go = self.v_ma.get()
+            ok, nhan = bq.kich_hoat(go)
+            if not ok and bq.doc_key(go) is None:
+                #[[ Chi lui ve ma gia han khi chuoi do KHONG PHAI mot key hop
+                #   le. Key dung ma kich hoat that bai (vi du giay phep hong)
+                #   thi phai bao dung loi do, dung de khoa.nhap_ma() ghi de
+                #   bang "Ma khong dung cho may nay" — sai huong hoan toan.
+                #]]
+                ok2, _moi, nhan2 = khoa.nhap_ma(go)
+                if ok2 or not nhan:
+                    ok, nhan = ok2, nhan2
             lbl.configure(text=nhan, foreground=m["xong"] if ok else m["loi"])
             lbl.pack(anchor="w", pady=(10, 0))
             if ok:
@@ -540,14 +613,25 @@ class App(ttk.Frame):
                 #]]
                 self.after(300, self._soi_khoa)
 
-        self.btn_gia_han = ttk.Button(hang, text="Gia hạn", style="Chinh.TButton",
+        self.btn_gia_han = ttk.Button(hang, text="Kích hoạt", style="Chinh.TButton",
                                       command=gui)
         self.btn_gia_han.pack(side="left", padx=(8, 0))
         e.bind("<Return>", lambda _e: gui())
         e.focus_set()
-        tk.Label(hop, text="Mọi tính năng đã khoá cho tới khi nhập mã hợp lệ.",
-                 background=m["tam"], foreground=m["mo2"], font=gd.CHU_NHO
+        tk.Label(hop, background=m["tam"], foreground=m["mo2"],
+                 font=gd.CHU_NHO, justify="left", wraplength=520,
+                 text="Gửi mã máy ở trên cho SAY Media để lấy key. "
+                      "Key gắn với đúng máy này và đếm hạn từ lúc kích hoạt."
                  ).pack(anchor="w", pady=(18, 0))
+
+        #[[ Hai viec KHONG bi khoa — dat ngay tren lop phu de khoi phai tat app.
+        #   Xem ghi chu o do_csv() va do_undo(). ]]
+        hang_cu = tk.Frame(hop, background=m["tam"])
+        hang_cu.pack(anchor="w", pady=(14, 0))
+        ttk.Button(hang_cu, text="Xuất báo cáo CSV",
+                   command=self.do_csv).pack(side="left")
+        ttk.Button(hang_cu, text="Khôi phục ảnh gốc",
+                   command=self.do_undo).pack(side="left", padx=(8, 0))
         self.after(4000, self._lam_moi_ray)
 
     def _nut_gu(self, trang_thai: str):
@@ -3486,8 +3570,12 @@ class App(ttk.Frame):
         LogWindow(self, lines)
 
     def do_undo(self):
-        if self._khoa_chan():
-            return
+        #[[ KHONG khoa: khoi phuc anh tu backup la LAY LAI cai von cua ho.
+        #
+        #   Neu chan o day thi nguoi het han dang ket voi mot thu muc anh da
+        #   bi sua ma khong hoan tac duoc — app giu con tin chinh anh goc cua
+        #   khach. Do la muc do gay hai vuot xa moi khoan tien key.
+        #]]
         root = self.folder()
         if not root:
             messagebox.showinfo("Thiếu thư mục", "Chọn thư mục ảnh trước đã.")
@@ -3521,8 +3609,9 @@ class App(ttk.Frame):
         self._chon_khau("retouch")
 
     def do_csv(self):
-        if self._khoa_chan():
-            return
+        #[[ KHONG khoa: day la XUAT lai ket qua da co trong self.items, khong
+        #   chay them viec nao. Chan o day la giu con tin mot bang bao cao ma
+        #   may da tinh xong tu truoc luc het han. ]]
         if not self.items:
             return
         root = self.folder()
@@ -5336,6 +5425,24 @@ def _cua_saytool(co: str, tham: list) -> int:
         --say-keo    in JSON danh sách thanh kéo saytool đang có
         --say-kiem   kiểm thư viện, in ra đúng dạng mà retouch.kiem_tra() đọc
     """
+    #[[ EP UTF-8 CHO MOI CUA --say-*.
+    #
+    #   Console Windows mac dinh cp1252, khong ma hoa noi chu Viet. Cac cua nay
+    #   in loi bang tieng Viet ("ly do: Máy này chưa kích hoạt..."), nen bat cu
+    #   cua nao cham vao mot chuoi co dau la NEM UnicodeEncodeError — va trong
+    #   ban .exe no hien ra thanh hop thoai "Failed to execute script", trong
+    #   y het mot ban build hong.
+    #
+    #   Da dinh dung bon lan o bon cho khac nhau (cli.py, dong_goi.py,
+    #   kiem_cu_phap.py, va --say-key). Ep mot lan ngay day thi moi cua sau nay
+    #   deu khoi dinh lai.
+    #]]
+    for _luong in (sys.stdout, sys.stderr):
+        try:
+            _luong.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:                                    # noqa: BLE001
+            pass
+
     #[[ mo_hinh/vet.pt, mo_hinh/nong_cam.pt va mo_hinh/liquify/ deu la DUONG DAN
     #   TUONG DOI trong saytool, tinh theo thu muc dang dung. Trong goi thi
     #   chung nam canh saytool o thu muc tai nguyen, nen phai chuyen sang do.
@@ -5386,6 +5493,47 @@ def _cua_saytool(co: str, tham: list) -> int:
     #   binh thuong, chi la khong bao gio tai duoc gi. Chay co nay tren goi
     #   vua build la biet ngay, khong phai doi nguoi dung bam Retouch moi lo.
     #]]
+    #[[ --say-key: kiem ban quyen tren goi DA DONG.
+    #
+    #   Cung ly do voi --say-tainguyen: ban_quyen duoc import o dau file nen
+    #   thieu no thi app sap ngay, nhung con CAP_KEY lot vao goi thi khong co
+    #   dau hieu gi het — app chay binh thuong, chi la khach tu sinh key duoc.
+    #   Co nay kiem ca hai chieu tren chinh goi vua build.
+    #]]
+    if co == "--say-key":
+        try:
+            import ban_quyen as _bq
+        except Exception as ex:                               # noqa: BLE001
+            print(f"THIEU BAN QUYEN: {type(ex).__name__}: {ex}")
+            return 1
+        #[[ Co the kem mot key de KICH HOAT luon: `AutoTone.exe --say-key <KEY>`.
+        #
+        #   Can cho hai viec: kiem duoc ca duong kich hoat tren goi da dong
+        #   (giao dien thi phai bam tay), va cuu ho tu xa khi khach khong mo
+        #   noi giao dien — doc lenh cho ho go vao Command Prompt.
+        #]]
+        if tham:
+            _ok, _nhan = _bq.kich_hoat(tham[0])
+            print(("" if _ok else "[!] ") + _nhan)
+            if not _ok:
+                return 1
+        _g = _bq.kiem()
+        print(f"may     : {_g['may']}")
+        print(f"co phep : {_g['co_phep']}")
+        print(f"goi     : {_g['goi'] or '(chua kich hoat)'}")
+        if _g["het_han"]:
+            print(f"han den : {_g['het_han'].astimezone():%H:%M %d/%m/%Y}")
+        if _g["ly_do"]:
+            print(f"ly do   : {_g['ly_do']}")
+        #[[ Canh chuyen mat tien: cap_key.py lot vao goi. ]]
+        try:
+            import cap_key                                    # noqa: F401
+            print("NGUY HIEM: cap_key.py NAM TRONG GOI — khach tu sinh key duoc!")
+            return 1
+        except ImportError:
+            print("cap_key : khong co trong goi (dung)")
+        return 0
+
     if co == "--say-tainguyen":
         try:
             import tai_nguyen as tn
@@ -5477,7 +5625,7 @@ def main():
 
     _tham = sys.argv[1:]
     if _tham and _tham[0] in ("--say-chay", "--say-keo", "--say-kiem",
-                              "--say-tainguyen"):
+                              "--say-tainguyen", "--say-key"):
         sys.exit(_cua_saytool(_tham[0], _tham[1:]))
 
     #[[ CUA TU KIEM — phai o TRUOC tk.Tk().
