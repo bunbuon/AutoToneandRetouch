@@ -63,7 +63,7 @@ HAN_ISO = "2026-09-07T01:00:00+07:00"
 #   che khoa (no tu bat lai trong tien trinh cua no), nen tat o day cung khong
 #   lam mu bai kiem.
 #]]
-BAT_KHOA = False
+BAT_KHOA = True
 
 TEN_UD = "AutoTone"
 #[[ Khoa bi mat. Doi no thi MOI ma gia han da phat deu het hieu luc, va file

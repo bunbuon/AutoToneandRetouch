@@ -460,9 +460,18 @@ class App(ttk.Frame):
         if g["co_phep"]:
             con = bq.mo_ta_con_lai(g["con_lai"])
             gap = bool(g["con_lai"] and g["con_lai"].days < 7)
-            self.lbl_han.configure(
-                text=f"Bản quyền {g['goi']} · còn {con}   ·   máy {g['may']}",
-                foreground=gd.MAU["canh"] if gap else gd.MAU["mo2"])
+            #[[ NHAC TRUOC KHI HET AN HAN, khong doi den luc bi chan.
+            #
+            #   May offline lau qua 30 ngay se mat quyen chay. Bao truoc thi
+            #   ho noi mang mot lan la xong; bao sau thi ho dang giua job va
+            #   khong hieu vi sao app dung. ]]
+            if g.get("nhac"):
+                self.lbl_han.configure(text=f"{g['nhac']}   ·   máy {g['may']}",
+                                       foreground=gd.MAU["canh"])
+            else:
+                self.lbl_han.configure(
+                    text=f"Bản quyền {g['goi']} · còn {con}   ·   máy {g['may']}",
+                    foreground=gd.MAU["canh"] if gap else gd.MAU["mo2"])
             self._go_lop_khoa()
             self.after(60_000, self._soi_khoa)
             return

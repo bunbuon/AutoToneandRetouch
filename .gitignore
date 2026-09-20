@@ -58,3 +58,6 @@ Thumbs.db
 # Moi truong dong goi — KHONG day len
 # moi truong dong goi 3.9 GB — dung lai giua cac lan build, xem chu thich trong dong_goi.py
 venv_build/
+
+# Quyen rieng cua may nay — khong day len
+.claude/settings.local.json

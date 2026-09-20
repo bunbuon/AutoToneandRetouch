@@ -29,6 +29,30 @@ import os, sys
 sys.path.insert(0, r"{goc}")
 os.environ["AUTOTONE_DATA"] = r"{du_lieu}"
 import ban_quyen as bq
+
+#[[ TAT DUONG MANG cho cac phep OFFLINE.
+#
+#   Tu khi kich_hoat() bat buoc qua may chu, cac phep o day khong kich hoat
+#   duoc nua — chung kiem phan LOGIC CUC BO (ma hoa key, chong van dong ho,
+#   chong sua file), khong kiem duong mang.
+#
+#   Nen thay _goi() bang mot ban gia lap luon dong y. Phan mang that duoc
+#   kiem rieng trong kiem_bq_online.py bang may chu HTTP that — de hai bai
+#   khong dam chan nhau.
+#]]
+from datetime import datetime, timedelta, timezone
+
+
+def _goi_gia(duong, than):
+    bay = datetime.now(timezone.utc)
+    d = bq.doc_key(than.get("key", ""))
+    ngay = d[1] if d else 365
+    return 200, {{"ok": True, "so_ngay": ngay,
+                  "kich_hoat": bay.isoformat(),
+                  "het_han": (bay + timedelta(days=ngay)).isoformat()}}
+
+
+bq._goi = _goi_gia
 {than}
 '''
 
@@ -138,9 +162,17 @@ from datetime import datetime, timezone, timedelta
 import khoa
 k = bq.tao_key(23, 30)
 bq.kich_hoat(k)
-# Lui moc kich hoat 40 ngay = da het han 10 ngay
+#[[ Lui CA HAI moc: bq_kich_hoat va bq_het_han.
+#
+#   Tu khi co may chu, _het_han() uu tien `bq_het_han` (han may chu da chot)
+#   chu khong tinh lai tu ngay kich hoat. Chi lui mot cai thi han cu van con,
+#   va bai kiem bao "het han ma van co phep" — loi cua BAI KIEM, khong phai
+#   cua san pham.
+#]]
 cu = datetime.now(timezone.utc) - timedelta(days=40)
-khoa.ghi_trang_thai(bq_kich_hoat=cu.isoformat(), moc_cao=cu.isoformat())
+het_cu = cu + timedelta(days=30)
+khoa.ghi_trang_thai(bq_kich_hoat=cu.isoformat(), moc_cao=cu.isoformat(),
+                    bq_het_han=het_cu.isoformat())
 s = bq.kiem()
 assert s["co_phep"] is False, "het han ma van co phep"
 assert "hết hạn" in s["ly_do"], s["ly_do"]

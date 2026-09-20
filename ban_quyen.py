@@ -80,6 +80,36 @@ import khoa  # dùng lại mã máy, chữ ký, chống vặn đồng hồ
 #]]
 BI_MAT = b"AutoTone-SAY-Media-ban-quyen-v1"
 
+#[[ MAY CHU KEY — Cloudflare Worker + KV.
+#
+#   VI SAO CAN: ban offline khong biet mot key da bi nhap o may khac hay chua,
+#   nen ai chia key cho 5 may thi ca 5 van chay. May chu ghi nhan key nao
+#   thuoc may nao — cach DUY NHAT chan duoc chuyen do ma khong can crack.
+#
+#   VI SAO KHONG DAT TREN MAY CUA MINH: tunnel qua may ca nhan thi may tat,
+#   mat dien hay rot mang la MOI khach bi chan cung luc. Worker chay tren ha
+#   tang Cloudflare, khong phu thuoc mot may nao.
+#]]
+MAY_CHU = "https://autotone-key.keyactive.workers.dev"
+
+#[[ NHIP KIEM LAI VA AN HAN — hai so quyet dinh app tu te hay pha viec.
+#
+#   Kich hoat lan dau BAT BUOC co mang: do la luc may chu chiem key cho may
+#   nay, va la lan duy nhat chan duoc chia se key.
+#
+#   Sau do cu 7 ngay thu goi lai mot lan. Goi khong duoc thi VAN CHAY tiep
+#   toi 30 ngay. Qua 30 ngay khong lien lac duoc moi nhac.
+#
+#   30 ngay khong phai so tuy tien: studio di chup xa, mang khach san chan
+#   cong la, may de trong phong khong noi mang — deu la chuyen that. Mot cai
+#   khoa chan nguoi dung hop le vi rot mang thi hai hon la loi, va do la ly do
+#   khoa.py co y khong kiem qua may chu. O day kiem, nhung an han phai du dai
+#   de khong bao gio chan nham nguoi dang lam viec.
+#]]
+NHIP_KIEM = timedelta(days=7)
+AN_HAN = timedelta(days=30)
+CHO_MANG = 8          # giay — het thi coi nhu khong co mang, KHONG phai loi
+
 #[[ Bo I, O, 0, 1 — xem ghi chu dau file. 32 ky tu de vua 5 bit/ky tu. ]]
 BANG = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 DOI = {"0": "9", "O": "9", "1": "8", "I": "8"}
@@ -176,6 +206,53 @@ def doc_key(key: str) -> tuple[int, int] | None:
     return (than >> 16) & 0xFFFFF, than & 0xFFFF
 
 
+# ── Gọi máy chủ ─────────────────────────────────────────────────────────────
+def _goi(duong: str, than: dict) -> tuple[int, dict] | None:
+    """Gọi một cửa của máy chủ. -> (mã HTTP, dữ liệu), hoặc None nếu không nối được.
+
+    Phân biệt rõ HAI chuyện, vì chúng dẫn tới hai xử lý trái ngược:
+
+        None        = không nối được (mất mạng, máy chủ sập, tường lửa chặn)
+                      -> KHÔNG được coi là vi phạm. Chạy tiếp trong ân hạn.
+        (mã, dữ liệu) = máy chủ trả lời -> nghe theo nó, kể cả khi nó từ chối.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            MAY_CHU.rstrip("/") + duong,
+            data=_json.dumps(than).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "User-Agent": "AutoTone"},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=CHO_MANG) as r:
+            return r.status, _json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        #[[ 4xx/5xx VAN la may chu tra loi — doc lay ly do. Coi no la "mat
+        #   mang" thi key da thu hoi se chay tiep het 30 ngay an han. ]]
+        try:
+            return e.code, _json.loads(e.read().decode("utf-8"))
+        except Exception:                                    # noqa: BLE001
+            return e.code, {}
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+LY_DO_VIET = {
+    "key_sai": "Key không hợp lệ. Kiểm tra lại từng ký tự.",
+    "ma_may_sai": "Máy này không đọc được mã máy hợp lệ.",
+    "da_thu_hoi": "Key này đã bị thu hồi. Liên hệ SAY Media.",
+    "da_dung_may_khac": "Key này đã kích hoạt trên MỘT MÁY KHÁC rồi. "
+                        "Mỗi key chỉ dùng cho một máy. Nếu anh vừa đổi máy, "
+                        "báo SAY Media để mở khoá.",
+    "sai_may": "Key này thuộc về một máy khác.",
+    "chua_kich_hoat": "Key chưa được kích hoạt.",
+    "het_han": "Giấy phép đã hết hạn.",
+    "loi_may_chu": "Máy chủ đang trục trặc. Thử lại sau ít phút.",
+}
+
+
 # ── Giấy phép trên máy này ──────────────────────────────────────────────────
 def _doc() -> dict:
     d = khoa.doc_trang_thai()
@@ -213,14 +290,50 @@ def kich_hoat(key: str) -> tuple[bool, str]:
                       f"{het.astimezone():%H:%M %d/%m/%Y}." if het else
                       "Key này đã kích hoạt trên máy này rồi.")
 
+    #[[ KICH HOAT PHAI QUA MAY CHU — day la lan DUY NHAT chan duoc chia se key.
+    #
+    #   Cho kich hoat offline roi "dong bo sau" thi mot key van chay duoc tren
+    #   bao nhieu may tuy y cho toi khi chung noi mang — tuc la mat han tac
+    #   dung cua may chu. Nen o day mat mang la KHONG kich hoat duoc, va noi
+    #   thang ly do thay vi bao mot loi chung chung.
+    #]]
+    tl = _goi("/kich-hoat", {"key": sach(key), "may": khoa.ma_may()})
+    if tl is None:
+        return False, ("Không nối được máy chủ để kích hoạt.\n\n"
+                       "Lần kích hoạt đầu tiên cần mạng. Sau khi kích hoạt "
+                       "xong thì dùng offline thoải mái.\n\n"
+                       "Kiểm tra mạng rồi bấm Kích hoạt lại.")
+    ma, d = tl
+    if not d.get("ok"):
+        ly = d.get("ly_do", "")
+        nhan = LY_DO_VIET.get(ly, f"Máy chủ từ chối ({ly or ma}).")
+        if ly == "da_dung_may_khac" and d.get("may_cu"):
+            nhan += f"\n\nMáy đang giữ key: {d['may_cu']}"
+        return False, nhan
+
+    #[[ Lay han TU MAY CHU, khong tu tinh o may khach.
+    #
+    #   May chu la noi duy nhat biet key duoc kich hoat luc nao. Tinh o may
+    #   khach thi van dong ho la doi duoc han — chinh thu ta dang chan. ]]
+    try:
+        het = datetime.fromisoformat(d["het_han"].replace("Z", "+00:00"))
+        bd = datetime.fromisoformat(d["kich_hoat"].replace("Z", "+00:00"))
+    except (KeyError, ValueError, AttributeError):
+        het = bay_gio + timedelta(days=so_ngay)
+        bd = bay_gio
+
     khoa.ghi_trang_thai(
         bq_key=sach(key),
         bq_so_hieu=so_hieu,
-        bq_ngay=so_ngay,
-        bq_kich_hoat=bay_gio.isoformat(),
+        bq_ngay=int(d.get("so_ngay") or so_ngay),
+        bq_kich_hoat=bd.isoformat(),
+        bq_het_han=het.isoformat(),
+        bq_kiem_cuoi=bay_gio.isoformat(),
         moc_cao=bay_gio.isoformat(),
     )
-    het = bay_gio + timedelta(days=so_ngay)
+    if d.get("lap_lai"):
+        return True, (f"Key này đã kích hoạt trên máy này rồi — hạn đến "
+                      f"{het.astimezone():%H:%M %d/%m/%Y}.")
     return True, (f"Đã kích hoạt. Giấy phép {_ten_goi(so_ngay)} — hạn đến "
                   f"{het.astimezone():%H:%M %d/%m/%Y}.")
 
@@ -235,6 +348,12 @@ def _ten_goi(so_ngay: int) -> str:
 
 
 def _het_han(d: dict) -> datetime | None:
+    #[[ Han MAY CHU da chot thi uu tien — xem ghi chu trong kich_hoat(). ]]
+    if d.get("bq_het_han"):
+        try:
+            return datetime.fromisoformat(d["bq_het_han"])
+        except (ValueError, TypeError):
+            pass
     try:
         bd = datetime.fromisoformat(d["bq_kich_hoat"])
     except (KeyError, ValueError, TypeError):
@@ -257,7 +376,7 @@ def kiem() -> dict:
     """
     may = khoa.ma_may()
     ra = {"co_phep": False, "ly_do": "", "con_lai": None,
-          "het_han": None, "may": may, "goi": ""}
+          "het_han": None, "may": may, "goi": "", "nhac": ""}
 
     d = khoa.doc_trang_thai()
     if d.get("hong"):
@@ -301,7 +420,54 @@ def kiem() -> dict:
                        f"{het.astimezone():%H:%M %d/%m/%Y}.")
         return ra
 
+    #[[ KIEM DINH KY VOI MAY CHU — 7 ngay mot lan, an han 30 ngay.
+    #
+    #   Ba ket cuc, va chung PHAI khac nhau:
+    #
+    #     may chu noi OK        -> ghi moc, chay tiep
+    #     may chu noi KHONG     -> dung ngay (key bi thu hoi / dung sai may)
+    #     khong noi duoc may chu-> CHAY TIEP trong an han, chi nhac neu qua han
+    #
+    #   Gop hai truong hop cuoi lam mot la hong ca he thong: hoac key thu hoi
+    #   van chay 30 ngay, hoac nguoi mat mang bi chan ngay. Nen _goi() tra
+    #   None rieng cho "khong noi duoc".
+    #]]
+    try:
+        kc = datetime.fromisoformat(d["bq_kiem_cuoi"]) if d.get("bq_kiem_cuoi") else None
+    except (ValueError, TypeError):
+        kc = None
+
+    if kc is None or bay_gio - kc >= NHIP_KIEM:
+        tl = _goi("/kiem", {"key": d.get("bq_key", ""), "may": may})
+        if tl is not None:
+            _ma, kq = tl
+            if kq.get("ok"):
+                khoa.ghi_trang_thai(bq_kiem_cuoi=bay_gio.isoformat())
+                kc = bay_gio
+            else:
+                ly = kq.get("ly_do", "")
+                ra["ly_do"] = LY_DO_VIET.get(
+                    ly, f"Máy chủ không xác nhận giấy phép ({ly}).")
+                return ra
+        #[[ tl is None: khong noi duoc. Khong ghi moc, khong chan. De vong
+        #   duoi xet xem da qua an han chua. ]]
+
+    if kc is not None and bay_gio - kc > AN_HAN:
+        ngay = (bay_gio - kc).days
+        ra["ly_do"] = (
+            f"Đã {ngay} ngày không kết nối được máy chủ để xác nhận giấy "
+            f"phép.\n\nNối mạng rồi mở lại app — chỉ cần một lần là chạy "
+            f"tiếp bình thường.")
+        return ra
+
     ra.update(co_phep=True, con_lai=het - bay_gio)
+    #[[ Bao cho giao dien biet dang trong an han, de no nhac nhe truoc khi
+    #   het — nhac sau khi da bi chan thi qua muon. ]]
+    if kc is not None:
+        thieu = AN_HAN - (bay_gio - kc)
+        if thieu.days <= 7:
+            ra["nhac"] = (f"Chưa xác nhận được giấy phép với máy chủ. "
+                          f"Còn {thieu.days} ngày nữa cần nối mạng một lần.")
     return ra
 
 
