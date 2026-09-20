@@ -604,7 +604,7 @@ class App(ttk.Frame):
             #]]
             go = self.v_ma.get()
             ok, nhan = bq.kich_hoat(go)
-            if not ok and bq.doc_key(go) is None:
+            if not ok and not bq.dang_key(go):
                 #[[ Chi lui ve ma gia han khi chuoi do KHONG PHAI mot key hop
                 #   le. Key dung ma kich hoat that bai (vi du giay phep hong)
                 #   thi phai bao dung loi do, dung de khoa.nhap_ma() ghi de

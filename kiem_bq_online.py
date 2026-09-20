@@ -62,6 +62,8 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, AT)
 os.environ["AUTOTONE_DATA"] = DU_LIEU
 import ban_quyen as bq, khoa
+import cap_key
+bq.tao_key = cap_key.tao_key
 bq.MAY_CHU = MAY_CHU
 THAN
 '''
@@ -115,7 +117,7 @@ def main() -> int:
 
     # 1. Kích hoạt qua máy chủ
     _, ra = chay('''
-k = bq.tao_key(1, 365)
+k = cap_key.tao_key(1, 365)
 ok, nhan = bq.kich_hoat(k)
 assert ok, nhan
 s = bq.kiem()
@@ -127,7 +129,7 @@ print("OK")
     # 2. Máy chủ từ chối (key đã dùng máy khác) -> KHÔNG kích hoạt
     COI.update(ok=False, ma=409, ly_do="da_dung_may_khac")
     _, ra = chay('''
-k = bq.tao_key(2, 365)
+k = cap_key.tao_key(2, 365)
 ok, nhan = bq.kich_hoat(k)
 assert not ok, "may chu tu choi ma van kich hoat"
 assert "MÁY KHÁC" in nhan or "máy khác" in nhan, nhan
@@ -139,7 +141,7 @@ print("OK")
     # 3. MẤT MẠNG lúc kích hoạt -> không kích hoạt, nhưng nói rõ lý do
     COI.update(sap=True)
     _, ra = chay('''
-k = bq.tao_key(3, 365)
+k = cap_key.tao_key(3, 365)
 ok, nhan = bq.kich_hoat(k)
 assert not ok, "mat mang ma van kich hoat"
 assert "mạng" in nhan, nhan
@@ -151,7 +153,7 @@ print("OK")
     COI.update(ok=True, ma=200, sap=False)
     d4 = moi()
     _, ra = chay('''
-k = bq.tao_key(4, 365)
+k = cap_key.tao_key(4, 365)
 ok, nhan = bq.kich_hoat(k)
 assert ok, nhan
 print("OK-tao")
@@ -178,7 +180,7 @@ print("OK")
     d5 = moi()
     COI.update(sap=False)
     _, ra = chay('''
-k = bq.tao_key(5, 365)
+k = cap_key.tao_key(5, 365)
 assert bq.kich_hoat(k)[0]
 print("OK-tao")
 ''', d5, cong)
@@ -199,7 +201,7 @@ print("OK")
     COI.update(sap=False)
     d6 = moi()
     _, ra = chay('''
-k = bq.tao_key(6, 365)
+k = cap_key.tao_key(6, 365)
 assert bq.kich_hoat(k)[0]
 print("OK-tao")
 ''', d6, cong)
@@ -220,7 +222,7 @@ print("OK:", s["nhac"][:60])
     COI.update(sap=False)
     d7 = moi()
     _, ra = chay('''
-k = bq.tao_key(7, 365)
+k = cap_key.tao_key(7, 365)
 assert bq.kich_hoat(k)[0]
 print("OK-tao")
 ''', d7, cong)
@@ -241,7 +243,7 @@ print("OK")
     COI.update(ok=True, ma=200, sap=False)
     d8 = moi()
     _, ra = chay('''
-k = bq.tao_key(8, 365)
+k = cap_key.tao_key(8, 365)
 assert bq.kich_hoat(k)[0]
 print("OK-tao")
 ''', d8, cong)

@@ -29,6 +29,25 @@ import os, sys
 sys.path.insert(0, r"{goc}")
 os.environ["AUTOTONE_DATA"] = r"{du_lieu}"
 import ban_quyen as bq
+import cap_key                      # noi giu khoa ky key
+
+#[[ Sinh key phai goi cap_key, khong phai ban_quyen.
+#
+#   App KHONG con giu khoa bi mat (xem ghi chu dau ban_quyen.py), nen no
+#   khong sinh duoc key nua — dung y muon. Bai kiem dong vai NGUOI BAN nen
+#   dung cap_key, la noi that su giu khoa.
+#]]
+_GOC_TAO_KEY = cap_key.tao_key
+
+
+def _tao_key(hieu, ngay):
+    k = _GOC_TAO_KEY(hieu, ngay)
+    _NGAY[bq.sach(k)] = ngay
+    return k
+
+
+bq.tao_key = _tao_key
+cap_key.tao_key = _tao_key
 
 #[[ TAT DUONG MANG cho cac phep OFFLINE.
 #
@@ -43,10 +62,14 @@ import ban_quyen as bq
 from datetime import datetime, timedelta, timezone
 
 
+#[[ Ban gia lap phai tra dung SO NGAY cua key — bai kiem co phep do han.
+#   Doc bang cap_key (noi giu khoa), y het may chu that lam. ]]
+_NGAY = {{}}
+
+
 def _goi_gia(duong, than):
     bay = datetime.now(timezone.utc)
-    d = bq.doc_key(than.get("key", ""))
-    ngay = d[1] if d else 365
+    ngay = _NGAY.get(bq.sach(than.get("key", "")), 365)
     return 200, {{"ok": True, "so_ngay": ngay,
                   "kich_hoat": bay.isoformat(),
                   "het_han": (bay + timedelta(days=ngay)).isoformat()}}
@@ -94,33 +117,33 @@ def main() -> int:
     ma, ra = chay('''
 import ban_quyen as bq
 for ten, ngay in bq.GOI_BAN.items():
-    k = bq.tao_key(7, ngay)
-    d = bq.doc_key(k)
-    assert d == (7, ngay), (ten, k, d)
+    k = cap_key.tao_key(7, ngay)
+    assert bq.dang_key(k), (ten, k)
 print("OK")
 ''', moi())
     ket("sinh rồi đọc lại đúng, mọi gói bán", "OK" in ra, ra)
 
     # 2. Key bịa / sai một ký tự phải bị từ chối
     ma, ra = chay('''
-k = bq.tao_key(5, 30)
-assert bq.doc_key(k) is not None
+k = cap_key.tao_key(5, 30)
+assert bq.dang_key(k)
 s = list(bq.sach(k))
 s[0] = "B" if s[0] != "B" else "C"
-assert bq.doc_key("".join(s)) is None, "sua 1 ky tu ma van qua"
-assert bq.doc_key("AAAAA-AAAAA-AAAAA-AAAAA") is None, "key bia van qua"
-assert bq.doc_key("") is None and bq.doc_key("xxx") is None
+#[[ App chi kiem HINH DANG; chu ky do may chu kiem (co bai rieng:
+#   kiem_chu_ky.mjs va kiem_may_chu.mjs ben KeyServer). ]]
+assert bq.dang_key("") is False and bq.dang_key("xxx") is False
+assert bq.dang_key("AAAAA-AAAAA-AAAAA-AAAA!") is False
 print("OK")
 ''', moi())
     ket("key bịa / sai 1 ký tự bị từ chối", "OK" in ra, ra)
 
     # 3. Ký tự dễ đọc nhầm: gõ 0 thay O, 1 thay I vẫn phải nhận
     ma, ra = chay('''
-k = bq.tao_key(11, 365)
+k = cap_key.tao_key(11, 365)
 s = bq.sach(k)
-assert bq.doc_key(s.replace("9", "O").replace("8", "1")) == (11, 365)
-assert bq.doc_key(k.lower()) == (11, 365), "chu thuong phai nhan"
-assert bq.doc_key(" " + k + " ") == (11, 365), "khoang trang phai bo qua"
+assert bq.dang_key(s.replace("9", "O").replace("8", "1"))
+assert bq.dang_key(k.lower()), "chu thuong phai nhan"
+assert bq.dang_key(" " + k + " "), "khoang trang phai bo qua"
 print("OK")
 ''', moi())
     ket("gõ nhầm 0/O, 1/I, chữ thường vẫn nhận", "OK" in ra, ra)
@@ -129,7 +152,7 @@ print("OK")
     ma, ra = chay('''
 from datetime import datetime, timezone, timedelta
 assert bq.kiem()["co_phep"] is False, "may sach ma da co phep"
-k = bq.tao_key(21, 30)
+k = cap_key.tao_key(21, 30)
 ok, nhan = bq.kich_hoat(k)
 assert ok, nhan
 s = bq.kiem()
@@ -144,7 +167,7 @@ print("OK")
     # 5. Nhập lại chính key đó KHÔNG được đặt lại mốc (nếu không = gia hạn vô hạn)
     ma, ra = chay('''
 import json, khoa
-k = bq.tao_key(22, 30)
+k = cap_key.tao_key(22, 30)
 bq.kich_hoat(k)
 d1 = khoa.doc_trang_thai()["bq_kich_hoat"]
 ok, nhan = bq.kich_hoat(k)
@@ -160,7 +183,7 @@ print("OK")
     ma, ra = chay('''
 from datetime import datetime, timezone, timedelta
 import khoa
-k = bq.tao_key(23, 30)
+k = cap_key.tao_key(23, 30)
 bq.kich_hoat(k)
 #[[ Lui CA HAI moc: bq_kich_hoat va bq_het_han.
 #
@@ -184,7 +207,7 @@ print("OK")
     ma, ra = chay('''
 from datetime import datetime, timezone, timedelta
 import khoa
-k = bq.tao_key(24, 365)
+k = cap_key.tao_key(24, 365)
 bq.kich_hoat(k)
 assert bq.kiem()["co_phep"]
 # Gia lap: lan truoc dung o tuong lai (tuc bay gio dong ho dang lui)
@@ -200,7 +223,7 @@ print("OK")
     # 8. Sửa file giấy phép bằng tay -> chữ ký sai -> mất phép
     ma, ra = chay('''
 import json, khoa
-k = bq.tao_key(25, 30)
+k = cap_key.tao_key(25, 30)
 bq.kich_hoat(k)
 p = khoa._file()
 d = json.loads(p.read_text(encoding="utf-8"))
@@ -218,7 +241,7 @@ print("OK")
     #   dung file giay phep do — dung y het viec bung o C sang may moi. ]]
     d9 = moi()
     ma, ra = chay('''
-k = bq.tao_key(26, 365)
+k = cap_key.tao_key(26, 365)
 bq.kich_hoat(k)
 assert bq.kiem()["co_phep"]
 print("OK-tao")
@@ -239,7 +262,7 @@ print("OK")
     # 10. Key vĩnh viễn phải sống rất lâu, không tràn số
     ma, ra = chay('''
 from datetime import datetime, timezone
-k = bq.tao_key(27, bq.GOI_BAN["vinh-vien"])
+k = cap_key.tao_key(27, bq.GOI_BAN["vinh-vien"])
 ok, nhan = bq.kich_hoat(k)
 assert ok, nhan
 s = bq.kiem()
@@ -254,7 +277,7 @@ print("OK")
     ma, ra = chay('''
 for hieu, ngay in ((0, 30), (2**20, 30), (5, 0), (5, 2**16)):
     try:
-        bq.tao_key(hieu, ngay)
+        cap_key.tao_key(hieu, ngay)
     except ValueError:
         continue
     raise AssertionError(f"nhan tham so sai: {hieu}, {ngay}")

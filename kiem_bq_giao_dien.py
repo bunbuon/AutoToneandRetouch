@@ -16,6 +16,7 @@ TMP = Path(tempfile.mkdtemp(prefix="kiem_uibq_"))
 os.environ["AUTOTONE_DATA"] = str(TMP)
 
 import ban_quyen as bq      # noqa: E402
+import cap_key              # noqa: E402  — noi giu khoa ky key
 import khoa                 # noqa: E402
 import autotone_gui as ag   # noqa: E402
 
@@ -32,8 +33,7 @@ from datetime import datetime, timedelta, timezone
 
 def _goi_gia(duong, than):
     bay = datetime.now(timezone.utc)
-    d = bq.doc_key(than.get("key", ""))
-    ngay = d[1] if d else 365
+    ngay = 365
     return 200, {"ok": True, "so_ngay": ngay,
                  "kich_hoat": bay.isoformat(),
                  "het_han": (bay + timedelta(days=ngay)).isoformat()}
@@ -80,7 +80,7 @@ def main() -> int:
     ket("lớp khoá có ô nhập key", hasattr(app, "v_ma"))
 
     # 3. Nhap KEY BAN QUYEN that vao o that, bam nut that
-    key = bq.tao_key(4242, 365)
+    key = cap_key.tao_key(4242, 365)
     app.v_ma.set(key)
     try:
         app.btn_gia_han.invoke()

@@ -47,8 +47,6 @@ GIỚI HẠN — NÓI THẲNG
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -72,13 +70,22 @@ from pathlib import Path
 #]]
 import khoa  # dùng lại mã máy, chữ ký, chống vặn đồng hồ
 
-#[[ Khoa bi mat RIENG, khong dung chung voi khoa.py.
+#[[ KHONG CO KHOA BI MAT TRONG FILE NAY — CO Y.
 #
-#   Hai he thong doc lap nhau: doi khoa nay thi cac ma gia han dung thu cu van
-#   con hieu luc, va nguoc lai. Dung chung mot khoa thi mot lan doi la hong ca
-#   hai, ma ta lai hay phai doi khoa nay hon (moi dot ban).
+#   Ban dau khoa ky key nam ngay day. Nhung ma nguon app o tren mot kho
+#   GitHub CONG KHAI (de tai nguyen retouch tai duoc), nen bat ky ai mo file
+#   nay tren web cung lay duoc khoa, roi tu sinh key vo han — di vong qua ca
+#   may chu, vi may chu chi kiem chu ky chu khong biet key nao do minh cap.
+#
+#   Khong can dich nguoc .exe, chi can bam vao file tren github.com.
+#
+#   Gio khoa CHI nam o hai noi, ca hai deu kin:
+#       - kho bi mat cua Cloudflare (Worker doc de kiem chu ky)
+#       - cap_key.py tren may nguoi ban (da chan o .gitignore va LOAI_TRU)
+#
+#   App khong con kiem chu ky nua: no gui key len may chu va nghe tra loi.
+#   Khong mat tinh nang nao, vi kich hoat VON DA bat buoc co mang.
 #]]
-BI_MAT = b"AutoTone-SAY-Media-ban-quyen-v1"
 
 #[[ MAY CHU KEY — Cloudflare Worker + KV.
 #
@@ -128,22 +135,7 @@ GOI_BAN = {
 }
 
 
-# ── Mã hoá / giải mã key ────────────────────────────────────────────────────
-def _b32(so: int, do_dai: int) -> str:
-    ra = []
-    for _ in range(do_dai):
-        ra.append(BANG[so & 31])
-        so >>= 5
-    return "".join(reversed(ra))
-
-
-def _so(s: str) -> int:
-    n = 0
-    for c in s:
-        n = (n << 5) | BANG.index(c)
-    return n
-
-
+# ── Đọc key (chỉ hình dạng — chữ ký do máy chủ kiểm) ───────────────────────
 def sach(key: str) -> str:
     """Bỏ dấu gạch, đưa về hoa, quy các ký tự hay đọc nhầm về một."""
     ra = []
@@ -154,56 +146,22 @@ def sach(key: str) -> str:
     return "".join(ra)
 
 
-def tao_key(so_hieu: int, so_ngay: int) -> str:
-    """Sinh một key. CHỈ chạy ở máy người bán — xem cap_key.py.
+def dang_key(key: str) -> bool:
+    """Chuỗi này CÓ DẠNG một key bản quyền không? KHÔNG kiểm chữ ký.
 
-    so_hieu: số thứ tự key, để phân biệt các key cùng số ngày (1..1_048_575).
-    so_ngay: số ngày hiệu lực kể từ lúc kích hoạt (1..65535).
+    App không giữ khoá bí mật nên không xác minh được chữ ký — việc đó máy chủ
+    làm. Hàm này chỉ trả lời một câu hẹp hơn nhiều: người dùng vừa gõ key bản
+    quyền hay mã gia hạn dùng thử?
+
+    Đủ cho việc đó, vì hai loại khác nhau ở độ dài và bảng chữ:
+        key bản quyền    20 ký tự, toàn bộ nằm trong BANG
+        mã gia hạn cũ    20 ký tự nhưng sinh từ base32 chuẩn, có thể lọt ký tự
+                         ngoài BANG
+
+    Đoán nhầm cũng không mất gì: app thử cả hai đường, cái nào nhận thì lấy.
     """
-    if not 1 <= so_hieu <= 0xFFFFF:
-        raise ValueError("so_hieu phải trong 1..1048575")
-    if not 1 <= so_ngay <= 0xFFFF:
-        raise ValueError("so_ngay phải trong 1..65535")
-
-    #[[ THAN 40 BIT = 4 bit phien ban + 20 bit so hieu + 16 bit so ngay.
-    #
-    #   Vua dung 8 ky tu (8 x 5 bit = 40 bit), khong du mot bit nao. Ban dau
-    #   toi de than 20 ky tu cho "du cho", va moi key deu bat dau bang
-    #   AAAAA-AAAAA — nhin nhu key hong, ma khach thi khong biet do la binh
-    #   thuong. Chat vua khit thi moi ky tu deu mang tin, key nao cung khac
-    #   nhau ngay tu dau.
-    #
-    #   4 bit phien ban de sau doi cach ma hoa ma van tu choi duoc key cu mot
-    #   cach ro rang, thay vi giai ra so ngay bay ba.
-    #]]
-    than = (PHIEN_BAN << 36) | (so_hieu << 16) | so_ngay
-    s_than = _b32(than, 8)
-    ky = hmac.new(BI_MAT, s_than.encode("ascii"), hashlib.sha256).digest()
-    #[[ Chu ky 12 ky tu = 60 bit. Doan mo 1 key can trung binh 2^59 lan thu,
-    #   ma moi lan thu la mot lan go tay vao o nhap. ]]
-    s_ky = "".join(BANG[b & 31] for b in ky[:12])
-    s = s_than + s_ky
-    return "-".join(s[i:i + NHOM] for i in range(0, len(s), NHOM))
-
-
-def doc_key(key: str) -> tuple[int, int] | None:
-    """Đọc key. -> (số hiệu, số ngày), hoặc None nếu key sai.
-
-    Chỉ kiểm CHỮ KÝ, không đụng tới máy — vì lúc cấp key chưa biết máy nào.
-    """
-    s = sach(key)
-    if len(s) != NHOM * SO_NHOM:
-        return None
-    if any(c not in BANG for c in s):
-        return None
-    s_than, s_ky = s[:8], s[8:]
-    ky = hmac.new(BI_MAT, s_than.encode("ascii"), hashlib.sha256).digest()
-    if not hmac.compare_digest(s_ky, "".join(BANG[b & 31] for b in ky[:12])):
-        return None
-    than = _so(s_than)
-    if (than >> 36) & 0xF != PHIEN_BAN:
-        return None
-    return (than >> 16) & 0xFFFFF, than & 0xFFFF
+    t = sach(key)
+    return len(t) == NHOM * SO_NHOM and all(c in BANG for c in t)
 
 
 # ── Gọi máy chủ ─────────────────────────────────────────────────────────────
@@ -268,11 +226,15 @@ def kich_hoat(key: str) -> tuple[bool, str]:
     """
     if not sach(key):
         return False, "Chưa nhập key."
-    doc = doc_key(key)
-    if doc is None:
+    #[[ KHONG giai key o day nua — app khong giu khoa bi mat.
+    #
+    #   Chi chan truoc nhung chuoi RO RANG khong phai key (sai do dai, lot ky
+    #   tu la) de khoi goi may chu mot cach vo ich. Con key dung dang ma chu
+    #   ky sai thi may chu bat, va no tra ve "key_sai" — cung mot cau bao loi.
+    #]]
+    if not dang_key(key):
         return False, ("Key không hợp lệ. Kiểm tra lại từng ký tự — dễ nhầm "
                        "nhất là B với 8, S với 5.")
-    so_hieu, so_ngay = doc
 
     d = _doc()
     cu = d.get("bq_key")
@@ -315,17 +277,22 @@ def kich_hoat(key: str) -> tuple[bool, str]:
     #
     #   May chu la noi duy nhat biet key duoc kich hoat luc nao. Tinh o may
     #   khach thi van dong ho la doi duoc han — chinh thu ta dang chan. ]]
+    #[[ so_ngay do MAY CHU noi — app khong tu giai duoc nua, va cung khong
+    #   nen tu giai: may chu la noi duy nhat biet key do dang con hieu luc. ]]
+    so_ngay = int(d.get("so_ngay") or 0)
     try:
         het = datetime.fromisoformat(d["het_han"].replace("Z", "+00:00"))
         bd = datetime.fromisoformat(d["kich_hoat"].replace("Z", "+00:00"))
     except (KeyError, ValueError, AttributeError):
+        if not so_ngay:
+            return False, ("Máy chủ trả lời thiếu thông tin hạn. "
+                           "Thử lại sau ít phút.")
         het = bay_gio + timedelta(days=so_ngay)
         bd = bay_gio
 
     khoa.ghi_trang_thai(
         bq_key=sach(key),
-        bq_so_hieu=so_hieu,
-        bq_ngay=int(d.get("so_ngay") or so_ngay),
+        bq_ngay=so_ngay,
         bq_kich_hoat=bd.isoformat(),
         bq_het_han=het.isoformat(),
         bq_kiem_cuoi=bay_gio.isoformat(),
