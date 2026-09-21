@@ -526,6 +526,30 @@ def chay(nhanh: bool = False) -> Bao:
             "nong_cam.pt": "xoá nọng cằm",
         }
         thieu = [f"{f} ({v})" for f, v in can.items() if not (kho / f).is_file()]
+
+        #[[ BAN NHE: thieu mo hinh la BINH THUONG, khong phai hong.
+        #
+        #   Bai kiem nay viet truoc khi co ban nhe, nen no chi biet hai trang
+        #   thai: "goi khong kem retouch" hoac "mo hinh phai co san". Ban nhe
+        #   la trang thai THU BA — co day du phan retouch, nhung mo hinh
+        #   (487 MB) tai ve lan dau bam nut.
+        #
+        #   De nguyen thi moi lan dong goi ban nhe deu ra mot dong [HONG] —
+        #   va mot bai kiem luon do khi moi thu van dung se day nguoi ta toi
+        #   cho bo qua no, ke ca luc no bao dung.
+        #
+        #   Phan biet bang chinh trinh tai: no biet goi "mo-hinh" da ve chua.
+        #]]
+        if thieu:
+            try:
+                import tai_nguyen as _tn
+                chua_tai = "mo-hinh" in _tn.can_cho_retouch()
+            except Exception:                                # noqa: BLE001
+                chua_tai = False
+            if chua_tai:
+                return (f"bản nhẹ — mô hình chưa tải ({len(thieu)}/{len(can)} "
+                        f"thiếu). Bấm Retouch lần đầu sẽ tải về.")
+
         them_ = []
         if (kho / "resnet34_faceparse.onnx").is_file():
             them_.append("phân vùng da")

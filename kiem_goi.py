@@ -72,6 +72,13 @@ def anh_chup(goi: Path) -> dict:
 
 
 def main(argv=None) -> int:
+    #[[ Console cp1252 khong in noi chu Viet — bai kiem DAT van chet o dong
+    #   in dau tien. Xem ghi chu trong _cua_saytool(). ]]
+    for _l in (sys.stdout, sys.stderr):
+        try:
+            _l.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:                                    # noqa: BLE001
+            pass
     argv = sys.argv[1:] if argv is None else argv
     #[[ Doi so thu hai (tuy chon): thu muc anh RAW THAT.
     #

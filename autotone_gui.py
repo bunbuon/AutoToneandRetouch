@@ -552,16 +552,40 @@ class App(ttk.Frame):
         #   ho khong dung thu, ho la khach hang. Bao sai tinh huong thi ho
         #   tuong app hong, hoac tuong minh bi tinh phi nham.
         #]]
+        #[[ BA TINH HUONG KHAC NHAU, BA TIEU DE KHAC NHAU.
+        #
+        #       da mua, het han    -> "Ban quyen da het han"
+        #       chua mua bao gio   -> "Chua kich hoat ban quyen"
+        #       het han dung thu   -> "Het han dung thu"
+        #
+        #   Truoc day chi co hai nhanh, va `da_mua` do bang `het_han` co hay
+        #   khong. May chua kich hoat bao gio thi khong co het_han, nen roi vao
+        #   nhanh "Het han dung thu" — bao mot thu ho chua tung dung.
+        #]]
         gp = bq.kiem()
-        da_mua = bool(gp["het_han"])
-        tieu_de = "Bản quyền đã hết hạn" if da_mua else "Hết hạn dùng thử"
-        ly_do = gp["ly_do"] if da_mua else k["ly_do"]
+        if gp["het_han"]:
+            #[[ DA TUNG MUA: noi dung chuyen ho gap — giay phep het han. ]]
+            tieu_de, ly_do = "Bản quyền đã hết hạn", gp["ly_do"]
+        else:
+            #[[ CHUA MUA BAO GIO. Ho vua het han dung thu, vua chua co ban
+            #   quyen — ca hai deu dung, nhung cau huu ich la cai NOI HO PHAI
+            #   LAM GI, chu khong phai cai da mat.
+            #
+            #   "Het han dung thu" la mot ngo cut: doc xong khong biet di dau.
+            #   "Can kich hoat ban quyen" chi thang xuong o nhap ngay duoi.
+            #]]
+            tieu_de = "Cần kích hoạt bản quyền"
+            ly_do = (k["ly_do"] + "\n\nNhập key bản quyền để dùng tiếp."
+                     if k.get("ly_do") else gp["ly_do"])
 
-        tk.Label(hop, text=tieu_de, background=m["tam"],
-                 foreground=m["loi"], font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        tk.Label(hop, text=ly_do, background=m["tam"], foreground=m["chu"],
-                 font=gd.CHU, justify="left", wraplength=520
-                 ).pack(anchor="w", pady=(8, 16))
+        self.lbl_tieu_de = tk.Label(
+            hop, text=tieu_de, background=m["tam"],
+            foreground=m["loi"], font=("Segoe UI", 15, "bold"))
+        self.lbl_tieu_de.pack(anchor="w")
+        self.lbl_ly_do = tk.Label(
+            hop, text=ly_do, background=m["tam"], foreground=m["chu"],
+            font=gd.CHU, justify="left", wraplength=520)
+        self.lbl_ly_do.pack(anchor="w", pady=(8, 16))
 
         #[[ NOI RO ANH CU VAN CON. Day la cau hoi dau tien cua bat ky ai gap
         #   man hinh khoa giua mot job: "the anh toi lam ca sang thi sao?"
@@ -613,6 +637,20 @@ class App(ttk.Frame):
                 ok2, _moi, nhan2 = khoa.nhap_ma(go)
                 if ok2 or not nhan:
                     ok, nhan = ok2, nhan2
+            #[[ Doi CA TIEU DE theo ket qua vua roi.
+            #
+            #   Truoc day chi dong duoi doi, nen man hinh hien "Ban quyen da
+            #   het han" o tren va "Key khong hop le" o duoi — hai cau noi hai
+            #   chuyen khac nhau, nguoi doc khong biet tin cau nao.
+            #]]
+            if ok:
+                self.lbl_tieu_de.configure(text="Đã kích hoạt",
+                                           foreground=m["xong"])
+                self.lbl_ly_do.configure(text="")
+            else:
+                self.lbl_tieu_de.configure(text="Chưa kích hoạt được",
+                                           foreground=m["loi"])
+                self.lbl_ly_do.configure(text="")
             lbl.configure(text=nhan, foreground=m["xong"] if ok else m["loi"])
             lbl.pack(anchor="w", pady=(10, 0))
             if ok:

@@ -1,0 +1,101 @@
+#[[ BUILD BAN macOS MA KHONG CAN CO MAY MAC.
+#
+#   PyInstaller KHONG build cheo duoc: no nhet chinh trinh thong dich Python
+#   va cac thu vien NHI PHAN cua may dang chay vao goi. Khong co duong vong —
+#   ke ca Docker hay Wine. Nen ban .app bat buoc phai dung mot may macOS.
+#
+#   GitHub Actions cho muon may do. Kho AutoToneandRetouch la Public nen so
+#   phut chay KHONG GIOI HAN va khong mat tien, ke ca may macOS.
+#
+#   CHAY: vao tab Actions tren GitHub -> "Build ban macOS" -> Run workflow.
+#   Xong thi tai file .zip o muc Artifacts cua lan chay do.
+#]]
+name: Build bản macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      khong_khoa:
+        description: "Bản thử, không khoá bản quyền (để trống = bản bán)"
+        type: boolean
+        default: false
+      khong_retouch:
+        description: "Bỏ hẳn phần retouch khỏi gói"
+        type: boolean
+        default: false
+
+jobs:
+  dong-goi:
+    #[[ macos-14 la Apple Silicon (arm64). Goi ra chay tren may M1/M2/M3...
+    #   May Intel doi macos-13. Xem ghi chu o buoc "Dong goi" ben duoi. ]]
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      #[[ ChuyenSangMac/ bi .gitignore chan (co y: tranh hai ban ma nguon tren
+      #   kho). Nen build tu ma nguon GOC o thu muc chinh — no la ban that,
+      #   con ban Mac chi la ban chep. ]]
+      - name: Lấy phần retouch (kho riêng, Private)
+        if: ${{ !inputs.khong_retouch }}
+        uses: actions/checkout@v4
+        with:
+          repository: bunbuon/ToolCloneEvoto
+          token: ${{ secrets.TOOL_RETOUCH_TOKEN }}
+          path: ToolCloneEvoto
+
+      - name: Cài Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      #[[ opencv-python-HEADLESS chu khong phai ban thuong: ban thuong keo theo
+      #   ca Qt cho cua so cv2.imshow, ma du an khong dung ham nao trong so do
+      #   (da kiem bang grep). Goi nho hon han va bot mot nguon loi khi dong goi.
+      #]]
+      - name: Cài thư viện
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller pillow numpy opencv-python-headless
+
+      - name: Đóng gói
+        run: |
+          THEM="--nhe"
+          if [ "${{ inputs.khong_khoa }}" = "true" ]; then
+            THEM="$THEM --khong-khoa"
+          fi
+          if [ "${{ inputs.khong_retouch }}" = "true" ]; then
+            THEM="$THEM --khong-retouch"
+          else
+            THEM="$THEM --tool-retouch $PWD/ToolCloneEvoto"
+          fi
+          echo "Lệnh: python dong_goi.py $THEM"
+          python dong_goi.py $THEM
+
+      #[[ Bai kiem tu no bao goi co dat khong. Khong chay no thi ta chi biet
+      #   "build xong", ma build xong van co the ra mot goi mo len la sap. ]]
+      - name: Kiểm gói
+        run: python kiem_goi.py dist/AutoTone.app
+
+      - name: Xem có gì trong gói
+        run: |
+          echo "=== kích thước ==="
+          du -sh dist/AutoTone.app
+          echo "=== bí mật có lọt không (phải trống) ==="
+          grep -rl "AutoTone-SAY-Media-bq-" dist/ 2>/dev/null || echo "  sạch"
+          find dist -name "cap_key*" -o -name "quan_ly_key*" 2>/dev/null || true
+
+      - name: Gửi gói ra
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoTone-macOS
+          #[[ Nhan ca .zip lan .tar.gz: nen_goi() dung `ditto` (ra .zip) nhung
+          #   LUI VE tar neu may khong co ditto. Chi khai .zip thi truong hop
+          #   do se gui ra mot goi rong ma khong bao gi. ]]
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14

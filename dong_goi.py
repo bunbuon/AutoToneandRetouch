@@ -45,7 +45,8 @@ LOAI_TRU = [
     #   khach hang tu sinh key vinh vien duoc, va ca he thong ban quyen thanh
     #   vo nghia. so_key.csv la so ban hang — khong viec gi phai di theo app.
     #]]
-    "cap_key.py", "so_key.csv", "kiem_ban_quyen.py",
+    "cap_key.py", "so_key.csv", "kiem_ban_quyen.py", "quan_ly_key.py",
+    "kiem_quan_ly_key.py",
     "kiem_khoa.py", "kiem_gu.py", "kiem_luat.py", "kiem_san.py",
     "kiem_do_mat.py", "kiem_goi.py", "kiem_ban_xuat.py", "do_trong_ngoai.py", "do_wb.py", "hoc_mau_da.py", "kiem_mau_da.py",
     "test_tach_canh.py", "test_cull_split.py", "test_san_phang.py",
