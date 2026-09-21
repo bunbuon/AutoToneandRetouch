@@ -397,6 +397,23 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         for g in RETOUCH_GOI:
             if nhe and g in GOI_TACH:
                 continue
+            #[[ TREN macOS KHONG duoc --collect-all cv2.
+            #
+            #   PyInstaller da co hook-cv2.py lo dung viec do. Them
+            #   --collect-all nua thi no gom ca cv2/config.py va loader.py, va
+            #   bo nap cua chinh cv2 quay vong khi goi chay:
+            #
+            #       ImportError: ERROR: recursion is detected during loading
+            #       of "cv2" binary extensions
+            #
+            #   Ban Windows dung y lenh nay lai KHONG sao — nen day la chuyen
+            #   rieng cua macOS, khong phai loi chung. Da doi chieu that: goi
+            #   Windows chay tron voi --collect-all cv2.
+            #
+            #   Bat duoc 21/09 o lan build macOS thu hai tren GitHub Actions.
+            #]]
+            if he == "mac" and g == "cv2":
+                continue
             cmd += ["--collect-all", g]
         if goc_tool:
             cmd += ["--add-data", f"{saytool_du(goc_tool)}{ngan}saytool"]
