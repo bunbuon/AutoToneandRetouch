@@ -80,7 +80,23 @@ jobs:
       - name: Cài thư viện
         run: |
           "$PY" -m pip install --upgrade pip
-          "$PY" -m pip install pyinstaller pillow numpy opencv-python-headless
+          #[[ DUNG opencv-python DAY DU, KHONG phai ban headless.
+          #
+          #   Toi chon headless vi du an khong goi cv2.imshow — dung ve tinh
+          #   nang, nhung doi goi tuc la doi cach dong goi. Ban headless bi
+          #   loi recursion khi PyInstaller dong tren macOS:
+          #
+          #       ImportError: ERROR: recursion is detected during loading of
+          #       "cv2" binary extensions
+          #
+          #   Da loai tru moi thu khac: cv2 nap TOT trong moi truong build
+          #   (in ra 5.0.0), chi hong SAU KHI dong goi. Va ban Windows dung
+          #   CUNG phien ban 5.0.0 ma khong sao — khac moi o cho no dung
+          #   opencv-python day du.
+          #
+          #   Nen dung dung bo ma ban Windows da chung minh.
+          #]]
+          "$PY" -m pip install pyinstaller pillow numpy opencv-python
           #[[ Kiem NGAY rang ba thu quyet dinh deu nam dung cho, truoc khi
           #   build. Bon lan chay truoc deu phai suy luan tu log gian tiep. ]]
           echo "=== kiểm trước khi build ==="
