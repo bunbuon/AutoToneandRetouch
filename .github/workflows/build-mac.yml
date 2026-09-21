@@ -46,7 +46,10 @@ jobs:
           token: ${{ secrets.TOOL_RETOUCH_TOKEN }}
           path: ToolCloneEvoto
 
+      #[[ `id: py` de cac buoc sau goi DUNG ban Python nay qua
+      #   steps.py.outputs.python-path. Xem ghi chu o buoc "Dong goi". ]]
       - name: Cài Python 3.12
+        id: py
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -57,8 +60,9 @@ jobs:
       #]]
       - name: Cài thư viện
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller pillow numpy opencv-python-headless
+          PY="${{ steps.py.outputs.python-path }}"
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install pyinstaller pillow numpy opencv-python-headless
 
       - name: Đóng gói
         run: |
@@ -71,13 +75,25 @@ jobs:
           else
             THEM="$THEM --tool-retouch $PWD/ToolCloneEvoto"
           fi
-          echo "Lệnh: python dong_goi.py $THEM"
-          python dong_goi.py $THEM
+          #[[ PHAI goi DUNG ban Python da cai thu vien.
+          #
+          #   Tren runner macOS, `python` tro vao Python HE THONG
+          #   (/Library/Frameworks/...), khong phai ban setup-python vua cai
+          #   cv2. dong_goi.py goi PyInstaller bang sys.executable, nen no se
+          #   dong goi tu moi truong KHONG CO cv2 — build van "thanh cong",
+          #   chi la goi ra co cv2 hong.
+          #
+          #   Hong that 21/09: lan chay dau bao "cv2 hong (ImportError)" o buoc
+          #   kiem goi, trong khi pip bao da cai cv2 xong xuoi.
+          #]]
+          PY="${{ steps.py.outputs.python-path }}"
+          echo "Lệnh: $PY dong_goi.py $THEM"
+          "$PY" dong_goi.py $THEM
 
       #[[ Bai kiem tu no bao goi co dat khong. Khong chay no thi ta chi biet
       #   "build xong", ma build xong van co the ra mot goi mo len la sap. ]]
       - name: Kiểm gói
-        run: python kiem_goi.py dist/AutoTone.app
+        run: '"${{ steps.py.outputs.python-path }}" kiem_goi.py dist/AutoTone.app'
 
       - name: Xem có gì trong gói
         run: |

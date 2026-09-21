@@ -229,8 +229,18 @@ def chay(nhanh: bool = False) -> Bao:
             import cv2
             v.append(f"opencv {cv2.__version__}")
         except Exception as e:                                   # noqa: BLE001
-            raise AssertionError(f"cv2 hỏng ({type(e).__name__}) — không nhận "
-                                 "được mặt thì cách đo mặc định vô dụng")
+            #[[ IN CA NOI DUNG LOI, khong chi ten loai loi.
+            #
+            #   Ban cu chi in "ImportError". Voi loi nap thu vien NHI PHAN thi
+            #   noi dung moi la thu noi duoc nguyen nhan — thieu .dylib nao,
+            #   sai kien truc (arm64 vs x86_64), hay hong ky ma. Thieu no thi
+            #   doc log xong van khong biet phai sua gi.
+            #
+            #   Bat duoc 21/09 khi build macOS tren GitHub Actions: goi build
+            #   xong, cv2 khong nap duoc, ma log chi noi "ImportError".
+            #]]
+            raise AssertionError(f"cv2 hỏng ({type(e).__name__}: {e}) — không "
+                                 "nhận được mặt thì cách đo mặc định vô dụng")
         return " · ".join(v)
     b.thu("Thư viện nền", _thu_vien)
 
