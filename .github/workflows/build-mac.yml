@@ -46,32 +46,45 @@ jobs:
           token: ${{ secrets.TOOL_RETOUCH_TOKEN }}
           path: ToolCloneEvoto
 
-      #[[ DUNG VENV — cach duy nhat chac chan tren macOS.
+      #[[ DUNG CHINH BAN PYTHON MA CAI_DAT_MAC.command DA CHUNG MINH.
       #
-      #   Da thu hai cach truoc, ca hai deu that bai vi cung mot goc: thu vien
-      #   cai mot noi, PyInstaller doc mot noi khac.
+      #   Bon lan truoc that bai vi toi tu dung moi truong thay vi dung cach
+      #   da co san. Moi cach deu vo o mot cho khac nhau:
       #
-      #     1. actions/setup-python — tren macOS chi la symlink tro ve
-      #        /Library/Frameworks/Python.framework. Goi dung duong dan no cho
-      #        van re ve framework, noi khong co cv2:
+      #     setup-python    symlink ve Python framework -> PyInstaller doc moi
+      #                     truong khong co cv2
+      #     python3 runner  Homebrew chan pip: externally-managed-environment
+      #     venv tu Homebrew moi truong dung roi, nhung Python 3.14 cua
+      #                     Homebrew KHONG kem tkinter -> goi build ra mo len
+      #                     la "No module named tkinter"
       #
-      #          Lenh: .../hostedtoolcache/.../bin/python dong_goi.py
-      #          INFO: Python environment: /Library/Frameworks/Python.framework
+      #   CAI_DAT_MAC.command da giai xong bai nay tu truoc, va ghi ro ly do:
+      #   Python cua may mang Tk 8.5, tren macOS doi moi giao dien vo chu va o
+      #   nhap khong an chuot — luc build KHONG bao loi gi, chi mo app moi
+      #   thay. Ban python-build-standalone mang san Tcl/Tk 8.6.
       #
-      #     2. python3 cua runner — la Homebrew Python, va no CHAN pip cai vao
-      #        he thong: "error: externally-managed-environment".
-      #
-      #   venv giai quyet ca hai: mot thu muc rieng, sys.executable tro thang
-      #   vao no, khong symlink, khong bi chan. dong_goi.py goi
-      #   `sys.executable -m PyInstaller` nen chac chan dung moi truong nay.
+      #   Nen dung dung ban do. Cung phien ban voi file cai tay, de goi build
+      #   tren Actions va goi build tren may that giong het nhau.
       #]]
-      - name: Dựng môi trường và cài thư viện
+      - name: Tải Python kèm Tk 8.6 (như CAI_DAT_MAC.command)
         run: |
-          python3 -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install pyinstaller pillow numpy             opencv-python-headless
-          echo "=== kiểm: thư viện có nằm đúng chỗ PyInstaller sẽ đọc không ==="
-          .venv/bin/python -c "import sys, cv2; print('prefix :', sys.prefix); print('cv2    :', cv2.__file__); print('version:', cv2.__version__)"
+          BAN_PY="3.12.11"
+          MOC="20250723"
+          KT="aarch64"       # macos-14 la Apple Silicon
+          URL="https://github.com/astral-sh/python-build-standalone/releases/download/${MOC}/cpython-${BAN_PY}+${MOC}-${KT}-apple-darwin-install_only.tar.gz"
+          echo "Tải: $URL"
+          curl -fsSL "$URL" -o python.tar.gz
+          tar -xzf python.tar.gz
+          echo "PY=$PWD/python/bin/python3" >> "$GITHUB_ENV"
+
+      - name: Cài thư viện
+        run: |
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install pyinstaller pillow numpy opencv-python-headless
+          #[[ Kiem NGAY rang ba thu quyet dinh deu nam dung cho, truoc khi
+          #   build. Bon lan chay truoc deu phai suy luan tu log gian tiep. ]]
+          echo "=== kiểm trước khi build ==="
+          "$PY" -c "import sys, cv2, tkinter; print('prefix :', sys.prefix); print('cv2    :', cv2.__version__); print('tk     :', tkinter.TkVersion)"
 
       - name: Đóng gói
         run: |
@@ -95,13 +108,13 @@ jobs:
           #   Hong that 21/09: lan chay dau bao "cv2 hong (ImportError)" o buoc
           #   kiem goi, trong khi pip bao da cai cv2 xong xuoi.
           #]]
-          echo "Lệnh: .venv/bin/python dong_goi.py $THEM"
-          .venv/bin/python dong_goi.py $THEM
+          echo "Lệnh: $PY dong_goi.py $THEM"
+          "$PY" dong_goi.py $THEM
 
       #[[ Bai kiem tu no bao goi co dat khong. Khong chay no thi ta chi biet
       #   "build xong", ma build xong van co the ra mot goi mo len la sap. ]]
       - name: Kiểm gói
-        run: .venv/bin/python kiem_goi.py dist/AutoTone.app
+        run: '"$PY" kiem_goi.py dist/AutoTone.app'
 
       - name: Xem có gì trong gói
         run: |
