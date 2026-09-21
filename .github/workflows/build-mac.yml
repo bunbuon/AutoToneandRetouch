@@ -46,21 +46,27 @@ jobs:
           token: ${{ secrets.TOOL_RETOUCH_TOKEN }}
           path: ToolCloneEvoto
 
-      #[[ `id: py` de cac buoc sau goi DUNG ban Python nay qua
-      #   steps.py.outputs.python-path. Xem ghi chu o buoc "Dong goi". ]]
-      - name: Cài Python 3.12
-        id: py
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      #[[ opencv-python-HEADLESS chu khong phai ban thuong: ban thuong keo theo
-      #   ca Qt cho cua so cv2.imshow, ma du an khong dung ham nao trong so do
-      #   (da kiem bang grep). Goi nho hon han va bot mot nguon loi khi dong goi.
+      #[[ KHONG dung actions/setup-python TREN macOS.
+      #
+      #   Da thu va that bai hai lan. setup-python tren macOS chi la mot
+      #   symlink tro ve /Library/Frameworks/Python.framework, nen du goi dung
+      #   duong dan no cho (steps.py.outputs.python-path), PyInstaller VAN
+      #   chay trong moi truong framework:
+      #
+      #       Lenh: .../hostedtoolcache/Python/3.12.10/arm64/bin/python ...
+      #       INFO: Python environment: /Library/Frameworks/Python.framework/...
+      #
+      #   Hai dong lien nhau, noi nguoc nhau. Thu vien cai mot noi, PyInstaller
+      #   doc mot noi khac — goi ra co cv2 hong, ma build van bao thanh cong.
+      #
+      #   Nen dung THANG Python cua runner va cai thu vien vao chinh no. Mot
+      #   moi truong duy nhat thi khong con cho nao de lech.
       #]]
       - name: Cài thư viện
         run: |
-          PY="${{ steps.py.outputs.python-path }}"
+          PY=$(which python3)
+          echo "Python dùng để build: $PY"
+          "$PY" -c "import sys; print(sys.prefix)"
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install pyinstaller pillow numpy opencv-python-headless
 
@@ -86,14 +92,14 @@ jobs:
           #   Hong that 21/09: lan chay dau bao "cv2 hong (ImportError)" o buoc
           #   kiem goi, trong khi pip bao da cai cv2 xong xuoi.
           #]]
-          PY="${{ steps.py.outputs.python-path }}"
+          PY=$(which python3)
           echo "Lệnh: $PY dong_goi.py $THEM"
           "$PY" dong_goi.py $THEM
 
       #[[ Bai kiem tu no bao goi co dat khong. Khong chay no thi ta chi biet
       #   "build xong", ma build xong van co the ra mot goi mo len la sap. ]]
       - name: Kiểm gói
-        run: '"${{ steps.py.outputs.python-path }}" kiem_goi.py dist/AutoTone.app'
+        run: python3 kiem_goi.py dist/AutoTone.app
 
       - name: Xem có gì trong gói
         run: |
