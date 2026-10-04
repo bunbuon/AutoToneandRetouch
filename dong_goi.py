@@ -500,22 +500,31 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         for g in RETOUCH_GOI:
             if nhe and g in GOI_TACH:
                 continue
-            #[[ TREN macOS KHONG duoc --collect-all cv2.
+            #[[ cv2 TREN macOS — KHONG --collect-all, MA --collect-binaries +
+            #   --collect-data (da tra tan goc 4/10, bản .app van recursion sau
+            #   khi pin opencv 4.11).
             #
-            #   PyInstaller da co hook-cv2.py lo dung viec do. Them
-            #   --collect-all nua thi no gom ca cv2/config.py va loader.py, va
-            #   bo nap cua chinh cv2 quay vong khi goi chay:
+            #   LOI THAT: ".app" chay len bao "recursion is detected during
+            #   loading of cv2 binary extensions". Day KHONG phai de quy that, ma
+            #   la loader cv2 KHONG tim thay cv2.abi3.so + .dylibs canh __init__
+            #   -> importlib nap lai cv2/__init__ -> co OpenCV_LOADER da set ->
+            #   nem "recursion". Tuc THIEU native .so trong goi.
             #
-            #       ImportError: ERROR: recursion is detected during loading
-            #       of "cv2" binary extensions
-            #
-            #   Ban Windows dung y lenh nay lai KHONG sao — nen day la chuyen
-            #   rieng cua macOS, khong phai loi chung. Da doi chieu that: goi
-            #   Windows chay tron voi --collect-all cv2.
-            #
-            #   Bat duoc 21/09 o lan build macOS thu hai tren GitHub Actions.
-            #]]
+            #   VI SAO THIEU, va vi sao Windows khong bi: app nay dung CYTHON —
+            #   cv2 duoc import boi module .so da bien dich (khong phai .py trong
+            #   PYZ), nen PyInstaller do import TINH KHONG thay `import cv2` ->
+            #   hook-cv2.py KHONG chay -> .so + .dylibs khong vao goi. Windows
+            #   dung --collect-all cv2 nen binaries vao du (may rui). macOS bo
+            #   --collect-all (dung, vi no keo .py config dat lech cho sau khi
+            #   .app cross-link Frameworks/Resources) NHUNG lai thanh KHONG gi
+            #   collect cv2 -> thieu .so. Nen o day collect DUNG binaries + data:
+            #     --collect-binaries cv2 : cv2.abi3.so + .dylibs/*.dylib  <- quan trong nhat
+            #     --collect-data cv2     : config.py / config-3.py loader doc
+            #   (hook-cv2 chuan cung chi lam dung hai cai nay.) Them hidden-import
+            #   cv2 o NGAM. Van KHONG --collect-all tren mac. ]]
             if he == "mac" and g == "cv2":
+                cmd += ["--collect-binaries", "cv2", "--collect-data", "cv2",
+                        "--hidden-import", "cv2"]
                 continue
             cmd += ["--collect-all", g]
         if goc_tool:
@@ -555,6 +564,16 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         #   chay. May Apple Silicon ra ban arm64, may Intel ra ban x86_64.
         #]]
         cmd += ["--osx-bundle-identifier", "vn.saymedia.autotone"]
+        #[[ RUNTIME HOOK cv2 — du phong cho --collect-binaries cv2 o tren. Neu
+        #   cv2 nam trong thu muc con python-3.x (mot so build), hook nay chen
+        #   duong dan .so len sys.path truoc _MEIPASS de tranh recursion. Khong
+        #   co thu muc do thi hook no-op. Chi gan tren mac (loi .app). Chay tu
+        #   goc_nguon neu la cay ma hoa, else GOC. ]]
+        rthook = (goc_nguon / "rthook_cv2.py")
+        if not rthook.is_file():
+            rthook = GOC / "rthook_cv2.py"
+        if rthook.is_file():
+            cmd += ["--runtime-hook", str(rthook)]
 
     cmd.append(str(goc_nguon / diem_vao))
     return cmd
