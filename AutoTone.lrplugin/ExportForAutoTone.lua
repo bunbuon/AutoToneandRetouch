@@ -18,20 +18,12 @@ local LrPathUtils       = import "LrPathUtils"
 local LrTasks           = import "LrTasks"
 local Core              = require "AutoToneCore"
 
-local FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
-                 "Temperature", "Tint", "AsShotTemperature", "AsShotTint" }
+--[[ Dùng CHUNG bảng trường và cách ghi ô với đường xuất do app yêu cầu
+     (AutoToneCore.writeExport). Hai danh sách chép tay thì sớm muộn lệch nhau:
+     3/10 thêm WhiteBalance (chữ, không phải số) + Contrast/Whites/Blacks. ]]
+local FIELDS = Core.EXPORT_FIELDS
 
 local CHUNK = 200
-
-local function numOrEmpty(v)
-    if type(v) == "number" then
-        -- %.14g: giữ đủ chữ số mà không sinh đuôi .0 thừa
-        return string.format("%.14g", v)
-    elseif type(v) == "string" and tonumber(v) then
-        return v
-    end
-    return ""
-end
 
 LrTasks.startAsyncTask(function()
     LrFunctionContext.callWithContext("AutoToneExport", function(context)
@@ -102,7 +94,7 @@ LrTasks.startAsyncTask(function()
                     if type(s) == "table" then
                         local row = { path }
                         for _, key in ipairs(FIELDS) do
-                            row[#row + 1] = numOrEmpty(s[key])
+                            row[#row + 1] = Core.exportCell(key, s[key])
                         end
                         lines[#lines + 1] = table.concat(row, "\t")
                     else
@@ -157,16 +149,8 @@ LrTasks.startAsyncTask(function()
             LrFileUtils.move(tmp, dest)
         end)
 
-        -- chỉ giữ lại bản mới nhất cho đỡ rác
-        Core.try("cleanupExports", function()
-            for p in LrFileUtils.files(dir) do
-                local name = LrPathUtils.leafName(p)
-                if p ~= dest and string.sub(name, 1, 7) == "export_"
-                   and string.sub(name, -4) == ".tsv" then
-                    LrFileUtils.delete(p)
-                end
-            end
-        end)
+        -- giữ 30 bản mới nhất, KHÔNG xoá bản của buổi khác (xem Core.donBanXuat)
+        Core.try("cleanupExports", function() Core.donBanXuat(dir) end)
 
         Core.log(string.format("xuat %d anh -> %s", #lines - 1, dest))
         local msg = string.format("Đã xuất thông số của %d ảnh.\n\n" ..

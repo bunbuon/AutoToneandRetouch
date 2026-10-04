@@ -1,20 +1,31 @@
-"""Kiểm bố cục khâu 2 sau khi chuyển sang ba cột — không cần mở cửa sổ.
+"""Kiểm bố cục kiểu Evoto bằng cách ĐỌC MÃ NGUỒN — không cần mở cửa sổ.
 
-HAI THỨ FILE NÀY CANH
+NHỮNG THỨ FILE NÀY CANH
 
-  1. NHÃN KHÔNG BỊ CẮT CỤT.
-     Đây là lỗi đã xảy ra HAI LẦN trong lịch sử file này: xếp ngang mấy hộp
-     chọn có nhãn tiếng Việt dài, ở bề ngang thật thì nhãn hiện thành "Dua mat
-     ve muc sang ch". Đọc nhãn bị cắt thì không biết mình đang chọn gì.
+  1. MỌI KHOÁ MÀU CÓ THẬT.
+     gd.MAU["tin"] không tồn tại chỉ nổ lúc chạy tới dòng đó — có khi là một
+     nhánh hiếm, nổ giữa lúc người dùng đang làm việc.
 
-     Lúc chạy thật thì _xep_cot() đo bằng winfo_reqwidth() — chính xác tuyệt
-     đối. Nhưng máy dựng gói không mở được cửa sổ, nên ở đây ước theo số ký tự
-     để vẫn bắt được lúc ai đó thêm một nhãn dài mới.
+  2. NHÃN KHÔNG BỊ CẮT CỤT, CHỮ PHỤ VÀO DẤU ?.
+     Lỗi cắt chữ đã xảy ra hai lần ("Dua mat ve muc sang ch"). Bảng điều khiển
+     phải rộng theo NỘI DUNG (ô chọn dài nhất), không có width= cố định nào
+     trên nhãn; chữ giải thích nằm trong dấu ?, chữ còn in ra thì xuống dòng.
 
-  2. NHỮNG THỨ ĐÃ GỠ THÌ PHẢI GỠ HẲN.
-     Nút "2 · Ghi vào .xmp" trùng lệnh với nút ở khâu 3; "Xuất CSV" chuyển sang
-     khâu 3; "Tự động theo dõi" gỡ bỏ. Còn sót một tham chiếu là app không mở
-     lên được — mà lỗi đó chỉ lộ ra khi bấm, không lộ lúc import.
+  3. NHỮNG THỨ ĐÃ GỠ THÌ PHẢI GỠ HẲN.
+     Nút "2 · Ghi vào .xmp" trùng lệnh, "Tự động theo dõi", cột trái bảy khâu,
+     "Chạy hết", "Khâu khác"... Còn sót một tham chiếu là app không mở lên được
+     — mà lỗi đó chỉ lộ ra khi bấm, không lộ lúc import. Và CÂU CHỈ ĐƯỜNG cũng
+     phải gỡ theo: hộp thoại bảo "bấm Enter ở ô thư mục" khi ô đó không còn là
+     chỉ người dùng vào ngõ cụt.
+
+  4. KHUNG KIỂU EVOTO (3/10 tối — user: "tham khảo giao diện của Evoto để
+     thiết kế lại toàn bộ giao diện").
+     Thanh công cụ (buổi ▾ · lần gửi · Phân tích · Ghi · ⋯), lưới ảnh giữa,
+     bảng điều khiển phải, cột mô-đun, thanh trạng thái MỘT dòng. Vẫn đúng MỘT
+     nút gọi do_apply trong cả app.
+
+  5. HAI LỖI IM LẶNG NGÀY 7/9 vẫn phải hiện ra (plugin chết, bản xuất cũ hơn
+     lần ghi) — dải cảnh báo trên cùng, vòng làm mới 4 giây thật sự chạy.
 
 Chạy:  python kiem_bo_cuc.py
 """
@@ -22,28 +33,16 @@ Chạy:  python kiem_bo_cuc.py
 from __future__ import annotations
 
 import ast
-import re
 import sys
 from pathlib import Path
 
 GOC = Path(__file__).resolve().parent
 LOI: list[str] = []
 
-#[[ Segoe UI 9pt o 96 DPI: be ngang trung binh mot ky tu ~6,6 px (do rong tay
-#   tren nhan tieng Viet co dau). Cong 22 px cho o tick / nut tron. Uoc HOI
-#   RONG mot chut — canh nham con hon bo sot. ]]
-RONG_KY_TU = 6.6
-RONG_O_TICH = 22
-
-#[[ Cua so hep nhat cho phep: root.minsize(1180, 680). Tru cot trai 252 px va
-#   le hai ben ~40 px. Day la truong hop XAU NHAT phai chiu duoc. ]]
-RONG_MIN = 1180 - 252 - 40
-KHE = 24
-
 
 def ktra(ten: str, dieu: bool, mo: str = "") -> None:
     if dieu:
-        print(f"  {ten:<50} {mo or 'đạt'}")
+        print(f"  {ten:<58} {mo or 'đạt'}")
     else:
         LOI.append(f"{ten}: {mo}")
 
@@ -66,19 +65,16 @@ def kiem_khoa_mau(ktra) -> None:
     #   luc nguoi dung dang lam viec. Kiem tinh thi bat duoc ngay.
     #]]
     """
-    import ast
-    from pathlib import Path as _P
     import giao_dien as _gd
-    goc = _P(__file__).resolve().parent
     sai = []
-    for ten in ("autotone_gui.py", "duyet_ui.py", "giao_dien.py"):
-        f = goc / ten
+    for ten in ("autotone_gui.py", "duyet_ui.py", "giao_dien.py", "luoi_anh.py"):
+        f = GOC / ten
         if not f.is_file():
             continue
         for n in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
             if (isinstance(n, ast.Subscript)
-                    and isinstance(n.value, ast.Attribute)
-                    and n.value.attr == "MAU"
+                    and isinstance(n.value, (ast.Attribute, ast.Name))
+                    and getattr(n.value, "attr", getattr(n.value, "id", "")) == "MAU"
                     and isinstance(n.slice, ast.Constant)
                     and isinstance(n.slice.value, str)
                     and n.slice.value not in _gd.MAU):
@@ -87,174 +83,340 @@ def kiem_khoa_mau(ktra) -> None:
          " | ".join(sai) if sai else f"{len(_gd.MAU)} khoá trong bảng màu")
 
 
+def chuoi_nguoi_doc(cay: ast.AST) -> list[tuple[int, str]]:
+    """Mọi hằng chuỗi KHÔNG phải docstring — tức chữ có thể hiện ra cho người
+    dùng (nhãn, hộp thoại, dòng trạng thái). Docstring và chú thích # là lịch
+    sử cho người đọc mã, được phép nhắc tên cũ."""
+    doc = set()
+    for n in ast.walk(cay):
+        if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                          ast.AsyncFunctionDef)) and n.body:
+            dau = n.body[0]
+            if isinstance(dau, ast.Expr) and isinstance(dau.value, ast.Constant) \
+                    and isinstance(dau.value.value, str):
+                doc.add(id(dau.value))
+    ra = []
+    for n in ast.walk(cay):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) \
+                and id(n) not in doc:
+            ra.append((n.lineno, n.value))
+    return ra
+
+
 def main() -> int:
     kiem_khoa_mau(ktra)
     src = (GOC / "autotone_gui.py").read_text(encoding="utf-8")
     cay = ast.parse(src)
-    bo = than("_build_options", src, cay)
-    ktra("tìm được _build_options", bool(bo), f"{len(bo.splitlines())} dòng")
-    if not bo:
+    gd_src = (GOC / "giao_dien.py").read_text(encoding="utf-8")
+    gd_cay = ast.parse(gd_src)
+    lop_app = next((n for n in ast.walk(cay) if isinstance(n, ast.ClassDef)
+                    and n.name == "App"), None)
+    ktra("tìm được lớp App", lop_app is not None)
+    if lop_app is None:
         return 1
 
-    # ---------------- 1. gom nhãn theo từng cột
-    cot: dict[str, list[str]] = {"c1": [], "c2": [], "c3": []}
-    for m in re.finditer(r'\b(ct|rd)\(\s*(c[123])?[^,]*,\s*[^,]+,\s*"([^"]+)"', bo):
-        c = m.group(2)
-        if c:
-            cot[c].append(m.group(3))
-    # rd() luôn vào c2 (đóng trong hàm), ct() có tham số cột
-    for m in re.finditer(r'\brd\("\w+",\s*"([^"]+)"', bo):
-        cot["c2"].append(m.group(1))
-    #[[ hop(cot, "nhan", ...) va so(cot, "nhan", ...) — cot la tham so DAU,
-    #   nen nhan nam sau no. Regex phai bam theo chu ky that; bam sai thi bai
-    #   kiem im lang doc ra 0 nhan va bao "khong co nhan nao qua dai". ]]
-    for m in re.finditer(r'\b(?:hop|so)\(\s*\n?\s*(c[123]),\s*\n?\s*"([^"]+)"',
-                         bo):
-        cot[m.group(1)].append(m.group(2))
+    def lop(ten):
+        for n in ast.walk(gd_cay):
+            if isinstance(n, ast.ClassDef) and n.name == ten:
+                return ast.get_source_segment(gd_src, n) or ""
+        return ""
 
-    tong = sum(len(v) for v in cot.values())
-    ktra("đọc được nhãn của cả ba cột", tong >= 18,
-         f"c1={len(cot['c1'])} c2={len(cot['c2'])} c3={len(cot['c3'])} "
-         f"— tổng {tong}")
-
-    # ---------------- 2. nhãn dài nhất có lọt cột hẹp nhất không
-    #[[ Ty le cot 5:4:4. Cot 2 va 3 la hep nhat nen chung moi la cho de vo. ]]
-    rong = {"c1": (RONG_MIN - 2 * KHE) * 5 / 13,
-            "c2": (RONG_MIN - 2 * KHE) * 4 / 13,
-            "c3": (RONG_MIN - 2 * KHE) * 4 / 13}
-    qua_dai = []
-    for c, ds in cot.items():
-        for t in ds:
-            can = len(t) * RONG_KY_TU + (RONG_O_TICH if c != "c1" else 130)
-            if can > rong[c]:
-                qua_dai.append((c, t, round(can), round(rong[c])))
-    #[[ CHO PHEP qua dai — vi _xep_cot() se tu roi ve 2 hoac 1 cot khi hep.
-    #   Phep kiem nay chi in ra de biet o be ngang nao thi con 3 cot. ]]
-    if qua_dai:
-        print(f"\n  Ở bề ngang nhỏ nhất ({RONG_MIN} px) thì {len(qua_dai)} nhãn "
-              "không lọt 3 cột — sẽ tự rơi về 2 cột:")
-        for c, t, a, b in qua_dai[:4]:
-            print(f"     {c}: “{t[:44]}” cần {a} px, cột {b} px")
-        print()
-
-    #[[ DAY moi la phep kiem that: co duong tu co lai hay khong. Khong co no
-    #   thi may nhan tren bi CAT CUT, khong phai xuong dong. ]]
-    xc = than("_xep_cot", src, cay)
-    ktra("có _xep_cot để tự co số cột", bool(xc),
-         "đo bằng winfo_reqwidth, không đoán theo ký tự")
-    ktra("_xep_cot đo bằng winfo_reqwidth",
-         "winfo_reqwidth" in xc, "chính xác với mọi phông và mức DPI")
-    ktra("_xep_cot có đủ cả ba mức 3 / 2 / 1 cột",
-         all(f"n == {k}" in xc or f"n = {k}" in xc for k in (1, 2, 3))
-         or ("n = 3" in xc and "n = 2" in xc and "n = 1" in xc),
-         "hẹp tới đâu cũng còn đọc được nhãn")
-    #[[ Xep lai cot lam Tk ban <Configure> lan nua. Khong co chot "so cot khong
-    #   doi thi thoi" la vong lap vo tan, app dung hinh. ]]
-    ktra("_xep_cot có chốt chống vòng lặp Configure",
-         "_so_cot_hien" in xc and "return" in xc,
-         "grid lại → Configure → grid lại… là treo app")
-    ktra("_build_options có nối <Configure> vào _xep_cot",
-         'bind("<Configure>", self._xep_cot)' in bo, "không nối thì cột không co")
-
-    # ---------------- 3. chữ phụ phải xuống dòng, không được cắt
-    #[[ ttk.Label co wraplength thi chu dai XUONG DONG. Thieu no la cat cut. ]]
-    ktra("mọi dòng chữ phụ đều đặt wraplength",
-         bo.count("wraplength=WRAP") >= 2 and "WRAP = " in bo,
-         "chữ dài thì xuống dòng chứ không bị cắt")
-
-    # ---------------- 4. khâu 2 chỉ chiếm MỘT hàng, không thể phình dọc lại
-    hang = {int(m.group(1))
-            for m in re.finditer(r'khung\.grid\(row=(\d+)', bo)}
-    ktra("_build_options chỉ đặt một khối vào khâu 2",
-         hang == {0}, f"hàng {sorted(hang)} — không còn xếp chồng dọc")
-
-    # ---------------- 5. những thứ đã gỡ phải gỡ hẳn
-    for ten in ("btn_apply", "WatchWindow", "open_watcher", "_watch_win"):
-        ktra(f"không còn tham chiếu {ten}",
-             ten not in src, "sót một chỗ là app không mở lên được")
-
-    lr = than("_build_lrbox", src, cay)
-    ktra("Xuất CSV nằm ở khâu 3", "self.btn_csv" in lr,
-         "xuất kết quả là việc sau khi đã có kết quả")
-    ktra("nút Ghi cũng ở khâu 3", "self.btn_ghi3" in lr,
-         "đúng chỗ: khâu “đẩy vào Lightroom”")
-
-    #[[ Doc theo command= THAT trong cay cu phap, khong grep chu — dong chu
-    #   thich giai thich "do_apply nam o khau 3" cung chua chu do_apply, va
-    #   grep thi bai kiem keu oan chinh cai chu thich noi dung. ]]
-    lenh_khau2 = set()
-    nut_khau2 = 0
-    for n in ast.walk(cay):
-        if isinstance(n, ast.FunctionDef) and n.name == "_build_actions":
-            for m in ast.walk(n):
-                if isinstance(m, ast.Call) and isinstance(m.func, ast.Attribute) \
-                        and m.func.attr == "Button":
-                    nut_khau2 += 1
-                    for k in m.keywords:
-                        if k.arg == "command" and isinstance(k.value, ast.Attribute):
-                            lenh_khau2.add(k.value.attr)
-    ktra("khâu 2 chỉ còn hai nút: Phân tích và Dừng",
-         nut_khau2 == 2 and lenh_khau2 == {"start_analyze", "do_cancel"},
-         f"{nut_khau2} nút · {sorted(lenh_khau2)}")
-
-    #[[ _set_busy() chay TRONG __init__ truoc khi _build_lrbox() dung xong, nen
-    #   phai dung getattr — khong thi app chet ngay luc mo. ]]
+    bo = than("_build_options", src, cay)
+    sh = than("_build_shell", src, cay)
+    gh = than("_build_ghi", src, cay)
+    ac = than("_build_actions", src, cay)
+    fo = than("_build_folder", src, cay)
+    st = than("_build_status", src, cay)
     sb = than("_set_busy", src, cay)
-    ktra("_set_busy dùng getattr cho nút của khâu 3",
-         "getattr(self" in sb,
-         "_set_busy chạy trước khi khâu 3 dựng xong")
+    init = than("__init__", src, lop_app)
+    ktra("tìm được các hàm dựng khung", all((bo, sh, gh, ac, fo, st, sb, init)),
+         f"_build_options {len(bo.splitlines())} dòng · _build_shell "
+         f"{len(sh.splitlines())} dòng")
 
-    # ---------------- 5b. KHÔNG được đặt width cố định cho nhãn
-    #[[ Do bang Tk that: ttk.Label(width=15) CAT CUT nhan "Tach canh khi cach".
-    #   Va con so an toan lai phu thuoc phong chu — doi phong hoac doi muc
-    #   phong to cua Windows la sai lai. Grid tu tinh be ngang cot thi khong
-    #   bao gio cat. Nen o day cam han width= tren nhan cot 1. ]]
+    # ---------------- 2. không cắt chữ, chữ phụ vào dấu ?
+    #[[ Bang dieu khien phai rong theo NOI DUNG: o chon dai nhat (gd.vua_chu)
+    #   quyet dinh be ngang, Cuon.theo_noi_dung() cho cot rong theo no. Mot
+    #   width= tren nhan la Tk cat cut chu dai hon — da do that: ttk.Label
+    #   (width=15) cat "Tach canh khi cach". ]]
+    ktra("ô chọn rộng đúng chữ dài nhất (gd.vua_chu)", "gd.vua_chu(cb)" in bo,
+         "chữ trong ô chọn không bị cắt")
+    ktra("bảng điều khiển phải rộng theo nội dung",
+         "self.cuon_phai.theo_noi_dung()" in sh, "không số px cứng nào")
     ktra("không đặt width cố định cho nhãn",
-         "ttk.Label(k, text=nhan)" in bo and "text=nhan, width=" not in bo,
-         "Tk cắt cụt chữ dài hơn width — để grid tự canh")
-    ktra("mỗi cột dùng một lưới grid chung",
-         "def _luoi(cot)" in bo and "k.columnconfigure(1, weight=1)" in bo,
-         "Tk tự tính bề ngang cột 0 theo nhãn rộng nhất")
+         "ttk.Label(" in bo and "text=nhan, width=" not in bo
+         and "text=chu, width=" not in bo,
+         "Tk cắt cụt chữ dài hơn width")
+    #[[ Mo / dong nhom KHONG duoc doi be ngang cot: cot rong theo noi dung ma
+    #   than nhom dong khong tinh vao -> mo "Cach can tone" la cot phinh ~90 px
+    #   va ca luoi anh nhay cot. Do than rong nhat (do duoc ca khi dong) roi
+    #   chong mot thanh chan dung be ngang ay. ]]
+    ktra("bề ngang bảng điều khiển không đổi khi mở / đóng nhóm",
+         "n.than.winfo_reqwidth()" in bo and "ttk.Frame(cha, width=rong" in bo,
+         "đo thân nhóm rộng nhất, chống một thanh chân")
+    #[[ 3/10: chu giai thich KHONG con in san duoi tung tinh nang ma vao dau ?
+    #   (gd.NutHoi) — user: "di chuot vao moi hien, cho gon giao dien". Kieu
+    #   Mo2.TLabel trong _build_options chinh la chu phu in san cu. Chu nao CON
+    #   in ra (canh bao "khong tach canh", dong tom tat nhom) phai co
+    #   wraplength — thieu no la cat cut. ]]
+    ktra("không còn dòng chữ phụ in sẵn dưới tính năng",
+         'style="Mo2.TLabel"' not in bo, "chú thích nằm trong dấu ? cạnh tính năng")
+    ktra("chữ còn in ra trong bảng điều khiển đều xuống dòng",
+         "wraplength=WRAP" in bo and "WRAP = " in bo
+         and "l_tom.configure(wraplength=" in bo,
+         "cảnh báo tách cảnh + dòng tóm tắt nhóm")
+    ktra("chú thích nổi (GoiY) và dòng tóm tắt nhóm (Nhom) đều xuống dòng",
+         "wraplength=self.RONG" in lop("GoiY") and "wraplength=" in lop("Nhom"),
+         "chú thích dài bao nhiêu cũng không tràn")
+    so_hoi = bo.count("hoi(")
+    ktra("dấu ? dựng qua một hàm chung hoi()", so_hoi >= 4,
+         f"{so_hoi} chỗ gọi — ct / hop / so / nhóm viên chọn đều đi qua nó")
 
-    # ---------------- 5c. màn hình Tổng quan
+    # ---------------- 3. những thứ đã gỡ phải gỡ hẳn
+    #[[ Soi TEN TRONG MA (bien, thuoc tinh, ham, lop) chu khong grep ca file:
+    #   docstring ke lich su "roi ba cot tu co (_xep_cot)" la chuyen cho nguoi
+    #   doc ma, khong phai mot tham chieu se no. ]]
+    ten_ma = set()
+    for n in ast.walk(cay):
+        if isinstance(n, ast.Name):
+            ten_ma.add(n.id)
+        elif isinstance(n, ast.Attribute):
+            ten_ma.add(n.attr)
+        elif isinstance(n, (ast.FunctionDef, ast.ClassDef)):
+            ten_ma.add(n.name)
+    for ten in ("btn_apply", "WatchWindow", "open_watcher", "_watch_win",
+                "ray", "Ray", "_xep_cot", "KHAU_CHINH", "start_all",
+                "menu_khau_khac", "_cot_tuy_chon", "_so_cot_hien"):
+        ktra(f"không còn tham chiếu {ten}",
+             ten not in ten_ma, "sót một chỗ là app không mở lên được")
+    #[[ CAU CHI DUONG phai go theo cai no chi. 3/10 toi: hop thoai van bao
+    #   "bam Enter o o thu muc" (o do da thanh nut buoi), "xem dong trang thai o
+    #   khau 1", "Doi o Nguon o tren" — nguoi dung lam theo la vao ngo cut. Chi
+    #   soi CHU HIEN RA (hang chuoi khong phai docstring); chu thich # va
+    #   docstring duoc phep ke lich su. ]]
+    cu = ("Khâu khác", "khâu 1", "Enter ở ô thư mục", "dưới nút Ghi",
+          "cột trái", "Chạy hết", "ô “Nguồn” ở trên")
+    sot = [f"{ln}:{t[:40]}" for ln, t in chuoi_nguoi_doc(cay)
+           for c in cu if c in t and not t.startswith("Chạy hết: đo xong")
+           and t != "Chạy hết — xong"]
+    #[[ Hai chuoi "Chay het…" con lai la cua DUONG GHI TU DONG (self.chuoi),
+    #   chi chay khi co ai bat lai co do — giu de khoi dung lai tu dau. ]]
+    ktra("không còn câu chỉ đường tới thứ đã gỡ", not sot,
+         " | ".join(sot[:4]) if sot else "nút buổi ▾ · dải báo · cạnh nút Ghi")
+
+    # ---------------- 4. khung kiểu Evoto
+    ktra("mở app lên là vào trang chính (lưới ảnh)",
+         '_chon_khau("phan_tich")' in init and '_chon_khau("nap")' not in init
+         and '_chon_khau("tong_quan")' not in init, "không còn khâu Nạp ảnh riêng")
+    ktra("thanh công cụ · thân · cột mô-đun · thanh trạng thái",
+         all(t in sh for t in ("self.thanh_cc", "self.ben_phai", "gd.ThanhMoDun(",
+                               "self.thanh_tt", "self.lbl_han")),
+         "hạn dùng LUÔN hiện ở thanh trạng thái")
+    ktra("cột mô-đun có Cân tone và Retouch",
+         '("tone",' in sh and '("retouch",' in sh, "như Portrait / Background của Evoto")
+    #[[ Dem MOI cho truyen command=self.do_apply trong ca lop App (nut ttk, nut
+    #   ve tay, muc menu...). Doi nut thi de nham thanh "them nut moi, quen go
+    #   nut cu" — dung cai benh hai nut mot viec, _set_busy phai nho khoa ca
+    #   hai. Doc cay cu phap, khong grep: chu thich nhac "do_apply" khong tinh. ]]
+    goi_ghi = []
+    for n in ast.walk(lop_app):
+        if isinstance(n, ast.Call):
+            for k in n.keywords:
+                if k.arg == "command" and isinstance(k.value, ast.Attribute) \
+                        and k.value.attr == "do_apply" \
+                        and isinstance(k.value.value, ast.Name) \
+                        and k.value.value.id == "self":
+                    goi_ghi.append(n.lineno)
+    ktra("cả app chỉ có MỘT chỗ gọi do_apply", len(goi_ghi) == 1,
+         f"{len(goi_ghi)} chỗ (dòng {goi_ghi}) — nút vàng trên thanh công cụ")
+    ktra("nút Ghi là nút vẽ tay trên thanh công cụ",
+         "self.btn_ghi3 = gd.NutTron(cha" in gh and "self._build_ghi(self.cc_phai)" in src,
+         "cạnh “1 · Phân tích”")
+    nut_cc = []
+    for n in ast.walk(ast.parse(ac)):
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) \
+                and n.func.attr in ("NutTron", "Button"):
+            for k in n.keywords:
+                if k.arg == "command" and isinstance(k.value, ast.Attribute):
+                    nut_cc.append(k.value.attr)
+    ktra("_build_actions chỉ dựng hai nút: Phân tích và Dừng",
+         sorted(nut_cc) == ["do_cancel", "start_analyze"], f"{sorted(nut_cc)}")
+    ktra("Xuất CSV, Duyệt nhanh nằm trong menu ⋯ cạnh nút Ghi",
+         "self.do_csv" in gh and "Xuất báo cáo CSV" in gh
+         and '_chon_khau("day")' in gh, "việc phụ không chiếm thanh công cụ")
+    #[[ Dong lan gui NGAY CANH nut Ghi (giua thanh cong cu), MOT dong — cau dai
+    #   cat "…" va hien du khi re chuot. Xuong dong la ca thanh cong cu phinh. ]]
+    ktra("dòng trạng thái lần gửi cạnh nút Ghi, một dòng",
+         "self.lbl_job = gd.NhanGon(self.cc_giua" in gh, "câu dài cắt “…”, rê chuột hiện đủ")
+    ktra("thanh trạng thái một dòng",
+         "self.lbl_status = gd.NhanGon(self.ttb_giua" in st,
+         "không phình ra khi câu dài")
+    #[[ Dai bao cua buoi: dong tinh trang quet KHONG con o thanh cong cu (cau
+    #   dai xuong 2-3 dong do, keo cao ca thanh). ]]
+    ktra("tình trạng quét nằm ở dải báo trên lưới ảnh",
+         "gd.DaiBao(self.giua" in sh and "self.lbl_scan = self.dai_quet.nhan" in fo
+         and "self.btn_fix = self.dai_quet.tao_nut(" in fo
+         and "self.cc_giua" not in fo, "không còn ở thanh công cụ")
+    ktra("Retouch không mang dải báo của Cân tone",
+         'self.dai_quet.hien(md == "tone")' in than("_chon_khau", src, cay),
+         "dải chỉ nói chuyện buổi đang cân")
+    #[[ _set_busy() chay TRONG __init__ truoc khi nut Ghi dung xong, nen phai
+    #   dung getattr — khong thi app chet ngay luc mo. ]]
+    ktra("_set_busy dùng getattr cho nút Ghi", "getattr(self" in sb,
+         "_set_busy chạy trước khi nút Ghi dựng xong")
+    ktra("nút vàng là việc kế tiếp (Phân tích ↔ Ghi)",
+         'kieu="chinh" if (co_anh and not co_kq) else "phu"' in sb
+         and 'kieu="chinh" if co_kq else "phu"' in sb, "như nút Export của Evoto")
+
+    # ---------------- 4b. lưới ảnh
+    lu = than("_cap_nhat_luoi", src, cay)
+    ktra("lưới ảnh là chế độ xem mặc định",
+         "luoi_anh.LuoiAnh(" in than("_build_luoi", src, cay)
+         and 'tk.StringVar(value="luoi")' in than("_build_table", src, cay),
+         "bảng số thành chế độ xem phụ")
+    ktra("lưới hiện cả ảnh SẼ KHÔNG được ghi, kèm lý do",
+         '"thiếu .xmp"' in lu and '"không ghi"' in lu and '"missing"' in lu,
+         "RAW thiếu .xmp · không có trong bản xuất Lightroom")
+    for ham in ("_fill_table", "_invalidate_measurements", "_soi_xuat"):
+        ktra(f"{ham} vẽ lại lưới", "_cap_nhat_luoi(" in than(ham, src, cay),
+             "lưới và bảng số không được nói khác nhau")
+
+    # ---------------- 5. Tổng quan + lỗi im lặng
     for ten in ("_build_tong_quan", "_lam_moi_tong_quan", "_canh_bao_im_lang",
                 "_mot_the_tq"):
-        ktra(f"có {ten}", bool(than(ten, src, cay)), "khâu Tổng quan")
-    ktra("Tổng quan nằm đầu bảng KHAU và không mang số",
-         '("tong_quan", "Tổng quan")' in src
-         and 'khong_so=("tong_quan",)' in src,
-         "bảy khâu giữ nguyên số 1..7")
-    ktra("mở app lên là vào Tổng quan",
-         '_chon_khau("tong_quan")' in src, "không phải khâu 1 nữa")
-    #[[ Vong lam moi 4 giay phai keo theo ca the tong quan, khong thi the dung
-    #   im trong khi cot trai da doi — hai cho noi hai dang. ]]
+        ktra(f"có {ten}", bool(than(ten, src, cay)), "dựng sẵn, chỉ không còn lối vào")
     lm = than("_lam_moi_ray", src, cay)
-    ktra("vòng làm mới 4 giây có cập nhật cả thẻ Tổng quan",
-         "_lam_moi_tong_quan" in lm, "cột trái và thẻ không được nói khác nhau")
+    ktra("vòng làm mới 4 giây cập nhật nút buổi + thẻ Tổng quan",
+         "_lam_moi_tong_quan" in lm and "_dat_nut_buoi" in lm,
+         "nút buổi và thẻ không được nói khác nhau")
+    #[[ 3/10: vong 4 giay TUNG KHONG CHAY — dong hen lai nam lac trong
+    #   _hien_khoa(). Canh ca hai dau: ham vong tu hen lai, va khong con ai
+    #   khac hen _lam_moi_ray (moi lan hen la them mot vong song song). ]]
+    vl = than("_vong_lam_moi", src, cay)
+    ktra("vòng làm mới thật sự tự hẹn lại mỗi 4 giây",
+         "self._lam_moi_ray()" in vl and "after(4000, self._vong_lam_moi)" in vl
+         and "after(400, self._vong_lam_moi)" in init,
+         "chọn buổi xong là mọi chỗ đổi theo")
+    ktra("không chỗ nào khác tự hẹn _lam_moi_ray",
+         "after(4000, self._lam_moi_ray)" not in src, "hẹn rải rác là thêm vòng song song")
     cb = than("_canh_bao_im_lang", src, cay)
     ktra("cảnh báo bắt cả hai lỗi im lặng của ngày 7/9",
          "plugin_song_khi_nao" in cb and "ban_xuat_cu_hon_lan_ghi" in cb,
          "plugin chết · bản xuất cũ hơn lần ghi")
+    ktra("cảnh báo im lặng lên dải trên cùng, trang nào cũng thấy",
+         "self.lbl_im_lang" in cb and "_hien_dai_canh" in cb,
+         "không chỉ trên màn Tổng quan đã ẩn")
 
     #[[ Moi command= tro toi mot phuong thuc CO THAT. Sai ten thi khong no luc
-    #   import, chi no khi bam — dung kieu loi kho doan nhat. ]]
-    lop_app = next((n for n in ast.walk(cay) if isinstance(n, ast.ClassDef)
-                    and n.name == "App"), None)
+    #   import, chi no khi bam — dung kieu loi kho doan nhat. Soi CA lop App. ]]
     co = {c.name for c in lop_app.body if isinstance(c, ast.FunctionDef)}
-    thieu = []
-    for c in lop_app.body:
-        if isinstance(c, ast.FunctionDef) and "tong_quan" in c.name or \
-           (isinstance(c, ast.FunctionDef) and c.name == "_mot_the_tq"):
-            for n2 in ast.walk(c):
-                if isinstance(n2, ast.Call):
-                    for k in n2.keywords:
-                        if k.arg == "command" and isinstance(k.value, ast.Attribute) \
-                                and isinstance(k.value.value, ast.Name) \
-                                and k.value.value.id == "self" \
-                                and k.value.attr not in co:
-                            thieu.append(k.value.attr)
-    ktra("mọi nút trên Tổng quan trỏ tới lệnh có thật",
-         not thieu, f"thiếu {thieu}" if thieu else "không có lệnh ma")
+    thieu = set()
+    for n2 in ast.walk(lop_app):
+        if isinstance(n2, ast.Call):
+            for k in n2.keywords:
+                if k.arg in ("command", "khi_chon", "khi_mo", "khi_trong") \
+                        and isinstance(k.value, ast.Attribute) \
+                        and isinstance(k.value.value, ast.Name) \
+                        and k.value.value.id == "self" \
+                        and k.value.attr not in co \
+                        and not k.value.attr.startswith(("v_", "btn_", "lbl_")):
+                    thieu.add(k.value.attr)
+    ktra("mọi nút / menu trỏ tới lệnh có thật", not thieu,
+         f"thiếu {sorted(thieu)}" if thieu else "không có lệnh ma")
+
+    # ---------------- 5b. mô-đun Retouch cũng theo dáng Evoto (tối 3/10)
+    #[[ User: "dua ca phan Retouch thay doi luon". Tuy chon Retouch vao BANG
+    #   DIEU KHIEN PHAI, nut Chay len THANH CONG CU, giua la luoi anh cua thu
+    #   muc vao. Con sot mot widget kieu cu (o tick, thanh keo ttk, khung co
+    #   vien) la mot manh giao dien cu lot giua giao dien moi. ]]
+    lop_rt = next((n for n in ast.walk(cay) if isinstance(n, ast.ClassDef)
+                   and n.name == "RetouchWindow"), None)
+    ktra("tìm được lớp RetouchWindow", lop_rt is not None)
+    if lop_rt is not None:
+        rt_src = ast.get_source_segment(src, lop_rt) or ""
+        cu_rt = [t for t in ("ttk.Checkbutton(", "ttk.Scale(", "LabelFrame(",
+                             "ttk.Button(", "ttk.Combobox(") if t in rt_src]
+        ktra("Retouch không còn widget kiểu cũ",
+             not cu_rt, f"còn {cu_rt}" if cu_rt else
+             "công tắc · thanh trượt · viên chọn · nhóm thu gọn")
+        init_rt = than("__init__", src, lop_rt)
+        ktra("Retouch nhận bảng điều khiển + thanh công cụ từ app",
+             "ben=None, thanh=None" in init_rt
+             and "RetouchWindow(self, cha, ben=self.cuon_phai_rt.trong" in src
+             and "thanh=self.cc_phai_rt" in src, "gọi kiểu cũ RetouchWindow(app) vẫn dựng được")
+        trang_rt = than("_dung_trang", src, lop_rt)
+        ktra("Retouch có lưới ảnh của thư mục vào",
+             "luoi_anh.LuoiAnh(" in trang_rt, "")
+        #[[ Toi 3/10: "1 anh mo to va luoi anh ben duoi" — anh lon (khung_anh)
+        #   o tren, luoi thanh DAI anh (dai=True) o duoi, thanh chia keo duoc. ]]
+        ktra("Retouch: ảnh lớn ở trên, dải ảnh ở dưới, thanh chia kéo được",
+             "khung_anh.KhungAnh(" in trang_rt and "dai=True" in trang_rt
+             and "tk.PanedWindow(" in trang_rt, "khung_anh · LuoiAnh(dai=True)")
+        #[[ Xem truoc tinh NGAY TREN ANH LON, khong mo cua so thu hai co anh
+        #   lon va thanh keo rieng. ]]
+        xt_py = (GOC / "xem_truoc.py").read_text(encoding="utf-8")
+        ktra("không còn cửa sổ Xem trước riêng",
+             "Toplevel" not in xt_py and "class MayXem" in xt_py,
+             "xem_truoc.py chỉ còn máy tính ảnh")
+        #[[ Bam Chay: tat may xem truoc TRUOC khi khoi luong chay — hai bo mo
+        #   hinh tren mot card do hoa la duong ngan nhat toi OOM. ]]
+        bd = than("start", src, lop_rt)
+        ktra("bấm Chạy tắt xem trước TRƯỚC khi chạy cả mẻ",
+             "_tat_xem_truoc(dong_may=True)" in bd and "threading.Thread(" in bd
+             and bd.index("_tat_xem_truoc(dong_may=True)") < bd.index("threading.Thread("),
+             "nhường card đồ hoạ")
+        #[[ Sang 4/10 — user: "bo nut xem truoc. Vi khi keo se load luon vao
+        #   anh". Khong con nut tren thanh cong cu; NGUOI keo thanh (khong phai
+        #   luc nap muc cua mot tam) la tu bat xem truoc. ]]
+        cc_rt = than("_dung_thanh_cong_cu", src, lop_rt)
+        ktra("Retouch không còn nút “Xem trước”: kéo thanh là tự xem",
+             "btn_xem" not in rt_src and "Xem trước" not in cc_rt.split('"""')[-1]
+             and "self._nguoi_doi_muc()" in than("_muc_doi", src, lop_rt)
+             and "_dang_nap_muc" in than("_muc_doi", src, lop_rt)
+             and "_mo_xem_truoc(tu_dong=True)" in than("_nguoi_doi_muc", src, lop_rt),
+             "_muc_doi → _nguoi_doi_muc → _mo_xem_truoc(tu_dong)")
+        #[[ "Sync All cac hieu ung da keo cho cac anh duoc chon hoac tat ca":
+        #   dai anh chon nhieu duoc, bang co hai nut Sync. ]]
+        ktra("dải ảnh Retouch chọn nhiều tấm được, bảng có Sync (đã chọn / tất cả)",
+             "chon_nhieu=True" in trang_rt and "self._sync_chon" in rt_src
+             and "self._sync_het" in rt_src, "Ctrl / Shift + bấm · Sync")
+        #[[ Chay theo nhom muc van di qua CHINH lenh `chay` cua saytool — moi
+        #   nhom mot luot rt.chay, KHONG dung lai buoc nao ben nay. Ghi de ma
+        #   nhieu nhom thi tu choi (thu muc tam + ghi de = khong biet anh goc
+        #   that co doi khong). ]]
+        ktra("ảnh khác mức chạy theo nhóm, mỗi nhóm một lượt rt.chay",
+             "self.rt.nhom_theo_muc(" in bd and bd.count("self.rt.chay(") == 1
+             and "ghi_de and len(nhom) > 1" in bd, "không dựng lại bước của saytool")
+        #[[ Luoi va bo dem PHAI doc cung mot danh sach (rt.ds_anh) — hai cach
+        #   loc la hai noi co the lech nhau, va khi lech khong ai biet ben nao
+        #   dung (chu thich dau lop RetouchWindow). ]]
+        rt_py = (GOC / "retouch.py").read_text(encoding="utf-8")
+        dem_py = rt_py[rt_py.index("def dem("):rt_py.index("def lenh(")]
+        ktra("lưới và bộ đếm đọc cùng một danh sách (rt.ds_anh)",
+             "self.rt.ds_anh(" in than("_dem", src, lop_rt)
+             and "ds = ds_anh(vao, ra, de_quy)" in dem_py, "một chỗ quyết định")
+        ds_py = rt_py[rt_py.index("def ds_anh("):rt_py.index("def dem(")]
+        ktra("nhãn “đã làm” và bản ảnh lớn mở theo một luật (rt.duong_ket_qua)",
+             "duong_ket_qua(" in ds_py
+             and "self.rt.duong_ket_qua(" in than("_duong_kq", src, lop_rt),
+             "một chỗ quyết định")
+        co_rt = {c.name for c in lop_rt.body if isinstance(c, ast.FunctionDef)}
+        lop_khung = next((n for n in ast.walk(cay) if isinstance(n, ast.ClassDef)
+                          and n.name == "Khung"), None)
+        if lop_khung is not None:
+            co_rt |= {c.name for c in lop_khung.body if isinstance(c, ast.FunctionDef)}
+        thieu_rt = set()
+        for n2 in ast.walk(lop_rt):
+            if isinstance(n2, ast.Call):
+                for k in n2.keywords:
+                    if k.arg in ("command", "khi_mo", "khi_trong", "khi_chon",
+                                 "khi_doi", "khi_phim") \
+                            and isinstance(k.value, ast.Attribute) \
+                            and isinstance(k.value.value, ast.Name) \
+                            and k.value.value.id == "self" \
+                            and k.value.attr not in co_rt:
+                        thieu_rt.add(k.value.attr)
+        ktra("mọi nút / menu của Retouch trỏ tới lệnh có thật", not thieu_rt,
+             f"thiếu {sorted(thieu_rt)}" if thieu_rt else "không có lệnh ma")
 
     # ---------------- 6. đường CLI --watch phải còn nguyên
     at_src = (GOC / "autotone.py").read_text(encoding="utf-8")

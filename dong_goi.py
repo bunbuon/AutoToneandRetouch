@@ -47,18 +47,35 @@ LOAI_TRU = [
     #]]
     "cap_key.py", "so_key.csv", "kiem_ban_quyen.py", "quan_ly_key.py",
     "kiem_quan_ly_key.py",
+    #[[ kiem_bq_giao_dien.py `import cap_key` -> keo ca khoa ky key vao goi neu
+    #   lot. kiem_bq_online.py la file kiem, chi la rac. Ca hai bi kiem_dong_goi
+    #   bao thieu (3/10 chua ai ke) — bo sung ca hai. ]]
+    "kiem_bq_giao_dien.py", "kiem_bq_online.py",
     "kiem_khoa.py", "kiem_gu.py", "kiem_luat.py", "kiem_san.py",
     "kiem_do_mat.py", "kiem_goi.py", "kiem_ban_xuat.py", "do_trong_ngoai.py", "do_wb.py", "hoc_mau_da.py", "kiem_mau_da.py",
     "test_tach_canh.py", "test_cull_split.py", "test_san_phang.py",
     "test_trang_thai.py", "test_retouch_luong.py", "kiem_da_tien_trinh.py",
     "nap_mo_hinh.py", "kiem_exif_jpeg.py", "kiem_mau_lr.py",
     "kiem_duyet_py.py", "kiem_gui_duyet.py", "kiem_moc_va_xuat.py",
-    "kiem_che_do_sang.py", "kiem_bo_cuc.py", "kiem_ve_that.py",
+    "kiem_che_do_sang.py", "kiem_bo_cuc.py", "kiem_ve_that.py", "kiem_khung_anh.py",
     "kiem_man_hinh.py", "kiem_xuat_lr.py", "kiem_tim_tool.py", "kiem_retouch_095.py", "kiem_retouch_gui.py", "kiem_dong_goi.py", "kiem_mac.py", "kiem_cu_phap.py", "chan_doan.py", "kiem_xuatanh.lua",
     "kiem_batduongdan.lua", "kiem_duyet.lua", "kiem_dung_preview.lua",
     "do_ranh_canh.py", "do_chot_mat_ao.py", "so_sanh_do_mat.py",
     "xem_chot.py", "xem_do_sang.py", "eye_probe.py", "eye_sheet.py",
-    "make_testdata.py", "tools_smoke_test.py", "dong_goi.py",
+    "make_testdata.py", "tools_smoke_test.py", "dong_goi.py", "bao_mat.py",
+    #[[ 3/10: kiem_dong_goi bao "moi file kiem/do deu bi loai" DO — nhieu file
+    #   kiem them tu 29/9 toi 3/10 chua ai ke vao day. Bo sung ca loat. ]]
+    "kiem_2ban_quay.py", "kiem_ghi_de.py", "kiem_nhan_keo.py", "kiem_tham_chieu.py",
+    "kiem_xem_truoc.py", "test_2ban_quay.py", "test_af_xoay.py",
+    "test_dung_lai_buoi.py", "test_mat_ao_to.py", "test_mat_lech_khung.py",
+    "test_preset_khong_wb_tone.py", "kiem_chup.lua", "kiem_xuat_thong_so.lua",
+    "kiem_ket_qua_xuat.lua", "do_buoi.py", "so_sanh_ung_vien.py",
+    "test_bu_sang.py", "test_dong_bo_loat.py", "test_wb_asshot.py",
+    "test_giao_dien_gon.py", "test_cap_nhat.py", "test_retouch_cwd.py",
+    #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
+    #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
+    #   trong goi cai. ]]
+    "tao_ban_cap_nhat.py",
 ]
 
 # Module chính của app và các module nó gọi tới lúc chạy
@@ -82,7 +99,19 @@ DIEM_VAO = "autotone_gui.py"
 NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         "retouch", "learn_corrections", "khoi_phuc", "tu_kiem",
         "duyet", "duyet_ui", "xuat_lr", "thongso_lr", "tai_nguyen",
-        "ban_quyen"]
+        "ban_quyen", "xem_truoc",
+        #[[ cap_nhat: auto-update code + model. autotone_gui.main() va launcher
+        #   chay.py deu import no trong try/except (de ban cu thieu no van chay)
+        #   -> PyInstaller khong do duoc import trong try, phai khai o day. Thieu
+        #   no thi ban .exe KHONG bao gio ap duoc ban va, va im lang. ]]
+        "cap_nhat",
+        #[[ luoi_anh: luoi anh cua man chinh (3/10 toi). autotone_gui import
+        #   no BEN TRONG _build_luoi() — PyInstaller khong do duoc import nam
+        #   trong ham, thieu o day la ban .exe mo len khong dung duoc man chinh. ]]
+        "luoi_anh",
+        #[[ khung_anh: anh lon cua mo-dun Retouch (3/10 toi) — cung import
+        #   trong ham (_dung_trang), cung ly do. ]]
+        "khung_anh"]
 
 #[[ `tai_nguyen` PHAI co trong NGAM, ke ca o ban day du.
 #
@@ -285,7 +314,34 @@ def mo_hinh_du(goc_tool) -> Path:
 
     nguon = g / "mo_hinh"
     if nguon.is_dir():
-        shutil.copytree(nguon, dich, dirs_exist_ok=True)
+        #[[ CHI CHEP MO HINH SAYTOOL THAT SU NAP.
+        #
+        #   Thu muc mo_hinh/ cua may huan luyen con giu ca ban nhap: vet.pt
+        #   dang dung, nhung canh no la vet_cu_2609.pt, vet_700_3009.pt,
+        #   vet_b48_3009.pt, vet_16k_2909.pt... Moi ban 10-22 MB.
+        #
+        #   Do that 01/10: chep ca thu muc ra 854 MB, trong khi phan THAT SU
+        #   can chi 300 MB. Nguoi dung tai them 554 MB ban nhap cua mot cuoc
+        #   huan luyen ho khong lien quan.
+        #
+        #   Danh sach duoi lay tu chinh ma saytool: grep "mo_hinh/..." trong
+        #   saytool/*.py. Them mo hinh moi ben do thi phai them vao day — neu
+        #   quen, goi se thieu file va buoc do tat lang le.
+        #]]
+        CAN = {"vet.pt", "vet_body.pt", "min_da.pt", "dodge_burn.pt",
+               "da_body.pt", "da_body_nho.pt", "da_deu.pt",
+               "nhan.pt", "nong_cam.pt", "toc.pt", "toc_mn.pt"}
+        bo_qua = []
+        for f in sorted(nguon.iterdir()):
+            if f.is_dir():
+                shutil.copytree(f, dich / f.name, dirs_exist_ok=True)
+            elif f.suffix == ".pt" and f.name not in CAN:
+                bo_qua.append(f.name)
+            else:
+                shutil.copy2(f, dich / f.name)
+        if bo_qua:
+            print(f"  bỏ {len(bo_qua)} mô hình bản nháp "
+                  f"({', '.join(bo_qua[:3])}{'…' if len(bo_qua) > 3 else ''})")
 
     thieu = []
     dem = Path(os.environ.get("SKIN_SPIKE_CACHE",
@@ -352,18 +408,40 @@ def co_retouch(goc_tool: Path | None) -> bool:
     return bool(goc_tool and (Path(goc_tool) / "saytool" / "cli.py").is_file())
 
 
+#[[ BAO MAT (4/10): False = chỉ mã hoá LÕI (bao_mat.MA_HOA: thuật toán, retouch,
+#   khoá, giao diện, điểm vào). True = mã hoá MỌI .py ship được — kín hơn nhưng
+#   build lâu hơn và nhiều module hơn là nhiều chỗ có thể vướng. Chỉ bật khi đã
+#   build trót lọt bản chỉ-lõi trên cả Windows lẫn Mac. ]]
+MA_HOA_HET = False
+
+
 def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
-         sach: bool = True, nhe: bool = False) -> list:
+         sach: bool = True, nhe: bool = False,
+         goc_nguon: Path | None = None, diem_vao: str | None = None,
+         ngam_them=None) -> list:
     """Dựng dòng lệnh PyInstaller. Tách riêng để kiểm được mà không phải build.
 
     he:  "win" | "mac"
     nhe: bỏ thư viện nặng ra khỏi gói — xem GOI_TACH.
+
+    #[[ BAO MAT (4/10): goc_nguon = cây nguồn đã mã hoá (bao_mat.dung_cay_nguon)
+    #   thay cho GOC. diem_vao = launcher mỏng "chay.py". ngam_them = MỌI module
+    #   trong cây đó: điểm vào đã biên dịch nên PyInstaller không tự dò được
+    #   import của nó, phải khai hết. --paths trỏ PyInstaller tìm module trong
+    #   cây mã hoá TRƯỚC. Mặc định (không bật) thì y hệt bản cũ: goc_nguon=GOC,
+    #   diem_vao=autotone_gui.py. ]]
     """
+    goc_nguon = goc_nguon or GOC
+    diem_vao = diem_vao or DIEM_VAO
     ngan = ";" if he == "win" else ":"        # dấu ngăn của --add-data
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
            "--windowed", "--name", TEN]
     if sach:
         cmd.append("--clean")
+    #[[ Chi them --paths khi ma hoa (goc_nguon la cay staging): de duong build
+    #   mac dinh KHONG doi mot chu so voi ban cu. ]]
+    if goc_nguon != GOC:
+        cmd += ["--paths", str(goc_nguon)]
 
     for nguon, dich in TAI_NGUYEN:
         #[[ Rieng plugin thi lay BAN SACH (da bo jobs/) — xem BO_KHOI_PLUGIN.
@@ -372,6 +450,11 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         cmd += ["--add-data", f"{p}{ngan}{dich}"]
 
     for m in NGAM:
+        if not retouch and m in NGAM_RETOUCH:
+            continue
+        cmd += ["--hidden-import", m]
+    #[[ Khi mã hoá: khai HẾT module trong cây — xem chú thích đầu hàm. ]]
+    for m in (ngam_them or []):
         if not retouch and m in NGAM_RETOUCH:
             continue
         cmd += ["--hidden-import", m]
@@ -444,7 +527,7 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         #]]
         cmd += ["--osx-bundle-identifier", "vn.saymedia.autotone"]
 
-    cmd.append(str(GOC / DIEM_VAO))
+    cmd.append(str(goc_nguon / diem_vao))
     return cmd
 
 
@@ -571,6 +654,17 @@ def main(argv=None) -> int:
     #   dau bam Retouch. Xem GOI_TACH va tai_nguyen.py. ]]
     ap.add_argument("--nhe", action="store_true",
                     help="Ban nhe: tai thu vien nang ve sau, khong nhet vao goi")
+    #[[ BAO MAT (4/10): bien dich loi sang .pyd/.so truoc khi build — xem
+    #   bao_mat.py. Tuy chon, KHONG mac dinh: bat tay de ban build cu van chay
+    #   nguyen ven cho toi khi xac nhan ban ma hoa build tron tren tung may. ]]
+    ap.add_argument("--bao-mat", action="store_true", dest="bao_mat",
+                    help="Ma hoa loi (Cython -> .pyd/.so) truoc khi dong goi")
+    #[[ Voi --bao-mat: chay THAT 7 buoc retouch tren vai anh bang tool goc va ban
+    #   da bao mat roi so anh ra (dong_goi_bao_mat.py --so-anh). Them vai phut —
+    #   dung cho lan build giao khach. ]]
+    ap.add_argument("--so-anh", type=Path, default=None, dest="so_anh",
+                    help="(voi --bao-mat) thu muc anh: chay that retouch, so ban "
+                         "bao mat voi tool goc")
     a = ap.parse_args(argv)
 
     if not chot_khoa(a.khong_khoa) and not a.thu:
@@ -600,10 +694,89 @@ def main(argv=None) -> int:
         if not a.thu:
             return 1
 
-    cmd = lenh(he, retouch_vao, goc_tool, nhe=a.nhe)
+    #[[ BAO MAT: dung cay nguon da ma hoa roi tro PyInstaller vao do. Lam
+    #   TRUOC khi dung lenh() de co danh sach hidden-import day du. ]]
+    goc_nguon = diem_vao_bm = None
+    ngam_them = None
+    if a.bao_mat:
+        try:
+            sys.path.insert(0, str(GOC))
+            import bao_mat
+        except ImportError as ex:
+            print(f"  [!] Khong nap duoc bao_mat.py: {ex}")
+            return 1
+        #[[ retouch tat -> KHONG mang retouch (khong ma hoa, khong de .py): them
+        #   vao loai_tru cua cay. retouch bat -> no nam trong MA_HOA san. ]]
+        loai_tru_cay = list(LOAI_TRU) + ([] if retouch_vao else ["retouch.py"])
+        if MA_HOA_HET:
+            ship = [p.stem for p in GOC.glob("*.py")
+                    if p.stem not in {Path(f).stem for f in loai_tru_cay}
+                    and p.stem not in ("chay",)]
+            ma_hoa = [m for m in ship if retouch_vao or m != "retouch"]
+        else:
+            ma_hoa = [m for m in bao_mat.MA_HOA if retouch_vao or m != "retouch"]
+        ra_cay = GOC / "build" / "nguon_bao_mat"
+        print(f"  Mã hoá lõi ({'HẾT' if MA_HOA_HET else 'chỉ lõi'}: "
+              f"{len(ma_hoa)} module) — cần vài phút...")
+        try:
+            goc_nguon = bao_mat.dung_cay_nguon(
+                GOC, loai_tru_cay, ra_cay, ma_hoa=ma_hoa,
+                diem_vao="autotone_gui", launcher="chay.py")
+        except Exception as ex:                              # noqa: BLE001
+            print(f"  [!] Mã hoá hỏng — DỪNG, không lùi về gói .py chưa mã hoá.\n"
+                  f"      {type(ex).__name__}: {ex}")
+            return 1
+        diem_vao_bm = "chay.py"
+        #[[ Hidden-import = module ứng dụng trong cây + MỌI import của module đã
+        #   biên dịch (kể cả submodule thư viện như tkinter.filedialog) — vì
+        #   PyInstaller không còn đọc được import của mã đã thành .pyd/.so.
+        #   Thiếu phần sau thì gói chạy lên báo "cannot import name filedialog"
+        #   (bắt được 4/10 ở lần build Linux đầu). ]]
+        ngam_them = sorted(set(bao_mat.ten_module_cay(goc_nguon))
+                           | set(bao_mat.quet_import_an(GOC, ma_hoa)))
+
+        #[[ BAO MAT PHAN RETOUCH (4/10): bao_mat.py o tren chi dich LOI AutoTone.
+        #   saytool (thuat toan retouch) van la .py, mo hinh tu hoc (mo_hinh/*.pt,
+        #   *.npz) van doc duoc — ma hai thu do moi la phan dang giau nhat.
+        #
+        #   dong_goi_bao_mat.py NAM TRONG ToolCloneEvoto lo phan nay: dich saytool
+        #   -> .pyd/.so (tru vo __init__/cli/duong_dan), ma hoa mo hinh (saytool
+        #   giai trong RAM luc nap), roi TU KIEM (giai ma khop SHA-256, ban dich
+        #   nap duoc moi module ban .py nap duoc). Hong -> ma != 0 -> DUNG, khong
+        #   lui ve goi co saytool .py / mo hinh ro.
+        #
+        #   Xong thi tro goc_tool vao cay do: saytool_du() / mo_hinh_du() trong
+        #   lenh() tu lay ban dich + mo hinh ma hoa (cung ten tep) — khong sua gi
+        #   them. Bo qua o --thu (dich mat vai phut). ]]
+        if retouch_vao and not a.thu:
+            script_bm = Path(goc_tool) / "dong_goi_bao_mat.py"
+            if not script_bm.is_file():
+                print(f"  [!] Không thấy {script_bm}.")
+                print("      Cập nhật ToolCloneEvoto (dong_goi_bao_mat.py + "
+                      "saytool/bao_mat.py), hoặc đóng gói kèm --khong-retouch.")
+                return 1
+            ra_tool = GOC / "build" / "retouch_bao_mat"
+            print("  Bảo mật retouch: saytool -> mã máy, mô hình -> mã hoá "
+                  "(vài phút)...")
+            r_bm = subprocess.run([sys.executable, str(script_bm),
+                                   "--ra", str(ra_tool)]
+                                  + (["--so-anh", str(a.so_anh)] if a.so_anh else []),
+                                  cwd=str(goc_tool))
+            if r_bm.returncode:
+                print(f"  [!] Bảo mật retouch HỎNG (mã {r_bm.returncode}) — DỪNG, "
+                      "không đóng gói bản chưa bảo mật.")
+                return r_bm.returncode
+            goc_tool = ra_tool
+    elif retouch_vao and not a.thu:
+        print("  [!] Đóng retouch KHÔNG --bao-mat: gói sẽ mang saytool .py và mô "
+              "hình đọc được.\n      Bản giao khách: chạy lại kèm --bao-mat.")
+
+    cmd = lenh(he, retouch_vao, goc_tool, nhe=a.nhe,
+               goc_nguon=goc_nguon, diem_vao=diem_vao_bm, ngam_them=ngam_them)
     print(f"  Hệ: {he}   retouch: {'có' if retouch_vao else 'không'}"
           + (f"   ({goc_tool})" if retouch_vao else "")
-          + ("   [BAN NHE: thu vien nang tai sau]" if a.nhe else ""))
+          + ("   [BAN NHE: thu vien nang tai sau]" if a.nhe else "")
+          + ("   [ĐÃ MÃ HOÁ LÕI]" if a.bao_mat else ""))
     print("\n  " + " ".join(f'"{c}"' if " " in c else c for c in cmd) + "\n")
     if a.thu:
         return 0
@@ -612,6 +785,24 @@ def main(argv=None) -> int:
         import PyInstaller           # noqa: F401
     except ImportError:
         print("  [!] Chưa có PyInstaller.  pip install pyinstaller")
+        return 1
+
+    #[[ CHOT: PyInstaller >= 6.10 cho CO CHE CAP NHAT (cap_nhat.py).
+    #
+    #   Tu 6.10 importer cua PyInstaller la path-entry-finder chay trong
+    #   PathFinder, nen ban cap nhat chen len dau sys.path moi de duoc code trong
+    #   goi. Ban < 6.10 thi importer la meta-path finder "nuot" sys.path -> OTA
+    #   AM THAM khong an (goi van chay, chi la khong bao gio nhan ban va). Da
+    #   kiem tra tren chinh AutoTone.exe (PyInstaller 6.21). Chan o day de khong
+    #   lo dong goi mot ban ma tinh nang cap nhat chet lang le. ]]
+    try:
+        _pv = tuple(int(x) for x in PyInstaller.__version__.split(".")[:2])
+    except Exception:                                    # noqa: BLE001
+        _pv = (0, 0)
+    if _pv < (6, 10):
+        print(f"  [!] PyInstaller {PyInstaller.__version__} < 6.10 — cơ chế cập "
+              "nhật (OTA) sẽ KHÔNG hoạt động trên gói này.")
+        print("      Nâng cấp:  pip install -U \"pyinstaller>=6.10\"")
         return 1
 
     r = subprocess.run(cmd, cwd=str(GOC))

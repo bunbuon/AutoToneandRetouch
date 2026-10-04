@@ -29,6 +29,14 @@ build/
 *.dmg
 *.zip
 
+#[[ BAO MAT (4/10): san pham bien dich Cython — moi may mot khac, tu sinh lai
+#   duoc tu .py. KHONG day len: lan sang GitHub thi vo nghia va de nham. Ma
+#   nguon loi van la cac .py trong repo; .pyd/.so chi sinh luc dong_goi --bao-mat. ]]
+*.so
+*.pyd
+*.c
+cay_bao_mat/
+
 # --- trang thai luc chay, rieng cua tung may -----------------------------
 gu/
 trang_thai/
@@ -38,6 +46,10 @@ retouch.json
 corrections.csv
 ear.csv
 de_xuat_*.json
+#  kho anh nho cua luoi / dai anh (luoi_anh.py) — tu sinh lai duoc, moi may mot kho
+anh_nho/
+#  muc retouch rieng tung anh (retouch.ghi_muc_anh) — moi thu muc vao mot file
+retouch_anh/
 
 # --- ban chep de mang sang may khac --------------------------------------
 #
@@ -63,3 +75,9 @@ venv_build/
 
 # Quyen rieng cua may nay — khong day len
 .claude/settings.local.json
+
+#[[ Du lieu VAN HANH, KHONG phai ma nguon — KHONG len repo (nhat la repo Public).
+#   'Claude outputs/' chua so lieu do tung buoi chup THAT (duong dan anh khach
+#   G:\<buoi>\*.ARW, Exposure/WhiteBalance tung tam). Day len Public la lo ra
+#   Internet vinh vien trong lich su git. De lai tren may. ]]
+Claude outputs/

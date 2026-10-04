@@ -113,8 +113,8 @@ GOI = {
     ),
     "mo-hinh": Goi(
         ten="mo-hinh", phien_ban="1", file_zip="mo-hinh.zip",
-        mb=487, mo_ta="Mo hinh retouch: vet, da, dodge/burn, liquify",
-        sha256="7b25a702ac84d94edb683cad3a36978f6ca3b1d9cd9a42b479135eb1e9557484",
+        mb=508, mo_ta="Mo hinh retouch: vet, da, dodge/burn, liquify",
+        sha256="df094ae9b074a55a4b0996af71290856eab4c116277bb48171efbff0a765baa9",
         dau_hieu=("mo_hinh/vet.pt",),
     ),
     "mediapipe": Goi(

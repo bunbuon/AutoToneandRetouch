@@ -79,7 +79,20 @@ elseif type(Xuat.runRequest) ~= "function" then
     Xuat = nil
 end
 
-local POLL_SECONDS = 5
+--[[ ChupCore: chụp nguyên trạng thông số develop của một thư mục (CHỈ ĐỌC).
+     Nạp riêng, cùng lý do với hai module trên. ]]
+local okChup, Chup = pcall(require, "ChupCore")
+if not okChup then
+    rawLog("khong nap duoc ChupCore -> " .. tostring(Chup))
+    Chup = nil
+elseif type(Chup.runRequest) ~= "function" then
+    rawLog("ChupCore thieu ham runRequest (ban cu con sot?)")
+    Chup = nil
+end
+
+--[[ 2 giây (trước 5): mỗi vòng chỉ là vài lệnh kiểm file có tồn tại không. App
+     nhờ xuất thì người dùng đang ngồi chờ — 5 giây là quá nửa thời gian chờ. ]]
+local POLL_SECONDS = 2
 
 local prefs = LrPrefs.prefsForPlugin()
 if prefs.autoApply == nil then prefs.autoApply = true end   -- mặc định bật
@@ -100,6 +113,11 @@ LrTasks.startAsyncTask(function()
         if (tonumber(prefs.loopGen) or myGen) ~= myGen then
             Core.log("vong #" .. tostring(myGen) .. " dung lai (da co vong moi hon)")
             return
+        end
+        -- Nhịp cho app biết vòng lặp còn sống (xem Core.ghiNhip). Bản Core cũ
+        -- chưa có hàm này thì bỏ qua, đừng làm chết vòng lặp.
+        if type(Core.ghiNhip) == "function" then
+            Core.try("nhip", function() return Core.ghiNhip(myGen) end)
         end
         if prefs.autoApply then
             local _, err = Core.try("autoApply", Core.runPending)
@@ -140,6 +158,13 @@ LrTasks.startAsyncTask(function()
         if Xuat then
             local _, errE = Core.try("autoXuatAnh", Xuat.runRequest)
             if errE then Core.log("LOI yeu cau xuat anh: " .. tostring(errE)) end
+        end
+
+        --[[ Yêu cầu chụp nguyên trạng (jobs/request_chup.txt). Chiều ĐỌC như
+             yêu cầu xuất, nên chạy bất kể autoApply. ]]
+        if Chup then
+            local _, errC = Core.try("autoChup", Chup.runRequest)
+            if errC then Core.log("LOI yeu cau chup: " .. tostring(errC)) end
         end
         LrTasks.sleep(POLL_SECONDS)
     end

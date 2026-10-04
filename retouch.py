@@ -58,25 +58,35 @@ THANH_KEO = [
     ("chan", "Kéo dài chân", 0.0, "Mức 100 = giãn thêm 14.5%. Cần ảnh toàn thân"),
 ]
 
-#[[ saytool viet nhan KHONG DAU ("Xoa khuyet diem") vi no con chay o terminal.
-#   Giao dien AutoTone hien duoc dau nen doi lai cho de doc. Ten nao khong co
-#   trong bang thi lay thang nhan cua saytool — buoc moi ben kia van hien ra
-#   ngay, chi la chua co dau cho toi khi them vao day.
+#[[ CHI THEM DAU, TUYET DOI KHONG DOI NGHIA.
+#
+#   saytool viet mot so nhan KHONG DAU ("Xoa khuyet diem") vi no con chay o
+#   terminal. Giao dien AutoTone hien duoc dau nen bang nay chep lai cho de
+#   doc. Ten nao khong co o day thi lay THANG nhan cua saytool.
+#
+#   HONG THAT 02/10 — vi sao phai co dong chu hoa o tren.
+#       Buoc `da_body` ban dau la "Dong deu mau da co the", va bang nay ghi
+#       "Đều màu da cơ thể". Sau do ben saytool HUAN LUYEN LAI no thanh
+#       "Làm mịn da cơ thể" — doi han cong dung. Bang nay khong ai sua, nen
+#       AutoTone van hien nhan cu DE LEN nhan moi.
+#
+#       Nguoi dung thay saytool goi la "Lam min da co the" con AutoTone goi
+#       la "Deu mau da co the", va di tim xem "lam min da co the" nam dau —
+#       no nam ngay do, chi la bi doi ten.
+#
+#       Ghi cung mot nhan la nhan no DONG BANG. Buoc doi cong dung thi nhan
+#       cu thanh loi noi doi, ma khong co gi bao ca.
+#
+#   NEN: chi giu lai nhung ten ma saytool THAT SU con viet khong dau. Da kiem
+#   02/10 — con dung ba cai duoi. Buoc nao ben kia da co dau thi de no tu noi,
+#   dung chen vao.
 #]]
 NHAN_DEP = {
     "vet": ("Xoá khuyết điểm", "Mụn, vết thâm, nốt ruồi nhỏ trên mặt"),
-    "vet_body": ("Xoá khuyết điểm cơ thể",
-                 "Mụn, vết thâm, nốt ruồi trên tay, vai, ngực, cổ"),
     "nhan_tran": ("Làm mờ nếp nhăn trán",
                   "Nếp nhăn ngang trên trán. Nhẹ tay, không xoá phẳng"),
     "nong_cam": ("Xoá nọng cằm", "Làm sâu đường bóng dưới hàm cho gọn"),
     "chan": ("Kéo dài chân", "Mức 100 = giãn thêm 14.5%. Cần ảnh toàn thân"),
-    #[[ Thanh keo cua buoc liquify sinh ra tu mo_hinh/liquify/danh_muc.json,
-    #   nen ten cua chung phu thuoc file tren dia. Ghi san cai da co; cai moi
-    #   xuat hien van hien ra ngay voi nhan cua saytool, chi la chua co dau. ]]
-    "lq_thon_mat": ("Làm thon mặt", "Thu hẹp gò má và đường hàm"),
-    "da_body": ("Đều màu da cơ thể", "Cân lại chỗ da đậm nhạt trên tay, vai, cổ"),
-    "toc": ("Lấp đầy điểm hói", "Đang tạm dừng bên ToolCloneEvoto — xem GHI_CHU_TOC.md"),
 }
 
 #[[ Co cua rieng de chay saytool khi app da dong goi. Xem worker o autotone_gui.
@@ -275,6 +285,69 @@ def la_goc_trong_goi(goc) -> bool:
         return False
 
 
+def cwd_retouch(goc):
+    """Thư mục LÀM VIỆC (cwd) để chạy saytool. Thường = goc, TRỪ khi có bản
+    cập nhật mang mô hình retouch mới — khi đó trả về một thư mục LỚP PHỦ ghi
+    được, trong đó `mo_hinh/` là mô hình gói + mô hình bản vá (vá đè lên).
+
+    VÌ SAO TÁCH cwd KHỎI goc (hai thứ khác nhau, trước đây trùng):
+        saytool nạp mô hình theo đường TƯƠNG ĐỐI `mo_hinh/vet.pt` so với CWD của
+        tiến trình con. Nhưng `goc` còn dùng để chọn lệnh (la_goc_trong_goi ->
+        `--say-chay` cho bản gói). Nếu đổi `goc` sang thư mục khác thì nhận nhầm
+        là "chạy từ nguồn" rồi gọi `python -m saytool.cli` — gói không có python
+        riêng, hỏng. Nên GIỮ goc = sys._MEIPASS (chọn lệnh đúng), chỉ đổi CWD.
+
+    Mô hình bản vá: cap_nhat.ap_model() đặt AUTOTONE_MO_HINH_VA = thư mục
+    `mo_hinh/` trong bản cập nhật đã kích hoạt. Không có biến đó -> trả goc như cũ
+    (đường retouch không đổi một li so với trước khi có OTA).
+    """
+    va = os.environ.get("AUTOTONE_MO_HINH_VA")
+    if not va:
+        return goc
+    mh_va = Path(va)
+    if not mh_va.is_dir():
+        return goc
+    try:
+        import duong_dan as _dd
+        phu = _dd.goc_du_lieu() / "retouch_cwd"
+        dich_mh = phu / "mo_hinh"
+        #[[ Dung LAI lop phu cho nhanh: chi dung lai khi no moi hon ca thu muc
+        #   mo hinh goc lan ban va. Don gian hoa: dung lai neu da co va khong co
+        #   file va nao moi hon. O day cu dung lai neu ton tai — ban va la thu
+        #   muc rieng theo phien ban, doi ban la AUTOTONE_MO_HINH_VA doi theo nen
+        #   lop phu cu khong con dung (ta xoa va dung lai ben duoi khi khac goc). ]]
+        goc_mh = Path(goc) / "mo_hinh"
+        import shutil
+        #[[ Dung lai neu da dung tu dung ban va nay (ghi dau vao .tu_ban). ]]
+        dau = phu / ".tu_ban"
+        if dich_mh.is_dir() and dau.is_file() and dau.read_text(encoding="utf-8").strip() == str(mh_va):
+            return phu
+        if phu.exists():
+            shutil.rmtree(phu, ignore_errors=True)
+        dich_mh.mkdir(parents=True, exist_ok=True)
+        #[[ 1) chep mo hinh GOC (trong goi) lam nen — nhung chi khi goc co. ]]
+        if goc_mh.is_dir():
+            for f in goc_mh.iterdir():
+                d = dich_mh / f.name
+                if f.is_dir():
+                    shutil.copytree(f, d, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(f, d)
+        #[[ 2) VÁ ĐÈ: mo hinh ban va ghi len tren (cung ten -> thay the). ]]
+        for f in mh_va.iterdir():
+            d = dich_mh / f.name
+            if f.is_dir():
+                shutil.copytree(f, d, dirs_exist_ok=True)
+            else:
+                shutil.copy2(f, d)
+        dau.write_text(str(mh_va), encoding="utf-8")
+        return phu
+    except Exception:                                    # noqa: BLE001
+        #[[ Lop phu hong thi lui ve goc — retouch van chay voi mo hinh goi, chi
+        #   la khong ap duoc mo hinh moi. KHONG duoc lam hong ca khau retouch. ]]
+        return goc
+
+
 def lenh_saytool(goc, tham: list) -> list:
     """Dòng lệnh chạy saytool.cli với tham số cho trước.
 
@@ -389,7 +462,7 @@ def _hoi_keo(goc):
         #[[ 180 giay: buoc_vet va buoc_nong_cam import torch ngay o dau file,
         #   ma lan dau nap torch tren o cung cham co the ton hon mot phut.
         #]]
-        p = subprocess.run(cmd, cwd=str(goc), capture_output=True, text=True,
+        p = subprocess.run(cmd, cwd=str(cwd_retouch(goc)), capture_output=True, text=True,
                            timeout=180, encoding="utf-8", errors="replace",
                            env=dict(os.environ, **MOI_TRUONG_UTF8),
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -665,7 +738,7 @@ def kiem_tra(goc, timeout: float = 60.0) -> tuple:
         #[[ Cung ly do voi _hoi_keo(): tien trinh con in ra chuoi co the co
         #   tieng Viet, ma stdout tren Windows lay cp1252. encoding="utf-8" o
         #   day chi lo phia DOC — phia GHI phai sua bang bien moi truong. ]]
-        p = subprocess.run(cmd, cwd=str(g), capture_output=True,
+        p = subprocess.run(cmd, cwd=str(cwd_retouch(g)), capture_output=True,
                            text=True, timeout=timeout,
                            encoding="utf-8", errors="replace",
                            env=dict(os.environ, **MOI_TRUONG_UTF8),
@@ -915,31 +988,281 @@ def vi_sao_khong_dung(goc) -> str:
     return ""
 
 
+def duong_ket_qua(p, vao, ra, de_quy: bool = False):
+    """Ảnh kết quả của ảnh vào `p` nằm ở đâu trong thư mục ra (có hay chưa) —
+    None khi chưa có thư mục ra.
+
+    Một luật cho cả hai chỗ: lưới gắn "✓ đã làm" (ds_anh) và ảnh lớn mở bản
+    kết quả phải nhìn CÙNG một file — không thì bấm vào tấm "đã làm" mà ảnh
+    lớn vẫn hiện bản gốc, hoặc ngược lại.
+    """
+    ra = Path(ra) if ra and str(ra).strip() not in ("", ".") else None
+    if ra is None:
+        return None
+    p = Path(p)
+    return ra / (p.relative_to(Path(vao)) if de_quy else Path(p.name))
+
+
+def ds_anh(vao, ra, de_quy: bool = False) -> list:
+    """[(ảnh vào, đã có kết quả chưa)] theo tên, sắp theo đường dẫn.
+
+    Lọc theo ĐÚNG cách duong_ong.chay() lọc: cùng tên tệp trong thư mục ra là
+    coi như đã làm. dem() đếm trên chính danh sách này, và lưới ảnh của khâu
+    Retouch vẽ từ nó — một chỗ quyết định, không phải hai chỗ có thể lệch nhau.
+
+    ra rỗng / None: chưa có thư mục ra -> chưa tấm nào xong (KHÔNG hiểu "" là
+    thư mục hiện hành: Path("") == Path(".") và mọi ảnh trùng tên ở đó sẽ bị
+    tính là đã làm).
+    """
+    if not vao:
+        return []
+    vao = Path(vao)
+    if not vao.is_dir():
+        return []
+    it = vao.rglob("*") if de_quy else vao.iterdir()
+    files = sorted(p for p in it if p.is_file() and p.suffix.lower() in DUOI)
+    ra = Path(ra) if ra and str(ra).strip() not in ("", ".") else None
+    if ra is None or not ra.is_dir():
+        return [(p, False) for p in files]
+    return [(p, duong_ket_qua(p, vao, ra, de_quy).exists()) for p in files]
+
+
+# ── MỨC RIÊNG TỪNG ẢNH + CHẠY THEO NHÓM MỨC ────────────────────────────────────
+#[[ Toi 3/10 / sang 4/10 — user: "can them nut Sync All cac hieu ung da keo cho
+#   cac anh duoc chon hoac tat ca". Nhu Evoto: keo thanh la chinh ANH DANG XEM,
+#   Sync chep muc do sang anh khac. Anh khong co muc rieng thi theo MUC CHUNG
+#   (retouch.json "muc" — dung y nhu truoc, khong ai bi doi ket qua ngam).
+#
+#   saytool chi nhan MOT bo muc cho ca thu muc. Nen anh khac muc thi chay NHIEU
+#   luot, moi luot mot thu muc tam chi chua dung nhom anh do (lien ket cung —
+#   khong ton cho, khong ton thoi gian; o khong cho lien ket thi chep). Ket qua
+#   van ra DUNG thu muc ra, dung ten — y het chay ca thu muc mot luot.
+#   KHONG dung lai buoc nao cua saytool o day: moi anh van di qua CHINH lenh
+#   `chay` cua no.
+#]]
+TEP_MUC_ANH = "retouch_anh"
+
+
+def khoa_anh(p, vao, de_quy: bool = False) -> str:
+    """Khoá của một ảnh trong bảng mức riêng: đường dẫn tương đối kiểu "/" khi
+    chạy cả thư mục con (hai tấm cùng tên ở hai thư mục con là hai tấm), không
+    thì tên tệp."""
+    p = Path(p)
+    if de_quy and vao:
+        try:
+            return p.relative_to(Path(vao)).as_posix()
+        except ValueError:
+            pass
+    return p.name
+
+
+def _chuan_muc(m: dict) -> dict:
+    ra = {}
+    for k, v in (m or {}).items():
+        if v is None or v == "":
+            continue
+        try:
+            ra[str(k)] = round(float(v), 3)
+        except (TypeError, ValueError):
+            continue
+    return ra
+
+
+def giong_muc(a: dict, b: dict) -> bool:
+    """Hai bộ mức như nhau (bỏ qua cách ghi số 40 / 40.0)."""
+    return _chuan_muc(a) == _chuan_muc(b)
+
+
+def muc_trong(m: dict) -> bool:
+    """Mọi tính năng — kể cả mức riêng theo nhóm mặt — đều ở 0."""
+    return not any(v > 0 for v in _chuan_muc(m).values())
+
+
+def nhom_theo_muc(anh: list, muc_cua) -> list:
+    """[(mức, [ảnh…])] — gom ảnh CÙNG mức hiệu lực thành một lượt chạy, giữ thứ
+    tự gặp lần đầu. muc_cua(ảnh) -> bộ mức phẳng (cả khoá "nam:vet")."""
+    nhom: dict = {}
+    for p in anh:
+        m = muc_cua(p) or {}
+        k = json.dumps(_chuan_muc(m), sort_keys=True)
+        if k not in nhom:
+            nhom[k] = (dict(m), [])
+        nhom[k][1].append(p)
+    return list(nhom.values())
+
+
+def gop_muc(ds_muc: list) -> dict:
+    """Mức LỚN NHẤT của từng tính năng qua mọi nhóm — để hỏi đủ file mô hình
+    cho cả lượt chạy (mo_hinh_can / _hoi_chep)."""
+    ra: dict = {}
+    for m in ds_muc:
+        for k, v in _chuan_muc(m).items():
+            ra[k] = max(ra.get(k, 0.0), v)
+    return ra
+
+
+def tep_muc_anh(vao) -> Path:
+    """File giữ mức riêng của các ảnh trong MỘT thư mục vào (thư mục dữ liệu
+    app, không ghi vào thư mục ảnh của khách)."""
+    import hashlib
+    k = os.path.normcase(os.path.abspath(str(vao)))
+    h = hashlib.sha1(k.encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    return dd.du_lieu(TEP_MUC_ANH, f"{h}.json")
+
+
+def doc_muc_anh(vao) -> dict:
+    """{khoá ảnh: bộ mức} đã lưu cho thư mục vào này ({} nếu chưa có)."""
+    if not vao:
+        return {}
+    f = tep_muc_anh(vao)
+    if not f.is_file():
+        return {}
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    m = d.get("muc_anh") if isinstance(d, dict) else None
+    return {str(k): dict(v) for k, v in (m or {}).items() if isinstance(v, dict)}
+
+
+def ghi_muc_anh(vao, muc_anh: dict) -> None:
+    if not vao:
+        return
+    f = tep_muc_anh(vao)
+    tam = f.with_suffix(".part")
+    tam.write_text(json.dumps({"vao": str(vao), "muc_anh": muc_anh},
+                              ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tam, f)
+
+
+def thu_muc_tam_nhom(vao) -> Path:
+    """Chỗ dựng thư mục tạm của các nhóm: CẠNH thư mục vào — cùng ổ thì mới
+    liên kết cứng được (khác ổ là phải chép cả tấm)."""
+    return Path(os.path.abspath(str(vao))).parent / ".autotone_retouch_tam"
+
+
+#[[ FILE MOC: chi XOA thu muc tam nao CO file nay. Mot thu muc trung ten ma
+#   khong co moc la cua nguoi dung — khong dung toi, lay ten khac. ]]
+MOC_TAM = ".autotone_tam"
+
+
+def tao_thu_muc_tam(vao) -> Path:
+    """Thư mục tạm SẠCH cho các lượt chạy theo nhóm mức (có file mốc). Không
+    tạo được cạnh thư mục vào (ổ chỉ đọc, ổ mạng) thì dùng thư mục tạm của hệ
+    thống — khác ổ thì dung_thu_muc_nhom tự chép thay cho liên kết."""
+    import tempfile
+    goc = thu_muc_tam_nhom(vao)
+    for i in range(10):
+        d = goc if i == 0 else goc.with_name(f"{goc.name}_{i}")
+        if d.exists():
+            if not (d / MOC_TAM).is_file() or not don_thu_muc_tam(d):
+                continue
+        try:
+            d.mkdir(parents=True)
+            (d / MOC_TAM).write_text("AutoTone — thu muc tam, xoa duoc\n",
+                                     encoding="utf-8")
+            return d
+        except OSError:
+            break
+    d = Path(tempfile.mkdtemp(prefix="autotone_retouch_"))
+    (d / MOC_TAM).write_text("AutoTone — thu muc tam, xoa duoc\n", encoding="utf-8")
+    return d
+
+
+def don_thu_muc_tam(d) -> bool:
+    """Xoá thư mục tạm của app (chỉ khi có file mốc). True = đã sạch.
+    Liên kết cứng xoá đi thì ảnh gốc vẫn nguyên — chỉ mất một cái tên."""
+    import shutil
+    if d is None:
+        return True
+    d = Path(d)
+    if not d.exists():
+        return True
+    if not (d / MOC_TAM).is_file():
+        return False
+    shutil.rmtree(d, ignore_errors=True)
+    return not d.exists()
+
+
+def dung_thu_muc_nhom(vao, anh: list, dich, de_quy: bool = False) -> tuple:
+    """Dựng `dich` chỉ gồm các ảnh `anh` (giữ đường dẫn tương đối khi chạy cả
+    thư mục con) -> (số liên kết cứng, số tấm phải chép).
+
+    #[[ Lien ket cung: cung mot file tren dia, khong ton cho, tao tuc thi. O
+    #   exFAT / FAT32 (o cung di dong) khong co lien ket cung -> chep. saytool
+    #   chi DOC anh vao (khong ghi de — ghi de nhieu nhom bi chan o app). ]]
+    """
+    import shutil
+    vao, dich = Path(vao), Path(dich)
+    lien = chep = 0
+    for p in anh:
+        p = Path(p)
+        rel = p.relative_to(vao) if de_quy else Path(p.name)
+        q = dich / rel
+        q.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(p, q)
+            lien += 1
+        except OSError:
+            shutil.copy2(p, q)
+            chep += 1
+    return lien, chep
+
+
+def chep_nguyen_ban(anh: list, vao, ra, de_quy: bool = False,
+                    lam_lai: bool = False) -> int:
+    """Nhóm mức 0 hết (ảnh KHÔNG retouch): chép nguyên bản sang thư mục ra để
+    thư mục giao khách đủ ảnh và bộ đếm "đã làm" đúng. -> số tấm đã chép."""
+    import shutil
+    n = 0
+    for p in anh:
+        q = duong_ket_qua(p, vao, ra, de_quy)
+        if q is None or (q.exists() and not lam_lai):
+            continue
+        q.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, q)
+        n += 1
+    return n
+
+
 def dem(vao: Path, ra: Path, de_quy: bool = False) -> tuple[int, int]:
     """(tổng ảnh vào, số ảnh đã có kết quả) — để báo trước còn bao nhiêu tấm.
 
-    Đếm theo ĐÚNG cách duong_ong.chay() lọc: cùng tên tệp là coi như đã làm.
+    Đếm trên ds_anh() — cùng cách duong_ong.chay() lọc: cùng tên tệp là coi
+    như đã làm.
     """
-    vao, ra = Path(vao), Path(ra)
-    if not vao.is_dir():
-        return 0, 0
-    it = vao.rglob("*") if de_quy else vao.iterdir()
-    files = [p for p in it if p.is_file() and p.suffix.lower() in DUOI]
-    if not ra.is_dir():
-        return len(files), 0
-    xong = sum(1 for p in files
-               if (ra / (p.relative_to(vao) if de_quy else Path(p.name))).exists())
-    return len(files), xong
+    ds = ds_anh(vao, ra, de_quy)
+    return len(ds), sum(1 for _p, xong in ds if xong)
 
 
 def lenh(goc: Path, vao: Path, ra: Path, muc: dict,
          may: str = "auto", chat_luong: int = 98,
          de_quy: bool = False, lam_lai: bool = False,
          gioi_han: int = 0, luong: int = LUONG_MAC_DINH,
-         che_do: str = CHE_DO_MAC_DINH) -> list:
-    """Dựng dòng lệnh. Tách riêng để test được mà không cần chạy thật."""
-    tham = ["chay", str(vao), str(ra), "--may", may,
-            "--chat-luong", str(int(chat_luong))]
+         che_do: str = CHE_DO_MAC_DINH, ghi_de: bool = False) -> list:
+    """Dựng dòng lệnh. Tách riêng để test được mà không cần chạy thật.
+
+    ghi_de=True: retouch ĐÈ LÊN ảnh gốc, không có thư mục ra.
+    """
+    #[[ --ghi-de VA thu muc ra KHONG di cung nhau.
+    #
+    #   saytool tu choi thang neu nhan ca hai:
+    #       "! --ghi-de thi KHONG dua thu muc ra". Bo bot mot trong hai.
+    #
+    #   Nen o day phai bo han `ra` ra khoi dong lenh chu khong chi them co.
+    #   Truyen ca hai thi saytool thoat voi ma 1 va ca me anh khong chay.
+    #
+    #   --dong-y-ghi-de: saytool hoi lai bang input() truoc khi ghi de. Tien
+    #   trinh con cua app khong co ban phim, nen cau hoi do se treo mai mai.
+    #   Giao dien da hoi nguoi dung roi (xem RetouchWindow.start), nen o day
+    #   bao saytool khoi hoi nua.
+    #]]
+    if ghi_de:
+        tham = ["chay", str(vao), "--ghi-de", "--dong-y-ghi-de",
+                "--may", may, "--chat-luong", str(int(chat_luong))]
+    else:
+        tham = ["chay", str(vao), str(ra), "--may", may,
+                "--chat-luong", str(int(chat_luong))]
     #[[ CHI truyen --luong khi nguoi dung EP mot con so.
     #
     #   phan_cung.so_luong() co nhanh `if xin > 0: return min(xin, ...)`, nen
@@ -1232,7 +1555,7 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, **kw):
         _tat_hop_thoai_sap()
     try:
         p = subprocess.Popen(
-            cmd, cwd=str(goc), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cmd, cwd=str(cwd_retouch(goc)), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1, env=env,
             # Khong bat cua so console den nhay len tren Windows
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

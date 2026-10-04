@@ -185,6 +185,27 @@ def ve_khung(im: Image.Image, r: dict) -> Image.Image:
             d.line([x, y, x + w, y + h], fill=col, width=1)
         d.rectangle([x, y, x + w, y + h], outline=col, width=wd)
         d.text((x + 3, y + 3), f"{s:.2f}", fill=(245, 245, 250))
+    #[[ Diem may THUC SU lay net (Sony FocusLocation), da xoay theo anh.
+    #   Ve ra de nhin mot cai la biet tool co dung mat ma may da khoa net vao
+    #   khong — ngay 29/9 chinh cai nhin do bat duoc loi diem AF khong xoay
+    #   theo anh doc.
+    #]]
+    hop = r.get("af_hop")
+    if hop:
+        # vung AF (Nikon Wide-area): khung do net dut
+        W_, H_ = im.size
+        d.rectangle([hop[0] * W_, hop[1] * H_, hop[2] * W_, hop[3] * H_],
+                    outline=(255, 60, 60), width=2)
+    af = r.get("af_xy")
+    if af:
+        ax, ay = af[0] * im.size[0], af[1] * im.size[1]
+        R = max(6.0, 0.018 * max(im.size))
+        do = (255, 60, 60)
+        d.ellipse([ax - R, ay - R, ax + R, ay + R], outline=do, width=3)
+        d.line([ax - 2 * R, ay, ax - R * 0.4, ay], fill=do, width=2)
+        d.line([ax + R * 0.4, ay, ax + 2 * R, ay], fill=do, width=2)
+        d.line([ax, ay - 2 * R, ax, ay - R * 0.4], fill=do, width=2)
+        d.line([ax, ay + R * 0.4, ax, ay + 2 * R], fill=do, width=2)
     return im
 
 
@@ -197,7 +218,12 @@ def do_lai(p: Path, cfg: dict) -> dict:
         cfg.get("face_min_ratio", 0.0), cfg.get("subject_keep", 0.60),
         cfg.get("subject_dark_ev", 2.0), cfg.get("face_min_score_sub", 0.0),
         cfg.get("big_low_ratio", 0.0), cfg.get("big_low_gap", 0.13),
-        cfg.get("big_low_floor", 0.70))
+        cfg.get("big_low_floor", 0.70),
+        af_gan_mat=float(cfg.get("af_gan_mat", 0.0)),
+        af_xoay_theo_anh=bool(cfg.get("af_xoay_theo_anh", True)),
+        af_nikon=bool(cfg.get("af_nikon", False)),
+        mat_ao_to_pct=float(cfg.get("mat_ao_to_pct", 0.0)),
+        mat_ao_diem=float(cfg.get("mat_ao_diem", 0.6)))
 
 
 def ve_tam(cells: list, dest_dir: Path, buoi: str) -> list:
@@ -232,7 +258,7 @@ def ve_tam(cells: list, dest_dir: Path, buoi: str) -> list:
                    f"   chay truoc {c['clip']}", fill=(172, 172, 180))
         d.text((8, H - 16),
                f"[{buoi}]  xanh la = mat tool dung do sang | xanh duong = cung tinh"
-               f" | xam = da loai", fill=(150, 150, 158))
+               f" | xam = da loai | vong do = diem may lay net", fill=(150, 150, 158))
         dest = dest_dir / f"anh_{s // MOI_TAM + 1:02d}.png"
         sheet.save(dest)
         made.append(dest)

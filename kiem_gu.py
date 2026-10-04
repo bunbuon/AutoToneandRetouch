@@ -144,6 +144,10 @@ def main(argv=None) -> int:
     ap.add_argument("folder", type=Path)
     ap.add_argument("--de-xuat", type=Path, required=True,
                     help="File JSON chua cac khoa muon doi")
+    ap.add_argument("--goc", type=Path, default=None,
+                    help="JSON khoa ap cho CA HAI luot (luot goc va luot de xuat). "
+                         "De do mot ban sua DA bat san: dat luot goc ve hanh vi cu, "
+                         "vd --goc goc_af_cu.json voi {\"af_xoay_theo_anh\": false}.")
     ap.add_argument("--ghi-gu", action="store_true",
                     help="Dat ca hai cong thi ghi vao gu.json")
     ap.add_argument("--chuan", action="append", default=[],
@@ -179,10 +183,30 @@ def main(argv=None) -> int:
         print(f"De xuat co khoa khong dung den: {', '.join(la)}")
         return 1
 
+    goc = {}
+    if a.goc is not None:
+        try:
+            goc = json.loads(Path(a.goc).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as ex:
+            print(f"Khong doc duoc {a.goc}: {ex}")
+            return 1
+        la = sorted(set(goc) - set(at.DEFAULTS))
+        if not isinstance(goc, dict) or la:
+            print(f"--goc co khoa khong dung den: {', '.join(la)}")
+            return 1
+        print("Luot goc chay voi:")
+        for k, v in sorted(goc.items()):
+            print(f"  {k:24} {at.DEFAULTS[k]}  ->  {v}   (chi de doi chung)")
+        #[[ --ghi-gu khong di chung --goc: luot goc da KHAC tham so dang chay,
+        #   dat cong o day khong co nghia la de xuat hon ban dang chay. ]]
+        if a.ghi_gu:
+            print("Khong dung --ghi-gu cung --goc.")
+            return 1
+
     print("De xuat doi:")
     for k, v in sorted(dx.items()):
-        print(f"  {k:24} {at.DEFAULTS[k]}  ->  {v}")
-    khong_doi = [k for k, v in dx.items() if v == at.DEFAULTS[k]]
+        print(f"  {k:24} {dict(at.DEFAULTS, **goc)[k]}  ->  {v}")
+    khong_doi = [k for k, v in dx.items() if v == dict(at.DEFAULTS, **goc)[k]]
     if khong_doi:
         print(f"\n[!] {', '.join(khong_doi)} bang y gia tri dang chay — de xuat "
               f"nay khong doi gi ca.")
@@ -219,10 +243,10 @@ def main(argv=None) -> int:
     exp = at.read_catalog_export(a.export) if (a.nguon == "catalog" and a.export) else {}
 
     print(f"So tien trinh: {jobs}\n")
-    print("Luot 1/2 — tham so DANG CHAY")
-    cu = chay_mot_luot(a.folder, dict(chung), jobs, exp)
+    print("Luot 1/2 — tham so " + ("GOC (doi chung, --goc)" if goc else "DANG CHAY"))
+    cu = chay_mot_luot(a.folder, dict(chung, **goc), jobs, exp)
     print("Luot 2/2 — tham so DE XUAT")
-    moi = chay_mot_luot(a.folder, dict(chung, **dx), jobs, exp)
+    moi = chay_mot_luot(a.folder, dict(dict(chung, **goc), **dx), jobs, exp)
 
     rows = []
     for k, r0 in cu.items():

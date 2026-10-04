@@ -1,0 +1,115 @@
+Buoi: G:\2609 
+ 
+===== 1/2  XOAY DIEM AF THEO ANH DOC (doi chung voi hanh vi cu) ===== 
+Luot goc chay voi:
+  af_xoay_theo_anh         True  ->  False   (chi de doi chung)
+De xuat doi:
+  af_xoay_theo_anh         False  ->  True
+
+Dung file export: export_20260929_143944.tsv
+Tap kiem: 878 anh co dich dung | 3095 anh da duyet
+So tien trinh: 8
+
+Luot 1/2 — tham so GOC (doi chung, --goc)
+    3811 anh, 0 loi, 171s
+Luot 2/2 — tham so DE XUAT
+    3811 anh, 0 loi, 174s
+
+==================================================================
+CONG A — 693 anh co dich dung
+  keo LAI GAN dich : 142 anh
+  day RA XA        : 73 anh
+  sai trung binh   : 0.243 -> 0.211 EV
+  -> DAT
+     say06747     +0.90 -> -0.51   (ban chon -0.26; sai 1.16 -> 0.25)
+     say06750     +0.70 -> -0.56   (ban chon -0.26; sai 0.96 -> 0.30)
+     say06862     -0.23 -> +0.90   (ban chon +0.70; sai 0.93 -> 0.20)
+     say06861     -0.50 -> +0.60   (ban chon +0.70; sai 1.20 -> 0.10)
+     say06863     -0.07 -> +0.95   (ban chon +0.70; sai 0.77 -> 0.25)
+     say06721     +0.45 -> -0.51   (ban chon -0.74; sai 1.19 -> 0.23)
+     say06860     -0.45 -> +0.51   (ban chon +0.70; sai 1.15 -> 0.19)
+     dsc08758     +0.41 -> -0.50   (ban chon -0.42; sai 0.83 -> 0.08)
+
+  Theo tung ly do:
+    ly do                   n   gan   xa  dong toi     sai t.b cu -> moi
+    chua-gan-ly-do        635   120   67       184      0.205 ->   0.184
+    sang-qua               24     7    6        13      0.537 ->   0.465
+    khac                   16    11    0        11      0.793 ->   0.435
+    nen-chay               13     2    0         2      0.705 ->   0.666
+    toi-qua                 5     2    0         2      0.678 ->   0.549
+    (635 anh chua co ly do — cong cham mu tren nhom nay)
+
+CONG B — 3118 anh da duyet
+  xe dich qua 0.3 EV: 13  (0.42%)
+  cong cho phep duoi 2.0%  -> DAT
+  bien do nhom bi dung: trung vi 0.50, lon nhat 1.44 EV
+     dsc09026     +1.58 -> +0.14  (-1.44)
+     say06730     -0.38 -> +0.40  (+0.78)
+     bnm00689     +0.90 -> +0.14  (-0.76)
+     say06768     +0.45 -> -0.25  (-0.70)
+     dsc09146     +1.15 -> +0.48  (-0.67)
+     dsc08934     -0.29 -> +0.23  (+0.52)
+     dsc08932     +0.00 -> +0.50  (+0.50)
+     bnm00342     +0.00 -> -0.49  (-0.49)
+
+==================================================================
+KET LUAN: CA HAI CONG DAT
+-> kiem_gu.csv
+
+Muon ap dung: chay lai voi them co --ghi-gu
+ 
+===== 2/2  VUNG AF NIKON (af_nikon) ===== 
+De xuat doi:
+  af_nikon                 False  ->  True
+
+Dung file export: export_20260929_143944.tsv
+Tap kiem: 878 anh co dich dung | 3095 anh da duyet
+So tien trinh: 8
+
+Luot 1/2 — tham so DANG CHAY
+    3811 anh, 0 loi, 253s
+Luot 2/2 — tham so DE XUAT
+    3811 anh, 0 loi, 281s
+
+==================================================================
+CONG A — 693 anh co dich dung
+  keo LAI GAN dich : 2 anh
+  day RA XA        : 0 anh
+  sai trung binh   : 0.211 -> 0.211 EV
+  -> DAT
+     say07036     -1.26 -> -1.21   (ban chon +0.10; sai 1.36 -> 1.31)
+     hiu_3964     -0.36 -> -0.37   (ban chon -0.44; sai 0.08 -> 0.07)
+     dsc08564     -0.60 -> -0.60   (ban chon -0.44; sai 0.16 -> 0.16)
+     dsc08565     -0.64 -> -0.64   (ban chon -0.44; sai 0.20 -> 0.20)
+     dsc08566     -0.64 -> -0.64   (ban chon -0.44; sai 0.20 -> 0.20)
+     dsc08571     -0.47 -> -0.47   (ban chon -0.44; sai 0.03 -> 0.03)
+     dsc08572     -0.46 -> -0.46   (ban chon -0.44; sai 0.02 -> 0.02)
+     dsc08573     -0.44 -> -0.44   (ban chon -0.44; sai 0.00 -> 0.00)
+
+  Theo tung ly do:
+    ly do                   n   gan   xa  dong toi     sai t.b cu -> moi
+    chua-gan-ly-do        635     2    0         1      0.184 ->   0.184
+    sang-qua               24     0    0         0      0.465 ->   0.465
+    khac                   16     0    0         0      0.435 ->   0.435
+    nen-chay               13     0    0         0      0.666 ->   0.666
+    toi-qua                 5     0    0         0      0.549 ->   0.549
+    (635 anh chua co ly do — cong cham mu tren nhom nay)
+
+CONG B — 3118 anh da duyet
+  xe dich qua 0.3 EV: 39  (1.25%)
+  cong cho phep duoi 2.0%  -> DAT
+  bien do nhom bi dung: trung vi 0.45, lon nhat 0.89 EV
+     hiu_4231     -0.89 -> +0.00  (+0.89)
+     hiu_4144     +0.45 -> -0.43  (-0.88)
+     hiu_4227     +0.45 -> -0.42  (-0.87)
+     hiu_4228     +0.45 -> -0.41  (-0.86)
+     hiu_4150     +0.45 -> -0.40  (-0.85)
+     hiu_4149     +0.45 -> -0.39  (-0.84)
+     hiu_4114     +0.45 -> -0.39  (-0.84)
+     hiu_4151     +0.45 -> -0.36  (-0.81)
+
+==================================================================
+KET LUAN: CA HAI CONG DAT
+-> kiem_gu.csv
+
+Muon ap dung: chay lai voi them co --ghi-gu

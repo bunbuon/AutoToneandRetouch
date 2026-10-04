@@ -82,7 +82,9 @@ end
 
 --[[ Đọc file job.
      Dòng đầu là tiêu đề: path, Exposure2012, Highlights2012, Shadows2012,
-     Temperature, Tint. Ô để trống nghĩa là "đừng đụng trường này". ]]
+     Temperature, Tint... (đọc THEO TÊN CỘT — autotone thêm cột mới như
+     Contrast2012/Whites2012/Blacks2012 thì không phải sửa dòng nào ở đây).
+     Ô để trống nghĩa là "đừng đụng trường này". ]]
 function M.readJob(path)
     local rows = {}
     local fh = io.open(path, "r")
@@ -571,10 +573,21 @@ end
      dùng có thể đang bấm ở đâu đó khác, hoặc không chọn gì.
      ============================================================ ]]
 
+--[[ 3/10: thêm WhiteBalance + Contrast/Whites/Blacks. Quy trình mới của người
+     dùng: preset BỎ TRỐNG nhóm White Balance và Basic Tone, autotone tự ghi hai
+     nhóm đó — nên nó phải thấy được ảnh đang As Shot / Tone 0 hay đã có preset
+     đầy đủ (preset_chua_ap trong autotone.py). Cột mới đặt CUỐI: autotone đọc
+     theo tên cột, bản cũ của nó gặp cột lạ thì bỏ qua.
+     ExportForAutoTone.lua (menu) dùng CHUNG bảng này — một chỗ sửa, hai đường. ]]
 local EXPORT_FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
-                        "Temperature", "Tint", "AsShotTemperature", "AsShotTint" }
+                        "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
+                        "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012" }
 -- Rating KHONG phai develop setting nen phai lay rieng bang getRawMetadata,
 -- xem cho ghi tung dong ben duoi. Can de doi chieu voi nhan loc anh cua nguoi dung.
+M.EXPORT_FIELDS = EXPORT_FIELDS
+
+-- Truong la CHU chu khong phai so: "As Shot", "Custom", "Auto"...
+local EXPORT_TEXT = { WhiteBalance = true }
 
 local function numOrEmpty(v)
     if type(v) == "number" then
@@ -583,6 +596,17 @@ local function numOrEmpty(v)
         return v
     end
     return ""
+end
+
+--[[ Một ô của bản xuất. Trường chữ thì giữ nguyên chữ — numOrEmpty sẽ biến
+     "As Shot" thành ô trống, và autotone tưởng plugin cũ không xuất cột này.
+     Tab / xuống dòng thay bằng dấu cách: lọt một tab là cả dòng lệch cột. ]]
+function M.exportCell(key, v)
+    if EXPORT_TEXT[key] then
+        if type(v) ~= "string" then return "" end
+        return (string.gsub(v, "[\t\r\n]", " "))
+    end
+    return numOrEmpty(v)
 end
 
 --[[ Ảnh trong một thư mục.
@@ -665,7 +689,7 @@ function M.writeExport(catalog, photos, onProgress, opts)
                 if type(s) == "table" then
                     local row = { path }
                     for _, key in ipairs(EXPORT_FIELDS) do
-                        row[#row + 1] = numOrEmpty(s[key])
+                        row[#row + 1] = M.exportCell(key, s[key])
                     end
                     row[#row + 1] = numOrEmpty(rating)
                     lines[#lines + 1] = table.concat(row, "\t")
@@ -691,7 +715,8 @@ function M.writeExport(catalog, photos, onProgress, opts)
 
     if #lines == 1 then
         if skipped > 0 then
-            return 0, nil, string.format("ca %d anh deu bi bo vi %d sao", skipped, skipRating)
+            return 0, nil, string.format("ca %d anh deu bi bo vi %d sao", skipped, skipRating),
+                   skipped
         end
         return 0, nil, string.format("%d anh thieu duong dan, %d anh khong doc duoc thong so",
                                      noPath, noSettings)
@@ -711,18 +736,79 @@ function M.writeExport(catalog, photos, onProgress, opts)
         LrFileUtils.move(tmp, dest)
     end)
 
-    -- chi giu ban moi nhat cho do rac
-    M.try("cleanupExports", function()
-        for p in LrFileUtils.files(dir) do
-            local name = LrPathUtils.leafName(p)
-            if p ~= dest and string.sub(name, 1, 7) == "export_"
-               and string.sub(name, -4) == ".tsv" then
-                LrFileUtils.delete(p)
-            end
-        end
-    end)
+    M.try("cleanupExports", function() M.donBanXuat(dir) end)
 
     return #lines - 1, dest, nil, skipped
+end
+
+--[[ GIỮ 30 BẢN XUẤT MỚI NHẤT — không còn "chỉ giữ một bản cho đỡ rác".
+
+     3/10: app đang ở buổi G:\1009, Lightroom đang mở G:\1005 và lệnh xuất ở
+     menu lấy theo vùng đang xem -> bản xuất 1005 XOÁ luôn bản của 1009. Một
+     file cho cả catalog nghĩa là buổi nào xuất sau thì buổi kia mất. App giờ
+     chọn bản xuất theo thư mục (ban_xuat_cho_thu_muc), nên giữ nhiều bản được.
+     Tên file là export_<ngày>_<giờ> nên xếp theo tên = xếp theo thời gian. ]]
+local GIU_BAN_XUAT = 30
+
+function M.donBanXuat(dir, giu)
+    giu = giu or GIU_BAN_XUAT
+    local ds = {}
+    for p in LrFileUtils.files(dir) do
+        local name = LrPathUtils.leafName(p)
+        if string.sub(name, 1, 7) == "export_" and string.sub(name, -4) == ".tsv" then
+            ds[#ds + 1] = p
+        end
+    end
+    table.sort(ds, function(a, b) return LrPathUtils.leafName(a) > LrPathUtils.leafName(b) end)
+    for i = giu + 1, #ds do LrFileUtils.delete(ds[i]) end
+    return math.max(0, #ds - giu)
+end
+
+--[[ NHỊP CỦA VÒNG LẶP NỀN -> jobs/plugin_song.txt, tối đa 10 giây một lần.
+
+     3/10: vòng lặp trong Lightroom không chạy suốt 39 phút mà không ai biết —
+     plugin.log chỉ ghi khi CÓ việc, nên "nhật ký im" vừa có thể là "không có
+     việc" vừa có thể là "vòng lặp chết". App đọc mtime file này
+     (autotone.plugin_nhip) để nói ngay "plugin không chạy — Reload" thay vì
+     để người dùng ngồi chờ yêu cầu xuất. ]]
+local nhipCuoi = 0
+
+function M.ghiNhip(vong, cachGiay)
+    local now = os.time()
+    if now - nhipCuoi < (cachGiay or 10) then return false end
+    nhipCuoi = now
+    local dir = M.jobDir()
+    if not LrFileUtils.exists(dir) then LrFileUtils.createAllDirectories(dir) end
+    local fh = io.open(LrPathUtils.child(dir, "plugin_song.txt"), "w")
+    if not fh then return false end
+    fh:write("vong=" .. tostring(vong) .. "\nkhi=" .. os.date("%Y-%m-%d %H:%M:%S") .. "\n")
+    fh:close()
+    return true
+end
+
+--[[ KẾT QUẢ CỦA MỘT LẦN APP NHỜ XUẤT -> jobs/ketqua_xuat.txt (khoá=giá_trị).
+
+     Trước đây không thấy ảnh nào (thư mục chưa import / đã gỡ khỏi catalog)
+     thì chỉ ghi một dòng nhật ký: app đợi đủ 90 giây rồi báo "plugin chưa xuất
+     xong" — sai bệnh. Số ảnh 1 sao bị bỏ cũng chỉ nằm trong nhật ký, nên app
+     gọi chung chúng với ảnh thiếu thật là "sẽ bị bỏ qua". ]]
+function M.ghiKetQuaXuat(t)
+    local dir = M.jobDir()
+    if not LrFileUtils.exists(dir) then LrFileUtils.createAllDirectories(dir) end
+    local dest = LrPathUtils.child(dir, "ketqua_xuat.txt")
+    local tmp = dest .. ".part"
+    local fh = io.open(tmp, "w")
+    if not fh then return end
+    for _, k in ipairs({ "thu_muc", "so_anh", "bo_sao", "file", "cach", "loi" }) do
+        if t[k] ~= nil then
+            fh:write(k .. "=" .. (string.gsub(tostring(t[k]), "[\r\n]", " ")) .. "\n")
+        end
+    end
+    fh:close()
+    M.try("ketQuaXuat", function()
+        LrFileUtils.delete(dest)
+        LrFileUtils.move(tmp, dest)
+    end)
 end
 
 --[[ Xử lý yêu cầu xuất do app ghi ra. Trả về số ảnh đã xuất, hoặc 0. ]]
@@ -750,14 +836,17 @@ function M.runExportRequest()
 
     if not folder or folder == "" then
         M.log("yeu cau xuat: thieu duong dan thu muc")
+        M.ghiKetQuaXuat({ so_anh = 0, loi = "thieu-duong-dan" })
         return 0
     end
-    folder = string.gsub(folder, "^%s*(.-)%s*$", "%1")
+    folder = (string.gsub(folder, "^%s*(.-)%s*$", "%1"))
 
     local catalog = LrApplication.activeCatalog()
     local photos, how = M.photosInFolder(catalog, folder)
     if not photos or #photos == 0 then
         M.log("yeu cau xuat: khong thay anh nao trong " .. folder)
+        M.ghiKetQuaXuat({ thu_muc = folder, so_anh = 0, cach = how,
+                          loi = "khong-co-trong-catalog" })
         return 0
     end
 
@@ -765,6 +854,8 @@ function M.runExportRequest()
                                                { skipRating = opts.skip_rating })
     if err then
         M.log("yeu cau xuat LOI: " .. tostring(err))
+        M.ghiKetQuaXuat({ thu_muc = folder, so_anh = 0, bo_sao = skipped or 0,
+                          cach = how, loi = tostring(err) })
         return 0
     end
     local msg = string.format("yeu cau tu app: xuat %d anh (%s)", n, how)
@@ -772,6 +863,8 @@ function M.runExportRequest()
         msg = msg .. string.format(", bo %d anh %s sao", skipped, tostring(opts.skip_rating))
     end
     M.log(msg .. " -> " .. LrPathUtils.leafName(dest))
+    M.ghiKetQuaXuat({ thu_muc = folder, so_anh = n, bo_sao = skipped or 0, cach = how,
+                      file = LrPathUtils.leafName(dest) })
     return n
 end
 

@@ -14,6 +14,10 @@
 
 Cả hai đều KHÔNG báo lỗi gì — đó là lý do phải có bài kiểm riêng.
 
+  (3/10) Từ khi app đọc bản xuất THEO THƯ MỤC, chốt ở mục 2 phải so đúng bản
+     xuất của buổi đang chạy: bản xuất của một buổi KHÁC mới hơn lần ghi không
+     được làm nó im.
+
 Chạy:  python kiem_moc_va_xuat.py
 """
 
@@ -83,8 +87,15 @@ def main() -> int:
          "đường thoát cho lúc thật sự muốn đặt lại mốc")
 
     # ====================================================== 2. BẢN XUẤT CŨ
-    def cham(p: Path, tre: float):
-        p.write_text("path\tExposure2012\n", encoding="utf-8")
+    #[[ 3/10: ban xuat phai CO ANH cua thu muc (app gio doc ban xuat theo thu
+    #   muc — at.ban_xuat_cho_thu_muc). Truoc day file gia chi co dong tieu de;
+    #   chot cu lay mtime cua MOI ban xuat nen van "dat". ]]
+    khac = san / "1005"
+    khac.mkdir()
+
+    def cham(p: Path, tre: float, thu_muc: Path | None = None):
+        noi = "" if p.suffix == ".done" else f"{(thu_muc or buoi) / 'a0.arw'}\t0.00\n"
+        p.write_text("path\tExposure2012\n" + noi, encoding="utf-8")
         t = time.time() + tre
         at.os.utime(p, (t, t))
 
@@ -96,12 +107,41 @@ def main() -> int:
     cham(jobs / "apply_20260907_110421_2705.done", 0)    # 11:04 — SAU
     cu, t_xuat, t_ghi = at.ban_xuat_cu_hon_lan_ghi(buoi, jobs)
     ktra("bắt được bản xuất cũ hơn lần ghi", cu is True,
-         f"xuất {t_xuat:%H:%M:%S} < ghi {t_ghi:%H:%M:%S}")
+         f"xuất {t_xuat:%H:%M:%S} < ghi {t_ghi:%H:%M:%S}" if t_xuat and t_ghi
+         else "không so được — chốt không tìm ra bản xuất của buổi")
 
-    cham(jobs / "export_20260907_190000.tsv", 300)       # bản xuất mới hơn
+    #[[ 3/10 — CHINH CAI BAY CUA BAN XUAT THEO THU MUC. Buoi 2705 van dung ban
+    #   xuat 11:02 cua no (cu hon lan ghi 11:04), nhung Lightroom vua xuat mot
+    #   buoi KHAC luc 11:07. Chot cu lay mtime lon nhat cua MOI ban xuat -> im,
+    #   va danh_dau_nguoi_sua bo ca buoi 2705 trong im lang. ]]
+    cham(jobs / "export_20260907_110700.tsv", 180, khac)  # buổi 1005, mới hơn lần ghi
+    cu, t_xuat, _ = at.ban_xuat_cu_hon_lan_ghi(buoi, jobs)
+    ktra("bản xuất buổi KHÁC mới hơn không làm chốt im", cu is True,
+         f"chốt đang so với bản xuất {t_xuat:%H:%M:%S}" if t_xuat else "không so được")
+
+    #[[ Khong biet file nao dang dung thi uu tien ban phu DUNG thu muc, du co
+    #   ban chi phu thu muc con moi hon: nham ve phia bao oan (tat buoc loc va
+    #   noi ra) con hon nham ve phia im (bo ca buoi). ]]
+    con = buoi / "con"
+    con.mkdir()
+    cham(jobs / "export_20260907_110500.tsv", 120, con)   # chỉ thư mục con, mới hơn
+    ktra("không biết file đang dùng: ưu tiên bản của đúng thư mục",
+         at.ban_xuat_cu_hon_lan_ghi(buoi, jobs)[0] is True,
+         "bản chỉ phủ thư mục con không được làm chốt im")
+
+    #[[ Giao dien biet file nao dang dung -> truyen vao; file do quyet dinh. ]]
+    moi_2705 = jobs / "export_20260907_190000.tsv"
+    cham(moi_2705, 300)                                   # bản xuất 2705 mới hơn
     ktra("có bản xuất mới hơn thì không kêu nữa",
          at.ban_xuat_cu_hon_lan_ghi(buoi, jobs)[0] is False,
          "đúng thứ tự thì im lặng")
+    ktra("truyền đúng file đang dùng (cũ) thì vẫn kêu",
+         at.ban_xuat_cu_hon_lan_ghi(buoi, jobs,
+                                    ban_xuat=jobs / "export_20260907_110210.tsv")[0] is True,
+         "giao diện còn cầm bản cũ dù trên đĩa đã có bản mới")
+    ktra("truyền file mới thì im",
+         at.ban_xuat_cu_hon_lan_ghi(buoi, jobs, ban_xuat=moi_2705)[0] is False,
+         "file truyền vào quyết định")
 
     #[[ Job KHOI PHUC khong duoc tinh la "lan tool ghi". No tra lai ban sua tay,
     #   nen catalog trung voi no la chuyen binh thuong. ]]
@@ -134,10 +174,27 @@ def main() -> int:
          "ban_xuat_cu_hon_lan_ghi" in goi,
          "không gọi thì cả cái chốt là code chết")
 
+    ktra("plan() truyền ban_xuat vào chốt",
+         any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id == "ban_xuat_cu_hon_lan_ghi"
+             and any(k.arg == "ban_xuat" and isinstance(k.value, ast.Name)
+                     and k.value.id == "ban_xuat" for k in n.keywords)
+             for n in ast.walk(plan_fn)) if plan_fn else False,
+         "không truyền thì chốt tự đoán file, giao diện cầm file nào cũng vậy")
+
     gui = (goc / "autotone_gui.py").read_text(encoding="utf-8")
     ktra("giao diện có đọc và hiện CANH_BAO_XUAT",
          "CANH_BAO_XUAT" in gui,
          "chốt tự tắt một bước lọc mà im lặng thì không ai biết")
+    cay_gui = ast.parse(gui)
+    ktra("giao diện gọi at.plan() kèm file bản xuất đang dùng",
+         any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and n.func.attr == "plan" and isinstance(n.func.value, ast.Name)
+             and n.func.value.id == "at"
+             and any(k.arg == "ban_xuat" and "_file_xuat" in ast.unparse(k.value)
+                     for k in n.keywords)
+             for n in ast.walk(cay_gui)),
+         "self._file_xuat() — file mà self.export đọc ra")
 
     ws = (goc / "autotone.py").read_text(encoding="utf-8")
     ktra("write_sidecars vẫn gọi save_baseline (mốc được chốt khi ghi)",

@@ -39,11 +39,18 @@ import autotone as at   # noqa: E402
 class AppGia:
     """Chỉ đủ để chạy ba hàm thật của App. Không dựng lại logic nào cả."""
 
-    def __init__(self, pairs):
+    def __init__(self, pairs, thu_muc=None):
         self.pairs = pairs
         self.export = {}
         self.nhan = ""
         self.mau = ""
+        #[[ 3/10: _doc_xuat gio doc ban xuat CUA THU MUC DANG CHON (xem
+        #   at.ban_xuat_cho_thu_muc) nen can biet thu muc + o "Gom ca thu muc con". ]]
+        self._thu_muc = thu_muc
+        self.v_recursive = type("V", (), {"get": staticmethod(lambda: False)})()
+
+    def folder(self):
+        return self._thu_muc
 
     # ba hàm dưới đây là BẢN SAO THAM CHIẾU tới hàm thật của App — gán ở dưới
     def _cau_hinh_nhan(self, text, foreground=None):
@@ -80,8 +87,12 @@ def main() -> int:
         jobs = Path(t) / "jobs"
         jobs.mkdir()
 
-        cu = [f"G:\\2905\\OLD{i:05d}.ARW" for i in range(220)]
-        moi = [f"G:\\0608\\DSC{i:05d}.ARW" for i in range(96)]
+        #[[ Duong dan THAT trong thu muc tam (posix tren Linux, \\ tren Windows):
+        #   tu 3/10 app xet ban xuat "co anh cua thu muc dang chon khong" bang
+        #   os.path.dirname — chuoi "G:\\0608\\..." tren Linux khong co thu muc cha. ]]
+        b2905, b0608 = Path(t) / "2905", Path(t) / "0608"
+        cu = [str(b2905 / f"OLD{i:05d}.ARW") for i in range(220)]
+        moi = [str(b0608 / f"DSC{i:05d}.ARW") for i in range(96)]
 
         #[[ pairs cua buoi 0608 — dung dang (raw, sidecar) nhu collect_pairs tra ve.
         #]]
@@ -125,7 +136,8 @@ def main() -> int:
         #]]
         import autotone_gui as ag
 
-        app = AppGia(pairs)
+        b0608.mkdir()
+        app = AppGia(pairs, b0608)
         cu_job = at.LR_JOB_DIR
         try:
             at.LR_JOB_DIR = jobs           # tro ham that vao thu muc tam

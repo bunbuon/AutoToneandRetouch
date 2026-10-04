@@ -195,6 +195,62 @@ def main() -> int:
         loi.append("Bo mot nhat cat theo gio ma khong ghi lai dau vet nao — "
                    "sau nay khong ai truy duoc vi sao hai doan lai lien nhau")
 
+    #[[ 19 — nhat cat vi DOI TRONG/NGOAI phai mang dung nhan cua no.
+    #
+    #   Khung y nguyen (chu ky lech 0), chi mot tam doi toc 1/160 -> 1/200 nen
+    #   EV100 vuot nguong. Truoc day nhan bi ghi de thanh "boi-canh", nen doc
+    #   bao cao se tuong khung hinh doi — di tim sai cho. Gap 29/9 khi user hoi
+    #   vi sao mot tam cung canh bi keo lech.
+    #]]
+    le = [anh(i * 5, 0.10) for i in range(7)]
+    for i, x in enumerate(le):
+        x["ngoai_troi"] = (i == 3)
+    at.group_scenes(le, 5.0, 0.30)
+    if canh(le) != [0, 0, 0, 1, 2, 2, 2]:
+        loi.append(f"Doi trong/ngoai: {canh(le)}, dang le 000 1 222")
+    nhan = [le[3].get("scene_cut"), le[4].get("scene_cut")]
+    if nhan != ["doi-trong-ngoai", "doi-trong-ngoai"]:
+        loi.append(f"Nhat cat trong/ngoai mang nhan {nhan}, dang le "
+                   f"'doi-trong-ngoai' ca hai — nhan sai lam bao cao chi nham "
+                   f"sang 'khung hinh doi'")
+
+    #[[ 20 — lam min nhan ngay/den (trong_ngoai_min_shots). Goi lam_min_
+    #   trong_ngoai() + group_scenes() that, dung thu tu plan() goi.
+    #]]
+    def nhan(ds_nhan, n):
+        ds = [anh(i * 5, 0.10) for i in range(len(ds_nhan))]
+        for x, v in zip(ds, ds_nhan):
+            x["ngoai_troi"] = v
+        doi = at.lam_min_trong_ngoai(ds, n)
+        at.group_scenes(ds, 5.0, 0.30)
+        return ds, doi
+
+    F, T = False, True
+    ds, doi = nhan([F, F, F, T, F, F, F], 3)
+    if doi != 1 or len(set(canh(ds))) != 1 or ds[3]["ngoai_troi"] is not False:
+        loi.append(f"Lam min: 1 tam le phai theo hai ben va ca loat mot canh, "
+                   f"doi={doi} canh={canh(ds)}")
+    if ds[3].get("ngoai_troi_tho") is not True:
+        loi.append("Lam min: mat nhan goc, bao cao khong truy duoc")
+    ds, doi = nhan([F, F, F, T, F, F, F], 1)
+    if doi != 0 or canh(ds) != [0, 0, 0, 1, 2, 2, 2]:
+        loi.append(f"trong_ngoai_min_shots=1 phai la TAT (hanh vi cu), "
+                   f"doi={doi} canh={canh(ds)}")
+    ds, doi = nhan([F, F, T, T, T, F, F], 3)
+    if doi != 0:
+        loi.append(f"Doan du 3 khung la doi that, khong duoc lam min (doi={doi})")
+    ds, doi = nhan([T, F, F, F, F], 3)
+    if doi != 0:
+        loi.append(f"Doan o dau buoi khong co hai ben de so, phai giu (doi={doi})")
+    #[[ Nhap nhay ngay CHO chuyen that (F F T F T T T): hai doan ngan deu theo
+    #   hai ben cua chung, tinh tren nhan GOC chu khong tren nhan vua sua — nen
+    #   ket qua la MOT ranh gioi, hai canh, khong phai bon canh vun.
+    #]]
+    ds, doi = nhan([F, F, T, F, T, T, T], 3)
+    if [x["ngoai_troi"] for x in ds] != [F, F, F, T, T, T, T] or len(set(canh(ds))) != 2:
+        loi.append(f"Nhap nhay cho chuyen that phai con dung mot ranh gioi: "
+                   f"{[int(x['ngoai_troi']) for x in ds]} canh={canh(ds)}")
+
     for m in loi:
         print("  [!]", m)
     print("TAT CA DAT" if not loi else f"{len(loi)} LOI")

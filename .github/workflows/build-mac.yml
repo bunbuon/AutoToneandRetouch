@@ -23,13 +23,20 @@ on:
         description: "Bỏ hẳn phần retouch khỏi gói"
         type: boolean
         default: false
+      #[[ BAO MAT MAC DINH BAT (--bao-mat). O nay chi de GO LOI: tat bao mat thi
+      #   ban .app ra se CON MA NGUON .py doc duoc — KHONG duoc giao khach. Dung
+      #   no khi can build nhanh de thu mot thay doi, khong phai ban phat hanh. ]]
+      khong_bao_mat:
+        description: "GỠ LỖI: bỏ mã hoá (bản ra có mã nguồn — KHÔNG giao khách)"
+        type: boolean
+        default: false
 
 jobs:
   dong-goi:
     #[[ macos-14 la Apple Silicon (arm64). Goi ra chay tren may M1/M2/M3...
     #   May Intel doi macos-13. Xem ghi chu o buoc "Dong goi" ben duoi. ]]
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Lấy mã nguồn
@@ -97,10 +104,27 @@ jobs:
           #   Nen dung dung bo ma ban Windows da chung minh.
           #]]
           "$PY" -m pip install pyinstaller pillow numpy opencv-python
+          #[[ BAO MAT: Cython de dich loi + saytool sang .so TREN CHINH MAY MAC
+          #   (khong build cheo duoc — day la cho DUY NHAT kiem duoc .so Mac).
+          #   macos-14 co clang san (Xcode CLT), khong phai cai them trinh dich. ]]
+          if [ "${{ inputs.khong_bao_mat }}" != "true" ]; then
+            "$PY" -m pip install cython
+            #[[ torch: CHI de self-check nap model .so luc dong_goi_bao_mat tu kiem
+            #   tren may Mac. --nhe van LOAI torch khoi GOI (xem GOI_TACH) — torch
+            #   o day dung xong roi vut, khong vao ban giao khach. Bo khi khong
+            #   retouch (self-check khong can torch). ]]
+            if [ "${{ inputs.khong_retouch }}" != "true" ]; then
+              "$PY" -m pip install torch || echo "  [!] torch khong cai duoc — self-check model se bo qua"
+            fi
+          fi
           #[[ Kiem NGAY rang ba thu quyet dinh deu nam dung cho, truoc khi
           #   build. Bon lan chay truoc deu phai suy luan tu log gian tiep. ]]
           echo "=== kiểm trước khi build ==="
           "$PY" -c "import sys, cv2, tkinter; print('prefix :', sys.prefix); print('cv2    :', cv2.__version__); print('tk     :', tkinter.TkVersion)"
+          if [ "${{ inputs.khong_bao_mat }}" != "true" ]; then
+            "$PY" -c "import Cython; print('cython :', Cython.__version__)"
+            "$PY" -c "import shutil,sys; print('clang  :', shutil.which('clang') or 'KHONG CO — build .so se hong')"
+          fi
 
       - name: Đóng gói
         run: |
@@ -112,6 +136,14 @@ jobs:
             THEM="$THEM --khong-retouch"
           else
             THEM="$THEM --tool-retouch $PWD/ToolCloneEvoto"
+          fi
+          #[[ BAO MAT MAC DINH: --bao-mat tru khi tick khong_bao_mat. Co retouch
+          #   thi so anh bang bo_thuc de chac ban .so cho ket qua y het tool goc. ]]
+          if [ "${{ inputs.khong_bao_mat }}" != "true" ]; then
+            THEM="$THEM --bao-mat"
+            if [ "${{ inputs.khong_retouch }}" != "true" ] && [ -d "$PWD/ToolCloneEvoto/bo_thuc" ]; then
+              THEM="$THEM --so-anh $PWD/ToolCloneEvoto/bo_thuc"
+            fi
           fi
           #[[ PHAI goi DUNG ban Python da cai thu vien.
           #
@@ -139,6 +171,35 @@ jobs:
           echo "=== bí mật có lọt không (phải trống) ==="
           grep -rl "AutoTone-SAY-Media-bq-" dist/ 2>/dev/null || echo "  sạch"
           find dist -name "cap_key*" -o -name "quan_ly_key*" 2>/dev/null || true
+
+      #[[ CHAN build neu BAO MAT ma loi/saytool VAN con .py doc duoc. Mot ban
+      #   ma hoa am tham khong chay (vd thieu trinh dich) ma van ra goi la kieu
+      #   hong te nhat: tuong da giau code, thuc ra giao ca ma nguon. Bat o day. ]]
+      - name: Chặn nếu còn mã nguồn (chỉ khi bảo mật)
+        if: ${{ !inputs.khong_bao_mat }}
+        run: |
+          R="dist/AutoTone.app/Contents"
+          LOI=0
+          echo "=== lõi phải là .so, KHÔNG được còn .py/.pyc ==="
+          for m in autotone retouch khoa ban_quyen thu_gu learn_corrections giao_dien autotone_gui; do
+            if [ "${{ inputs.khong_retouch }}" = "true" ] && [ "$m" = "retouch" ]; then continue; fi
+            so=$(find "$R" -name "$m*.so" 2>/dev/null | head -1)
+            py=$(find "$R" \( -name "$m.py" -o -name "$m.pyc" \) 2>/dev/null | head -1)
+            if [ -z "$so" ]; then echo "  [!] THIẾU $m.so (lõi chưa mã hoá?)"; LOI=1
+            elif [ -n "$py" ]; then echo "  [!] CÒN mã nguồn: $py"; LOI=1
+            else echo "  [ok] $m -> $(basename "$so")"; fi
+          done
+          if [ "${{ inputs.khong_retouch }}" != "true" ]; then
+            echo "=== saytool chỉ được còn 4 vỏ .py (__init__/cli/duong_dan + có thể __main__) ==="
+            la=$(find "$R" -path "*/saytool/*.py" ! -name "__init__.py" ! -name "cli.py" ! -name "duong_dan.py" ! -name "__main__.py" 2>/dev/null)
+            if [ -n "$la" ]; then echo "  [!] saytool CÒN .py lạ (chưa mã hoá):"; echo "$la"; LOI=1
+            else echo "  [ok] saytool sạch"; fi
+          fi
+          if [ "$LOI" != "0" ]; then
+            echo "DỪNG: bản bảo mật mà còn mã nguồn đọc được — KHÔNG phát hành."
+            exit 1
+          fi
+          echo "Gói bảo mật đạt: lõi + saytool đều là mã máy."
 
       - name: Gửi gói ra
         uses: actions/upload-artifact@v4

@@ -74,6 +74,39 @@ T_MAKERNOTE        = 0x927C
 #   noi dung anh. Do thuc te: 50/50 anh Sony A7M4 deu co tag nay hop le.
 #]]
 T_SONY_FOCUS_LOC   = 0x2027
+#[[ Nikon ghi vung lay net vao MakerNote 0x00B7 "AFInfo2" (khoi nhi phan).
+#
+#   MakerNote Nikon co dau "Nikon\0" + 4 byte, roi mot TIFF header RIENG tai
+#   +10 (thu tu byte rieng, offset tinh tu header do) — khac Sony la IFD tran.
+#
+#   Ban 0300 / 0301 (dong Z, vd NIKON Z 6_2): tu byte 0x2a la 6 so 16-bit
+#       rong anh AF, cao anh AF, tam X, tam Y, rong vung, cao vung
+#   Doi chieu bang ExifTool tren 9 file NEF that cua bo 2609 (Z 6_2, ban 0301):
+#   khop tung so. Ban khac (0100 dong D, 0400 Z8/Z9/Z6III) CHUA co file that de
+#   doi chieu nen KHONG doc — tra ve khong co, lui ve cach doan cu.
+#
+#   Nikon Wide-area chon net o DAU DO trong vung, nen giu ca KICH THUOC vung
+#   (af_vung), khong chi tam.
+#]]
+T_NIKON_AFINFO2    = 0x00B7
+#[[ WB MAY DA DUNG KHI RENDER PREVIEW — them 2/10/2026 (hoc tu 2 ban quay).
+#
+#   Toan bo phan can mau doc mau da tren PREVIEW nhung trong RAW. Preview do
+#   may render bang WB CUA MAY, khong phai WB cua preset Lightroom. Ma moi may
+#   mot kieu: buoi TrainTool, Sony A7IV/A7V dat tay 5200-5600K, Nikon Z6II de
+#   Auto (may tu do 4840-6740K). Che do catalog lai KHONG co AsShotTemperature
+#   (0/1502 anh), nen tool khong biet preview da duoc can theo nhiet do nao.
+#   Doc thang tu MakerNote:
+#     Sony  0x0115 WhiteBalance (0 = Auto, 1 = dat nhiet do tay, ...)
+#           0xb021 ColorTemperature (K) — co gia tri khi dat tay
+#     Nikon 0x004F ColorTemperatureAuto (K may tu do) — IFD Nikon KHONG ma hoa
+#           0x000C WB_RBLevels (he so R, B) — 4 so rational
+#   Doi chieu ExifTool 12.76 tren 75 file that cua TrainTool: khop tung so.
+#]]
+T_SONY_WB_MODE     = 0x0115
+T_SONY_COLOR_TEMP  = 0xB021
+T_NIKON_WB_RB      = 0x000C
+T_NIKON_CT_AUTO    = 0x004F
 T_ORIENTATION      = 0x0112
 T_DATETIME         = 0x0132
 T_DATETIME_ORIG    = 0x9003
@@ -101,6 +134,100 @@ def _entry_value(data, e, typ, cnt, valoff, size):
         vals = struct.unpack_from(e + f * cnt, data, valoff)
         return [(vals[i * 2], vals[i * 2 + 1]) for i in range(cnt)]
     return None
+
+
+def _af_nikon(data, mvo: int, tags: dict) -> None:
+    """Doc vung lay net tu MakerNote Nikon (xem T_NIKON_AFINFO2). Hong o dau
+    thi im lang bo qua — thieu diem AF chi la lui ve cach doan cu."""
+    try:
+        goc = mvo + 10
+        bo = bytes(data[goc:goc + 2])
+        if bo not in (b"II", b"MM"):
+            return
+        e = "<" if bo == b"II" else ">"
+        ifd = goc + struct.unpack_from(e + "I", data, goc + 4)[0]
+        n = struct.unpack_from(e + "H", data, ifd)[0]
+        if not 0 < n <= 512:
+            return
+        for i in range(n):
+            q = ifd + 2 + i * 12
+            tag, typ, cnt = struct.unpack_from(e + "HHI", data, q)
+            if tag != T_NIKON_AFINFO2:
+                continue
+            if typ != 7 or cnt < 0x36:
+                return
+            o = goc + struct.unpack_from(e + "I", data, q + 8)[0]
+            ban = bytes(data[o:o + 4])
+            if ban not in (b"0300", b"0301"):
+                tags["af_nikon_ban"] = ban.decode("ascii", "replace")
+                return
+            w, h, cx, cy, aw, ah = struct.unpack_from(e + "6H", data, o + 0x2A)
+            if w > 0 and h > 0 and 0 < cx <= w and 0 < cy <= h:
+                tags["af_point"] = (cx / w, cy / h)
+                if aw > 0 and ah > 0:
+                    tags["af_vung"] = (aw / w, ah / h)
+            return
+    except (struct.error, IndexError):
+        return
+
+
+def _wb_nikon(data, mvo: int, tags: dict) -> None:
+    """Doc WB may tu MakerNote Nikon (xem T_NIKON_CT_AUTO). Hong thi bo qua —
+    thieu so nay chi la quay ve cach can mau cu."""
+    try:
+        goc = mvo + 10
+        bo = bytes(data[goc:goc + 2])
+        if bo not in (b"II", b"MM"):
+            return
+        e = "<" if bo == b"II" else ">"
+        ifd = goc + struct.unpack_from(e + "I", data, goc + 4)[0]
+        n = struct.unpack_from(e + "H", data, ifd)[0]
+        if not 0 < n <= 512:
+            return
+        for i in range(n):
+            q = ifd + 2 + i * 12
+            tag, typ, cnt = struct.unpack_from(e + "HHI", data, q)
+            if tag == T_NIKON_CT_AUTO and typ == 3 and cnt >= 1:
+                k = struct.unpack_from(e + "H", data, q + 8)[0]
+                if 1500 <= k <= 15000:
+                    tags["wb_may_K"] = int(k)
+                    tags["wb_may_che_do"] = "auto"
+            elif tag == T_NIKON_WB_RB and typ == 5 and cnt >= 2:
+                o = goc + struct.unpack_from(e + "I", data, q + 8)[0]
+                rn, rd, bn, bd = struct.unpack_from(e + "4I", data, o)
+                if rd and bd and rn and bn:
+                    tags["wb_may_rb"] = math.log2((rn / rd) / (bn / bd))
+    except (struct.error, IndexError, ValueError):
+        return
+
+
+def _wb_sony(data, mvo: int, e: str, tags: dict) -> None:
+    """Doc che do WB va nhiet do dat tay tu MakerNote Sony (IFD tran tai mvo)."""
+    try:
+        mn = struct.unpack_from(e + "H", data, mvo)[0]
+        if not 0 < mn <= 512:
+            return
+        mode = k = None
+        for i in range(mn):
+            q = mvo + 2 + i * 12
+            if q + 12 > len(data):
+                break
+            mtag, mtyp, mcnt = struct.unpack_from(e + "HHI", data, q)
+            if mtag == T_SONY_WB_MODE and mtyp in (3, 4) and mcnt == 1:
+                mode = struct.unpack_from(e + ("H" if mtyp == 3 else "I"), data, q + 8)[0]
+            elif mtag == T_SONY_COLOR_TEMP and mtyp in (3, 4) and mcnt == 1:
+                k = struct.unpack_from(e + ("H" if mtyp == 3 else "I"), data, q + 8)[0]
+        if mode is None:
+            return
+        #[[ Chi tin nhiet do khi may o che do DAT NHIET DO (1). Che do Auto
+        #   (0) thi 0xb021 la so rac/0; cac che do dat san (Daylight, Tungsten...)
+        #   co he so rieng ma khong ghi K o day — de None, quay ve cach cu.
+        #]]
+        tags["wb_may_che_do"] = "auto" if mode == 0 else ("tay" if mode == 1 else f"san{mode}")
+        if mode == 1 and k and 1500 <= k <= 15000:
+            tags["wb_may_K"] = int(k)
+    except (struct.error, IndexError):
+        return
 
 
 def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
@@ -173,6 +300,18 @@ def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
     #   Chi lay dung tag diem lay net, khong duyet sau — MakerNote toi 38KB,
     #   duyet het vua cham vua de dinh du lieu rac.
     #]]
+    #[[ WB may — doc TRUOC va DOC LAP voi diem AF: khoi AF ben duoi chi chay khi
+    #   chua co af_point, ma WB thi can o moi anh. Xem T_SONY_WB_MODE. ]]
+    if T_MAKERNOTE in ent and "wb_may_che_do" not in tags:
+        _, _, mvw, _ = ent[T_MAKERNOTE]
+        if data[mvw:mvw + 6] == b"Nikon\x00":
+            _wb_nikon(data, mvw, tags)
+        elif "sony" in str(tags.get("make", "")).lower():
+            _wb_sony(data, mvw, e, tags)
+    if T_MAKERNOTE in ent and "af_point" not in tags:
+        _, _, mvo0, _ = ent[T_MAKERNOTE]
+        if data[mvo0:mvo0 + 6] == b"Nikon\x00":
+            _af_nikon(data, mvo0, tags)
     if T_MAKERNOTE in ent and "af_point" not in tags:
         _, _, mvo, _ = ent[T_MAKERNOTE]
         try:
@@ -360,6 +499,97 @@ def read_raw(path: Path):
             return blob, tags
 
 
+_DUOI_ANH_THUONG = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+def anh_nho(path, canh: int = 320):
+    """Ảnh nhỏ (PIL RGB, cạnh dài ≤ canh) cho LƯỚI ẢNH của giao diện; None nếu
+    không đọc được.
+
+    VÌ SAO KHÔNG GỌI THẲNG read_raw()
+        read_raw() là đường của PHÉP ĐO: nó luôn chép 16 MB đầu file để quét
+        tìm preview to nhất (Sony giấu preview đủ cỡ trong MakerNote). Lưới ảnh
+        chỉ cần một ảnh vài trăm px — đọc 16 MB cho mỗi tấm thì 1 000 tấm là
+        16 GB đọc đĩa. Ở đây thử trước các JPEG mà bảng IFD CHỈ TỚI (đọc vài
+        KB đầu file + đúng đoạn JPEG đó), lấy cái NHỎ NHẤT mà vẫn đủ cạnh;
+        chỉ khi không có cái nào đủ mới lùi về read_raw().
+
+    Không dính gì tới số đo: ảnh này chỉ để NHÌN.
+
+    #[[ ANH THUONG (JPEG/PNG/TIFF da Export — luoi anh cua khau Retouch) mo
+    #   THANG bang PIL, xoay theo EXIF. Cho chung di duong read_raw() la quet
+    #   16 MB tim "preview nhung" trong mot file von DA la anh; TIFF 16 bit
+    #   con roi vao nhanh bang IFD va ra "khong doc duoc". ]]
+    """
+    p = Path(path)
+    if p.suffix.lower() in _DUOI_ANH_THUONG:
+        try:
+            from PIL import ImageOps
+            with Image.open(p) as goc:
+                goc.draft("RGB", (canh, canh))
+                im = ImageOps.exif_transpose(goc)
+                im = im.convert("RGB")
+            im.thumbnail((canh, canh), Image.BILINEAR)
+            return im
+        except Exception:                                    # noqa: BLE001
+            return None
+    tags: dict = {}
+    blob = None
+    try:
+        with open(p, "rb") as fh:
+            with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                if mm[:2] in (b"II", b"MM"):
+                    e = "<" if mm[:2] == b"II" else ">"
+                    jpegs: list = []
+                    try:
+                        _parse_ifd(mm, struct.unpack_from(e + "I", mm, 4)[0], e,
+                                   set(), jpegs, tags)
+                    except Exception:                        # noqa: BLE001
+                        pass
+                    du_lon = []
+                    for o, ln in sorted(set(jpegs), key=lambda t: t[1]):
+                        if ln < 2000 or not (0 < ln <= len(mm) - o) \
+                                or mm[o:o + 3] != b"\xff\xd8\xff":
+                            continue
+                        b = bytes(mm[o:o + ln])
+                        try:
+                            with Image.open(io.BytesIO(b)) as thu:
+                                px = max(thu.size)
+                        except Exception:                    # noqa: BLE001
+                            continue
+                        if px >= canh:
+                            du_lon.append(b)
+                            break
+                    if du_lon:
+                        blob = du_lon[0]
+    except (OSError, ValueError):
+        return None
+    for lan in range(2):
+        if blob is None:
+            try:
+                blob, tags2 = read_raw(p)
+                tags = tags2 or tags
+            except (OSError, ValueError):
+                return None
+            if blob is None:
+                return None
+        try:
+            im = Image.open(io.BytesIO(blob))
+            im.draft("RGB", (canh, canh))
+            im = im.convert("RGB")
+            im = apply_orientation(im, tags.get("orientation"))
+            im.thumbnail((canh, canh), Image.BILINEAR)
+            return im
+        except Exception:                                    # noqa: BLE001
+            #[[ JPEG nhung khong giai ma duoc (vd. JPEG khong mat du lieu
+            #   cua DNG): lan sau lui ve read_raw(). ]]
+            if lan == 0:
+                blob = None
+                continue
+            return None
+    return None
+
+
 # EXIF Orientation -> phép biến hình của Pillow. Preview nhúng trong RAW được lưu
 # nguyên chiều cảm biến, ảnh dọc sẽ nằm ngang nếu không xoay. Bộ nhận diện mặt chỉ
 # ăn mặt thẳng đứng nên bỏ qua bước này là hỏng hẳn với ảnh dọc.
@@ -418,6 +648,63 @@ def ev_anh_sang(tags: dict) -> float | None:
     if iso <= 0:
         return None
     return float(np.log2(n * n / t) - np.log2(iso / 100.0))
+
+
+#[[ Mot diem (u, v) tinh theo ti le 0..1 di qua dung phep xoay/lat PIL.
+#   Rut ra tu chinh cach PIL.Image.transpose doi toa do pixel, va bai kiem
+#   test_af_xoay.py do bang cach cham mot pixel roi xoay anh that.
+#]]
+_DIEM_OPS = {
+    Image.FLIP_LEFT_RIGHT: lambda u, v: (1.0 - u, v),
+    Image.FLIP_TOP_BOTTOM: lambda u, v: (u, 1.0 - v),
+    Image.ROTATE_90:       lambda u, v: (v, 1.0 - u),     # nguoc chieu kim dong ho
+    Image.ROTATE_180:      lambda u, v: (1.0 - u, 1.0 - v),
+    Image.ROTATE_270:      lambda u, v: (1.0 - v, u),     # thuan chieu kim dong ho
+}
+
+
+def af_theo_huong(pt, orientation):
+    """Diem lay net (ti le 0..1, theo cam bien) -> toa do tren anh DA XOAY.
+
+    VI SAO (29/9, bo 2609): Sony ghi FocusLocation theo he toa do CAM BIEN —
+    luc nao cung la khung ngang. Anh chup doc thi preview duoc xoay bang
+    apply_orientation(), nhung diem AF truoc day KHONG xoay theo. Diem AF roi
+    vao mot cho khac han tren anh, trung mat ai thi nguoi do thanh "chu the
+    theo AF" va MOI mat khac bi bo — dung cai nguoi dung thay: tool do mat
+    nguoi dung ngoai le trong khi may lay net vao co dau chu re.
+    """
+    if pt is None:
+        return None
+    try:
+        ops = _ORIENT_OPS.get(int(orientation or 1), [])
+    except (TypeError, ValueError):
+        return pt
+    u, v = float(pt[0]), float(pt[1])
+    for op in ops:
+        u, v = _DIEM_OPS[op](u, v)
+    return (u, v)
+
+
+def mat_gan_af(boxes, ax: float, ay: float, nguong: float):
+    """O mat gan diem AF nhat -> (chi so, khoang cach), hoac (None, None).
+
+    Khoang cach = tu diem AF toi MEP o (0 neu nam trong), chia cho canh dai cua
+    chinh o do. Xa hon `nguong` thi coi nhu khong co mat nao gan. Xem chu thich
+    o af_gan_mat trong measure().
+    """
+    if nguong <= 0:
+        return None, None
+    i_min, d_min = None, None
+    for i, b in enumerate(boxes):
+        bx, by, bw, bh = (float(v) for v in b[:4])
+        dx = max(bx - ax, 0.0, ax - (bx + bw))
+        dy = max(by - ay, 0.0, ay - (by + bh))
+        d = float(np.hypot(dx, dy)) / max(bw, bh, 1.0)
+        if d_min is None or d < d_min:
+            i_min, d_min = i, d
+    if i_min is None or d_min > nguong:
+        return None, None
+    return i_min, d_min
 
 
 def apply_orientation(im: Image.Image, orientation) -> Image.Image:
@@ -806,6 +1093,17 @@ def do_ear(blob, tags, faces, det_wh, out: dict) -> None:
         out["ear_err"] = f"{type(ex).__name__}: {ex}"
 
 
+def bo_mat_ao_to(faces: list, kich_thuoc, to_pct: float, diem: float) -> list:
+    """Bo khung mat VUA diem duoi `diem` VUA chiem hon `to_pct` % khung hinh.
+    Khung la (x, y, w, h, diem, ...) cua YuNet; kich_thuoc = (rong, cao) cua anh
+    dua vao nhan dien. to_pct <= 0 -> tra nguyen. Xem chu thich trong measure()."""
+    if to_pct <= 0 or not faces:
+        return list(faces)
+    S_ = float(kich_thuoc[0]) * float(kich_thuoc[1])
+    return [f for f in faces
+            if not (float(f[4]) < diem and float(f[2]) * float(f[3]) > S_ * to_pct / 100.0)]
+
+
 def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             wb_needs_faces: bool = False, face_px: int = 1024,
             face_score: float = 0.5, focus_q: float = 0.92,
@@ -820,7 +1118,13 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             # Dat SAU can_ear de moi loi goi theo vi tri san co giu nguyen.
             # hl_da_ti_le = 0 -> tat, quay ve chi do dai 30-90%.
             hl_da_ti_le: float = 0.0,
-            hl_da_muc: float = 220.0) -> dict:
+            hl_da_muc: float = 220.0,
+            af_gan_mat: float = 0.0,
+            af_xoay_theo_anh: bool = True,
+            af_nikon: bool = False,
+            # Dat CUOI de moi loi goi theo vi tri san co giu nguyen.
+            mat_ao_to_pct: float = 0.0,
+            mat_ao_diem: float = 0.6) -> dict:
     """Đọc RAW -> preview -> thống kê. Chạy trong worker process."""
     out = {"path": str(path), "ok": False, "error": ""}
     try:
@@ -919,6 +1223,30 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 out["faces_lowconf"] = len(faces) - len(good)
                 faces = good
 
+            #[[ BỎ KHUNG VỪA ĐIỂM THẤP VỪA TO BẤT THƯỜNG (mat_ao_to_pct). 0 = TẮT.
+            #
+            #   KHÁC chốt điểm thấp ở trên (đã bác bỏ vì dải điểm khung xấu và
+            #   khung tốt trùng nhau): chỉ bỏ khung có CẢ HAI dấu hiệu — điểm dưới
+            #   mat_ao_diem VÀ chiếm hơn mat_ao_to_pct % khung hình.
+            #
+            #   GẶP THẬT 3/10, buổi HPC 25nam\Hiu: HIU02258 là ảnh cận cổ tay
+            #   đeo vòng, không có mặt nào. YuNet báo một "mặt" điểm 0,50, rộng
+            #   514x551 trên khung 1024x683 — 40% khung, tràn ra ngoài mép trên —
+            #   chính là cánh tay. Tool kéo −1,31 trong khi HIU02257 ngay cạnh
+            #   (cùng thông số, cùng góc, không thấy mặt) giữ 0,00: hai tấm liền
+            #   nhau lệch 1,3 EV.
+            #
+            #   VÌ SAO HAI DẤU HIỆU THÌ TÁCH ĐƯỢC: mặt thật mà to cỡ đó là chân
+            #   dung cận, YuNet nhìn rõ nên cho điểm cao. Đo 40.521 khung mặt của
+            #   TrainTool + 2609: 8 khung chiếm > 15% khung hình, điểm 0,65–0,92;
+            #   KHÔNG khung nào vừa < 0,6 vừa > 15%. Khung to mà điểm thấp là YuNet
+            #   đang đoán mò trên một mảng màu da — tay, cánh tay, vai.
+            #]]
+            if mat_ao_to_pct > 0 and faces:
+                good = bo_mat_ao_to(faces, imf.size, mat_ao_to_pct, mat_ao_diem)
+                out["faces_ao_to"] = len(faces) - len(good)
+                faces = good
+
             #[[ Bỏ mặt quá nhỏ so với mặt lớn nhất.
             #   Mặt người trên màn LED, poster, hay khán giả phía sau luôn nhỏ
             #   hơn hẳn chủ thể — mà màn LED thì sáng hơn mặt thật cả 0.8 EV.
@@ -954,7 +1282,27 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             # --- ô mặt, có cộng điểm cho mặt nằm đúng chỗ bắt nét ---
             if energy is not None:
                 q50, q95 = float(np.quantile(energy, 0.5)), float(np.quantile(energy, 0.95))
-            afpt = tags.get("af_point")
+            #[[ Vung AF Nikon (Wide-area): may chon net o DAU DO trong vung, nen
+            #   mat nao CHAM vung la mat chu the — khong doi mat trung dung tam.
+            #   af_nikon = False -> bo qua diem AF cua Nikon, hanh vi cu.
+            #]]
+            vung = tags.get("af_vung")
+            if vung is not None and not af_nikon:
+                afpt, vung = None, None
+            else:
+                afpt = tags.get("af_point")
+            af_hop = None
+            if afpt is not None:
+                huong = tags.get("orientation") if af_xoay_theo_anh else 1
+                if vung is not None:
+                    c1 = af_theo_huong((afpt[0] - vung[0] / 2, afpt[1] - vung[1] / 2), huong)
+                    c2 = af_theo_huong((afpt[0] + vung[0] / 2, afpt[1] + vung[1] / 2), huong)
+                    af_hop = (min(c1[0], c2[0]), min(c1[1], c2[1]),
+                              max(c1[0], c2[0]), max(c1[1], c2[1]))
+                    out["af_hop"] = tuple(round(v, 4) for v in af_hop)
+                afpt = af_theo_huong(afpt, huong)
+            if afpt is not None:
+                out["af_xy"] = (round(afpt[0], 4), round(afpt[1], 4))
             #[[ Cham diem tung khuon mat de loc anh loat (xem pick_burst).
             #
             #   Hai tieu chi, deu do tren MAT CHU THE:
@@ -993,7 +1341,11 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 #   YuNet đôi khi lệch chút so với khung mặt thật.
                 #]]
                 on_af = False
-                if afpt is not None:
+                if af_hop is not None:
+                    # vung AF (Nikon): o mat CHAM vung la du
+                    on_af = (x <= af_hop[2] * fw_ and x + bw >= af_hop[0] * fw_
+                             and y <= af_hop[3] * fh_ and y + bh >= af_hop[1] * fh_)
+                elif afpt is not None:
                     ax, ay = afpt[0] * fw_, afpt[1] * fh_
                     # Sàn tuyệt đối 2% cạnh ảnh: mặt nhỏ (chủ thể đứng xa) thì
                     # biên theo tỉ lệ chỉ còn vài pixel, trong khi AF khoá vào
@@ -1216,6 +1568,29 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             if n_bo:
                 out["faces_big_lowconf"] = n_bo
 
+            #[[ AF ROI SAT MAT NHUNG KHONG TRUNG O MAT -> lay mat GAN NHAT.
+            #
+            #   Gap that bo 2609 (29/9), sau khi da xoay diem AF theo anh: may
+            #   khoa net vao CO / co ao (SAY06504, SAY06753 — cach mep duoi o mat
+            #   0.4 lan co mat), hoac vao toc / khan voan sau gay co dau dang
+            #   nghieng mat (SAY06560-06564 — 0.7 lan). Khong trung o nao nen
+            #   tool lui ve doan theo noi dung anh, va chon mat nguoi dung sau.
+            #   May da khoa vao NGUOI do; mat gan nhat chinh la mat ho.
+            #
+            #   Chi xet khi KHONG co mat nao trung diem AF. Khoang cach tinh tu
+            #   diem AF toi MEP o mat, chia cho canh dai cua o mat do — mat to
+            #   thi duoc xa hon mat nho, dung voi co nguoi trong khung.
+            #   af_gan_mat = 0 -> TAT (hanh vi cu).
+            #]]
+            if (afpt is not None and af_gan_mat > 0 and face_patches
+                    and not any(len(fp) > 4 and fp[4] for fp in face_patches)):
+                i_gan, d_min = mat_gan_af([fp[5][:4] for fp in face_patches],
+                                          afpt[0] * fw_, afpt[1] * fh_, af_gan_mat)
+                if i_gan is not None:
+                    face_patches = [fp if i != i_gan else fp[:4] + (True,) + fp[5:]
+                                    for i, fp in enumerate(face_patches)]
+                    out["af_gan"] = round(d_min, 3)
+
             af_hit = [fp for fp in face_patches if len(fp) > 4 and fp[4]]
             if af_hit and len(af_hit) < len(face_patches):
                 out["faces_bg_dropped"] = len(face_patches) - len(af_hit)
@@ -1425,6 +1800,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
         # --- màu da thật: dùng lại chính các patch vừa đo ở trên ---
         face_rgb = None
         face_p95 = None
+        da_chay_frac = None
         if face_patches:
             allpx = np.concatenate([p_[2] for p_ in face_patches], axis=0)
             face_rgb = [float(allpx[:, c].mean()) + EPS for c in range(3)]
@@ -1446,6 +1822,13 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             #   con 0.87 linear thi khong ai doi chieu duoc voi Photoshop.
             _p95_lin = float(np.quantile(allpx.max(axis=1), 0.95))
             face_p95 = float(_lin_to_srgb(_p95_lin))
+            #[[ Ti le da CHAM TRAN tren preview (kenh lon nhat >= 250/255).
+            #   p95 bao hoa o ~252-255 khi da da chay tren preview — luc do no
+            #   khong con noi duoc chay NANG den dau. Ban quay 2/10: DSC08688
+            #   p95 252, tool dim -0.65 ma user phai dim -1.32 ("da kha la chay,
+            #   dim chua du"). Chi do va ghi lai; dung hay khong do decide() quyet.
+            #]]
+            da_chay_frac = float((allpx.max(axis=1) >= _srgb_to_lin_1(250.0 / 255.0)).mean())
 
         #[[ Độ "thẳng hàng" của khung: backdrop, màn LED, tường ốp gỗ đều có
         #   nhiều đường DỌC và NGANG mạnh, chạy dài suốt khung.
@@ -1560,6 +1943,11 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             fnumber=_rat(tags.get("fnumber")),
             ev_sang=ev_anh_sang(tags),
             model=tags.get("model", ""),
+            # WB may da dung de render preview — xem T_SONY_WB_MODE
+            wb_may_che_do=tags.get("wb_may_che_do"),
+            wb_may_K=tags.get("wb_may_K"),
+            wb_may_rb=tags.get("wb_may_rb"),
+            da_chay_frac=da_chay_frac,
         )
     except Exception as ex:  # pragma: no cover - phòng file lỗi
         out["error"] = f"{type(ex).__name__}: {ex}"
@@ -1718,6 +2106,16 @@ DEFAULTS = {
     #   GIU LAI DE CON DO DAC, KHONG BAT. Dung tu y doi thanh so khac.
     #]]
     "face_min_score_sub": 0.0,
+    #[[ Bo khung VUA diem thap VUA to bat thuong — xem chu thich trong measure()
+    #   ("BO KHUNG VUA DIEM THAP VUA TO"). mat_ao_to_pct = 0 la TAT.
+    #   Gap that 3/10: HIU02258 (anh can co tay, khong co mat) bi YuNet bao mot
+    #   "mat" diem 0.50 chiem 40% khung -> -1.31 trong khi tam ben canh 0.00.
+    #   15 (% khung) / 0.6 (diem): tren 40.521 khung mat cua TrainTool + 2609
+    #   khong khung nao trung ca hai dieu kien -> hai buoi da duyet KHONG doi mot
+    #   anh nao (cong B 0%). BAT 3/10.
+    #]]
+    "mat_ao_to_pct": 15.0,
+    "mat_ao_diem": 0.6,
     #[[ Bo khung TO ma DIEM THAP khi trong anh co khung nho hon ma diem cao han
     #   han. Xem chu thich day du trong measure(). 0 = TAT.
     #   DA KIEM TREN 893 ANH DA DUYET — BAT MAC DINH ngay 31.08.2026.
@@ -1743,7 +2141,40 @@ DEFAULTS = {
     # Muc sang dich cho khuon mat (log2 linear) khi dung mode absolute/hybrid.
     # Hiệu chỉnh từ ví dụ thật của người dùng: ảnh có da mặt đo được -1.54 EV
     # thì họ muốn Exposure +0.35 -> mốc = -1.54 + 0.35. Xem --calibrate.
-    "face_target_ev": -1.19,
+    #[[ 4/10: -1.19 -> -1.00 THEO USER: "Do da co tinh nang bu sang ca buoi nen
+    #   an di phan Mat sang toi muc di. Co the set phan mat sang toi muc ve
+    #   -1.00". O "Mat sang toi muc" da AN khoi giao dien; chinh sang tung buoi
+    #   bang "Bu sang ca buoi". Giao dien lay so nay tu DEFAULTS (ca gu.json neu
+    #   co) — khong con ghi cung -1.19 o bon cho nhu truoc.
+    #   SO DO CU DE DOI CHIEU: buoi CUOI TrainTool / 2609 user sua tay trung vi
+    #   -0.09 / -0.13 EV so voi moc -1.19 (tuc TOI hon). Nen voi -1.00 anh cuoi
+    #   khong bi phanh se sang hon toi da ~0.19 EV — thay du sang thi dat "Bu
+    #   sang ca buoi" am (vd -0.20). ]]
+    "face_target_ev": -1.00,
+    #[[ BU SANG CA BUOI (EV) — cong vao delta CUOI CUNG cua moi anh co mat, SAU
+    #   moi phanh chong chay va san phang canh. 0 = TAT (y het cu).
+    #   Giao dien dat qua o "Loai buoi": Cuoi = 0, Su kien = bu_sang_su_kien.
+    #
+    #   VI SAO (3/10, buoi su kien G:\1005, 630 anh, quy trinh preset moi): user
+    #   xem tan mat va noi "anh hoi toi, can sang them mot chut". 38 anh user
+    #   sua = 10 quyet dinh doc lap (sync theo nhom): 9 TANG, 1 giam (kem ha
+    #   Temp); trung vi theo nhom +0.30 EV. Tool dat mat dung dich -1.19 (delta
+    #   trung vi 0.00) — nen khong phai do sai.
+    #   VI SAO KHONG DOI face_target_ev: (1) buoi CUOI thi nguoc lai — TrainTool
+    #   219 anh sua trung vi -0.09, 2609 688 anh -0.13, anh den cung -0.14 /
+    #   -0.10 — doi moc chung la lam hong ca hai buoi da duyet; (2) tren 1005 co
+    #   287/630 anh do PHANH CHONG CHAY quyet dinh chu khong phai moc, doi moc
+    #   -1.19 -> -0.95 thi nua so anh dung yen, trong khi user tang ca nhung
+    #   anh bi phanh (DSC00004-08 +0.2..+0.44, DSC00009-14 +0.25..+0.34).
+    #   Bu SAU phanh lam dung viec user tu tay lam.
+    #   (4/10: user tu chot moc -1.00 va an o "Mat sang toi muc" — xem
+    #   face_target_ev ngay tren. Ly do (1)(2) o day la so do luc moc con -1.19.)
+    #   Anh KHONG co mat (giu_nguyen_exposure) khong bu: luat "khong mat thi
+    #   khong chinh" giu nguyen. Van ton tran max_ev_up / max_ev.
+    #   +0.30 MOI DO TREN MOT BUOI (trong mau) — can them buoi su kien de chot.
+    #]]
+    "bu_sang_ca_buoi": 0.0,
+    "bu_sang_su_kien": 0.30,
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -1890,6 +2321,171 @@ DEFAULTS = {
     # Can thiet vi tran dat cho TUNG anh, con o day muc dich la MOI ANH GIONG
     # NHAU — giu tran cung se chan dung viec dong bo. 0 = khong noi.
     "scene_level_extra_ev": 0.75,
+    #[[ MAT DO LECH KHOI KHUNG — 0 = TAT (mac dinh, cho qua cong).
+    #
+    #   Gap that 29/9, buoi HPC 25nam/TEST (88 anh): NDT09826 bi keo -0.87
+    #   trong khi cac tam ke ben dung o -0.19..-0.33. KHONG he bi tach canh
+    #   (canh 0, 34 anh), khong doi thong so may (f/2.8, 1/200, ISO 320 ca
+    #   loat). Do sang CA KHUNG cung khop hang xom (chu the -1.83, hang xom
+    #   -1.71..-1.95). Chi rieng phep do MAT nhay len -0.51 trong khi hang xom
+    #   -1.05..-1.19 — mat do nham, anh sang khong he doi.
+    #
+    #   Cach bat: trong mot loat CUNG canh, CUNG than may, CUNG khau/toc/ISO,
+    #   so voi cac tam chup ngay truoc/sau (trung vi hang xom):
+    #     - do sang KHUNG gan nhu y nguyen  (lech <= mat_lech_khung_khung_ev)
+    #     - ma do sang MAT nhay xa          (lech >  mat_lech_khung_ev)
+    #   thi phep do mat bi coi la hong. Mat duoc suy tu do sang khung cua chinh
+    #   tam do + khoang cach "mat - khung" cua hang xom — y het cach decide()
+    #   von lam voi anh khong thay mat.
+    #
+    #   PHAI CO DIEU KIEN KHUNG. Ban dau chi so khoang cach "mat - khung": tren
+    #   canh 1 cua buoi TEST (san khau, doi co anh lien tuc) no bat nham 17
+    #   tam, co tam bi day tu -0.37 xuong -1.16 — NDT09852 mat do DUNG bang
+    #   hang xom (-1.07 vs -1.02..-1.07), chi co khung doi vi doi co anh.
+    #   Khung doi thi khoang cach doi theo, khong noi gi ve phep do mat.
+    #
+    #   VA PHAI CUNG BO CUC. Them dieu kien do sang khung roi van con 12 tam bi
+    #   bat, trong do NDT09869 bi day +0.45 -> -0.45 trong khi NDT09870 — chup
+    #   lien sau, y het khung, mat do y het (-2.55 / -2.56) — dung yen o +0.45.
+    #   Tuc ban sua tu tao ra dung benh no dinh chua. Ly do: hang xom theo thoi
+    #   gian la mot dan vu khac (bo cuc khac), do sang khung trung nhau chi la
+    #   tinh co. Nen hang xom chi tinh nhung tam co chu ky khung (scene_sig)
+    #   cach tam dang xet <= mat_lech_khung_bo_cuc. Do tren buoi TEST: cung mot
+    #   bo cuc 0.01-0.07, doi goc/doi nguoi 0.13 tro len.
+    #
+    #   KHONG so rieng thong so may: chup manual thi den san khau doi ma thong
+    #   so khong doi. Da thu "cung thong so thi cung Exposure" tren chinh buoi
+    #   do: canh 1 (47 anh) bi san ve mot so trong khi do sang khung trai tu
+    #   -0.81 toi -2.99 — sai. Nen phai so voi DO SANG KHUNG, khong so voi may.
+    #
+    #   mat_lech_khung_ke: xet bao nhieu tam moi ben.
+    #   Can it nhat mat_lech_khung_min hang xom cung bo cuc moi dam ket luan.
+    #
+    #   DE 0 CHO TOI KHI QUA CONG tren anh da duyet:
+    #     python kiem_gu.py G:\1308 --de-xuat de_xuat_mat_lech_khung.json --nhom do-nham-mat
+    #]]
+    "mat_lech_khung_ev": 0.0,
+    "mat_lech_khung_khung_ev": 0.25,
+    "mat_lech_khung_ke": 3,
+    "mat_lech_khung_bo_cuc": 0.10,
+    "mat_lech_khung_min": 2,
+    #[[ DONG BO LOAT CHUP (3/10) — CUNG KHUNG + CUNG THONG SO -> CUNG MOT KET QUA.
+    #   Xem dong_bo_loat(). Ba nguong lay lai dung cac nguong da kiem cua
+    #   sua_mat_lech_khung (bo cuc 0.10, khung 0.25 EV), dat TRUOC khi do.
+    #
+    #   BAT theo yeu cau cua user (3/10: "phai giai quyet dut diem"). Cong:
+    #     TrainTool  A gan 158 / xa 108 (sai 0.186 -> 0.177)  B 1.41%  — DAT
+    #     2609       A gan 218 / xa 169 (sai 0.193 -> 0.189)  B 7.10%  — B TRUOT
+    #   B truot vi anh "da duyet" cua 2609 chua 94 loat ma user CHAP NHAN THU
+    #   DONG do lech > 0.3 EV trong cung loat (khong sua tam nao trong loat) —
+    #   dung loai lech user nay noi la khong chap nhan. So loat user CO Y de lech
+    #   > 0.3 (co sua tay ma van de lech) bi luat ep: 2609 0, TrainTool 1.
+    #   Khong noi nguong B; ghi lai de ai doc cung thay. User quyet bat.
+    #]]
+    "dong_bo_loat": True,
+    "loat_bo_cuc": 0.10,       # chu ky khung lech toi da so voi tam DAU loat
+    "loat_khung_ev": 0.25,     # do sang khung lech toi da so voi tam dau loat
+    "loat_gio_s": 60.0,        # hai tam lien nhau cach toi da bay nhieu giay
+    #[[ ===== NAM PHAN SUA TU HAI BAN QUAY 2/10/2026 (buoi TrainTool) =====
+    #
+    #   Cong 3/10: python kiem_2ban_quay.py (tren so do cua DO_BUOI.bat).
+    #   Ket qua tung phan: CLAUDE.md, muc "Nam phan hoc tu 2 ban quay".
+    #   Ghi chu day du: Claude outputs\TrainTool\GHI_CHU_HOC_2_BAN_QUAY.md
+    #
+    #   DANG BAT (3/10, user duyet tan mat Claude outputs\do\so_sanh_ung_vien.pdf,
+    #   53 cap anh truoc/sau): khung_sang_pct 12 (muc 3a) va
+    #   wb_tint_theo_may {"NIKON": -5} (muc 2b). Moi khoa con lai TAT — da
+    #   truot cong, dung bat lai khi chua co bang chung moi.
+    #
+    #   MUC 1 — MOT ANH SANG MOT KET QUA (do_mat_theo_anh_sang).
+    #   canh_ev100: hai tam cung canh + cung may, do sang KHUNG (quy EV100)
+    #   lech <= bay nhieu EV thi coi la cung anh sang -> dung chung phep do mat
+    #   (trung vi). 0 = TAT. canh_ev100_ke: xet bao nhieu tam moi ben theo gio
+    #   chup. canh_ev100_min: can it nhat bay nhieu tam (ke ca chinh no).
+    #   canh_ev100_tt: thong so may (EV100) hai tam lech qua bay nhieu EV thi
+    #   KHONG gop — nguoi chup doi hon 1 stop la anh sang da doi.
+    #]]
+    "canh_ev100": 0.0,
+    "canh_ev100_ke": 8,
+    "canh_ev100_min": 3,
+    "canh_ev100_tt": 1.0,
+    #[[ MUC 2 — WB THEO DU LIEU MAY + THEO THAN MAY.
+    #   wb_theo_may_pull: catalog khong co AsShot -> keo Temp ve nhiet do may
+    #     da dung render preview (Sony 0xb021 dat tay, Nikon 0x004F tu do),
+    #     he so nhu wb_asshot_pull. 0 = TAT.
+    #   wb_tint_theo_may: {"chuoi trong ten may": so Tint cong them}. {} = TAT.
+    #   wb_san_theo_may: tinh mau da va san WB RIENG tung than may trong canh.
+    #   da_vang_lech_ngoai: da AM HON mau dich ngoai troi qua bay nhieu stop
+    #     log2(B/R) thi dung mau dich TRONG NHA cho tam do (den am chieu vao
+    #     nguoi du canh sang). 0 = TAT.
+    #]]
+    "wb_theo_may_pull": 0.0,
+    #[[ BAT 3/10. Cong: TrainTool Tint 57 sat / 0 xa (sai tb 5.6 -> 3.9);
+    #   2609 user khong sua Tint tam Nikon nao (137 tam) nen cong khong do
+    #   duoc — user nhin 10 tam Nikon 2609 truoc/sau va chon ban -5. ]]
+    "wb_tint_theo_may": {"NIKON": -5},
+    "wb_san_theo_may": False,
+    "da_vang_lech_ngoai": 0.0,
+    #[[ MUC 3 — KHUNG SANG / CHAY: tran da thap hon + phanh da hai chieu.
+    #   khung_sang_pct: khung bao hoa (>=254) tu bay nhieu % thi tran da la
+    #     khung_sang_tran_da thay cho skin_hard_p95. 0 = TAT.
+    #   phanh_da_hai_chieu: trong khung chay do, da vuot tran thi KEO XUONG ca
+    #     khi delta am. Khung khong chay thi khong lam gi (xem decide()).
+    #]]
+    #[[ BAT 3/10 (chi phan ha tran, KHONG kem phanh hai chieu). Cong: 2609
+    #   A 17 sat / 2 xa, B 7/1774 = 0.39%; TrainTool A 43/22 nhung B 12/426 =
+    #   2.82% (truot sat nguong 2%). User nhin ca 19 anh da duyet bi doi > 0.30
+    #   EV + cac anh da sua, ket luan "deu oke". ]]
+    "khung_sang_pct": 12.0,
+    "khung_sang_tran_da": 210.0,
+    "phanh_da_hai_chieu": False,
+    #[[ MUC 4 — BU PHEP DO THEO THAN MAY: {"chuoi trong ten may": ev}. So
+    #   duong = tool cho anh may do SANG HON bay nhieu EV. {} = TAT. So bu
+    #   KHONG dat tay — hoc tren anh da duyet (kiem_2ban_quay.py in ra).
+    #]]
+    "bu_exp_theo_may": {},
+    #[[ MUC 5 — AO/VAY TRANG: vung chu the >=242 chiem >= hl_ao_trang_pct %
+    #   thi tran Highlights noi len hl_ao_trang_max. hl_ao_trang_max 0 = TAT.
+    #]]
+    "hl_ao_trang_pct": 15.0,
+    "hl_ao_trang_max": 0,
+    #[[ NHAN NGAY/DEN PHAI LECH DU BAY NHIEU KHUNG LIEN TIEP MOI TINH — 1 = TAT.
+    #
+    #   Nhan tinh bang EV100 cua tung tam so voi ev_ngoai_troi. Mot tam doi toc
+    #   1/160 -> 1/200 giua mot loat la EV100 nhay qua nguong, va truoc day no
+    #   (a) mo mot canh 1 anh (khong duoc san phang), (b) lay mau da dich cua
+    #   nhom kia. Khung hinh khong doi gi ca.
+    #
+    #   Luat boi canh von da doi 3 khung lien tiep (scene_sig_min_shots) de mot
+    #   nguoi di ngang khong cat vun canh. Day la cung y do cho nhan ngay/den:
+    #   mot doan ngan hon N khung, ma HAI BEN cung mot nhan, thi theo hai ben.
+    #   Doan o dau/cuoi buoi khong co hai ben de so nen giu nguyen.
+    #
+    #   DE 1 (TAT) CHO TOI KHI QUA CONG:
+    #     python kiem_gu.py <buoi co ca ngay lan den> --de-xuat de_xuat_trong_ngoai.json
+    #]]
+    "trong_ngoai_min_shots": 1,
+    #[[ Diem AF roi sat mat (co, co ao, toc sau gay) ma khong trung o mat nao
+    #   -> lay mat gan nhat neu cach mep o mat <= bay nhieu lan canh o mat.
+    #   0 = TAT. Xem chu thich trong measure(). DE 0 CHO TOI KHI QUA CONG:
+    #     python kiem_gu.py G:\2609 --de-xuat de_xuat_af_gan.json
+    #]]
+    "af_gan_mat": 0.0,
+    #[[ Xoay diem AF theo huong anh (anh chup doc). Sua loi toa do 29/9 — BAT.
+    #   Chi de False khi chay CONG doi chung (kiem_gu --goc).
+    #]]
+    "af_xoay_theo_anh": True,
+    #[[ Doc vung AF cua Nikon dong Z (AFInfo2 ban 0300/0301). BAT tu 29/9.
+    #
+    #   Cong tren G:\2609: A dat (nhung chi 7 anh Nikon co dich dung -> gan
+    #   nhu khong do gi), B 1.25% tren ca buoi — con so bi pha loang boi 2800
+    #   anh Sony khong doi; tinh rieng Nikon la 39/285 = 13.7% anh da duyet
+    #   xe dich qua 0.30 EV. Vi vay KHONG bat theo so, ma dua nguoi dung xem
+    #   tan mat ca 39 anh do (gu/2609/so_sanh_nikon_2609.pdf, cu vs moi, co
+    #   khung mat va vung AF). Nguoi dung ket luan: diem bat net chuan va anh
+    #   sang ban moi oke -> bat. Ban cu thuong do mat nho o hau canh.
+    #]]
+    "af_nikon": True,
     #[[ TINH NANG 1 — LOC ANH CHUP LIEN TIEP (burst / trung khung). 0 = tat.
     #
     #   Giu lai bao nhieu anh dep nhat moi POSE — khong phai moi loat. Anh
@@ -2242,6 +2838,79 @@ DEFAULTS = {
     "wb_temp_max": 1000.0,
     "wb_tint_gain": 30.0,
     "wb_tint_max": 12.0,
+    #[[ QUY TRINH "PRESET KHONG WB, KHONG TONE" (3/10) — xem preset_chua_ap().
+    #
+    #   User de xuat: import RAW -> ap preset BO TRONG nhom White Balance va nhom
+    #   Basic Tone (Exposure, Contrast, Highlights, Shadows, Whites, Blacks). WB
+    #   de As Shot thi Lightroom render GIONG preview cua may — dung goc benh "da
+    #   vang cuc nang" buoi Hiu: may dat tay 3600-4000K, preset ep 5250K, tool chi
+    #   keo duoc toi 4250K (tran wb_temp_max 1000K) nen LR render con am hon ca
+    #   preview.
+    #
+    #   Bo hai nhom do khoi preset thi tool phai TU GHI chung. nen_tone = Basic
+    #   Tone cua preset SAY: TrainTool 1502/1502 anh user giu nguyen Contrast 5 /
+    #   Whites -25 / Blacks -18; Highlights / Shadows tool van tinh tu moc 16 nhu
+    #   cu. nen_wb = WB cua preset (5250 / +16): CHUA doi cach can mau — ra Y HET
+    #   quy trinh cu cho toi khi co so As Shot that de hoc lai. Nhan dang TUNG ANH
+    #   tu ban xuat catalog; anh da co preset day du thi khong doi gi ca.
+    #   Doi preset SAY (WB hay Tone) thi phai doi hai bang nay theo.
+    #]]
+    "nen_tone": {"Contrast2012": 5, "Highlights2012": 16, "Shadows2012": 16,
+                 "Whites2012": -25, "Blacks2012": -18},
+    "nen_wb": {"Temperature": 5250, "Tint": 16},
+    #[[ WB THEO AS SHOT — quy trinh preset bo trong WB, BUOC 2 (3/10).
+    #   Xem uoc_asshot() + _wb_theo_asshot(). CHI anh dang As Shot; quy trinh cu
+    #   (preset day du) khong doi mot so nao.
+    #
+    #   VI SAO: nen 5250 bo qua WB nguoi chup da dat. G:\\2709 (cuoi, Nikon dat
+    #   K tay 4760-6670, 1032/1074 anh ngay): Z 8 dat 6670 -> tool ghi 5279,
+    #   Z5_2 5880 -> 5409. User: "anh ngoai troi bi keo ve xanh". Dung lai nhanh
+    #   "keo ve AsShot" co san tu thoi sidecar, he so CO SAN wb_asshot_pull 0.35:
+    #   temp_adj += 0.35 * (As Shot trung vi cua (canh, may) - 5250).
+    #   Hai chan, dat TRUOC khi chay cong:
+    #   - wb_asshot_theo_chieu: anh NGAY chi duoc keo AM len, anh DEN chi duoc
+    #     keo LANH xuong — dung luat user noi "ngoai troi tang K, khong de xanh
+    #     lanh; trong nha den vang moi ha K". Z5_2 dat 4760 giua nang (SUB_6733-
+    #     54, EV100 11.9) khong bi keo xanh them.
+    #   - wb_asshot_min_K: keo duoi 50K thi bo — mat khong thay, chi them nhieu.
+    #     Sony dat 5600 (As Shot 5317) chi keo +24K ma cong dem la "xa" (2609
+    #     A7M5 ngoai 21/85): may dat sat anh sang ngay thi khong co gi de hoc.
+    #
+    #   Cong (TrainTool = ban xuat preset moi that, 2609 = gia lap):
+    #     TrainTool A 23/4 (Nikon Z6_2 ngoai 25 gan/2 xa), B 0%  — QUA
+    #     2609      A 0/0 (khong anh sua nao doi),           B 0%  — QUA
+    #     2709: 17/18 anh user sua Temp lai gan (5359 -> 5421, user 5859/5771),
+    #       DSC_9614 dung yen; 776/1074 anh doi; Z 8 ngay trung vi 5279 -> 5714.
+    #     1005 (Den): SAY00023/24 lai gan, DSC00015-21 lai gan, DSC00004 ra xa.
+    #   Phan con lai cua SUB_6698-6713 (user +500K, As Shot chi giai thich +63K)
+    #   la gu cua canh do, KHONG suy ra cho ca buoi tu mot canh.
+    #
+    #   DA THU, BO (dung thu lai khi khong co bang chung moi):
+    #   - NEO HAN vao As Shot (Temp = As Shot dich theo mau da): 2709 18/18 gan,
+    #     nhung TrainTool B 11.6%, 2609 A 99/160 + B 9.1% — Nikon Auto (TrainTool
+    #     Z6_2, As Shot ~6200) user chot 5605; Sony ngay user chot 4800-5300 bat
+    #     ke may dat bao nhieu. He so 0.7 / 1.0: TrainTool A truot.
+    #   - San "anh ngay khong lanh hon As Shot": DSC_9614 (user 4936 < As Shot
+    #     5150), TrainTool A7M5 ngoai 89 anh (user 4609 < 5300) di nguoc.
+    #   - Keo truoc san phang mau (nhu Muc 2a): canh tron hai may thi may nay an
+    #     As Shot cua may kia — xem _wb_theo_asshot().
+    #
+    #   VI SAO MUC 2a (wb_theo_may_pull 0.35, 2/10) TRUOT: no dung thang K trong
+    #   MakerNote. K may KHONG trung thang Adobe: wb_asshot_lech_mired = 1e6/
+    #   K_adobe - 1e6/K_may, do tu cap (K may, As Shot that) trong ban xuat:
+    #   A7M4 4800->4800, 5100->5100, 5400->5350, 5600->5550; A7M5 5200->5000,
+    #   5600->5300, 5800->5450 (lech ~300K — dung may chiem 2/3 hai buoi); Z 8
+    #   5260->5150, 5880->5750, 6250->6050. Nikon khac (Z5_2, Z6_2) CHUA co cap:
+    #   he so WB R/B theo K cua Z5_2 / Z6_2 / Z 8 trung nhau (5260K: log2 R/B
+    #   0.389 / 0.388 / 0.394) nen tam lay so cua Z 8. Buoi nao tu co >= 3 cap
+    #   cua mot may thi hoc lai tu chinh buoi do. Thang tho: TrainTool A 79/122,
+    #   2609 107/164 — dung y so cua Muc 2a.
+    #]]
+    "wb_theo_asshot": True,
+    "wb_asshot_theo_chieu": True,
+    "wb_asshot_min_K": 50.0,
+    "wb_asshot_lech_mired": {"ILCE-7M4": 1.0, "ILCE-7M5": 9.5, "NIKON Z 8": 4.4,
+                             "NIKON": 4.4},
     "preview_px": 480,
     "marker": True,
     "lr_push": True,      # ghi job cho plugin Lightroom sau khi apply
@@ -2569,6 +3238,325 @@ def _loc_theo_ear(items: list, cfg: dict, lay) -> int:
     return dropped
 
 
+def lam_min_trong_ngoai(items: list, min_shots: int) -> int:
+    """Doan nhan ngay/den ngan hon min_shots, kep giua hai doan cung nhan, thi
+    theo hai ben. Tra ve so anh bi doi nhan. min_shots <= 1 la TAT.
+
+    Nhan goc giu lai o r["ngoai_troi_tho"] de bao cao con truy duoc.
+    Xem chu thich o trong_ngoai_min_shots trong DEFAULTS.
+    """
+    for r in items:
+        r["ngoai_troi_tho"] = bool(r.get("ngoai_troi"))
+    n = int(min_shots or 0)
+    if n <= 1 or len(items) < 3:
+        return 0
+    ds = sorted(items, key=lambda r: r["dt_obj"])
+    # gom thanh cac doan lien tiep cung nhan: [(nhan, bat_dau, ket_thuc)]
+    doan, i = [], 0
+    while i < len(ds):
+        j = i
+        while j + 1 < len(ds) and bool(ds[j + 1]["ngoai_troi"]) == bool(ds[i]["ngoai_troi"]):
+            j += 1
+        doan.append((bool(ds[i]["ngoai_troi"]), i, j))
+        i = j + 1
+    doi = 0
+    for k in range(1, len(doan) - 1):
+        nh, a, b = doan[k]
+        truoc, sau = doan[k - 1][0], doan[k + 1][0]
+        if b - a + 1 < n and truoc == sau and truoc != nh:
+            for x in ds[a:b + 1]:
+                x["ngoai_troi"] = truoc
+                x["notes"] = ";".join(
+                    [v for v in [x.get("notes", ""), "nhan-ngay-den-theo-hai-ben"] if v])
+                doi += 1
+    return doi
+
+
+def _nhan_ngoai(r: dict, cfg: dict) -> bool:
+    """Nhan ngay/den cua anh: dung nhan plan() da gan (co the da lam min),
+    chi tu tinh khi chua co — decide() con duoc goi le trong bai kiem."""
+    if "ngoai_troi" in r:
+        return bool(r["ngoai_troi"])
+    return ngoai_troi(r, cfg)
+
+
+def tran_da(r: dict, cfg: dict) -> float:
+    """Tran p95 cua da (sRGB 0-255) cho phanh da. MUC 3 (2/10/2026).
+
+    Mac dinh skin_hard_p95 (232). Khung cháy nhieu (sat_frac >= khung_sang_pct %)
+    thi ha xuong khung_sang_tran_da. khung_sang_pct = 0 la TAT.
+
+    #[[ VI SAO — ban quay 2/10, buoi TrainTool, 108 anh co mat do lai tren RAW:
+    #   48 tam user HA sang thi luc tool day ra, da mat dung o DUNG tran 232
+    #   (trung vi) trong khung chay ~18%; user keo da ve ~201. Tool keo mat len
+    #   toi tran trong khi nen cua so / troi da chay — user noi "giam exposure
+    #   de anh hai hoa, thay vi mat nguoi co phai sang" (BNE02316), "giam sang
+    #   cho phan da mat khong bi chay highlight" (SAY07160).
+    #   Khung it chay (16 tam user TANG sang: trung vi 3.7%) thi khong dung toi.
+    #
+    #   Khac huong "keo xuong theo muc chay" da DONG ngay 3/9: cai do keo MOI anh
+    #   khung chay xuong, ke ca anh da dung. Cai nay chi chan DA MAT bi day len
+    #   qua sang trong khung da chay — anh mat dang vua thi khong cham toi.
+    #]]
+    """
+    tran = float(cfg.get("skin_hard_p95") or 0.0)
+    nguong = float(cfg.get("khung_sang_pct", 0.0) or 0.0)
+    if tran > 0 and nguong > 0 and float(r.get("sat_frac") or 0.0) * 100.0 >= nguong:
+        tran = min(tran, float(cfg.get("khung_sang_tran_da") or tran))
+    return tran
+
+
+def _nhan_da_ngoai(r: dict, cfg: dict) -> bool:
+    """Nhan ngay/den DUNG DE CHON MAU DA DICH. da_vang_lech_ngoai = 0 -> y het
+    _nhan_ngoai().
+
+    #[[ MUC 2 (2/10/2026). Nhan ngay/den tinh bang EV100 >= 8.5 — do DO SANG
+    #   cua canh, khong do MAU anh sang. Ban quay 1 buoi TrainTool: le vu quy
+    #   trong nha co cua so, EV100 8.6-9.0 nen bi xep "anh sang ngay", lay mau
+    #   da dich ngoai troi [166,123,105] — mot mau RAT am — nen da vang duoi den
+    #   decor bi coi la binh thuong: tool de SAY 4864-5109K, user keo ve
+    #   4305-4609K ("anh chup trong nha, khong gian nhieu mau vang").
+    #
+    #   Do tren 6 anh do: da preview log2(B/R) -1.71..-2.28, trong khi mau dich
+    #   ngoai troi la -1.43 va anh ngoai troi that cua buoi do (SAY06511/23,
+    #   Nikon HIU_40xx) chi -0.2..-1.5. Da AM HON CA MAU DICH NGOAI TROI them
+    #   mot khoang ro rang thi dang co den am chieu vao nguoi — dung mau dich
+    #   trong nha cho tam do. Neu dung mau trong nha: SAY06085 ra ~4390K (user
+    #   chot 4364), SAY06092 ~4380K (user 4305).
+    #]]
+    """
+    ngoai = _nhan_ngoai(r, cfg)
+    lech = float(cfg.get("da_vang_lech_ngoai", 0.0) or 0.0)
+    if not ngoai or lech <= 0 or not r.get("face_rgb"):
+        return ngoai
+    ref = cfg.get("skin_ref_rgb_ngoai")
+    if not ref:
+        return ngoai
+    mt, _ = wb_cast(np.asarray(r["face_rgb"], dtype=np.float64))
+    rt, _ = wb_cast(srgb_to_linear(np.asarray(ref, dtype=np.float64) / 255.0) + EPS)
+    return not (mt < rt - lech)
+
+
+def sua_mat_lech_khung(items: list, cfg: dict) -> int:
+    """Phep do mat lech han khoi do sang khung so voi cac tam chup ke ben ->
+    thay bang do sang khung + khoang cach mat-khung cua hang xom. Tra ve so anh
+    bi thay. Xem mat_lech_khung_ev trong DEFAULTS. 0 = TAT.
+
+    Hang xom = cung canh, cung than may, cung khau/toc/ISO, dung truoc/sau theo
+    thoi gian (toi da mat_lech_khung_ke tam moi ben), CUNG BO CUC (chu ky khung
+    cach <= mat_lech_khung_bo_cuc). Can >= mat_lech_khung_min hang xom co ca
+    phep do mat lan phep do khung.
+    """
+    nguong = float(cfg.get("mat_lech_khung_ev", 0.0) or 0.0)
+    if nguong <= 0:
+        return 0
+    ke = max(1, int(cfg.get("mat_lech_khung_ke", 3)))
+
+    def khoa(r):
+        f, t, iso = _so(r.get("fnumber")), _so(r.get("exposure_time")), _so(r.get("iso"))
+        if not f or not t or not iso:
+            return None
+        return (r.get("scene"), str(r.get("model") or ""),
+                round(f, 1), round(math.log2(t), 2), round(iso))
+
+    loat: dict = {}
+    for r in sorted(items, key=lambda r: r["dt_obj"]):
+        k = khoa(r)
+        if k is not None:
+            loat.setdefault(k, []).append(r)
+
+    khung_tol = float(cfg.get("mat_lech_khung_khung_ev", 0.25))
+    bo_cuc = float(cfg.get("mat_lech_khung_bo_cuc", 0.10))
+    n_min = max(1, int(cfg.get("mat_lech_khung_min", 2)))
+
+    def sig(r):
+        v = r.get("scene_sig")
+        return np.asarray(v, dtype=np.float64) if v else None
+
+    def hai(r):
+        f, c = r.get("metered_face_ev"), r.get("metered_subject_ev")
+        return None if f is None or c is None else (float(f), float(c))
+
+    #[[ Tinh het truoc roi moi sua: sua tai cho thi tam sau lay tam vua sua
+    #   lam hang xom, va mot tam hong keo lan sang tam ke. ]]
+    sua = []
+    for ds in loat.values():
+        v = [hai(r) for r in ds]
+        sg = [sig(r) for r in ds]
+        for i, r in enumerate(ds):
+            if v[i] is None or sg[i] is None:
+                continue
+            hx = [v[j] for j in range(max(0, i - ke), min(len(ds), i + ke + 1))
+                  if j != i and v[j] is not None and sg[j] is not None
+                  and sg[j].shape == sg[i].shape
+                  and float(np.abs(sg[j] - sg[i]).mean()) <= bo_cuc]
+            if len(hx) < n_min:
+                continue
+            mat_hx = float(np.median([x[0] for x in hx]))
+            khung_hx = float(np.median([x[1] for x in hx]))
+            if (abs(v[i][1] - khung_hx) <= khung_tol
+                    and abs(v[i][0] - mat_hx) > nguong):
+                gap_hx = float(np.median([x[0] - x[1] for x in hx]))
+                sua.append((r, v[i][1] + gap_hx))
+    for r, moi in sua:
+        cu = float(r["metered_face_ev"])
+        r["metered_face_ev_tho"] = cu
+        r["metered_ev_tho"] = r["metered_ev"]
+        r["metered_face_ev"] = round(moi, 4)
+        #[[ Doi metered_ev CUNG MOT KHOANG, khong gan thang: metered_ev co the
+        #   da tron them phep do khac ngoai mat, gan de se xoa mat phan do. ]]
+        r["metered_ev"] = float(r["metered_ev"]) + (moi - cu)
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), "do-mat-lech-khung"] if v])
+    return len(sua)
+
+
+def _doi_mat_do(r: dict, moi: float, nhan: str) -> None:
+    """Thay phep do mat cua mot anh, GIU so goc de _tra_mat_goc() tra lai.
+
+    Chi luu so goc o lan doi DAU TIEN — anh da bi sua_mat_lech_khung() doi roi
+    thi so goc da nam san trong *_tho, luu de la mat so that."""
+    cu = float(r["metered_face_ev"])
+    if "metered_face_ev_tho" not in r:
+        r["metered_face_ev_tho"] = cu
+        r["metered_ev_tho"] = r["metered_ev"]
+    r["metered_face_ev"] = round(float(moi), 4)
+    r["metered_ev"] = float(r["metered_ev"]) + (float(moi) - cu)
+    if nhan and nhan not in r.get("notes", ""):
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), nhan] if v])
+
+
+def bu_do_theo_may(items: list, cfg: dict) -> int:
+    """MUC 4 (2/10/2026) — bu phep do theo THAN MAY. {} = TAT.
+
+    cfg["bu_exp_theo_may"] = {"chuoi trong ten may": ev, ...}. Mot so DUONG
+    nghia la preview cua may do SANG HON cach Lightroom render file RAW cua no,
+    nen phep do bi tru di chung do — tool se cho anh sang hon chung do.
+
+    #[[ VI SAO DO THEO MAY: moi hang render preview mot kieu (Nikon dung Picture
+    #   Control + Active D-Lighting, Sony dung Creative Style). Tool do mat tren
+    #   preview, con Lightroom render tu RAW bang profile Adobe — hai thu lech
+    #   nhau mot khoang co dinh theo may. Ban quay 2/10: 40/60 lan user chinh
+    #   Exposure anh Nikon la TANG sang (trung vi +0.21 tren anh da sua).
+    #   So bu KHONG dat tay: hoc tren anh da duyet cua mot buoi, kiem tren buoi
+    #   khac (kiem_2ban_quay.py).
+    #]]
+    """
+    bang = cfg.get("bu_exp_theo_may") or {}
+    if not isinstance(bang, dict) or not bang:
+        return 0
+    n = 0
+    for r in items:
+        if r.get("metered_face_ev") is None:
+            continue
+        ten = str(r.get("model") or "").upper()
+        for k, v in bang.items():
+            if k and str(k).upper() in ten and float(v):
+                _doi_mat_do(r, float(r["metered_face_ev"]) - float(v), "bu-theo-may")
+                n += 1
+                break
+    return n
+
+
+def do_mat_theo_anh_sang(items: list, cfg: dict) -> int:
+    """MUC 1 (2/10/2026) — MOT ANH SANG MOT KET QUA. canh_ev100 = 0 la TAT.
+
+    Trong cung canh + cung than may, anh nao co do sang KHUNG (da quy ve EV100)
+    gan nhau trong khoang canh_ev100 thi coi la cung mot anh sang. Phep do mat
+    cua tam do duoc thay bang TRUNG VI cua nhom do (cung quy ve EV100), roi tra
+    lai thang cua tam do bang chinh EV100 cua no. Tra ve so anh bi doi > 0.02.
+    Vung sang cua da cung vay: ghi r["face_p95_dong"] cho phanh da doc.
+
+    #[[ VI SAO — ban quay 2/10, buoi TrainTool, do lai tren RAW that:
+    #   DSC08668-08672 cung f/2.2 1/100 ISO 500 (EV100 6.60). Mat do duoc
+    #   -1.22/-0.79/-0.81/-1.30/-1.22 -> tool ra +0.03/-0.40/-0.38/0/+0.03;
+    #   user dong bo het -0.61. BNE02293-305: mat do trai 1.18 EV trong khi
+    #   khung chi 0.4 EV. SAY07160-76: thong so may y het, tool 0..+0.68,
+    #   user 0. San phang canh ep moi tam ve cung "sang mat DO DUOC", nen do
+    #   mat nhieu bao nhieu thi Exposure nhay bay nhieu.
+    #
+    #   QUY VE EV100 (khau/toc/ISO) vi doi thong so giua chung thi anh tho sang
+    #   toi theo, ma anh sang that khong doi: DSC08665 f/2.8 -> 08668 f/2.2 la
+    #   +0.69 EV, user bu dung chieu (+0.25 -> -0.61).
+    #
+    #   CHI GOP ANH CO KHUNG SANG GIONG NHAU: hai phuong an da bi bac ngay 29/9
+    #   la "cung thong so may thi cung Exposure" (san khau doi den ma thong so
+    #   khong doi). O day dieu kien la DO SANG KHUNG (da quy EV100) — den doi
+    #   thi khung doi, anh do tu tach khoi nhom va giu phep do rieng.
+    #
+    #   CUNG THAN MAY: preview moi may sang mot kieu (xem bu_do_theo_may).
+    #]]
+    """
+    tol = float(cfg.get("canh_ev100", 0.0) or 0.0)
+    if tol <= 0:
+        return 0
+    ke = max(1, int(cfg.get("canh_ev100_ke", 8)))
+    n_min = max(2, int(cfg.get("canh_ev100_min", 3)))
+    #[[ THONG SO MAY KHONG DUOC NHAY QUA canh_ev100_tt EV giua hai tam.
+    #
+    #   Do khung (quy EV100) gan nhau chua du noi "cung anh sang tren MAT".
+    #   Gap that tren TrainTool: HIU_4113 (EV100 10.32) bi gop voi HIU_4100/
+    #   4102 (EV100 11.98) vi khung lech chi 0.48 — nhung mat 4113 nguoc sang,
+    #   toi hon khung, con 4100 mat sang hon khung. Trung vi keo mat 4113 len
+    #   +1.14 EV -> Exposure -1.55 (user chot -0.50).
+    #   Nguoi chup doi thong so hon 1 stop la ho da thay anh sang doi. Doi
+    #   duoi 1 stop (DSC08665 -> 08668 f/2.8 -> f/2.2 = 0.69; BNE02302 ISO
+    #   1600 -> 1250 = 0.35) la tinh chinh trong cung mot anh sang.
+    #]]
+    tt = float(cfg.get("canh_ev100_tt", 1.0) or 0.0)
+
+    nhom: dict = {}
+    for r in sorted(items, key=lambda r: r["dt_obj"]):
+        nhom.setdefault((r.get("scene"), str(r.get("model") or "")), []).append(r)
+
+    sua, p95_dong = [], []
+    for ds in nhom.values():
+        L, F, E, P = [], [], [], []
+        for r in ds:
+            ev = ev100(r)
+            f, c = r.get("metered_face_ev"), r.get("metered_subject_ev")
+            ok = ev is not None and f is not None and c is not None
+            L.append(float(f) + ev if ok else None)
+            F.append(float(c) + ev if ok else None)
+            E.append(ev if ok else None)
+            p = r.get("face_p95")
+            lp = _srgb_to_lin_1(float(p)) if ok and p else 0.0
+            P.append(math.log2(lp) + ev if lp > 1e-6 else None)
+        for i, r in enumerate(ds):
+            if L[i] is None:
+                continue
+            gan = [j for j in range(max(0, i - ke), min(len(ds), i + ke + 1))
+                   if L[j] is not None and abs(F[j] - F[i]) <= tol
+                   and (tt <= 0 or abs(E[j] - E[i]) <= tt)]
+            if len(gan) < n_min:
+                continue
+            moi = float(np.median([L[j] for j in gan])) - E[i]
+            if abs(moi - float(r["metered_face_ev"])) > 0.02:
+                sua.append((r, moi))
+            #[[ Vung sang cua da (face_p95) cung lay DONG THUAN cua chinh nhom
+            #   do, cung quy EV100. Khong thi phanh da (tran_da) lai lam dung
+            #   cai loi vua sua: cung mot anh sang, tam nao do trung mat co
+            #   p95 cao thi bi dim, tam ben canh khong — lai "buc sang buc toi".
+            #]]
+            pv = [P[j] for j in gan if P[j] is not None]
+            if P[i] is not None and len(pv) >= n_min:
+                p95_dong.append((r, _lin_to_srgb(2.0 ** (float(np.median(pv)) - E[i]))))
+    for r, moi in sua:
+        _doi_mat_do(r, moi, "do-theo-anh-sang")
+    for r, p in p95_dong:
+        r["face_p95_dong"] = round(float(p), 5)
+    return len(sua)
+
+
+def _tra_mat_goc(items: list) -> None:
+    """Tra phep do mat goc truoc moi lan decide(). GUI goi plan() lai tren CUNG
+    items khi doi tuy chon; khong tra thi tat tuy chon roi van con so da sua."""
+    for r in items:
+        if "metered_face_ev_tho" in r:
+            r["metered_face_ev"] = r.pop("metered_face_ev_tho")
+            r["metered_ev"] = r.pop("metered_ev_tho")
+        r.pop("face_p95_dong", None)
+
+
 def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
                  sig_min_shots: int = 3, can_sig: bool = True) -> None:
     """Gán scene id theo thời gian, và (tuỳ chọn) theo BỐI CẢNH khung hình.
@@ -2747,19 +3735,145 @@ def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
             else:
                 if sig_thresh > 0 and sig:
                     ref, nref = np.asarray(sig, dtype=np.float64).copy(), 1
-                r["scene_cut"] = "gio" if cut_gio else "boi-canh"
+                #[[ Giu nhan "doi-trong-ngoai" da gan o tren. Truoc day dong nay
+                #   ghi de no thanh "boi-canh", nen bao cao noi "khung hinh doi"
+                #   trong khi chu ky lech 0 va nhat cat that ra do EV100 cua MOT
+                #   tam vuot nguong ev_ngoai_troi. Doc bao cao la di tim sai cho.
+                #]]
+                r["scene_cut"] = ("gio" if cut_gio else
+                                  "doi-trong-ngoai" if cut_moi_truong else
+                                  "boi-canh")
             cho = []
         r["scene"] = sid
         prev = r["dt_obj"]
 
 
+TONE_NHOM = ("Contrast2012", "Highlights2012", "Shadows2012", "Whites2012", "Blacks2012")
+
+
+def preset_chua_ap(crs: dict) -> tuple[bool, bool]:
+    """(thieu_tone, thieu_wb): preset da ap cho anh nay BO TRONG nhom Basic Tone /
+    nhom White Balance. Doc tu ban xuat catalog (hoac sidecar).
+
+    #[[ THIEU TONE = Contrast, Whites, Blacks CO trong ban xuat va ca ba bang 0,
+    #   Highlights / Shadows cung 0. Doi CO MAT ca ba: plugin cu khong xuat chung
+    #   -> khong bao gio nhan nham, quy trinh cu giu nguyen tung so. Preset SAY ap
+    #   5 / -25 / -18 nen anh co preset day du khong bao gio roi vao day; TrainTool
+    #   1502/1502 anh user khong dong vao ba thanh do.
+    #
+    #   THIEU WB = WhiteBalance co trong ban xuat va KHAC "Custom" (As Shot, Auto,
+    #   Daylight...). Preset SAY dat Custom 5250/+16; tool ghi WB cung dat Custom.
+    #]]
+    """
+    def so(k):
+        v = crs.get(k)
+        if v is None or str(v).strip() == "":
+            return None
+        try:
+            return float(str(v).replace("+", ""))
+        except ValueError:
+            return None
+
+    ba = [so(k) for k in ("Contrast2012", "Whites2012", "Blacks2012")]
+    thieu_tone = (all(v == 0 for v in ba)
+                  and (so("Highlights2012") or 0.0) == 0 and (so("Shadows2012") or 0.0) == 0)
+    wb = str(crs.get("WhiteBalance") or "").strip()
+    return thieu_tone, bool(wb) and wb.lower() != "custom"
+
+
+def nen_cho_anh(crs: dict, cfg: dict) -> dict:
+    """Ban "preset" ma tool tinh tren do: thong so that, phan preset KHONG ap thi
+    phu nen SAY (cfg nen_tone / nen_wb). crs goc giu nguyen — moc luu xuong dia la
+    so THAT (As Shot) de sau nay con hoc lai WB.
+
+    Danh dau "__nen_tone" / "__nen_wb" de compute_values biet phai TU GHI nhom do
+    (Lightroom dang o 0 / As Shot, khong phai o nen). Goi lai tren ket qua cua
+    chinh no thi ra y nguyen.
+    """
+    thieu_tone, thieu_wb = preset_chua_ap(crs)
+    out = dict(crs)
+    nt = cfg.get("nen_tone") or {}
+    if thieu_tone and nt:
+        out.update({k: nt[k] for k in nt})
+        out["__nen_tone"] = True
+    nw = cfg.get("nen_wb") or {}
+    if thieu_wb and nw.get("Temperature"):
+        out["Temperature"], out["Tint"] = nw["Temperature"], nw.get("Tint", 0)
+        #[[ Bo AsShot*: o quy trinh cu hai o nay luon trong (ban xuat 3/10 Hiu,
+        #   1303/1303 anh). De lot vao decide() thi nhanh "keo ve AsShot" bat len
+        #   va ket qua khong con y het quy trinh cu nua. ]]
+        out.pop("AsShotTemperature", None)
+        out.pop("AsShotTint", None)
+        out["__nen_wb"] = True
+    return out
+
+
+def _asshot_catalog(crs: dict) -> float:
+    """Temp As Shot THAT trong catalog (thang Adobe), 0 neu khong co.
+
+    Lightroom chi tra so nay cho anh no DA DUNG (1005: 59/630 anh) — anh chua
+    dung thi o Temperature de trong. Chi nhan dung "As Shot": "Auto" / "Daylight"
+    cung khac Custom nhung so do la Lightroom TU TINH, khong phai WB cua may."""
+    if not crs or str(crs.get("WhiteBalance", "")).replace(" ", "").lower() != "asshot":
+        return 0.0
+    return max(get_f(crs, "Temperature", 0.0), 0.0)
+
+
+def uoc_asshot(items: list, cfg: dict) -> int:
+    """Gan r["asshot_K"] — nhiet do As Shot THANG ADOBE — cho moi anh dang As
+    Shot (preset bo trong WB). Tra ve so anh uoc duoc.
+
+    Thu tu: (1) so that trong catalog; (2) K trong MakerNote quy sang thang
+    Adobe bang wb_asshot_lech_mired — hoc tu CHINH buoi neu may do co >= 3 cap
+    (K may, As Shot that), khong thi lay bang trong DEFAULTS (khop ten may dai
+    nhat), khong co thi 0. Khong co ca hai -> khong gan, compute_values tinh nhu
+    cu tren nen 5250."""
+    if not cfg.get("wb_theo_asshot"):
+        return 0
+    bang = {str(k).upper(): float(v)
+            for k, v in (cfg.get("wb_asshot_lech_mired") or {}).items()}
+    cap: dict = {}
+    for r in items:
+        t, k = _asshot_catalog(r.get("crs") or {}), _so(r.get("wb_may_K"))
+        if t > 0 and k and k > 0:
+            cap.setdefault(str(r.get("model") or "").upper(), []).append(1e6 / t - 1e6 / k)
+    hoc = {m: float(np.median(v)) for m, v in cap.items() if len(v) >= 3}
+
+    def lech(model: str) -> float:
+        m = model.upper()
+        if m in hoc:
+            return hoc[m]
+        khop = [k for k in bang if k and k in m]
+        return bang[max(khop, key=len)] if khop else 0.0
+
+    n = 0
+    for r in items:
+        r.pop("asshot_K", None)
+        r.pop("asshot_nguon", None)
+        crs = r.get("crs") or {}
+        if not preset_chua_ap(crs)[1]:
+            continue
+        t = _asshot_catalog(crs)
+        if t > 0:
+            r["asshot_K"], r["asshot_nguon"] = round(t, 1), "catalog"
+        else:
+            k = _so(r.get("wb_may_K"))
+            if not k or k <= 0:
+                continue
+            m = 1e6 / k + lech(str(r.get("model") or ""))
+            r["asshot_K"], r["asshot_nguon"] = round(1e6 / max(m, 20.0), 1), "may"
+        n += 1
+    return n
+
+
 def preset_val(r: dict, crs_key: str) -> float:
     """Giá trị preset gốc của một field: ưu tiên marker atn: để lần chạy sau
-    không tính trên kết quả của lần trước."""
+    không tính trên kết quả của lần trước. Có "crs_nen" (decide() dựng, xem
+    nen_cho_anh) thì đọc từ đó."""
     mk = ATN_FIELDS[crs_key]
     if mk in r.get("atn", {}):
         return get_f(r["atn"], mk, 0.0)
-    return get_f(r.get("crs", {}), crs_key, 0.0)
+    return get_f(r.get("crs_nen") or r.get("crs", {}), crs_key, 0.0)
 
 
 def _so(v):
@@ -2917,6 +4031,9 @@ def _skin_wb(cfg: dict, temp_adj: float, tint_adj: float,
 def decide(items: list, cfg: dict) -> None:
     """Tính delta cho từng ảnh; ghi kết quả vào chính dict của ảnh."""
     mode = cfg["mode"]
+    # Preset KHONG ap WB / Tone thi tinh tren nen SAY — xem nen_cho_anh()
+    for r in items:
+        r["crs_nen"] = nen_cho_anh(r.get("crs") or {}, cfg)
 
     #[[ Quy hai thang đo về một.
     #
@@ -2927,7 +4044,14 @@ def decide(items: list, cfg: dict) -> None:
     #   Nên đo độ lệch trung bình giữa hai thang trên chính những ảnh có cả hai, rồi
     #   cộng bù cho ảnh chỉ có thang chủ thể.
     #]]
+    _tra_mat_goc(items)
     if cfg["meter"] == "face":
+        sua_mat_lech_khung(items, cfg)
+        # Muc 4 truoc (hieu chinh tung may), muc 1 sau (dong thuan trong cung
+        # may) — dao lai thi muc 1 lay trung vi tren so chua hieu chinh.
+        bu_do_theo_may(items, cfg)
+        do_mat_theo_anh_sang(items, cfg)
+
         def _offset(key):
             d = [r["metered_face_ev"] - r[key] for r in items
                  if r.get("metered_face_ev") is not None and r.get(key) is not None]
@@ -2970,6 +4094,7 @@ def decide(items: list, cfg: dict) -> None:
 
         # Màu da đo được của cả cảnh (trung vị cho ổn định), so với màu da đích
         skin_temp_ev = skin_tint_ev = None
+        theo_may: dict = {}
         #[[ NGOAI TROI VA TRONG NHA CAN HAI MAU DA DICH KHAC NHAU.
         #
         #   Ngoai nang, da AM len la that va la cai dang giu. Trong nha den vang,
@@ -2994,28 +4119,66 @@ def decide(items: list, cfg: dict) -> None:
                 return mt - rt, mi - ri
 
             ref_ngoai = cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
-            m_trong = [r["face_rgb"] for r in group
-                       if r.get("face_rgb") and not ngoai_troi(r, cfg)]
-            m_ngoai = [r["face_rgb"] for r in group
-                       if r.get("face_rgb") and ngoai_troi(r, cfg)]
-            lech_trong = _lech(m_trong, cfg["skin_ref_rgb"])
-            lech_ngoai = _lech(m_ngoai, ref_ngoai)
-            #[[ Nhom nao trong thi muon so cua nhom kia — mot canh chi co anh
-            #   ngoai troi van phai can duoc. Khong co ca hai thi ve None, va
-            #   _skin_wb() se lui ve nhanh "khong thay mat".
+
+            def _hai_nhom(ds):
+                m_trong = [r["face_rgb"] for r in ds
+                           if r.get("face_rgb") and not _nhan_da_ngoai(r, cfg)]
+                m_ngoai = [r["face_rgb"] for r in ds
+                           if r.get("face_rgb") and _nhan_da_ngoai(r, cfg)]
+                lt = _lech(m_trong, cfg["skin_ref_rgb"])
+                ln = _lech(m_ngoai, ref_ngoai)
+                #[[ Nhom nao trong thi muon so cua nhom kia — mot canh chi co anh
+                #   ngoai troi van phai can duoc. Khong co ca hai thi ve None, va
+                #   _skin_wb() se lui ve nhanh "khong thay mat".
+                #]]
+                if lt[0] is None:
+                    lt = ln
+                if ln[0] is None:
+                    ln = lt
+                return lt, ln
+
+            lech_trong, lech_ngoai = _hai_nhom(group)
+            #[[ MUC 2 — wb_san_theo_may: tinh mau da RIENG tung than may trong
+            #   canh. Preview moi may render mot kieu (Sony dat tay, Nikon Auto),
+            #   tron chung thi trung vi la mot mau khong may nao co. Ban quay 2/10:
+            #   canh 48 anh DSC + SAY, user chinh DSC tang Tint, SAY giam K —
+            #   hai may hai huong. May nao trong canh khong co mat thi lui ve so
+            #   cua ca canh.
             #]]
-            if lech_trong[0] is None:
-                lech_trong = lech_ngoai
-            if lech_ngoai[0] is None:
-                lech_ngoai = lech_trong
+            theo_may = {}
+            if cfg.get("wb_san_theo_may"):
+                for mdl in {str(r.get("model") or "") for r in group}:
+                    ds = [r for r in group if str(r.get("model") or "") == mdl]
+                    lt, ln = _hai_nhom(ds)
+                    if lt[0] is not None:
+                        theo_may[mdl] = (lt, ln)
             skin_temp_ev, skin_tint_ev = lech_trong
 
         # Nhiệt độ / tint máy đo được, lấy trung vị cả cảnh cho ổn định
-        as_t = [get_f(r["crs"], "AsShotTemperature", 0.0) for r in group]
-        as_ti = [get_f(r["crs"], "AsShotTint", 0.0) for r in group]
+        as_t = [get_f(r["crs_nen"], "AsShotTemperature", 0.0) for r in group]
+        as_ti = [get_f(r["crs_nen"], "AsShotTint", 0.0) for r in group]
         as_t = [v for v in as_t if v > 0]
         scene_asshot_temp = float(np.median(as_t)) if as_t else 0.0
         scene_asshot_tint = float(np.median(as_ti)) if as_ti else 0.0
+        #[[ MUC 2 — wb_theo_may_pull: catalog khong co AsShotTemperature thi lay
+        #   nhiet do MAY DA DUNG de render preview (Sony dat tay 0xb021, Nikon
+        #   tu do 0x004F) lam AsShot, keo theo dung cong thuc cua nhanh sidecar.
+        #   Trung vi theo TUNG MAY trong canh: nhiet do la cua may, khong tron.
+        #
+        #   VI SAO: mau da do tren preview chi noi da lech bao nhieu SO VOI WB
+        #   CUA MAY. Lightroom thi render bang WB preset (5250K). Nikon de Auto
+        #   (ngoai troi may tu do 6000-6700K) nen preview da can sach, da trong
+        #   "dung" -> tool khong keo gi -> Lightroom van o ~5300K -> anh xanh
+        #   lanh. Ban quay 2 buoi TrainTool: HIU_4051 may do 6740K, tool 5355K,
+        #   user keo len 5771K; HIU_4098 6460K, tool 5377K, user 6100K.
+        #]]
+        may_K: dict = {}
+        if float(cfg.get("wb_theo_may_pull", 0.0) or 0.0) > 0:
+            for mdl in {str(r.get("model") or "") for r in group}:
+                ks = [float(r["wb_may_K"]) for r in group
+                      if str(r.get("model") or "") == mdl and r.get("wb_may_K")]
+                if ks:
+                    may_K[mdl] = float(np.median(ks))
 
         for r in group:
             r["scene_size"] = len(group)
@@ -3033,11 +4196,15 @@ def decide(items: list, cfg: dict) -> None:
             #   CANH (tren kia) chu khong tinh rieng tung anh: mot khuon mat le
             #   do sai thi keo ca tam anh di, con trung vi ca nhom thi khong.
             #]]
-            r["ngoai_troi"] = ngoai_troi(r, cfg)
-            if cfg["wb"] == "skin" and r["ngoai_troi"]:
-                skin_temp_ev, skin_tint_ev = lech_ngoai
+            r["ngoai_troi"] = _nhan_ngoai(r, cfg)
+            lt_r, ln_r = theo_may.get(str(r.get("model") or ""), (None, None)) \
+                if theo_may else (None, None)
+            if lt_r is None:
+                lt_r, ln_r = (lech_trong, lech_ngoai) if cfg["wb"] == "skin" else (None, None)
+            if cfg["wb"] == "skin" and _nhan_da_ngoai(r, cfg):
+                skin_temp_ev, skin_tint_ev = ln_r
             elif cfg["wb"] == "skin":
-                skin_temp_ev, skin_tint_ev = lech_trong
+                skin_temp_ev, skin_tint_ev = lt_r
             r["skin_temp_ev"] = skin_temp_ev
             r["skin_tint_ev"] = skin_tint_ev
 
@@ -3151,8 +4318,10 @@ def decide(items: list, cfg: dict) -> None:
                 #   day chinh chu the la thu dang bi hong — giu san la giu dung
                 #   cai loi can chan.
                 #]]
-                p95 = r.get("face_p95")
-                tran = float(cfg.get("skin_hard_p95") or 0.0)
+                # face_p95_dong: so dong thuan cung anh sang (muc 1), chi co khi
+                # canh_ev100 bat — tat thi y het cu.
+                p95 = r.get("face_p95_dong") or r.get("face_p95")
+                tran = tran_da(r, cfg)
                 if p95 and tran > 0 and r.get("faces_n", 0) > 0:
                     p95_255 = float(p95) * 255.0
                     if p95_255 > 1.0:
@@ -3218,6 +4387,41 @@ def decide(items: list, cfg: dict) -> None:
                     # chỉ ghi chú khi sàn THẬT SỰ đỡ lại, không phải khi vốn đã thấp
                     notes.append("giu-san-cho-chu-the")
 
+            #[[ MUC 3 — PHANH DA HAI CHIEU (phanh_da_hai_chieu). False = TAT.
+            #
+            #   Phanh da o tren chi chay khi delta > 0: no CHAN keo da len qua
+            #   tran, con da DA vuot tran san (anh chup du sang, hoac tool dang
+            #   dim ma dim chua du) thi no dung yen. Ban quay 2/10, buoi
+            #   TrainTool: DSC08681-87 tool -0.57, user -0.88 ("tool giam 0.55
+            #   chua du, da highlight van chay"); DSC08688-92 tool -0.66, user
+            #   -1.32 ("da kha chay, dim chua du"); 48 tam user ha sang co da
+            #   p95 dung o tran 232 luc tool day ra, user keo ve ~201.
+            #
+            #   Hai chieu: da vuot tran thi KEO XUONG toi tran, ke ca khi delta
+            #   dang am. Van cham max_ev de mot phep do hong khong dim sap anh.
+            #   Gan "ha-vi-chay-sang" de san phang canh khong keo nguoc len.
+            #
+            #   CHI KHI KHUNG CHAY (tran_da() da ha tran xuong, muc 3a). Ban dau
+            #   cho chay ca voi tran thuong 232 — thu tren 75 anh TrainTool thi
+            #   10 anh bi keo xuong, 8 anh ra XA dap an: say06085/06092/06104/
+            #   06110 da p95 244-249 ma user giu Exposure 0 (chi sua WB). Khung
+            #   khong chay thi da sang toi 250 user van nhan. Cai user keo xuong
+            #   la da sang TRONG KHUNG CHAY (BNE02293-305 khung 16-20% bao hoa,
+            #   da p95 204-239 -> user dong bo -0.35).
+            #]]
+            if (cfg.get("phanh_da_hai_chieu") and cfg["highlights"]
+                    and r.get("faces_n", 0) > 0):
+                p95_ = r.get("face_p95_dong") or r.get("face_p95")
+                tran_ = tran_da(r, cfg)
+                lin_ = _srgb_to_lin_1(float(p95_)) if p95_ else 0.0
+                if 0 < tran_ < float(cfg.get("skin_hard_p95") or 0.0) and lin_ > 1e-6:
+                    con_ = math.log2(max(_srgb_to_lin_1(tran_ / 255.0), 1e-6) / lin_)
+                    if delta > con_ + 1e-9:
+                        delta = round(max(con_, -float(cfg["max_ev"])), 4)
+                        for nh_ in ("ha-vi-da-sap-chay", "ha-vi-chay-sang"):
+                            if nh_ not in notes:
+                                notes.append(nh_)
+
             #[[ THU HOI VUNG CHAY — keo XUONG khi khung von da chay nang.
             #
             #   Chot chong chay o tren chi chay khi delta > 0: no ngan lam TE
@@ -3269,8 +4473,29 @@ def decide(items: list, cfg: dict) -> None:
 
             hl_adj = 0
             if cfg["highlights"]:
+                #[[ MUC 5 — AO/VAY TRANG CUA CHU THE: noi tran Highlights.
+                #   hl_ao_trang_max = 0 la TAT.
+                #
+                #   Ban quay 2/10, buoi TrainTool: vay cuoi / ao trang chay thi
+                #   tool dung o dung tran (hl_bright_max 40, hl_max 45 -> HL
+                #   cuoi -24/-29), user keo tiep ve -40..-58 (DSC08593 "vay hoi
+                #   chay", DSC08656 HL -58). Tran cu chot cho ca khung — de khong
+                #   lam xam ca anh vi mot cai man LED; vung chu the sang (vay,
+                #   ao) thi chinh la thu khach nhin, nen cho keo sau hon.
+                #   Dieu kien: vung chu the >= 242 chiem >= hl_ao_trang_pct %.
+                #]]
+                hl_tran = float(cfg["hl_max"])
+                hl_tran_b = float(cfg["hl_bright_max"])
+                ao_max = float(cfg.get("hl_ao_trang_max", 0) or 0)
+                ao_trang = (ao_max > 0 and r.get("subj_bright_frac") is not None
+                            and float(r["subj_bright_frac"]) * 100.0
+                            >= float(cfg.get("hl_ao_trang_pct", 0.0) or 0.0))
+                if ao_trang:
+                    hl_tran, hl_tran_b = max(hl_tran, ao_max), max(hl_tran_b, ao_max)
                 excess = max(0.0, clip_after - cfg["hl_trigger_pct"])
-                hl_adj = -int(round(min(cfg["hl_max"], cfg["hl_gain"] * excess)))
+                hl_adj = -int(round(min(hl_tran, cfg["hl_gain"] * excess)))
+                if ao_trang and -hl_adj > float(cfg["hl_max"]):
+                    notes.append("keo-HL-ao-trang")
 
                 #[[ Vùng GẦN cháy cũng phải kéo Highlights.
                 #
@@ -3292,12 +4517,15 @@ def decide(items: list, cfg: dict) -> None:
                 # Chỉ dùng khi cháy THẬT còn ít: ảnh đã cháy nhiều thì đường
                 # trên đã lo, chồng thêm chỉ làm xám xịt vô cớ.
                 if b_ex > 0 and clip_after < cfg["hl_bright_trigger_pct"]:
-                    b_adj = -int(round(min(cfg["hl_bright_max"],
+                    b_adj = -int(round(min(hl_tran_b,
                                            cfg["hl_bright_gain"] * b_ex)))
                     # lấy cái nào mạnh hơn, KHÔNG cộng dồn hai đường
                     if b_adj < hl_adj:
                         hl_adj = b_adj
                         notes.append("keo-HL-vi-vung-sang-lon")
+                        if (ao_trang and -b_adj > float(cfg["hl_bright_max"])
+                                and "keo-HL-ao-trang" not in notes):
+                            notes.append("keo-HL-ao-trang")
             sh_adj = 0
             if cfg["shadows"]:
                 deficit = max(0.0, shadow_after - cfg["sh_trigger_pct"])
@@ -3408,11 +4636,21 @@ def decide(items: list, cfg: dict) -> None:
                                                       skin_temp_ev, skin_tint_ev, notes)
                 elif cfg["wb"] == "skin":
                     # thiếu số liệu máy đo -> vẫn cân được theo màu da
-                    temp_adj, tint_adj = _skin_wb(cfg, 0.0, 0.0,
+                    t0_ = 0.0
+                    mk = may_K.get(str(r.get("model") or ""))
+                    pull_may = float(cfg.get("wb_theo_may_pull", 0.0) or 0.0)
+                    if mk and pull_may > 0 and preset_t > 0:
+                        # Muc 2: AsShot thieu -> dung nhiet do may (xem may_K)
+                        t0_ = float(np.clip(pull_may * (mk - preset_t),
+                                            -cfg["wb_temp_max"], cfg["wb_temp_max"]))
+                        notes.append("wb-theo-may")
+                    temp_adj, tint_adj = _skin_wb(cfg, t0_, 0.0,
                                                   skin_temp_ev, skin_tint_ev, notes)
                     notes.append("thieu-AsShotTemperature")
                 else:
                     notes.append("khong-co-AsShotTemperature")
+                # wb_tint_theo_may (muc 2b) cong o CUOI decide(), sau san
+                # phang mau — xem _tint_theo_may().
             elif cfg["wb"] in ("grey", "scene"):
                 t_ev, ti_ev = wb_cast(r["rgb_mean"])
                 if cfg["wb"] == "scene":
@@ -3596,11 +4834,20 @@ def decide(items: list, cfg: dict) -> None:
             #
             #   hl_adj / cv_* / gr_* deu la SO NGUYEN nen lam tron sau khi san.
             #]]
-            for key in ("temp_adj", "tint_adj"):
-                vals = [r.get(key, 0.0) for r in group]
-                med = float(np.median(vals))
+            #[[ MUC 2 — wb_san_theo_may: san WB trong TUNG than may cua canh,
+            #   khong tron hai may. Xem cho tinh theo_may o tren. ]]
+            nhom_wb = [group]
+            if cfg.get("wb_san_theo_may"):
+                tm_: dict = {}
                 for r in group:
-                    r[key] = r.get(key, 0.0) + (med - r.get(key, 0.0)) * lvl
+                    tm_.setdefault(str(r.get("model") or ""), []).append(r)
+                nhom_wb = list(tm_.values())
+            for g_ in nhom_wb:
+                for key in ("temp_adj", "tint_adj"):
+                    vals = [r.get(key, 0.0) for r in g_]
+                    med = float(np.median(vals))
+                    for r in g_:
+                        r[key] = r.get(key, 0.0) + (med - r.get(key, 0.0)) * lvl
 
             for key in ("hl_adj", "sh_adj", "cv_hl", "cv_lt", "cv_dk", "cv_sh",
                         "gr_sat", "gr_ssat"):
@@ -3625,6 +4872,228 @@ def decide(items: list, cfg: dict) -> None:
                         if r.get(key):
                             r[key] = common
 
+    dong_bo_loat(items, cfg)
+    if cfg["wb"] in ("asshot", "skin"):
+        _wb_theo_asshot(items, cfg)
+        _tint_theo_may(items, cfg)
+    _bu_sang_ca_buoi(items, cfg)
+
+
+def chia_loat(items: list, cfg: dict) -> list:
+    """Chia ảnh thành các LOẠT: cùng máy, cùng cảnh, cùng khẩu/tốc/ISO, chụp
+    liền nhau (≤ loat_gio_s giây), CÙNG BỐ CỤC (chữ ký khung lệch ≤ loat_bo_cuc
+    so với tấm ĐẦU loạt) và CÙNG ÁNH SÁNG (độ sáng khung lệch ≤ loat_khung_ev
+    so với tấm đầu). Trả về danh sách loạt ≥ 2 ảnh.
+
+    So với tấm ĐẦU chứ không so tấm liền trước: so liền trước thì một dãy trôi
+    dần (đèn hạ từ từ, người dịch dần) nối thành một chuỗi dài mà hai đầu khác
+    hẳn nhau."""
+    bo_cuc = float(cfg.get("loat_bo_cuc", 0.10))
+    khung_tol = float(cfg.get("loat_khung_ev", 0.25))
+    gio = float(cfg.get("loat_gio_s", 60.0))
+
+    def thong_so(r):
+        f, t, iso = _so(r.get("fnumber")), _so(r.get("exposure_time")), _so(r.get("iso"))
+        if not f or not t or not iso or t <= 0:
+            return None
+        return (round(f, 1), round(math.log2(t), 2), round(iso))
+
+    def sig(r):
+        v = r.get("scene_sig")
+        return np.asarray(v, dtype=np.float64) if v else None
+
+    theo_may: dict = {}
+    for r in sorted(items, key=lambda r: r["dt_obj"]):
+        theo_may.setdefault(str(r.get("model") or ""), []).append(r)
+    ds_loat = []
+    for ds in theo_may.values():
+        cur, neo = [], None
+        for r in ds:
+            ts, s, kh = thong_so(r), sig(r), _so(r.get("metered_subject_ev"))
+            if (cur and ts is not None and neo["ts"] is not None and ts == neo["ts"]
+                    and r.get("scene") == neo["scene"]
+                    and (r["dt_obj"] - cur[-1]["dt_obj"]).total_seconds() <= gio
+                    and s is not None and neo["sig"] is not None
+                    and s.shape == neo["sig"].shape
+                    and float(np.abs(s - neo["sig"]).mean()) <= bo_cuc
+                    and kh is not None and neo["khung"] is not None
+                    and abs(kh - neo["khung"]) <= khung_tol):
+                cur.append(r)
+                continue
+            if len(cur) >= 2:
+                ds_loat.append(cur)
+            cur = [r]
+            neo = {"ts": ts, "scene": r.get("scene"), "sig": s, "khung": kh}
+        if len(cur) >= 2:
+            ds_loat.append(cur)
+    return ds_loat
+
+
+def dong_bo_loat(items: list, cfg: dict) -> int:
+    """CÙNG KHUNG + CÙNG THÔNG SỐ CHỤP -> CÙNG MỘT KẾT QUẢ. dong_bo_loat False = TẮT.
+
+    Mỗi loạt (xem chia_loat) nhận CÙNG delta Exposure (trung vị các ảnh có
+    mặt trong loạt) và cùng Highlights/Shadows/WB/Curve. Ảnh không thấy mặt
+    nằm trong loạt cũng theo loạt — cùng khung, cùng đèn, chỉ là người quay đi.
+    Trả về số ảnh bị đổi.
+
+    #[[ VI SAO (3/10, user: "phai giai quyet dut diem"). Buoi G:\\2709 (cuoi,
+    #   Nikon Z, 1/800 f/2.2 ISO 125): SUB_6485/87/88 -0.40 ma SUB_6486 +0.45;
+    #   SUB_6652-6665 (me + co dau, cung khung) nhay -0.47..+0.45 tung tam mot.
+    #   San phang canh KHONG chua duoc: no dua moi tam ve cung "mat SAU chinh"
+    #   — phep do mat lech bao nhieu (mat me / mat co dau, AF nhay nguoi) thi
+    #   Exposure nhay bay nhieu.
+    #
+    #   VI SAO CHAY O CUOI, TREN KET QUA chu khong tren phep do: muc 1 (do mat
+    #   theo anh sang) va sua_mat_lech_khung sua PHEP DO, nhung phanh chong chay
+    #   van quyet theo tung tam — tam nay bi phanh tam kia khong. Dong bo ket
+    #   qua cuoi moi bao dam "cung mot so".
+    #
+    #   VI SAO DIEU KIEN CHAT (bo cuc + do sang khung): hai phuong an da BAC —
+    #   "cung thong so may thi cung Exposure" (san khau doi den ma thong so
+    #   khong doi, 29/9) va muc 1 gop ca anh KHAC NGUOI / khac bo cuc cung anh
+    #   sang (cong B 6.34% / 14.77%, 3/10). O day phai cung bo cuc VA cung do
+    #   sang khung VA cung thong so VA chup lien nhau.
+    #]]
+    """
+    if not cfg.get("dong_bo_loat"):
+        return 0
+    KHOA_F = ("delta_ev", "temp_adj", "tint_adj")
+    KHOA_I = ("hl_adj", "sh_adj", "cv_hl", "cv_lt", "cv_dk", "cv_sh", "gr_sat", "gr_ssat")
+    n = 0
+    for i, g in enumerate(chia_loat(items, cfg)):
+        co_mat = [r for r in g if not r.get("giu_nguyen_exposure")]
+        if not co_mat:
+            continue
+        gia = {k: float(np.median([float(r.get(k, 0.0) or 0.0) for r in co_mat]))
+               for k in KHOA_F}
+        gia.update({k: int(round(float(np.median([float(r.get(k, 0) or 0) for r in co_mat]))))
+                    for k in KHOA_I})
+        for r in g:
+            cu = float(r.get("delta_ev", 0.0) or 0.0)
+            r["delta_ev"] = round(gia["delta_ev"], 4)
+            for k in KHOA_F[1:]:
+                r[k] = gia[k]
+            for k in KHOA_I:
+                r[k] = gia[k]
+            #[[ Anh khong mat trong loat da theo loat -> khong con "giu nguyen":
+            #   bu sang ca buoi phai ap cho no nhu ca loat, khong thi loat lai
+            #   lech nhau dung bang so bu. ]]
+            r["giu_nguyen_exposure"] = False
+            r["loat"] = i
+            if abs(r["delta_ev"] - cu) > 0.005:
+                n += 1
+            if "dong-bo-loat" not in r.get("notes", ""):
+                r["notes"] = ";".join([v for v in [r.get("notes", ""), "dong-bo-loat"] if v])
+    return n
+
+
+def _bu_sang_ca_buoi(items: list, cfg: dict) -> int:
+    """Cộng cfg["bu_sang_ca_buoi"] EV vào delta CUỐI của mọi ảnh có mặt.
+
+    Chạy SAU phanh chống cháy và san phẳng cảnh — xem chú thích ở DEFAULTS.
+    Ảnh giữ nguyên vì không có mặt thì bỏ qua; vẫn tôn trần max_ev_up/max_ev.
+    Trả về số ảnh bị đổi."""
+    bu = float(cfg.get("bu_sang_ca_buoi") or 0.0)
+    if abs(bu) < 1e-9:
+        return 0
+    len_ = float(cfg.get("max_ev_up") or cfg["max_ev"])
+    xuong = float(cfg["max_ev"])
+    n = 0
+    for r in items:
+        if r.get("giu_nguyen_exposure") or r.get("delta_ev") is None:
+            continue
+        cu = float(r["delta_ev"])
+        moi = float(np.clip(cu + bu, -xuong, len_))
+        if abs(moi - cu) < 1e-9:
+            continue
+        r["delta_ev"] = round(moi, 4)
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), f"bu-sang{bu:+.2f}"] if v])
+        n += 1
+    return n
+
+
+def _wb_theo_asshot(items: list, cfg: dict) -> int:
+    """Quy trinh preset bo trong WB — BUOC 2: keo Temp ve As Shot cua TUNG MAY
+    trong canh, he so wb_asshot_pull (nhanh "keo ve AsShot" co san tu thoi
+    sidecar). Chi anh co r["asshot_K"] (uoc_asshot) — quy trinh cu khong doi.
+    Anh ngay chi keo am, anh den chi keo lanh (wb_asshot_theo_chieu); keo duoi
+    wb_asshot_min_K thi bo. Xem chu thich o DEFAULTS. Tra ve so anh bi doi.
+
+    #[[ VI SAO CONG O CUOI, SAU SAN PHANG MAU VA DONG BO LOAT — y nhu
+    #   _tint_theo_may: As Shot la cua MAY, khong phai phep do. Cong truoc thi
+    #   san phang dua ca canh ve trung vi, canh tron hai may thi may nay an As
+    #   Shot cua may kia (2709: A7M5 5317K dung chung canh voi Z5_2 5730K bi keo
+    #   +168K thay vi +23K). As Shot lay TRUNG VI theo (canh, may): may doi K
+    #   giua canh (SUB_6652-65 5880 -> SUB_6667+ 5560) khong lam anh nhap nhay.
+    #
+    #   AP CHO MOI anh dang As Shot cua (canh, may) do, KE CA anh khong tu co so:
+    #   Sony de Auto khong ghi K, catalog chi tra As Shot cho anh Lightroom da
+    #   dung (1005: 59/630) — chi keo nhung tam user da luot qua thi trong mot
+    #   canh tam am tam lanh.
+    #]]
+    """
+    if not cfg.get("wb_theo_asshot"):
+        return 0
+    pull = float(cfg.get("wb_asshot_pull") or 0.0)
+    if pull <= 0:
+        return 0
+    tran = float(cfg["wb_temp_max"])
+    nhom: dict = {}
+    for r in items:
+        if r.get("asshot_K"):
+            nhom.setdefault((r.get("scene"), str(r.get("model") or "")), []).append(
+                float(r["asshot_K"]))
+    n = 0
+    for r in items:
+        ks = nhom.get((r.get("scene"), str(r.get("model") or "")))
+        if not ks or not (r.get("crs_nen") or {}).get("__nen_wb"):
+            continue
+        a = float(np.median(ks))
+        nen = preset_val(r, "Temperature")
+        if nen <= 0:
+            continue
+        keo = float(np.clip(pull * (a - nen), -tran, tran))
+        r["asshot_canh"] = round(a)
+        if cfg.get("wb_asshot_theo_chieu") and (keo < 0 if r.get("ngoai_troi") else keo > 0):
+            continue
+        if abs(keo) < float(cfg.get("wb_asshot_min_K") or 0.0):
+            continue
+        r["temp_adj"] = float(r.get("temp_adj", 0.0)) + keo
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), f"wb-asshot{keo:+.0f}"] if v])
+        n += 1
+    return n
+
+
+def _tint_theo_may(items: list, cfg: dict) -> int:
+    """MUC 2b — lech Tint co dinh theo than may (wb_tint_theo_may). {} = TAT.
+
+    #[[ VI SAO: ban quay 2 (2/10) user noi "anh Nikon qua tool deu bi am tim";
+    #   ca 57 anh Nikon user sua Tint deu GIAM, trung vi -5 (16 -> 11). Preset
+    #   +16 chinh cho Sony; Nikon render cung Tint do lech sang tim.
+    #   Cong: TrainTool 57 sat / 0 xa. User duyet tan mat 3/10 (so_sanh_ung_vien.pdf).
+    #
+    #   VI SAO CONG O CUOI, SAU SAN PHANG MAU: ban dau cong ngay trong vong tung
+    #   anh, roi san phang dua ca canh ve TRUNG VI tint. Canh tron hai may thi
+    #   so lech di theo da so: TrainTool 12 anh SONY bi -5 (canh Nikon dong
+    #   hon), 7 anh Nikon mat -5 (canh Sony dong hon); 2609: 2 Sony bi, 20 Nikon
+    #   mat. San phang dua nen ve mot muc chung, roi moi cong lech cua tung may.
+    #]]
+    """
+    bang = cfg.get("wb_tint_theo_may") or {}
+    if not isinstance(bang, dict) or not bang:
+        return 0
+    n = 0
+    for r in items:
+        ten_m = str(r.get("model") or "").upper()
+        for k_, v_ in bang.items():
+            if k_ and str(k_).upper() in ten_m and float(v_):
+                r["tint_adj"] = float(r.get("tint_adj", 0.0)) + float(v_)
+                r["notes"] = ";".join([v for v in [r.get("notes", ""), "tint-theo-may"] if v])
+                n += 1
+                break
+    return n
+
 
 # ======================================================================
 # 5. Ghi sidecar
@@ -3636,6 +5105,13 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     Dùng chung cho cả hai nguồn: sidecar .xmp và thông số lấy từ catalog Lightroom.
     Trả về dict {tên field crs: chuỗi giá trị} để bên gọi tự quyết ghi đi đâu.
     """
+
+    #[[ Preset khong ap WB / Tone (quy trinh moi 3/10) -> tinh tren nen SAY, va
+    #   phai TU GHI nhom do: Lightroom dang o As Shot / 0 chu khong o nen. Xem
+    #   nen_cho_anh(). Anh co preset day du thi crs di qua nguyen ven. ]]
+    crs = nen_cho_anh(crs, cfg)
+    nen_tone, nen_wb = bool(crs.get("__nen_tone")), bool(crs.get("__nen_wb"))
+    r["nen_tone"], r["nen_wb"] = nen_tone, nen_wb
 
     def baseline(crs_key: str) -> float:
         """Giá trị preset gốc: ưu tiên marker của lần chạy trước để không cộng dồn."""
@@ -3659,10 +5135,16 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     # Luôn ghi lại mọi trường mình quản lý (kể cả khi delta = 0). Nếu chỉ ghi khi
     # có thay đổi thì lần chạy lại với tham số khác sẽ để sót giá trị của lần trước.
     changes = {"Exposure2012": fmt_f(new_exp)}
-    if cfg["highlights"] or ATN_FIELDS["Highlights2012"] in atn:
+    if cfg["highlights"] or ATN_FIELDS["Highlights2012"] in atn or nen_tone:
         changes["Highlights2012"] = fmt_i(new_hl)
-    if cfg["shadows"] or ATN_FIELDS["Shadows2012"] in atn:
+    if cfg["shadows"] or ATN_FIELDS["Shadows2012"] in atn or nen_tone:
         changes["Shadows2012"] = fmt_i(new_sh)
+    # Ba thanh tool khong chinh, chi dat dung gia tri preset SAY khi preset bo trong
+    for key in ("Contrast2012", "Whites2012", "Blacks2012"):
+        r.pop("new_" + key, None)
+        if nen_tone and key in crs:
+            changes[key] = fmt_i(int(get_f(crs, key, 0.0)))
+            r["new_" + key] = int(get_f(crs, key, 0.0))
 
     #[[ Parametric curve: cộng lên giá trị preset, không ghi đè.
     #
@@ -3711,11 +5193,15 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     elif cfg["wb"] != "off":
         new_temp = float(np.clip(old_temp + r["temp_adj"], 2000, 50000))
         new_tint = float(np.clip(old_tint + r["tint_adj"], -150, 150))
-    if old_temp > 0 and (cfg["wb"] != "off" or ATN_FIELDS["Temperature"] in atn):
+    if old_temp > 0 and (cfg["wb"] != "off" or ATN_FIELDS["Temperature"] in atn or nen_wb):
         changes["Temperature"] = str(int(round(new_temp)))
         changes["Tint"] = fmt_i(new_tint)
         if str(crs.get("WhiteBalance", "")) != "Custom":
             changes["WhiteBalance"] = "Custom"
+    #[[ Nen WB khac WB dang co trong Lightroom (As Shot) -> PHAI ghi ca khi tool
+    #   khong doi gi (temp_adj = 0): write_lr_job binh thuong bo trong o WB khi
+    #   moi == cu, va de trong thi anh o lai As Shot. ]]
+    r["wb_ep_ghi"] = nen_wb and old_temp > 0
 
     r.update(old_exposure=old_exp, new_exposure=new_exp,
              old_highlights=int(old_hl), new_highlights=new_hl,
@@ -3749,10 +5235,13 @@ def apply_to_sidecar(r: dict, cfg: dict, backup_dir: Path | None, root: Path, dr
 
     out = text
     if cfg["marker"]:
-        # ghi baseline TRƯỚC khi đổi crs, và chỉ ghi lần đầu
+        # ghi baseline TRƯỚC khi đổi crs, và chỉ ghi lần đầu. Mốc lấy theo NỀN mà
+        # compute_values đã tính trên (nen_cho_anh): preset bỏ trống WB/Tone mà
+        # ghi mốc As Shot / 0 thì lần chạy sau tính trên một nền khác lần đầu.
+        crs_nen = nen_cho_anh(crs, cfg)
         for crs_key, mk in ATN_FIELDS.items():
-            if mk not in atn and crs_key in crs:
-                out = set_ns(out, ATN_PREFIX, mk, str(crs[crs_key]), ATN_NS)
+            if mk not in atn and crs_key in crs_nen:
+                out = set_ns(out, ATN_PREFIX, mk, str(crs_nen[crs_key]), ATN_NS)
     for k, v in changes.items():
         out = set_crs(out, k, v)
     out = touch_metadata_date(out)
@@ -3770,7 +5259,10 @@ def apply_to_sidecar(r: dict, cfg: dict, backup_dir: Path | None, root: Path, dr
 # Plugin xuất ra đây; autotone đọc vào. Nhờ vậy không phải bắt Lightroom ghi
 # hàng nghìn sidecar (Ctrl+S trên thư mục lớn rất lâu và trông như bị treo).
 EXPORT_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012",
-                 "Temperature", "Tint", "AsShotTemperature", "AsShotTint"]
+                 "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
+                 # 3/10: de nhan ra preset bo trong WB / Tone (preset_chua_ap).
+                 # WhiteBalance la CHU ("As Shot", "Custom"...), khong phai so.
+                 "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012"]
 BASELINE_NAME = "_autotone_baseline.tsv"
 
 # So anh bi bo qua vi nguoi dung da sua tay o lan chay gan nhat — giao dien doc
@@ -3779,6 +5271,34 @@ SO_ANH_NGUOI_SUA = 0
 #[[ Ly do KHONG loc anh sua tay o lan chay nay, "" neu co loc binh thuong.
 #   Giao dien doc de noi ra — mot buoc loc tu tat ma im lang thi khong ai biet. ]]
 CANH_BAO_XUAT = ""
+#[[ Plugin trong Lightroom con ban cu ma preset da bo trong Tone — xem
+#   canh_bao_plugin_cu(). Giao dien doc de noi ra; "" = khong sao. ]]
+CANH_BAO_PLUGIN = ""
+
+
+def canh_bao_plugin_cu(export: dict) -> str:
+    """"" neu on; khac "" khi ban xuat la cua plugin CU (khong co cot WhiteBalance)
+    ma phan lon anh dang Highlights = Shadows = 0 — dau hieu preset bo trong Tone.
+
+    #[[ VI SAO PHAI NOI: preset_chua_ap() can cot WhiteBalance / Contrast2012 de
+    #   nhan ra quy trinh moi. Plugin cu khong xuat chung -> tool tinh nhu preset
+    #   day du: Highlights tinh tu 0 thay vi 16, khong ghi Contrast / Whites /
+    #   Blacks, WB tinh tu As Shot -> ra mot kieu anh khac, khong bao loi gi. Quen
+    #   Reload plugin sau khi cap nhat la chuyen de xay ra nhat.
+    #   Quy trinh cu (preset day du) thi Highlights / Shadows = 16 -> khong bao.
+    #]]
+    """
+    recs = [v for v in (export or {}).values() if isinstance(v, dict)]
+    if not recs or any("WhiteBalance" in v for v in recs):
+        return ""
+    khong = sum(1 for v in recs if get_f(v, "Highlights2012", 16.0) == 0
+                and get_f(v, "Shadows2012", 16.0) == 0)
+    if khong * 2 < len(recs):
+        return ""
+    return (f"{khong}/{len(recs)} ảnh đang Highlights = Shadows = 0 (preset bỏ trống Tone?) "
+            "nhưng plugin trong Lightroom là bản CŨ, chưa xuất cột WhiteBalance — tool "
+            "không nhận ra để tự ghi WB và Tone. Vào Lightroom: File > Plug-in Manager > "
+            "AutoTone > Reload Plug-in, rồi Phân tích lại.")
 
 #[[ Đường dẫn ĐÚNG NHƯ LIGHTROOM LƯU, giữ kèm trong mỗi bản ghi.
 #
@@ -3931,13 +5451,156 @@ def latest_catalog_export(job_dir: Path | None = None) -> Path | None:
     d = Path(job_dir or LR_JOB_DIR)
     if not d.is_dir():
         return None
-    files = list(d.glob("export_*.tsv"))
+    files = [f for f in d.glob("export_*.tsv") if ghi_xong(f)]
     if not files:
         return None
     try:
         return max(files, key=lambda p: (p.stat().st_mtime_ns, p.name))
     except OSError:
         return sorted(files)[-1]
+
+
+#[[ BAN XUAT PHAI LA CUA DUNG THU MUC — khong phai "file moi nhat" bat ky.
+#
+#   Gap that 3/10, buoi G:\1009 (437 anh): app bao "ban xuat chi khop 0 anh —
+#   437 anh se bi bo qua". File app dang doc la export_20261003_082531.tsv,
+#   630 dong, TOAN anh G:\1005 — Lightroom dang mo thu muc 1005 va lenh xuat o
+#   menu lay theo vung dang xem. latest_catalog_export() chi biet "moi nhat",
+#   khong biet "cua ai".
+#
+#   Nay chon ban MOI NHAT CO ANH CUA THU MUC NAY. Plugin cung khong con xoa ban
+#   xuat cua buoi khac (truoc chi giu dung mot file cho ca catalog — xuat buoi
+#   nay la mat ban cua buoi kia).
+#
+#   Doc tung file de biet no phu thu muc nao thi ton: watcher cua giao dien goi
+#   moi 3 giay. Nen nho ket qua theo (mtime, size) — file khong doi thi khong doc
+#   lai.
+#]]
+_PHU_XUAT: dict = {}
+
+
+def _thu_muc_cua_ban_xuat(p: Path) -> frozenset:
+    """Tap thu muc cha (khoa_duong_dan) cua moi anh trong mot ban xuat."""
+    try:
+        st = p.stat()
+    except OSError:
+        return frozenset()
+    nho = _PHU_XUAT.get(str(p))
+    if nho and nho[0] == (st.st_mtime_ns, st.st_size):
+        return nho[1]
+    cha = set()
+    try:
+        with io.open(p, encoding="utf-8", errors="replace") as fh:
+            dau = True
+            for dong in fh:
+                if dong.startswith("#"):
+                    continue
+                if dau:                 # dong tieu de
+                    dau = False
+                    continue
+                duong = dong.split("\t", 1)[0].strip()
+                if duong:
+                    cha.add(khoa_duong_dan(os.path.dirname(duong)))
+    except OSError:
+        return frozenset()
+    kq = frozenset(cha)
+    _PHU_XUAT[str(p)] = ((st.st_mtime_ns, st.st_size), kq)
+    return kq
+
+
+def _phu_thu_muc(cha: frozenset, goc: str, gom_con: bool) -> bool:
+    if goc in cha:
+        return True
+    return gom_con and any(c.startswith(goc.rstrip("\\/") + os.sep) for c in cha)
+
+
+def ban_xuat_cho_thu_muc(folder, job_dir: Path | None = None,
+                         gom_con: bool = False) -> Path | None:
+    """Bản xuất MỚI NHẤT có ảnh của thư mục này (None nếu chưa có bản nào).
+
+    gom_con = True: tính cả ảnh ở thư mục con (ô "Gồm cả thư mục con")."""
+    if not folder:
+        return None
+    d = Path(job_dir or LR_JOB_DIR)
+    if not d.is_dir():
+        return None
+    goc = khoa_duong_dan(folder)
+    ds = []
+    for f in d.glob("export_*.tsv"):
+        try:
+            ds.append((f.stat().st_mtime_ns, f.name, f))
+        except OSError:
+            continue
+    for _, _, f in sorted(ds, reverse=True):
+        if ghi_xong(f) and _phu_thu_muc(_thu_muc_cua_ban_xuat(f), goc, gom_con):
+            return f
+    return None
+
+
+#[[ KET QUA CUA MOT LAN APP NHO PLUGIN XUAT — plugin ghi jobs/ketqua_xuat.txt.
+#
+#   Truoc day plugin khong tim thay anh nao (thu muc chua import, hoac da go
+#   khoi catalog) thi chi ghi mot dong vao plugin.log va KHONG ghi gi khac. App
+#   doi du 90 giay roi bao "plugin da nhan nhung chua xuat xong" — sai benh. Va
+#   so anh 1 sao bi bo (quy uoc "1 sao khong xuat") chi nam trong nhat ky, nen
+#   app goi chung ca chung lan anh thieu that la "se bi bo qua".
+#]]
+KET_QUA_XUAT = "ketqua_xuat.txt"
+
+
+def ket_qua_xuat(job_dir: Path | None = None) -> dict:
+    """{} nếu chưa có. Khoá: thu_muc, so_anh, bo_sao, file, loi, cach, khi (mtime)."""
+    p = Path(job_dir or LR_JOB_DIR) / KET_QUA_XUAT
+    try:
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        khi = p.stat().st_mtime
+    except OSError:
+        return {}
+    out: dict = {"khi": khi}
+    for dong in txt.splitlines():
+        k, sep, v = dong.partition("=")
+        if sep:
+            out[k.strip()] = v.strip()
+    for k in ("so_anh", "bo_sao"):
+        try:
+            out[k] = int(out.get(k) or 0)
+        except ValueError:
+            out[k] = 0
+    return out
+
+
+def ghi_xong(p: Path) -> bool:
+    """File xuất đã ghi xong chưa? True = đọc được.
+
+    #[[ VI SAO CAN, KHI PLUGIN DA GHI .part ROI DOI TEN
+    #
+    #   Plugin ghi ra export_*.tsv.part roi LrFileUtils.move sang ten that —
+    #   dung y de app khong bao gio doc phai file do. Nhung tren Windows,
+    #   move sang mot ten DA TON TAI khong nguyen tu: no xoa file cu roi chep
+    #   noi dung sang. Trong khoang chep do, app doc duoc mot file cut.
+    #
+    #   Do that 25/09: plugin bao "xuat 3461 anh" (dem tu chinh bien lines),
+    #   ma file tren dia chi 425 dong va KET THUC GIUA MOT DONG:
+    #
+    #       ...<TAB>16<TAB>5250<TAB>16<TAB><CRLF>G:/PerfectMalai/DSC07725.ARW<TAB>0<TAB>1
+    #
+    #   20476 byte, trong khi du 3461 dong phai ~166 KB. App doc file do roi
+    #   bao "3036 anh se bi bo qua" — mot con so hoan toan bia, va nguoi dung
+    #   xuat lai bao nhieu lan cung ra mot so khac nhau.
+    #
+    #   Dau hieu nhan biet chac chan nhat chinh la cho do: plugin ghi
+    #   table.concat(lines, "\n") .. "\n" nen file HOAN CHINH luon ket thuc
+    #   bang xuong dong. Cut giua dong thi chac chan dang ghi do.
+    #]]
+    """
+    try:
+        if p.stat().st_size < 2:
+            return False
+        with p.open("rb") as f:
+            f.seek(-1, 2)
+            return f.read(1) in (b"\n", b"\r")
+    except OSError:
+        return False
 
 
 def read_catalog_export(path: Path) -> dict[str, dict]:
@@ -3948,8 +5611,28 @@ def baseline_path(folder: Path) -> Path:
     return Path(folder) / BASELINE_NAME
 
 
-def xoa_du_lieu_buoi(folder: Path, job_dir: Path | None = None) -> dict:
-    """Xoa MOI dau vet tool da luu cho mot buoi chup. Tra ve thong ke da xoa.
+def xoa_du_lieu_buoi(folder: Path, job_dir: Path | None = None,
+                     ca_ban_xuat: bool = False, xoa_moc: bool = False) -> dict:
+    """Xoa dau vet tool da luu cho mot buoi chup. Tra ve thong ke da xoa.
+
+    #[[ 3/10: MOC GOC GIU LAI, tru khi xoa_moc=True.
+    #
+    #   Ban dau nut nay xoa ca _autotone_baseline.tsv ("ba thu phai xoa cung
+    #   nhau"). Nhung tu truoc toi 3/10 nut tren giao dien CHUA BAO GIO chay
+    #   duoc (goi ham khong ton tai) — nen chua ai thay hau qua cua viec xoa moc.
+    #   Sua nut xong thi no lo ra: anh trong Lightroom con mang so tool ghi lan
+    #   truoc (nguoi dung chi muon chay lai, khong Reset / import lai), xoa moc
+    #   thi lan sau lay chinh so cu lam nen roi CONG THEM lan nua — Exposure
+    #   -0.31 thanh -0.62, Highlights -29 thanh -74. Preview trong RAW khong doi
+    #   theo Lightroom nen delta tinh ra lan hai y het lan dau.
+    #
+    #   Giu moc thi ca hai truong hop deu dung: import lai / ap lai cung preset
+    #   -> moc = gia tri preset = catalog; chua Reset -> tinh lai tu gia tri
+    #   TRUOC khi tool cham. Doi sang preset bo trong WB/Tone thi
+    #   attach_catalog_settings tu nhan ra (moc-cu-khac-quy-trinh).
+    #   Con lai mot ca moc sai: doi so cua chinh preset (vd Highlights 16 -> 10)
+    #   roi chay lai — luc do moi can xoa_moc=True.
+    #]]
 
     VI SAO CAN
         Import lai mot buoi vao Lightroom roi xuat thong so, tool van nho lan
@@ -3963,16 +5646,34 @@ def xoa_du_lieu_buoi(folder: Path, job_dir: Path | None = None) -> dict:
           apply_*_<ten>.done       tool da ghi gi o lan chay truoc
           apply_*_<ten>.tsv        job chua kip ap, cung mang gia tri cu
 
-        KHONG dung toi export_*.tsv: do la ban xuat MOI tu catalog, tuc chinh
-        thu nguoi dung vua tao de chay lai. Xoa no la bat ho xuat lai.
+        MAC DINH KHONG dung toi export_*.tsv: do la ban xuat MOI tu catalog,
+        tuc chinh thu nguoi dung vua tao de chay lai. Xoa no la bat ho xuat lai.
+
+    ca_ban_xuat=True THI XOA CA NO
+        Can khi nguoi dung muon "nhan dien lai catalog tu dau" that su. Giu
+        ban xuat cu lai thi app van doc no — va neu ban xuat do thieu anh (vi
+        luc xuat chi chon mot phan catalog), buoi chup se tiep tuc bi bo qua
+        dung nhung anh do, du da bam xoa du lieu.
+
+        Gap that 25/09: thu muc 3461 anh, ban xuat chi co 851 dong. Bam xoa
+        du lieu xong van bao "2610 anh se bi bo qua", vi ban xuat cu con
+        nguyen.
+
+        3/10: CHI xoa ban xuat CO ANH CUA BUOI NAY (ban_xuat_cho_thu_muc). Ban
+        cu xoa HET export_*.tsv vi luc do app chi biet doc "file moi nhat" —
+        nay app chon theo thu muc nen ban xuat cua buoi khac giu lai duoc, va
+        xoa no la bat buoi kia xuat lai vo co.
+        (Cung ngay 3/10 moi biet: nut "Xoa du lieu cu" tren giao dien goi mot
+        ham KHONG TON TAI — at.ban_xuat_moi_nhat — nen tu truoc toi nay bam vao
+        la vang loi ngam, khong xoa gi ca. Xem kiem_tham_chieu.py.)
 
     Chi xoa file cua DUNG buoi nay — job cua buoi khac giu nguyen.
     """
     folder = Path(folder)
-    ra = {"baseline": 0, "done": 0, "job": 0, "loi": []}
+    ra = {"baseline": 0, "done": 0, "job": 0, "ban_xuat": 0, "loi": []}
 
     bp = baseline_path(folder)
-    if bp.is_file():
+    if xoa_moc and bp.is_file():
         try:
             bp.unlink()
             ra["baseline"] = 1
@@ -3989,6 +5690,24 @@ def xoa_du_lieu_buoi(folder: Path, job_dir: Path | None = None) -> dict:
                     ra[khoa] += 1
                 except OSError as e:
                     ra["loi"].append(f"{f.name}: {e}")
+
+        if ca_ban_xuat:
+            goc = khoa_duong_dan(folder)
+            for f in d.glob("export_*.tsv"):
+                if not _phu_thu_muc(_thu_muc_cua_ban_xuat(f), goc, True):
+                    continue
+                try:
+                    f.unlink()
+                    ra["ban_xuat"] += 1
+                except OSError as e:
+                    ra["loi"].append(f"{f.name}: {e}")
+            # ket qua lan xuat truoc cua CHINH buoi nay cung la vet cu
+            kq = ket_qua_xuat(d)
+            if kq.get("thu_muc") and khoa_duong_dan(kq["thu_muc"]) == goc:
+                try:
+                    (d / KET_QUA_XUAT).unlink()
+                except OSError:
+                    pass
     return ra
 
 
@@ -4024,8 +5743,13 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path
             moi = dict(base)
             moi.update(cu)          # mốc cũ đè lên, không bao giờ ngược lại
             base = moi
+    #[[ Bon cot cuoi cho quy trinh preset bo trong WB / Tone (3/10): thieu chung
+    #   thi lan chay lai khong con nhan ra anh dang o As Shot / Tone 0 (xem
+    #   preset_chua_ap) va tinh tren mot nen khac lan dau. Moc cu khong co bon
+    #   cot nay -> doc ra la quy trinh cu, dung nhu thuc te. ]]
     cols = ["Exposure2012", "Highlights2012", "Shadows2012",
-            "Temperature", "Tint", "AsShotTemperature", "AsShotTint"]
+            "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
+            "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012"]
     # Cot path ghi ban Lightroom neu co, khong thi ghi khoa normcase. Ghi de
     # bang khoa normcase se lam mat cach viet hoa/thuong that va lan chay sau
     # gui job voi duong dan Lightroom khong nhan ra.
@@ -4089,11 +5813,25 @@ def last_applied(folder: Path, job_dir: Path | None = None) -> dict:
     return out
 
 
-def ban_xuat_cu_hon_lan_ghi(folder: Path, job_dir: Path | None = None):
+def ban_xuat_cu_hon_lan_ghi(folder: Path, job_dir: Path | None = None,
+                            ban_xuat: Path | None = None):
     """Bản xuất catalog có CŨ HƠN lần tool ghi gần nhất không?
 
     Trả về (có_cũ_hơn, mốc bản xuất, mốc lần ghi) — hai mốc là datetime, hoặc
     None nếu thiếu file.
+
+    ban_xuat: file bản xuất ĐANG DÙNG cho thư mục này (giao diện biết nó). None
+    -> tự tìm bản mới nhất có ảnh của thư mục (ban_xuat_cho_thu_muc).
+
+    #[[ 3/10: PHAI LA BAN XUAT CUA DUNG THU MUC. Truoc lay mtime lon nhat cua
+    #   MOI export_*.tsv — dung khi app con doc "file moi nhat". Tu khi app doc
+    #   ban xuat THEO THU MUC thi hai ben lech nhau: buoi X dung ban xuat cu
+    #   (truoc lan ghi), chi can co mot ban xuat cua buoi Y moi hon lan ghi la
+    #   chot nay im — va danh_dau_nguoi_sua lai bo ca buoi X trong im lang, dung
+    #   benh 2705 ngay 7/9. Khong biet file nao dang dung thi lay ban phu DUNG
+    #   thu muc truoc (cu hon hoac bang ban gom thu muc con): nham ve phia bao
+    #   oan thi chi tat buoc loc va noi ra; nham ve phia im thi mat ca buoi.
+    #]]
 
     VÌ SAO PHẢI HỎI CÂU NÀY
         danh_dau_nguoi_sua() đứng trên một giả định: bản xuất phản ánh catalog
@@ -4111,14 +5849,18 @@ def ban_xuat_cu_hon_lan_ghi(folder: Path, job_dir: Path | None = None):
     d = Path(job_dir or LR_JOB_DIR)
     if not d.is_dir():
         return False, None, None
-    xuats = sorted(d.glob("export_*.tsv"))
     ten = Path(folder).name
     ghis = [q for q in sorted(d.glob(f"apply_*_{ten}.done"))
             if "khoiphuc" not in q.name.lower()]
-    if not xuats or not ghis:
+    if not ghis:
+        return False, None, None
+    xuat = (Path(ban_xuat) if ban_xuat else
+            ban_xuat_cho_thu_muc(folder, d)
+            or ban_xuat_cho_thu_muc(folder, d, gom_con=True))
+    if xuat is None:
         return False, None, None
     try:
-        t_xuat = max(q.stat().st_mtime for q in xuats)
+        t_xuat = xuat.stat().st_mtime
         t_ghi = max(q.stat().st_mtime for q in ghis)
     except OSError:
         return False, None, None
@@ -4137,7 +5879,7 @@ def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
         return 0
     n = 0
     for r in items:
-        key = os.path.normcase(os.path.abspath(r["path"]))
+        key = khoa_duong_dan(r["path"])     # cung khoa voi _read_tsv (xem ham do)
         cur = export.get(key)
         if not cur:
             continue
@@ -4164,11 +5906,27 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
     base = load_baseline(folder)
     matched = missing = 0
     for r in items:
-        key = os.path.normcase(os.path.abspath(r["path"]))
+        #[[ khoa_duong_dan, KHONG phai normcase: ban xuat va moc deu doc qua
+        #   _read_tsv -> khoa_duong_dan. Tren Windows hai cach ra cung mot chuoi;
+        #   tren macOS normcase khong viet thuong nen ca buoi khop 0 anh. ]]
+        key = khoa_duong_dan(r["path"])
         cur = export.get(key)
         old = base.get(key)
+        r["ngoai_xuat"] = False
         if old is not None:
-            r["crs"] = dict(old)
+            #[[ Moc cu la preset DAY DU, catalog lai dang o trang thai preset bo
+            #   trong WB/Tone (As Shot, Tone 0) -> anh da duoc import / dat lai
+            #   theo quy trinh moi SAU khi moc duoc chot. Moc cu da het dung:
+            #   tinh tren no thi tool khong biet phai tu ghi WB va ba thanh Tone,
+            #   anh o lai As Shot / Tone 0. Trang thai As Shot / Tone 0 khong bao
+            #   gio la so tool ghi ra, nen lay no lam moc khong the cong don.
+            #   (Khong ghi de file moc: lan sau catalog da mang so tool ghi, moc cu
+            #   lai thang — va so nen cua no trung y nen_tone / nen_wb.) ]]
+            if cur and any(preset_chua_ap(cur)) and not any(preset_chua_ap(old)):
+                r["crs"] = dict(cur)
+                r["notes"] = (r.get("notes", "") + ";moc-cu-khac-quy-trinh").strip(";")
+            else:
+                r["crs"] = dict(old)
             r["atn"] = {}
             r["rerun"] = True
             matched += 1
@@ -4178,7 +5936,15 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
             base[key] = dict(cur)          # lần đầu thấy -> chốt làm mốc
             matched += 1
         else:
+            #[[ KHONG CO trong ban xuat lan moc -> KHONG duoc day vao Lightroom.
+            #   Truoc day anh nay van vao job voi nen 0: Highlights tinh tu 0 thay
+            #   vi 16, Exposure tinh tu 0 bat ke catalog dang o dau. Ban xuat cua
+            #   buoi khac (3/10: G:\1009 doc nham ban xuat G:\1005) thi ca buoi
+            #   bi ghi nhu vay, trong khi giao dien bao "se bi bo qua". Nay dung
+            #   nhu loi bao: write_lr_job bo qua (ngoai_xuat). Anh 1 sao bi plugin
+            #   bo khi xuat cung roi vao day — dung quy uoc "1 sao khong xu ly". ]]
             r["crs"], r["atn"] = {}, {}
+            r["ngoai_xuat"] = True
             r["notes"] = (r.get("notes", "") + ";khong-co-trong-export").strip(";")
             missing += 1
 
@@ -4326,7 +6092,12 @@ def analyze(pairs, cfg: dict, jobs: int = 1, progress=None, cancel=None):
               bool(cfg.get("blink")),
               # Do theo vung da sang khi vung do du lon — xem hl_da_ti_le.
               float(cfg.get("hl_da_ti_le", 0.0)),
-              float(cfg.get("hl_da_muc", 220.0))) for p, _ in pairs]
+              float(cfg.get("hl_da_muc", 220.0)),
+              float(cfg.get("af_gan_mat", 0.0)),
+              bool(cfg.get("af_xoay_theo_anh", True)),
+              bool(cfg.get("af_nikon", False)),
+              float(cfg.get("mat_ao_to_pct", 0.0)),
+              float(cfg.get("mat_ao_diem", 0.6))) for p, _ in pairs]
     total = len(tasks)
     results: list = []
 
@@ -4380,8 +6151,11 @@ def analyze(pairs, cfg: dict, jobs: int = 1, progress=None, cancel=None):
 
 
 def plan(items: list, cfg: dict, folder: Path | None = None,
-         export: dict | None = None) -> None:
-    """Gom cảnh, nạp thông số nguồn, tính delta và điền giá trị dự kiến (không ghi file)."""
+         export: dict | None = None, ban_xuat: Path | None = None) -> None:
+    """Gom cảnh, nạp thông số nguồn, tính delta và điền giá trị dự kiến (không ghi file).
+
+    ban_xuat: file mà `export` đọc ra (nguồn catalog) — để chốt "bản xuất cũ
+    hơn lần ghi" so đúng file đó. None -> tự tìm theo thư mục."""
     # Hai bộ lọc ĐỘC LẬP, chạy nối tiếp: trùng khung trước, nhắm mắt sau.
     # Bật/tắt riêng, ngưỡng riêng, nhãn riêng. Ảnh đã bị loại ở bước trước thì
     # bước sau bỏ qua, nên mỗi ảnh chỉ mang đúng MỘT lý do loại.
@@ -4397,6 +6171,7 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
     #]]
     for r in items:
         r["ngoai_troi"] = ngoai_troi(r, cfg)
+    lam_min_trong_ngoai(items, int(cfg.get("trong_ngoai_min_shots", 1)))
     group_scenes(items, cfg["gap_minutes"],
                  float(cfg.get("scene_sig_thresh", 0.0)),
                  int(cfg.get("scene_sig_min_shots", 3)),
@@ -4405,14 +6180,22 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
     # decide() cần AsShotTemperature ở mức cả cảnh nên phải nạp thông số trước
     if cfg.get("source") == "catalog":
         attach_catalog_settings(items, export or {}, Path(folder or "."), persist=False)
+        #[[ As Shot cua tung anh — TRUOC khi bo anh nguoi sua: anh user da mo
+        #   trong Develop chinh la anh Lightroom da dung, tuc anh co As Shot
+        #   THAT de hoc do lech thang K. Bo chung truoc thi mat gan het cap. ]]
+        uoc_asshot(items, cfg)
         #[[ BO QUA anh nguoi dung da sua tay — xem chu thich o danh_dau_nguoi_sua().
         #   Dat NGAY SAU khi nap thong so va TRUOC decide(), de nhung anh do
         #   khong di qua bat ky buoc tinh nao: khong can sang, khong san phang
         #   canh, khong loc. Chung phai ra khoi duong ong hoan toan.
         #]]
-        global SO_ANH_NGUOI_SUA, CANH_BAO_XUAT
+        global SO_ANH_NGUOI_SUA, CANH_BAO_XUAT, CANH_BAO_PLUGIN
         CANH_BAO_XUAT = ""
-        cu, t_xuat, t_ghi = ban_xuat_cu_hon_lan_ghi(Path(folder or "."))
+        CANH_BAO_PLUGIN = canh_bao_plugin_cu(export or {})
+        if CANH_BAO_PLUGIN:
+            print("[!] " + CANH_BAO_PLUGIN, file=sys.stderr)
+        cu, t_xuat, t_ghi = ban_xuat_cu_hon_lan_ghi(Path(folder or "."),
+                                                    ban_xuat=ban_xuat)
         if cu:
             #[[ BAN XUAT CU HON LAN GHI -> KHONG duoc chay danh_dau_nguoi_sua.
             #   Gia dinh cua no da hong (xem ban_xuat_cu_hon_lan_ghi). Chay tiep
@@ -4441,6 +6224,9 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
             except (OSError, TypeError, UnicodeDecodeError) as ex:
                 r["crs"], r["atn"] = {}, {}
                 r["notes"] = f"khong-doc-duoc-sidecar:{ex}"
+        #[[ KHONG uoc_asshot o duong sidecar: ghi xong thi .xmp mang WB Custom
+        #   cua tool, moc atn chi giu nen 5250 — lan chay lai mat As Shot, ra so
+        #   khac lan dau (4716 -> 5250). Duong catalog giu As Shot trong moc. ]]
 
     decide(items, cfg)
     for r in items:
@@ -4463,7 +6249,7 @@ def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None =
     """
     if cfg.get("source") == "catalog":
         # Không có sidecar để ghi: chốt mốc rồi đẩy thẳng job sang Lightroom.
-        base = {os.path.normcase(os.path.abspath(r["path"])): r["crs"]
+        base = {khoa_duong_dan(r["path"]): r["crs"]
                 for r in items if r.get("crs")}
         if base:
             save_baseline(root, base)
@@ -4699,7 +6485,11 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  "Rating",
                  # Upright: 1 = Auto. Lightroom tu tinh perspective khi mo anh,
                  # SDK khong co API tinh san.
-                 "PerspectiveUpright"]
+                 "PerspectiveUpright",
+                 # 3/10: chi co so khi preset bo trong nhom Basic Tone (xem
+                 # nen_cho_anh); o trong = plugin khong dung toi. Dat CUOI de
+                 # moi cho doc job theo vi tri cot (neu con) khong lech.
+                 "Contrast2012", "Whites2012", "Blacks2012"]
 
 # File job vừa ghi gần nhất — giao diện theo dõi nó tới khi plugin đổi đuôi .done
 LAST_JOB: Path | None = None
@@ -4793,13 +6583,41 @@ def export_request_pending(job_dir: Path | None = None) -> bool:
     return (d / "request_export.txt").exists()
 
 
-def export_stamp(job_dir: Path | None = None) -> float:
-    """Thời điểm của bản xuất mới nhất. Dùng để biết plugin đã trả lời chưa."""
-    p = latest_catalog_export(job_dir)
+def export_stamp(job_dir: Path | None = None, thu_muc=None) -> float:
+    """Thời điểm của bản xuất mới nhất. Dùng để biết plugin đã trả lời chưa.
+
+    thu_muc: chỉ tính bản xuất CÓ ẢNH của thư mục đó — một bản xuất của buổi
+    khác (người dùng bấm menu xuất bên Lightroom) không được tính là "đã trả lời"."""
+    p = (ban_xuat_cho_thu_muc(thu_muc, job_dir) if thu_muc
+         else latest_catalog_export(job_dir))
     try:
         return p.stat().st_mtime if p else 0.0
     except OSError:
         return 0.0
+
+
+#[[ NHIP CUA VONG LAP PLUGIN (3/10) — jobs/plugin_song.txt, plugin ghi ~10 giay
+#   mot lan khi vong lap con song (Core.ghiNhip, goi tu Init.lua).
+#
+#   Gap that 3/10 08:25 -> 09:04: vong lap trong Lightroom KHONG chay (khong
+#   mot dong nhat ky nao suot 39 phut), app ghi yeu cau xuat luc 09:02:51 roi
+#   cho mai "dang nho Lightroom doc thu muc". User Reload plugin luc 09:04:49 ->
+#   09:04:50 da xuat xong 326 anh: duong nho xuat chi mat 1 giay KHI vong lap
+#   song. plugin.log khong noi duoc vong lap con song khong (no chi ghi khi co
+#   viec). Co nhip thi app noi ngay "plugin khong chay — Reload", khong de user
+#   ngoi cho roi tu vao menu xuat tay.
+#]]
+NHIP_PLUGIN = "plugin_song.txt"
+
+
+def plugin_nhip(job_dir: Path | None = None) -> float | None:
+    """Giây kể từ nhịp cuối của vòng lặp plugin. None = chưa từng có nhịp (plugin
+    bản cũ chưa ghi nhịp, hoặc chưa bao giờ chạy)."""
+    f = Path(job_dir or LR_JOB_DIR) / NHIP_PLUGIN
+    try:
+        return max(0.0, time.time() - f.stat().st_mtime)
+    except OSError:
+        return None
 
 
 def plugin_song_khi_nao(job_dir: Path | None = None) -> float | None:
@@ -4854,7 +6672,7 @@ def sent_values(path: str) -> tuple[str, dict] | None:
     "ảnh này đã nhận thông số chưa?" — thay vì ngồi nhìn Before/After mà đoán."""
     if not LR_JOB_DIR.is_dir():
         return None
-    key = os.path.normcase(os.path.abspath(path))
+    key = khoa_duong_dan(path)
     jobs = sorted(LR_JOB_DIR.glob("apply_*.done")) + sorted(LR_JOB_DIR.glob("apply_*.tsv"))
     for jp in sorted(jobs, key=lambda x: x.stat().st_mtime, reverse=True):
         try:
@@ -4866,7 +6684,7 @@ def sent_values(path: str) -> tuple[str, dict] | None:
         cols = lines[0].split("	")
         for ln in lines[1:]:
             v = ln.split("	")
-            if v and os.path.normcase(os.path.abspath(v[0])) == key:
+            if v and khoa_duong_dan(v[0]) == key:
                 rec = {cols[i]: v[i] for i in range(1, min(len(cols), len(v)))
                        if v[i] != ""}
                 return jp.name, rec
@@ -4884,16 +6702,38 @@ def job_result(job: Path | None) -> str:
     return ""
 
 
+def ten_job(name: str) -> str:
+    """Phần tên buổi trong tên file job: apply_<YYYYmmdd_HHMMSS>_<ten_job>.tsv.
+
+    Một chỗ duy nhất — giao diện cũng dùng nó để lọc job của ĐÚNG buổi đang
+    mở (job_cua_buoi). Hai nơi tự viết hai biểu thức thì sớm muộn lệch nhau."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", name or "autotone")[:60]
+
+
+def job_cua_buoi(job: Path, thu_muc) -> bool:
+    """Job này có phải của buổi `thu_muc` không (None = mọi buổi)."""
+    if thu_muc is None:
+        return True
+    return Path(job).stem[22:] == ten_job(Path(thu_muc).name)
+
+
 def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Path | None:
     """Ghi file job cho plugin Lightroom. Trả về đường dẫn, hoặc None nếu không có gì."""
     rows = []
     for r in items:
         if "new_exposure" not in r:
             continue
+        if r.get("ngoai_xuat"):
+            # khong co trong ban xuat catalog -> khong biet nen, khong ghi
+            # (xem attach_catalog_settings)
+            continue
         # Ghi cả ảnh không đổi: plugin áp giá trị TUYỆT ĐỐI, nên phải liệt kê đủ thì
         # catalog mới khớp hệt sidecar — kể cả ảnh vừa được trả về đúng mức preset.
+        # wb_ep_ghi: nen WB khac WB dang co trong Lightroom (As Shot) — phai ghi
+        # ca khi tool khong doi gi, xem compute_values
         wb_changed = (r.get("new_temp") != r.get("old_temp")
-                      or r.get("new_tint") != r.get("old_tint"))
+                      or r.get("new_tint") != r.get("old_tint")
+                      or bool(r.get("wb_ep_ghi")))
         rows.append([
             # Ưu tiên đường dẫn Lightroom tự đọc ra (xem LR_PATH_KEY). Gửi đường
             # dẫn quét từ đĩa thì lệch hoa/thường là plugin không tìm thấy ảnh.
@@ -4916,13 +6756,16 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             # ô trống = không đụng tới
             str(int(r["rating"])) if r.get("rating") else "",
             str(int(r["upright"])) if r.get("upright") else "",
+            # preset bỏ trống Basic Tone -> đặt đúng số preset SAY (nen_tone)
+            *[str(int(r["new_" + k])) if r.get("new_" + k) is not None else ""
+              for k in ("Contrast2012", "Whites2012", "Blacks2012")],
         ])
     if not rows:
         return None
 
     job_dir = Path(job_dir or LR_JOB_DIR)
     job_dir.mkdir(parents=True, exist_ok=True)
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", name or "autotone")[:60]
+    safe = ten_job(name)
     # Tiền tố apply_ để phân biệt với export_*.tsv (chiều catalog -> autotone)
     dest = job_dir / f"apply_{datetime.now():%Y%m%d_%H%M%S}_{safe}.tsv"
 
