@@ -145,6 +145,11 @@ jobs:
               THEM="$THEM --so-anh $PWD/ToolCloneEvoto/bo_thuc"
             fi
           fi
+          #[[ ICON: dong_goi --icon neu repo co icon macOS. Quy uoc: dat file
+          #   icon.icns o GOC repo. Khong co thi dung icon mac dinh (khong loi). ]]
+          if [ -f "$PWD/icon.icns" ]; then
+            THEM="$THEM --icon $PWD/icon.icns"
+          fi
           #[[ PHAI goi DUNG ban Python da cai thu vien.
           #
           #   Tren runner macOS, `python` tro vao Python HE THONG
@@ -201,14 +206,42 @@ jobs:
           fi
           echo "Gói bảo mật đạt: lõi + saytool đều là mã máy."
 
+      #[[ TAO .dmg — FILE CAI DAT macOS (nguoi dung muon file cai, khong phai zip).
+      #
+      #   .dmg mo ra hien cua so co AutoTone.app + shortcut Applications; keo app
+      #   vao do la cai xong — chuan macOS. hdiutil co san tren runner, khong cai
+      #   gi them. Dung UDZO (nen). Van GIU .zip o buoc nen cu lam ban du phong.
+      #
+      #   Chua ky (code signing) nen lan dau mo may hien "unidentified developer":
+      #   nguoi dung chuot phai -> Open, hoac bo chan trong System Settings. Muon
+      #   het canh bao phai co Apple Developer ID ($99/nam) — chua lam o day.
+      #]]
+      - name: Tạo .dmg (file cài đặt)
+        run: |
+          APP="dist/AutoTone.app"
+          TEN="AutoTone"
+          [ -d "$APP" ] || { echo "Khong thay $APP"; exit 1; }
+          STAGE="$(mktemp -d)"
+          cp -R "$APP" "$STAGE/"
+          # Shortcut Applications de keo-tha
+          ln -s /Applications "$STAGE/Applications"
+          mkdir -p dist
+          DMG="dist/${TEN}-macOS.dmg"
+          rm -f "$DMG"
+          #[[ -volname: ten o cua so .dmg. -srcfolder: noi dung. UDZO: nen zlib. ]]
+          hdiutil create -volname "$TEN" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          rm -rf "$STAGE"
+          echo "=== .dmg da tao ==="
+          ls -lh "$DMG"
+
       - name: Gửi gói ra
         uses: actions/upload-artifact@v4
         with:
           name: AutoTone-macOS
-          #[[ Nhan ca .zip lan .tar.gz: nen_goi() dung `ditto` (ra .zip) nhung
-          #   LUI VE tar neu may khong co ditto. Chi khai .zip thi truong hop
-          #   do se gui ra mot goi rong ma khong bao gi. ]]
+          #[[ .dmg la file cai chinh. Van kem .zip/.tar.gz lam ban du phong
+          #   (nen_goi dung ditto ra .zip, lui ve tar neu thieu ditto). ]]
           path: |
+            dist/*.dmg
             dist/*.zip
             dist/*.tar.gz
           if-no-files-found: error

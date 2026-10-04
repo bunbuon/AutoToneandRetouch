@@ -74,8 +74,9 @@ LOAI_TRU = [
     "test_giao_dien_gon.py", "test_cap_nhat.py", "test_retouch_cwd.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
-    #   trong goi cai. ]]
-    "tao_ban_cap_nhat.py",
+    #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe
+    #   tren may build — khong di theo app. ]]
+    "tao_ban_cap_nhat.py", "dong_installer.py",
 ]
 
 # Module chính của app và các module nó gọi tới lúc chạy
@@ -418,11 +419,16 @@ MA_HOA_HET = False
 def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
          sach: bool = True, nhe: bool = False,
          goc_nguon: Path | None = None, diem_vao: str | None = None,
-         ngam_them=None) -> list:
+         ngam_them=None, giu_mo_hinh: bool = False,
+         icon: Path | None = None) -> list:
     """Dựng dòng lệnh PyInstaller. Tách riêng để kiểm được mà không phải build.
 
     he:  "win" | "mac"
     nhe: bỏ thư viện nặng ra khỏi gói — xem GOI_TACH.
+    icon: file .ico (Windows) / .icns (macOS) gắn cho .exe/.app. None = mặc định.
+    giu_mo_hinh: với --nhe, VẪN mang mô hình (dùng cho bản bảo mật: mô hình đã
+        mã hoá ~300 MB, mang theo để tránh lỗ hổng cwd và chạy offline). Không
+        ảnh hưởng torch — torch vẫn tải sau theo --nhe.
 
     #[[ BAO MAT (4/10): goc_nguon = cây nguồn đã mã hoá (bao_mat.dung_cay_nguon)
     #   thay cho GOC. diem_vao = launcher mỏng "chay.py". ngam_them = MỌI module
@@ -436,6 +442,14 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     ngan = ";" if he == "win" else ":"        # dấu ngăn của --add-data
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
            "--windowed", "--name", TEN]
+    #[[ ICON cho .exe/.app. GIU TEN KY THUAT la "AutoTone" (--name), KHONG doi
+    #   theo ten hien thi: thu muc du lieu, bundle id, duong_dan.TEN_UD, kiem_goi
+    #   deu dua vao "AutoTone". Ten hien thi (shortcut, tieu de cua so) doi o Inno
+    #   Setup / tieu de — khong dung toi day. PyInstaller nhan .ico (Windows) hoac
+    #   .icns (macOS); truyen .png thi no tu doi tren mot so ban, nhung an toan
+    #   nhat la .ico/.icns dung he. ]]
+    if icon:
+        cmd += ["--icon", str(icon)]
     if sach:
         cmd.append("--clean")
     #[[ Chi them --paths khi ma hoa (goc_nguon la cay staging): de duong build
@@ -500,11 +514,20 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
             cmd += ["--collect-all", g]
         if goc_tool:
             cmd += ["--add-data", f"{saytool_du(goc_tool)}{ngan}saytool"]
-            #[[ mo_hinh/ nang 554 MB — ban nhe KHONG mang theo, tai_nguyen.py
-            #   tai goi "mo-hinh" ve %LOCALAPPDATA% lan dau bam Retouch.
+            #[[ MO HINH TRONG GOI HAY TAI SAU.
+            #
+            #   Ban --nhe THUONG (chua ma hoa): mo_hinh/ nang 554 MB nen KHONG
+            #   mang, tai_nguyen.py tai goi "mo-hinh" ve lan dau bam Retouch.
+            #
+            #   Ban --nhe CO BAO MAT (giu_mo_hinh=True): mo hinh DA MA HOA (~300
+            #   MB, IP tu train) VAN mang theo — nhe hon ban tho, va quan trong
+            #   hon: saytool nap mo hinh theo CWD = thu muc goi; de model trong
+            #   goi thi khong dinh lo hong "model o tai_nguyen nhung cwd o goi".
+            #   torch (thu vien, khong phai IP) van tai sau nhu --nhe.
+            #
             #   Van mang saytool/ (vai MB) de giao dien biet co nhung buoc nao.
             #]]
-            if not nhe:
+            if (not nhe) or giu_mo_hinh:
                 cmd += ["--add-data", f"{mo_hinh_du(goc_tool)}{ngan}mo_hinh"]
     else:
         for g in RETOUCH_GOI:
@@ -654,6 +677,10 @@ def main(argv=None) -> int:
     #   dau bam Retouch. Xem GOI_TACH va tai_nguyen.py. ]]
     ap.add_argument("--nhe", action="store_true",
                     help="Ban nhe: tai thu vien nang ve sau, khong nhet vao goi")
+    #[[ ICON: .ico (Windows) / .icns (macOS) cho .exe/.app. Ten ky thuat van la
+    #   "AutoTone"; chi doi icon. ]]
+    ap.add_argument("--icon", type=Path, default=None,
+                    help="File .ico (Win) / .icns (Mac) gan cho .exe/.app")
     #[[ BAO MAT (4/10): bien dich loi sang .pyd/.so truoc khi build — xem
     #   bao_mat.py. Tuy chon, KHONG mac dinh: bat tay de ban build cu van chay
     #   nguyen ven cho toi khi xac nhan ban ma hoa build tron tren tung may. ]]
@@ -771,8 +798,12 @@ def main(argv=None) -> int:
         print("  [!] Đóng retouch KHÔNG --bao-mat: gói sẽ mang saytool .py và mô "
               "hình đọc được.\n      Bản giao khách: chạy lại kèm --bao-mat.")
 
+    #[[ --nhe CO --bao-mat: giu mo hinh DA MA HOA trong goi (xem lenh()). Mo
+    #   hinh ma hoa la IP, nhe (~300 MB), va de trong goi thi saytool (cwd=goi)
+    #   nap duoc ngay — khong dinh lo hong "model o tai_nguyen, cwd o goi". ]]
     cmd = lenh(he, retouch_vao, goc_tool, nhe=a.nhe,
-               goc_nguon=goc_nguon, diem_vao=diem_vao_bm, ngam_them=ngam_them)
+               goc_nguon=goc_nguon, diem_vao=diem_vao_bm, ngam_them=ngam_them,
+               giu_mo_hinh=bool(a.bao_mat and a.nhe), icon=a.icon)
     print(f"  Hệ: {he}   retouch: {'có' if retouch_vao else 'không'}"
           + (f"   ({goc_tool})" if retouch_vao else "")
           + ("   [BAN NHE: thu vien nang tai sau]" if a.nhe else "")

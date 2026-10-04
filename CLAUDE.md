@@ -1289,3 +1289,44 @@ mới — URL không đổi). NHỚ đổi `cap_nhat.PHIEN_BAN_APP` cho lần bu
 `kiem_bq_online` chưa vào `LOAI_TRU`. `kiem_bq_giao_dien.py` `import cap_key` —
 kéo cả khoá ký key vào gói nếu lọt. Đã thêm cả hai vào `LOAI_TRU` (cùng nhóm với
 `tao_ma.py`/`cap_key.py`).
+
+## Bản giao khách: installer .exe + .dmg, model trong gói, icon (4/10 tối)
+
+User: "mã hoá tất cả; cập nhật icon app; Windows build .exe cài đặt, macOS file
+cài đặt không phải zip".
+
+**Model mã hoá nằm TRONG gói (không tải sau) — `--nhe` + `--bao-mat`:** trước đây
+`--nhe` bỏ cả `mo_hinh/` (554 MB chưa mã hoá, tải sau qua `tai_nguyen`). Nhưng
+model mã hoá chỉ ~300 MB và là IP, và quan trọng hơn: saytool nạp model theo
+**CWD = thư mục gói**, nên để model ở `tai_nguyen` (CWD khác) là dính lỗ hổng
+"model một nơi, cwd một nơi". Nên thêm cờ `lenh(..., giu_mo_hinh=)`:
+`dong_goi.main()` bật `giu_mo_hinh=True` khi `--bao-mat and --nhe` → `--nhe` VẪN
+`--add-data mo_hinh` (model đã mã hoá), chỉ torch/thư viện nặng là tải sau.
+torch không phải IP (thư viện công khai) nên tải sau không sao. Kiểm: `lenh()`
+với `giu_mo_hinh=True` có `--add-data ...mo_hinh` và KHÔNG `--collect-all torch`.
+
+**BẢN ĐẦY ĐỦ (nhồi torch) SẬP trên Windows:** `dong_goi --bao-mat` (không `--nhe`)
+chạy `--collect-all torch` + 9 gói nặng → PyInstaller **0xC0000005** trong
+Analysis (đúng lỗi mục 17.09). Nên bản Windows giao khách = `--bao-mat --nhe`
+(model trong gói, torch tải lần đầu Retouch). RAM dư (15 GB) không cứu được —
+lỗi cơ chế AST của PyInstaller với `--collect-all` gói lớn, không phải thiếu RAM.
+
+**Windows → Setup.exe (Inno Setup):** `installer_win.iss` + `dong_installer.py`.
+`dong_installer.py` dò `ISCC.exe` (Inno Setup 6, cài qua `winget install --id
+JRSoftware.InnoSetup`) rồi chạy `.iss` với tham số `/DTenApp /DPhienBan /DNguon
+/DExe /DIcon /DPublisher /DRaDir` — đổi tên/icon KHÔNG sửa `.iss`. Ra
+`dist\<ten>-Setup.exe`: cài vào Program Files, shortcut Start Menu + Desktop, gỡ
+cài đặt. GIỮ TÊN KỸ THUẬT "AutoTone" (thư mục dữ liệu / bundle id / `duong_dan.
+TEN_UD` / `kiem_goi` đều dựa vào nó); tên hiển thị đổi qua `--ten` của Inno +
+tiêu đề cửa sổ, KHÔNG đổi `--name` của PyInstaller. Ngôn ngữ Inno: `Default.isl`
+(English) có sẵn; `Vietnamese.isl` KHÔNG trong bản mặc định, phải tải riêng.
+
+**macOS → .dmg:** `build-mac.yml` thêm bước "Tạo .dmg" sau khi build .app, dùng
+`hdiutil create -format UDZO` với symlink `/Applications` để kéo-thả. Vẫn kèm
+`.zip`/`.tar.gz` làm dự phòng. Chưa ký (code signing) nên lần đầu mở máy báo
+"unidentified developer" — chuột phải → Open, hoặc cần Apple Developer ID.
+
+**Icon:** `dong_goi.py` thêm cờ `--icon` (truyền `--icon` cho PyInstaller — .ico
+Windows / .icns macOS). `build-mac.yml` tự dò `icon.icns` ở gốc repo. Inno Setup
+nhận icon qua `dong_installer.py --icon`. Trước đó dự án KHÔNG gắn icon (dùng mặc
+định). Đặt `icon.ico` (Win) + `icon.icns` (Mac) ở gốc repo khi có.
