@@ -1388,3 +1388,41 @@ SAY, cho KHÁCH đọc). Đường dẫn plugin sau cài: Windows
 `%LOCALAPPDATA%\AutoTone\AutoTone.lrplugin`, Mac `~/Library/Application
 Support/AutoTone/AutoTone.lrplugin` (= `duong_dan.plugin()` = `LR_PLUGIN_DIR`).
 Plugin chép ra lúc chạy LẦN ĐẦU — phải mở app một lần trước khi tìm trong LR.
+
+## cv2 recursion trên .app macOS — SỬA ĐÚNG TẦNG (4/10 khuya)
+
+**Triệu chứng:** bản `.app` chạy lên, `kiem_goi` báo `recursion is detected
+during loading of "cv2" binary extensions` + `face_detector()` trả None. Dai
+dẳng qua MỌI lần build .app (run 21/09, 4/10) — bản Mac CHƯA BAO GIỜ qua kiem_goi.
+
+**KHÔNG phải đệ quy thật, KHÔNG phải lỗi version.** Loader cv2 (bootstrap) tính
+LOADER_DIR theo `__file__`, tìm `cv2.abi3.so` + `.dylibs` cạnh đó. KHÔNG thấy →
+importlib nạp lại `cv2/__init__` → cờ `sys.OpenCV_LOADER` đã set → ném
+"recursion". Tức **thiếu native .so trong gói**.
+
+**Vì sao thiếu (và vì sao Windows không bị):** app dùng CYTHON — cv2 được import
+bởi module `.so` đã biên dịch (không phải `.py` trong PYZ), nên PyInstaller dò
+import TĨNH **không thấy `import cv2`** → **hook-cv2.py không chạy** → `.so` +
+`.dylibs` không vào gói. Windows `--collect-all cv2` nên binaries vào đủ (may rủi).
+macOS bỏ `--collect-all cv2` (ĐÚNG — nó kéo `.py` config đặt lệch sau khi .app
+cross-link Frameworks/Resources) NHƯNG thành KHÔNG collect gì → thiếu `.so`.
+
+**Các cách SAI đã thử:** pin opencv 4.11.0.86 (sai tầng — version không phải
+nguyên nhân); opencv-python-headless (cùng loader, cùng lỗi). Cả hai vô ích.
+
+**Cách ĐÚNG (`dong_goi.lenh`, chỉ macOS):** KHÔNG `--collect-all cv2`, mà:
+`--collect-binaries cv2` (cv2.abi3.so + .dylibs — QUAN TRỌNG NHẤT) +
+`--collect-data cv2` (config loader đọc) + `--hidden-import cv2` (bắt buộc vì
+Cython không có import tĩnh). Đúng thứ hook-cv2 chuẩn làm, gọi tay. + runtime
+hook `rthook_cv2.py` (`--runtime-hook`, dự phòng: chèn sys.path nếu cv2 ở thư
+mục con `python-3.x`). KHÔNG `--strip` (PyInstaller #9463 hỏng cv2/numpy trên CI).
+
+**Kiểm sau build:** `.app/Contents/Frameworks/cv2/` phải có `cv2.abi3.so` +
+`.dylibs/*.dylib` + `config*.py`. Thiếu `.so`/`.dylibs` = collect chưa ăn.
+
+**Nếu VẪN dai dẳng:** cân nhắc bỏ `.app`, build onedir dạng THƯ MỤC (bỏ bước
+tạo .app) rồi đóng .dmg từ thư mục đó — cắt đứt hẳn biến số symlink Frameworks/
+Resources của .app bundle. Vẫn tạo .dmg được từ thư mục thường.
+
+Nguồn: PyInstaller #7128 (root cause + fix), discussion #7493 (collect_dynamic_libs
++ runtime hook, maintainer rokm xác nhận), opencv-python #680, CHANGES 5.6/5.12.
