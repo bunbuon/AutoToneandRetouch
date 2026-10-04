@@ -8404,7 +8404,14 @@ def main():
             _ico = _p if _p.is_file() else None
         if _ico and _ico.is_file():
             try:
-                root.iconbitmap(default=str(_ico))      # Windows: .ico, ap ca taskbar
+                #[[ PHAI goi iconbitmap(ico) KHONG 'default' de DOI icon CUA SO
+                #   CHINH (root). iconbitmap(default=ico) CHI dat mac dinh cho
+                #   cua so con tao SAU — root van giu icon mac dinh (long vu).
+                #   Da kiem qua Win32 WM_GETICON: default -> icon_handle=0 (khong
+                #   doi); khong default -> icon_handle!=0 (doi that). Goi CA HAI:
+                #   iconbitmap(ico) cho root, default cho cac hop thoai sau. ]]
+                root.iconbitmap(str(_ico))              # doi icon ROOT (titlebar+taskbar)
+                root.iconbitmap(default=str(_ico))      # + mac dinh cho cua so con
             except Exception:                            # noqa: BLE001
                 #[[ Mac/Linux khong nhan .ico qua iconbitmap -> thu iconphoto PNG. ]]
                 _png = _ico.with_name("app.png")
