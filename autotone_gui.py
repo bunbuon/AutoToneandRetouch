@@ -41,6 +41,11 @@ import giao_dien as gd
 import ban_quyen as bq
 import khoa
 
+#[[ TEN HIEN THI cho nguoi dung (tieu de cua so, nhan, hop thoai). Khac TEN KY
+#   THUAT "AutoTone" (duong_dan.TEN_UD, bundle id, thu muc du lieu) — doi ten
+#   hien thi KHONG dung toi cac thu do. Mot cho sua, moi cho dung lai day. ]]
+TEN_HIEN_THI = "Tone&Retouch"
+
 
 #[[ BAY KHAU — xuong song cua ung dung.
 #
@@ -1239,7 +1244,7 @@ class App(ttk.Frame):
         vào lbl_scan / btn_fix y như trước.
         """
         m = gd.MAU
-        tk.Label(cha, text="AutoTone", background=m["toi"], foreground=m["chu"],
+        tk.Label(cha, text=TEN_HIEN_THI, background=m["toi"], foreground=m["chu"],
                  font=gd.CHU_TIEU_DE).pack(side="left", padx=(0, 14))
         tk.Frame(cha, width=1, height=gd.don_vi(self) + 6,
                  background=m["vien2"]).pack(side="left", padx=(0, 12))
@@ -7482,7 +7487,7 @@ class TaiCapNhat(tk.Toplevel):
         super().__init__(cha)
         self.cn = cn
         self.ban = ban
-        self.title("Cập nhật AutoTone")
+        self.title(f"Cập nhật {TEN_HIEN_THI}")
         self.transient(cha)
         self.resizable(False, False)
         self._dung = False
@@ -8358,9 +8363,9 @@ def main():
     #   (ban cu) thi chi la khong co so, khong phai loi. ]]
     try:
         import cap_nhat as _cnv
-        root.title(f"AutoTone — cân sáng tự động  (v{_cnv.phien_ban_dang_chay()})")
+        root.title(f"{TEN_HIEN_THI} — cân sáng & retouch  (v{_cnv.phien_ban_dang_chay()})")
     except Exception:                                    # noqa: BLE001
-        root.title("AutoTone — cân sáng tự động")
+        root.title(f"{TEN_HIEN_THI} — cân sáng & retouch")
     #[[ Rong hon truoc: cot trai an 252 px, va bang anh co 15 cot. 1180 la be
     #   ngang toi thieu de bang khong phai cuon ngang ngay tu luc mo len.
     #]]

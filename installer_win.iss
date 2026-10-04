@@ -40,13 +40,19 @@ AppId={{B7A9E3C1-5A4D-4E2F-9B8C-AUTOTONE-SAYMEDIA}
 AppName={#TenApp}
 AppVersion={#PhienBan}
 AppPublisher={#Publisher}
-; Cai vao Program Files\<TenApp>. {autopf} = Program Files dung bit may.
-DefaultDirName={autopf}\{#TenApp}
+; TenFile = ten AN TOAN cho thu muc/ten file (khong co & / ky tu la). Mac dinh
+; = TenApp neu khong truyen. Dung cho DefaultDirName + ten Setup.exe de tranh
+; thu muc "Program Files\A&B" va file "A&B-Setup.exe" gay roi shell/URL.
+#ifndef TenFile
+  #define TenFile TenApp
+#endif
+; Cai vao Program Files\<TenFile>. {autopf} = Program Files dung bit may.
+DefaultDirName={autopf}\{#TenFile}
 DefaultGroupName={#TenApp}
 ; Khong bat chon thu muc (gon cho nguoi dung cuoi); bo dong nay neu muon cho chon.
 DisableProgramGroupPage=yes
 OutputDir={#RaDir}
-OutputBaseFilename={#TenApp}-Setup
+OutputBaseFilename={#TenFile}-Setup
 Compression=lzma2/max
 SolidCompression=yes
 ; 64-bit: app PyInstaller la x64.

@@ -88,8 +88,15 @@ def main(argv=None) -> int:
         print(f"  [!] Khong thay {iss}.")
         return 1
 
+    #[[ TEN FILE AN TOAN: bo & va ky tu la khoi ten thu muc / Setup.exe. Ten
+    #   HIEN THI (--ten) giu nguyen "Tone&Retouch"; ten file thanh "Tone-Retouch".
+    #   Windows cho & trong ten file nhung no gay roi shell/URL — tranh han. ]]
+    import re
+    ten_file = re.sub(r"[^\w.-]+", "-", a.ten).strip("-") or "App"
+
     cmd = [str(iscc),
            f"/DTenApp={a.ten}",
+           f"/DTenFile={ten_file}",
            f"/DPhienBan={ban}",
            f"/DNguon={nguon}",
            f"/DExe={a.exe}",
@@ -113,7 +120,7 @@ def main(argv=None) -> int:
         print(f"  [!] Inno Setup loi, ma {r.returncode}")
         return r.returncode
 
-    ra_file = a.ra / f"{a.ten}-Setup.exe"
+    ra_file = a.ra / f"{ten_file}-Setup.exe"
     if ra_file.is_file():
         print(f"\n  Setup: {ra_file}  ({ra_file.stat().st_size / 1e6:.0f} MB)")
     else:

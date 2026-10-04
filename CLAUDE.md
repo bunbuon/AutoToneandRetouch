@@ -1330,3 +1330,22 @@ tiêu đề cửa sổ, KHÔNG đổi `--name` của PyInstaller. Ngôn ngữ In
 Windows / .icns macOS). `build-mac.yml` tự dò `icon.icns` ở gốc repo. Inno Setup
 nhận icon qua `dong_installer.py --icon`. Trước đó dự án KHÔNG gắn icon (dùng mặc
 định). Đặt `icon.ico` (Win) + `icon.icns` (Mac) ở gốc repo khi có.
+
+## Tên hiển thị "Tone&Retouch" + icon (4/10 tối)
+
+**Tên:** `autotone_gui.TEN_HIEN_THI = "Tone&Retouch"` — dùng cho tiêu đề cửa sổ,
+nhãn góc trái, hộp thoại cập nhật. KHÁC tên kỹ thuật "AutoTone"
+(`duong_dan.TEN_UD`, bundle id `vn.saymedia.autotone`, thư mục dữ liệu,
+`--name` của PyInstaller, `kiem_goi` trỏ `dist/AutoTone`) — ĐỔI tên hiển thị
+KHÔNG đụng các thứ đó, tránh vỡ thư mục dữ liệu/plugin đang có.
+
+**Ký tự `&`:** trong Inno Setup `&` ở caption/menu là phím tắt (gạch chân). Nên
+`dong_installer.py` sinh `TenFile` an toàn (`re.sub(r"[^\w.-]+","-")` →
+"Tone-Retouch") cho thư mục cài + tên `Setup.exe`, còn `TenApp` ("Tone&Retouch")
+chỉ dùng cho AppName hiển thị. `.iss` có `#ifndef TenFile` mặc định = TenApp.
+
+**Icon:** `icon.ico` (Windows, 7 size 16→256) + `icon.icns` (macOS, 1024) ở GỐC
+repo, sinh từ bộ PNG gold của SAY (chữ S vàng, vòng tròn vàng, nền đen bo góc)
+bằng Pillow. `dong_goi.py --icon` → `--icon` cho PyInstaller (nhúng vào .exe:
+xác minh resource RT_GROUP_ICON+RT_ICON; .app: icns). `dong_installer.py --icon`
+→ `SetupIconFile` + UninstallDisplayIcon. `build-mac.yml` tự dò `icon.icns`.
