@@ -1426,3 +1426,15 @@ Resources của .app bundle. Vẫn tạo .dmg được từ thư mục thường
 
 Nguồn: PyInstaller #7128 (root cause + fix), discussion #7493 (collect_dynamic_libs
 + runtime hook, maintainer rokm xác nhận), opencv-python #680, CHANGES 5.6/5.12.
+
+## BẪY --add-data DEST là THƯ MỤC, không phải tên file (4/10 — icon cửa sổ)
+
+Icon cửa sổ/taskbar vẫn lông vũ dù đã làm iconbitmap + AppUserModelID + mang
+icon vào gói. Nguyên nhân: `--add-data SRC;DEST` thì **DEST là THƯ MỤC ĐÍCH**,
+KHÔNG phải tên file mới. `--add-data icon.ico;app.ico` tạo **thư mục**
+`_internal/app.ico/` chứa `icon.ico`, nên `dd.tai_nguyen("app.ico")` trỏ vào một
+THƯ MỤC → `root.iconbitmap()` im lặng thất bại (bọc try/except) → cửa sổ vẫn
+lông vũ. Sửa: `--add-data icon.ico;.` (DEST = "." = gốc, giữ tên gốc `icon.ico`),
+và `autotone_gui.main` tìm theo tên gốc `icon.ico` (dự phòng `app.ico` cho gói
+cũ). Bài học: muốn ĐỔI TÊN file khi add-data thì phải copy sang tên đó TRƯỚC rồi
+add, hoặc chấp nhận giữ tên gốc và tìm theo tên gốc.

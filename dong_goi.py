@@ -463,10 +463,16 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         cmd += ["--icon", str(icon)]
         #[[ --icon chi NHUNG icon vao .exe (Explorer/shortcut thay). Nhung CUA SO
         #   Tkinter luc chay KHONG lay tu .exe — no can mot file .ico de goi
-        #   root.iconbitmap(). Nen mang luon file icon vao GOC tai nguyen goi,
-        #   ten "app.ico", de autotone_gui.main() dat icon cua so + taskbar.
-        #   (Thieu buoc nay thi shortcut dung icon gold ma cua so van long vu.) ]]
-        cmd += ["--add-data", f"{Path(icon)}{ngan}app.ico"]
+        #   root.iconbitmap(). Nen mang luon file icon vao GOC tai nguyen goi
+        #   (DEST = ".", GIU TEN GOC icon.ico), de autotone_gui.main() goi
+        #   dd.tai_nguyen("icon.ico").
+        #
+        #   BAY (da sap 4/10): --add-data SRC;DEST thi DEST la THU MUC DICH,
+        #   KHONG phai ten file moi. "icon.ico;app.ico" tao THU MUC app.ico/
+        #   chua icon.ico -> dd.tai_nguyen("app.ico") tro vao mot THU MUC, khong
+        #   phai .ico -> iconbitmap im lang that bai -> cua so van long vu. Dung:
+        #   DEST = "." (goc), roi tim theo TEN GOC cua file icon. ]]
+        cmd += ["--add-data", f"{Path(icon)}{ngan}."]
     if sach:
         cmd.append("--clean")
     #[[ Chi them --paths khi ma hoa (goc_nguon la cay staging): de duong build

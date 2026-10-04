@@ -8384,16 +8384,25 @@ def main():
 
     #[[ ICON CUA SO + TASKBAR. --icon cua PyInstaller chi nhung vao .exe (Explorer
     #   / shortcut thay icon gold); CUA SO Tkinter van dung icon mac dinh (long
-    #   vu xanh) tru khi goi iconbitmap/iconphoto. File icon duoc mang vao goc
-    #   tai nguyen goi ten "app.ico" (xem dong_goi.lenh --add-data). Chay tu ma
-    #   nguon thi lay icon.ico canh file .py. Boc try/except: thieu icon chi la
-    #   khong doi icon, KHONG duoc chan app mo len. ]]
+    #   vu xanh) tru khi goi iconbitmap/iconphoto. File icon duoc mang vao GOC
+    #   tai nguyen goi, GIU TEN GOC "icon.ico" (xem dong_goi.lenh --add-data
+    #   ...;"." ). Chay tu ma nguon thi lay icon.ico canh file .py. Boc
+    #   try/except: thieu icon chi la khong doi icon, KHONG chan app mo len. ]]
     try:
         import duong_dan as _dd
-        _ico = _dd.tai_nguyen("app.ico")
-        if not _ico.is_file():
-            _ico = Path(__file__).resolve().parent / "icon.ico"
-        if _ico.is_file():
+        #[[ Tim theo TEN GOC. Truoc day tim "app.ico" — SAI, vi --add-data tao
+        #   THU MUC app.ico/ chua icon.ico (DEST la thu muc dich). Nay icon nam
+        #   thang o goc ten icon.ico; van du phong app.ico cho goi cu. ]]
+        _ico = None
+        for _ten in ("icon.ico", "app.ico"):
+            _p = _dd.tai_nguyen(_ten)
+            if _p.is_file():
+                _ico = _p
+                break
+        if _ico is None:
+            _p = Path(__file__).resolve().parent / "icon.ico"
+            _ico = _p if _p.is_file() else None
+        if _ico and _ico.is_file():
             try:
                 root.iconbitmap(default=str(_ico))      # Windows: .ico, ap ca taskbar
             except Exception:                            # noqa: BLE001
