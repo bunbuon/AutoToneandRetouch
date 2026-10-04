@@ -87,23 +87,33 @@ jobs:
       - name: Cài thư viện
         run: |
           "$PY" -m pip install --upgrade pip
-          #[[ DUNG opencv-python DAY DU, KHONG phai ban headless.
+          #[[ GHIM opencv-python==4.11.0.86 TREN macOS — KHONG de pip lay 5.0.
           #
-          #   Toi chon headless vi du an khong goi cv2.imshow — dung ve tinh
-          #   nang, nhung doi goi tuc la doi cach dong goi. Ban headless bi
-          #   loi recursion khi PyInstaller dong tren macOS:
-          #
+          #   LOI THAT (4/10, bản .app bao mat dau tien tren Actions): goi chay
+          #   len bao, o buoc kiem goi:
           #       ImportError: ERROR: recursion is detected during loading of
           #       "cv2" binary extensions
+          #   va face_detector() tra ve None. cv2 nap TOT luc build (5.0.0), chi
+          #   hong SAU khi dong goi thanh .app.
           #
-          #   Da loai tru moi thu khac: cv2 nap TOT trong moi truong build
-          #   (in ra 5.0.0), chi hong SAU KHI dong goi. Va ban Windows dung
-          #   CUNG phien ban 5.0.0 ma khong sao — khac moi o cho no dung
-          #   opencv-python day du.
+          #   Nguyen nhan (da tra tan goc): opencv-python 5.0.0.93 (nhanh major
+          #   5.0, ra 7/2026, rat moi) chua on dinh voi PyInstaller tren macOS.
+          #   Loader cv2 trong .app tim cv2.abi3.so sai cho -> import lai cv2
+          #   -> bootstrap() thay co OpenCV_LOADER -> nem recursion. KHONG phai
+          #   do --collect-all (da bo dung tren mac), cung KHONG phai headless
+          #   (headless cung cung loader, cung loi). Cach sua dang tin: dung
+          #   nhanh 4.x da duoc hook-cv2.py kiem thu ky — 4.11.0.86 co cung wheel
+          #   tag macosx_13_0_arm64 nhu 5.0, on dinh voi PyInstaller 6.x.
           #
-          #   Nen dung dung bo ma ban Windows da chung minh.
-          #]]
-          "$PY" -m pip install pyinstaller pillow numpy opencv-python
+          #   KHONG --strip (PyInstaller #9463: --strip hong cv2/numpy tren CI).
+          #   dong_goi.lenh() khong truyen --strip -> an toan.
+          #
+          #   Ban Windows van dung 5.0.0 va KHONG sao (bo cuc onedir khong di doi
+          #   file .py nhu .app) — nen chi ghim rieng cho macOS o day. ]]
+          "$PY" -m pip install pyinstaller pillow numpy "opencv-python==4.11.0.86"
+          #[[ hooks-contrib moi nhat: hook-cv2.py la noi xu ly cv2 (khong phai
+          #   PyInstaller core). Ban moi vá nhieu ca cv2/macOS. ]]
+          "$PY" -m pip install -U pyinstaller-hooks-contrib
           #[[ BAO MAT: Cython de dich loi + saytool sang .so TREN CHINH MAY MAC
           #   (khong build cheo duoc — day la cho DUY NHAT kiem duoc .so Mac).
           #   macos-14 co clang san (Xcode CLT), khong phai cai them trinh dich. ]]
