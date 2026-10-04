@@ -174,6 +174,45 @@ jobs:
           echo "Lệnh: $PY dong_goi.py $THEM"
           "$PY" dong_goi.py $THEM
 
+      #[[ CHAN DOAN + VA cv2 TRONG .app.
+      #
+      #   collect-binaries + hook-cv2 + runtime hook VAN recursion -> loader cv2
+      #   tim cv2.abi3.so o cho khac voi cho PyInstaller dat (do .app symlink
+      #   Frameworks<->Resources). Cach da xac nhan fix o PyInstaller #7128: COPY
+      #   TAY cv2.abi3.so + .dylibs vao DUNG thu muc cv2 ma loader tim.
+      #
+      #   Buoc nay: (1) in ra cv2 dang nam dau trong .app + loader doc tu dau;
+      #   (2) copy .so + .dylibs tu site-packages vao MOI thu muc cv2 trong .app
+      #   (ca Frameworks lan Resources), + canh file __init__ cua loader. Chay
+      #   truoc Kiem goi nen neu van loi thi log (1) chi ro con thieu gi. ]]
+      - name: Chẩn đoán + vá cv2 trong .app
+        if: ${{ !inputs.khong_retouch }}
+        run: |
+          APP="dist/AutoTone.app"
+          echo "=== cv2 trong .app dang nam dau ==="
+          find "$APP" -name "cv2*.so" -o -name "cv2*.dylib" 2>/dev/null | head
+          find "$APP" -path "*cv2*" -name "config*.py" 2>/dev/null | head
+          echo "=== thu muc cv2 (ca symlink) ==="
+          find "$APP" -name cv2 -maxdepth 6 2>/dev/null | head
+          echo "=== cv2 trong site-packages (nguon de copy) ==="
+          SP=$("$PY" -c "import cv2, os; print(os.path.dirname(cv2.__file__))")
+          echo "  site cv2: $SP"
+          ls "$SP" | grep -iE "abi3|\.so|dylibs" | head
+          # cv2.abi3.so + .dylibs tu site-packages
+          SO=$(ls "$SP"/cv2*.so 2>/dev/null | head -1)
+          echo "  .so nguon: $SO"
+          # Copy vao MOI thu muc 'cv2' (va target symlink) trong .app
+          for d in $(find "$APP" -name cv2 -type d 2>/dev/null); do
+            echo "  -> va cv2 tai: $d"
+            [ -n "$SO" ] && cp -f "$SO" "$d"/ 2>/dev/null || true
+            [ -d "$SP/.dylibs" ] && cp -Rf "$SP/.dylibs" "$d"/ 2>/dev/null || true
+            # loader cung co the tim .dylibs canh .so o cap tren
+            [ -d "$SP/.dylibs" ] && cp -Rf "$SP/.dylibs" "$(dirname "$d")"/ 2>/dev/null || true
+          done
+          echo "=== sau khi va: ==="
+          find "$APP" -name "cv2*.so" 2>/dev/null | head
+          find "$APP" -name "*.dylibs" -maxdepth 7 2>/dev/null | head
+
       #[[ Bai kiem tu no bao goi co dat khong. Khong chay no thi ta chi biet
       #   "build xong", ma build xong van co the ra mot goi mo len la sap. ]]
       - name: Kiểm gói
