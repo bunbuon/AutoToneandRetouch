@@ -53,8 +53,16 @@ DefaultGroupName={#TenApp}
 DisableProgramGroupPage=yes
 OutputDir={#RaDir}
 OutputBaseFilename={#TenFile}-Setup
-Compression=lzma2/max
-SolidCompression=yes
+; KHONG NEN (Compression=none).
+;
+; VI SAO: islzma.dll cua Inno 6.7.3 SAP (Access violation) khi nen file model
+; DA MA HOA — model ma hoa la du lieu entropy cao, LZMA ep len no vua vo ich
+; (khong nen duoc them) vua kich hoat bug trong islzma. Da thu lzma2/max va
+; lzma2/normal 1 luong: deu sap o dung file mo_hinh/*.pt.
+;
+; Gia: Setup.exe to hon (~800 MB thay vi nen). Doi lai: build khong sap, cai
+; nhanh (khong giai nen), va goi von da gon (torch tai sau, model da ma hoa).
+Compression=none
 ; 64-bit: app PyInstaller la x64.
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
