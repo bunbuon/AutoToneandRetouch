@@ -111,10 +111,15 @@ GOI = {
         sha256="0409fd33256dba936a3d80440b8d48d6870849665850a09bb688afd925dca003",
         dau_hieu=("torch/lib", "torch/__init__.py"),
     ),
+    #[[ PHIEN BAN 2 = MO HINH DA MA HOA (4/10). Ban 1 la model THO (doc duoc),
+    #   giu nguyen tren Releases cho ban app CU. Ban 2 chi giai duoc boi app BAN
+    #   BAO MAT (saytool .pyd co khoa) — bo magic 'SAYM', saytool.bao_mat.giai_ma
+    #   giai trong RAM. App bao mat THUONG da mang model trong goi (--nhe +
+    #   --bao-mat giu_mo_hinh), nen goi nay chu yeu cho OTA model / cai lai. ]]
     "mo-hinh": Goi(
-        ten="mo-hinh", phien_ban="1", file_zip="mo-hinh.zip",
-        mb=508, mo_ta="Mo hinh retouch: vet, da, dodge/burn, liquify",
-        sha256="df094ae9b074a55a4b0996af71290856eab4c116277bb48171efbff0a765baa9",
+        ten="mo-hinh", phien_ban="2", file_zip="mo-hinh.zip",
+        mb=209, mo_ta="Mo hinh retouch (da ma hoa): vet, da, dodge/burn, liquify",
+        sha256="690c4966bf2be7588f07f8ba44c8c4fe051a7a9e32c2e3b29790a6206ab8dc2a",
         dau_hieu=("mo_hinh/vet.pt",),
     ),
     "mediapipe": Goi(
