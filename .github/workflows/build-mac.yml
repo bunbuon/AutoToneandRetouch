@@ -174,54 +174,18 @@ jobs:
           echo "Lệnh: $PY dong_goi.py $THEM"
           "$PY" dong_goi.py $THEM
 
-      #[[ CHAN DOAN + VA cv2 TRONG .app.
-      #
-      #   collect-binaries + hook-cv2 + runtime hook VAN recursion -> loader cv2
-      #   tim cv2.abi3.so o cho khac voi cho PyInstaller dat (do .app symlink
-      #   Frameworks<->Resources). Cach da xac nhan fix o PyInstaller #7128: COPY
-      #   TAY cv2.abi3.so + .dylibs vao DUNG thu muc cv2 ma loader tim.
-      #
-      #   Buoc nay: (1) in ra cv2 dang nam dau trong .app + loader doc tu dau;
-      #   (2) copy .so + .dylibs tu site-packages vao MOI thu muc cv2 trong .app
-      #   (ca Frameworks lan Resources), + canh file __init__ cua loader. Chay
-      #   truoc Kiem goi nen neu van loi thi log (1) chi ro con thieu gi. ]]
-      - name: Chẩn đoán + vá cv2 trong .app
-        if: ${{ !inputs.khong_retouch }}
-        run: |
-          APP="dist/AutoTone.app"
-          echo "=== cv2 trong .app dang nam dau ==="
-          find "$APP" -name "cv2*.so" -o -name "cv2*.dylib" 2>/dev/null | head
-          find "$APP" -path "*cv2*" -name "config*.py" 2>/dev/null | head
-          echo "=== thu muc cv2 (ca symlink) ==="
-          find "$APP" -name cv2 -maxdepth 6 2>/dev/null | head
-          echo "=== cv2 trong site-packages (nguon de copy) ==="
-          SP=$("$PY" -c "import cv2, os; print(os.path.dirname(cv2.__file__))")
-          echo "  site cv2: $SP"
-          ls "$SP" | grep -iE "abi3|\.so|dylibs" | head
-          # cv2.abi3.so + .dylibs tu site-packages
-          SO=$(ls "$SP"/cv2*.so 2>/dev/null | head -1)
-          echo "  .so nguon: $SO"
-          # Copy vao MOI thu muc 'cv2' (va target symlink) trong .app
-          for d in $(find "$APP" -name cv2 -type d 2>/dev/null); do
-            echo "  -> va cv2 tai: $d"
-            [ -n "$SO" ] && cp -f "$SO" "$d"/ 2>/dev/null || true
-            [ -d "$SP/.dylibs" ] && cp -Rf "$SP/.dylibs" "$d"/ 2>/dev/null || true
-            # loader cung co the tim .dylibs canh .so o cap tren
-            [ -d "$SP/.dylibs" ] && cp -Rf "$SP/.dylibs" "$(dirname "$d")"/ 2>/dev/null || true
-          done
-          echo "=== sau khi va: ==="
-          find "$APP" -name "cv2*.so" 2>/dev/null | head
-          find "$APP" -name "*.dylibs" -maxdepth 7 2>/dev/null | head
-
-      #[[ Bai kiem tu no bao goi co dat khong. Khong chay no thi ta chi biet
-      #   "build xong", ma build xong van co the ra mot goi mo len la sap. ]]
+      #[[ macOS dong THU MUC dist/AutoTone (KHONG .app) — xem dong_goi.lenh
+      #   mac_thu_muc. .app bundle lam cv2 recursion khong sua duoc (da thu pin
+      #   version, collect-binaries, runtime hook, copy tay .so/.dylibs: .so +
+      #   config day du MA van recursion vi symlink Frameworks<->Resources). Thu
+      #   muc phang thi cv2 nam canh nhau nhu Windows -> het recursion. ]]
       - name: Kiểm gói
-        run: '"$PY" kiem_goi.py dist/AutoTone.app'
+        run: '"$PY" kiem_goi.py dist/AutoTone'
 
       - name: Xem có gì trong gói
         run: |
           echo "=== kích thước ==="
-          du -sh dist/AutoTone.app
+          du -sh dist/AutoTone
           echo "=== bí mật có lọt không (phải trống) ==="
           grep -rl "AutoTone-SAY-Media-bq-" dist/ 2>/dev/null || echo "  sạch"
           find dist -name "cap_key*" -o -name "quan_ly_key*" 2>/dev/null || true
@@ -232,7 +196,7 @@ jobs:
       - name: Chặn nếu còn mã nguồn (chỉ khi bảo mật)
         if: ${{ !inputs.khong_bao_mat }}
         run: |
-          R="dist/AutoTone.app/Contents"
+          R="dist/AutoTone/_internal"
           LOI=0
           echo "=== lõi phải là .so, KHÔNG được còn .py/.pyc ==="
           for m in autotone retouch khoa ban_quyen thu_gu learn_corrections giao_dien autotone_gui; do
@@ -255,30 +219,38 @@ jobs:
           fi
           echo "Gói bảo mật đạt: lõi + saytool đều là mã máy."
 
-      #[[ TAO .dmg — FILE CAI DAT macOS (nguoi dung muon file cai, khong phai zip).
+      #[[ TAO .dmg tu THU MUC dist/AutoTone (khong .app — xem Kiem goi).
       #
-      #   .dmg mo ra hien cua so co AutoTone.app + shortcut Applications; keo app
-      #   vao do la cai xong — chuan macOS. hdiutil co san tren runner, khong cai
-      #   gi them. Dung UDZO (nen). Van GIU .zip o buoc nen cu lam ban du phong.
+      #   Vi la thu muc chu khong phai .app double-click, dong them mot launcher
+      #   "Mo Tone&Retouch.command": double-click no chay binary AutoTone trong
+      #   thu muc, an cua so Terminal sau khi mo app. Nguoi dung keo ca thu muc
+      #   "Tone&Retouch" vao Applications (hoac dau cung), roi bam .command de mo.
       #
       #   Chua ky (code signing) nen lan dau mo may hien "unidentified developer":
-      #   nguoi dung chuot phai -> Open, hoac bo chan trong System Settings. Muon
-      #   het canh bao phai co Apple Developer ID ($99/nam) — chua lam o day.
-      #]]
+      #   chuot phai -> Open. Muon het canh bao can Apple Developer ID. ]]
       - name: Tạo .dmg (file cài đặt)
         run: |
-          APP="dist/AutoTone.app"
-          TEN="AutoTone"
-          [ -d "$APP" ] || { echo "Khong thay $APP"; exit 1; }
+          GOI="dist/AutoTone"
+          [ -d "$GOI" ] || { echo "Khong thay $GOI"; exit 1; }
           STAGE="$(mktemp -d)"
-          cp -R "$APP" "$STAGE/"
-          # Shortcut Applications de keo-tha
+          #[[ Thu muc hien thi ten "Tone&Retouch" trong .dmg (ten ky thuat binary
+          #   van la AutoTone ben trong). ]]
+          APPDIR="$STAGE/Tone&Retouch"
+          cp -R "$GOI" "$APPDIR"
+          # Launcher .command (viet bang printf de khoi vuong heredoc trong YAML):
+          # double-click -> chay binary AutoTone o nen, dong cua so Terminal ngay.
+          LAUNCHER="$APPDIR/Mở Tone&Retouch.command"
+          printf '%s\n' '#!/bin/bash' \
+            'DIR="$(cd "$(dirname "$0")" && pwd)"' \
+            '"$DIR/AutoTone" >/dev/null 2>&1 &' \
+            'exit 0' > "$LAUNCHER"
+          chmod +x "$LAUNCHER"
+          chmod +x "$APPDIR/AutoTone" 2>/dev/null || true
           ln -s /Applications "$STAGE/Applications"
           mkdir -p dist
-          DMG="dist/${TEN}-macOS.dmg"
+          DMG="dist/Tone-Retouch-macOS.dmg"
           rm -f "$DMG"
-          #[[ -volname: ten o cua so .dmg. -srcfolder: noi dung. UDZO: nen zlib. ]]
-          hdiutil create -volname "$TEN" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          hdiutil create -volname "Tone&Retouch" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           rm -rf "$STAGE"
           echo "=== .dmg da tao ==="
           ls -lh "$DMG"

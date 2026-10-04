@@ -420,7 +420,7 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
          sach: bool = True, nhe: bool = False,
          goc_nguon: Path | None = None, diem_vao: str | None = None,
          ngam_them=None, giu_mo_hinh: bool = False,
-         icon: Path | None = None) -> list:
+         icon: Path | None = None, mac_thu_muc: bool = True) -> list:
     """Dựng dòng lệnh PyInstaller. Tách riêng để kiểm được mà không phải build.
 
     he:  "win" | "mac"
@@ -441,7 +441,18 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     diem_vao = diem_vao or DIEM_VAO
     ngan = ";" if he == "win" else ":"        # dấu ngăn của --add-data
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
-           "--windowed", "--name", TEN]
+           "--name", TEN]
+    #[[ --windowed: Windows -> .exe GUI (khong console). macOS -> LUON tao .app
+    #   BUNDLE. Nhung .app bundle lam cv2 recursion KHONG sua duoc (symlink
+    #   Frameworks<->Resources -> loader cv2 lac duong, du .so + config day du —
+    #   da thu pin version, collect-binaries, runtime hook, copy tay .so/.dylibs,
+    #   TAT CA van recursion). Nen tren macOS KHONG --windowed -> ra THU MUC phang
+    #   dist/AutoTone/ (cv2 nam canh nhau nhu Windows/Linux -> het recursion). App
+    #   van chay (Tkinter tu mo cua so); bo .command launcher cho de bam, dong ca
+    #   thu muc vao .dmg. Windows + bản .app (neu sau nay sua duoc symlink) van
+    #   --windowed. ]]
+    if not (he == "mac" and mac_thu_muc):
+        cmd.append("--windowed")
     #[[ ICON cho .exe/.app. GIU TEN KY THUAT la "AutoTone" (--name), KHONG doi
     #   theo ten hien thi: thu muc du lieu, bundle id, duong_dan.TEN_UD, kiem_goi
     #   deu dua vao "AutoTone". Ten hien thi (shortcut, tieu de cua so) doi o Inno
@@ -559,11 +570,10 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
             cmd += ["--exclude-module", m]
 
     if he == "mac":
-        #[[ Universal2 chi lam duoc khi MOI thu vien deu co ban universal.
-        #   torch thi khong — nen de PyInstaller lay dung kien truc may dang
-        #   chay. May Apple Silicon ra ban arm64, may Intel ra ban x86_64.
-        #]]
-        cmd += ["--osx-bundle-identifier", "vn.saymedia.autotone"]
+        #[[ --osx-bundle-identifier chi co nghia khi tao .app BUNDLE. Onedir thu
+        #   muc (mac_thu_muc) khong co bundle nen bo. ]]
+        if not mac_thu_muc:
+            cmd += ["--osx-bundle-identifier", "vn.saymedia.autotone"]
         #[[ RUNTIME HOOK cv2 — du phong cho --collect-binaries cv2 o tren. Neu
         #   cv2 nam trong thu muc con python-3.x (mot so build), hook nay chen
         #   duong dan .so len sys.path truoc _MEIPASS de tranh recursion. Khong
@@ -706,6 +716,11 @@ def main(argv=None) -> int:
     #   "AutoTone"; chi doi icon. ]]
     ap.add_argument("--icon", type=Path, default=None,
                     help="File .ico (Win) / .icns (Mac) gan cho .exe/.app")
+    #[[ macOS: mac dinh dong THU MUC (khong .app) vi .app bundle lam cv2
+    #   recursion khong sua duoc. --mac-app ep tao .app (chi dung khi da sua
+    #   duoc loi cv2 cho .app). Khong anh huong Windows. ]]
+    ap.add_argument("--mac-app", action="store_true", dest="mac_app",
+                    help="macOS: tao .app bundle thay vi thu muc (hien cv2 loi)")
     #[[ BAO MAT (4/10): bien dich loi sang .pyd/.so truoc khi build — xem
     #   bao_mat.py. Tuy chon, KHONG mac dinh: bat tay de ban build cu van chay
     #   nguyen ven cho toi khi xac nhan ban ma hoa build tron tren tung may. ]]
@@ -826,9 +841,11 @@ def main(argv=None) -> int:
     #[[ --nhe CO --bao-mat: giu mo hinh DA MA HOA trong goi (xem lenh()). Mo
     #   hinh ma hoa la IP, nhe (~300 MB), va de trong goi thi saytool (cwd=goi)
     #   nap duoc ngay — khong dinh lo hong "model o tai_nguyen, cwd o goi". ]]
+    mac_thu_muc = (he == "mac") and not a.mac_app
     cmd = lenh(he, retouch_vao, goc_tool, nhe=a.nhe,
                goc_nguon=goc_nguon, diem_vao=diem_vao_bm, ngam_them=ngam_them,
-               giu_mo_hinh=bool(a.bao_mat and a.nhe), icon=a.icon)
+               giu_mo_hinh=bool(a.bao_mat and a.nhe), icon=a.icon,
+               mac_thu_muc=mac_thu_muc)
     print(f"  Hệ: {he}   retouch: {'có' if retouch_vao else 'không'}"
           + (f"   ({goc_tool})" if retouch_vao else "")
           + ("   [BAN NHE: thu vien nang tai sau]" if a.nhe else "")
@@ -866,7 +883,9 @@ def main(argv=None) -> int:
         print(f"  [!] PyInstaller lỗi, mã {r.returncode}")
         return r.returncode
 
-    ra = GOC / "dist" / (f"{TEN}.app" if he == "mac" else TEN)
+    #[[ macOS .app chi khi --mac-app; mac dinh (mac_thu_muc) ra THU MUC dist/TEN
+    #   nhu Windows/Linux. ]]
+    ra = GOC / "dist" / (f"{TEN}.app" if (he == "mac" and not mac_thu_muc) else TEN)
     xoa = don_goi(ra)
     for p in xoa:
         print(f"  đã loại khỏi gói: {p}")
