@@ -8357,6 +8357,21 @@ def main():
         import tu_kiem
         sys.exit(tu_kiem.main(sys.argv[1:]))
 
+    #[[ TASKBAR ICON tren Windows: phai dat AppUserModelID TRUOC tk.Tk().
+    #
+    #   Windows nhom cua so tren taskbar theo AppUserModelID. Mot tien trinh
+    #   Python khong dat ID se duoc gan ID cua chinh python.exe/exe bootloader,
+    #   va taskbar lay icon mac dinh — nen du cua so da co icon qua iconbitmap,
+    #   nut tren taskbar van co the hien icon khac. Dat mot ID rieng cho app thi
+    #   Windows coi no la ung dung doc lap va dung icon cua so. Chi Windows. ]]
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "vn.saymedia.autotone")
+        except Exception:                                # noqa: BLE001
+            pass
+
     root = tk.Tk()
     #[[ Hien phien ban dang chay ngay tren tieu de: voi OTA, nguoi dung can biet
     #   minh dang o ban nao (goi hay ban va). Boc try/except — thieu cap_nhat
@@ -8366,6 +8381,29 @@ def main():
         root.title(f"{TEN_HIEN_THI} — cân sáng & retouch  (v{_cnv.phien_ban_dang_chay()})")
     except Exception:                                    # noqa: BLE001
         root.title(f"{TEN_HIEN_THI} — cân sáng & retouch")
+
+    #[[ ICON CUA SO + TASKBAR. --icon cua PyInstaller chi nhung vao .exe (Explorer
+    #   / shortcut thay icon gold); CUA SO Tkinter van dung icon mac dinh (long
+    #   vu xanh) tru khi goi iconbitmap/iconphoto. File icon duoc mang vao goc
+    #   tai nguyen goi ten "app.ico" (xem dong_goi.lenh --add-data). Chay tu ma
+    #   nguon thi lay icon.ico canh file .py. Boc try/except: thieu icon chi la
+    #   khong doi icon, KHONG duoc chan app mo len. ]]
+    try:
+        import duong_dan as _dd
+        _ico = _dd.tai_nguyen("app.ico")
+        if not _ico.is_file():
+            _ico = Path(__file__).resolve().parent / "icon.ico"
+        if _ico.is_file():
+            try:
+                root.iconbitmap(default=str(_ico))      # Windows: .ico, ap ca taskbar
+            except Exception:                            # noqa: BLE001
+                #[[ Mac/Linux khong nhan .ico qua iconbitmap -> thu iconphoto PNG. ]]
+                _png = _ico.with_name("app.png")
+                if _png.is_file():
+                    root.iconphoto(True, tk.PhotoImage(file=str(_png)))
+    except Exception:                                    # noqa: BLE001
+        pass
+
     #[[ Rong hon truoc: cot trai an 252 px, va bang anh co 15 cot. 1180 la be
     #   ngang toi thieu de bang khong phai cuon ngang ngay tu luc mo len.
     #]]

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tone&amp;Retouch — Hướng dẫn</title>
+<style>
+  :root{
+    --vang:#d9b35c; --vang-sang:#f0d58a; --den:#17150f; --den2:#201d16;
+    --nen:#faf7f0; --chu:#2a271f; --chu-mo:#6b6354; --vien:#e6ddc9;
+    --canh:#b8863b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --nen:#17150f; --chu:#ece6d8; --chu-mo:#a89f8c; --vien:#332e22;
+      --den:#0d0c08; --den2:#201d16;
+    }
+  }
+  :root[data-theme="dark"]{
+    --nen:#17150f; --chu:#ece6d8; --chu-mo:#a89f8c; --vien:#332e22;
+    --den:#0d0c08; --den2:#201d16;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--nen); color:var(--chu);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:0 16px 80px}
+  header{
+    background:linear-gradient(135deg,var(--den) 0%,var(--den2) 100%);
+    color:#f3ecdc; padding:48px 16px 40px; text-align:center;
+    border-bottom:2px solid var(--vang);
+  }
+  .logo{
+    width:84px;height:84px;border-radius:20px;
+    background:radial-gradient(circle at 50% 42%,#2a251a,#0d0c08);
+    border:2px solid var(--vang); display:inline-flex;align-items:center;justify-content:center;
+    margin-bottom:16px;
+  }
+  .logo span{
+    font:600 46px/1 Georgia,"Times New Roman",serif; color:var(--vang-sang);
+    position:relative; top:-2px;
+  }
+  header h1{margin:0 0 6px; font-size:30px; font-weight:700; letter-spacing:.3px}
+  header h1 .amp{color:var(--vang)}
+  header p{margin:0; color:#c9bfa8; font-size:15px}
+  h2{
+    font-size:21px; margin:40px 0 14px; padding-bottom:10px;
+    border-bottom:1px solid var(--vien); color:var(--chu);
+    display:flex; align-items:center; gap:10px;
+  }
+  h2 .num{
+    flex:0 0 auto; width:30px;height:30px;border-radius:50%;
+    background:var(--vang); color:var(--den); font-size:15px; font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  h3{font-size:16px; margin:22px 0 8px; color:var(--canh)}
+  p,li{color:var(--chu)}
+  ol,ul{padding-left:22px} li{margin:5px 0}
+  code,.path{
+    font-family:"SF Mono",SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
+    font-size:13.5px; background:var(--den2); color:var(--vang-sang);
+    padding:2px 7px; border-radius:5px; word-break:break-all;
+  }
+  .pathbox{
+    display:block; background:var(--den); color:var(--vang-sang);
+    border:1px solid var(--vien); border-left:3px solid var(--vang);
+    padding:12px 14px; border-radius:8px; margin:10px 0; font-size:13.5px;
+    font-family:"SF Mono",SFMono-Regular,Consolas,Menlo,monospace; word-break:break-all;
+  }
+  kbd{
+    font:600 13px/1 inherit; background:var(--nen); border:1px solid var(--vien);
+    border-bottom-width:2px; border-radius:5px; padding:2px 7px; color:var(--chu);
+    white-space:nowrap;
+  }
+  .note{
+    background:color-mix(in srgb,var(--vang) 12%,transparent);
+    border:1px solid color-mix(in srgb,var(--vang) 35%,transparent);
+    border-radius:10px; padding:14px 16px; margin:16px 0; font-size:15px;
+  }
+  .note b{color:var(--canh)}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:15px}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--vien); vertical-align:top}
+  th{color:var(--canh); font-weight:600; width:38%}
+  .steps li{margin:9px 0}
+  footer{
+    text-align:center; color:var(--chu-mo); font-size:13px;
+    margin-top:50px; padding-top:22px; border-top:1px solid var(--vien);
+  }
+  .toggle{
+    position:fixed; top:14px; right:14px; z-index:9;
+    background:var(--den2); color:var(--vang); border:1px solid var(--vang);
+    border-radius:20px; padding:6px 14px; font-size:13px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<button class="toggle" id="toggle" aria-label="Đổi nền sáng/tối">◐ Sáng / Tối</button>
+<header>
+  <div class="logo"><span>S</span></div>
+  <h1>Tone<span class="amp">&amp;</span>Retouch</h1>
+  <p>Tự động cân sáng, cân màu &amp; retouch ảnh sự kiện cho Lightroom Classic</p>
+</header>
+
+<div class="wrap">
+
+  <h2><span class="num">1</span> Cài đặt</h2>
+  <h3>Windows</h3>
+  <ol class="steps">
+    <li>Chạy file <code>Tone-Retouch-Setup.exe</code>.</li>
+    <li>Nếu hiện cảnh báo xanh <b>“Windows protected your PC”</b> → bấm <kbd>More info</kbd> → <kbd>Run anyway</kbd>. <span style="color:var(--chu-mo)">(App chưa mua chứng chỉ ký số nên Windows cảnh báo lần đầu — bình thường.)</span></li>
+    <li>Bấm <kbd>Next</kbd> → <kbd>Install</kbd> → <kbd>Finish</kbd>. App cài vào <code>C:\Program Files\Tone-Retouch</code>, tạo lối tắt ngoài Desktop và trong Start Menu.</li>
+  </ol>
+  <h3>macOS</h3>
+  <ol class="steps">
+    <li>Mở file <code>Tone-Retouch-macOS.dmg</code>.</li>
+    <li>Kéo <b>Tone&amp;Retouch</b> vào thư mục <b>Applications</b>.</li>
+    <li>Lần đầu mở: chuột phải vào app → <kbd>Open</kbd> → <kbd>Open</kbd>. Những lần sau mở bình thường.</li>
+  </ol>
+  <div class="note"><b>Lần đầu dùng Retouch cần mạng.</b> Bản cài đã có sẵn phần cân sáng và mô hình retouch. Riêng thư viện xử lý AI (~1,8 GB) sẽ <b>tự tải về</b> lần đầu bạn bấm Retouch — cần mạng và vài phút. Tải một lần, dùng mãi.</div>
+
+  <h2><span class="num">2</span> Cài plugin vào Lightroom <span style="font-size:14px;font-weight:400;color:var(--chu-mo)">(chỉ 1 lần)</span></h2>
+  <p>Để app đẩy thông số thẳng vào Lightroom, cần thêm plugin <b>một lần duy nhất</b>.</p>
+  <h3>Đường dẫn plugin sau khi cài</h3>
+  <p><b>Windows:</b></p>
+  <span class="pathbox">C:\Users\&lt;tên-máy-của-bạn&gt;\AppData\Local\AutoTone\AutoTone.lrplugin</span>
+  <p style="font-size:14px;color:var(--chu-mo)">Thay <code>&lt;tên-máy-của-bạn&gt;</code> bằng tên tài khoản Windows. Thư mục <code>AppData</code> là thư mục ẩn — gõ thẳng đường dẫn trên vào thanh địa chỉ Explorer là tới.</p>
+  <p><b>macOS:</b></p>
+  <span class="pathbox">~/Library/Application Support/AutoTone/AutoTone.lrplugin</span>
+
+  <h3>Cách thêm vào Lightroom</h3>
+  <ol class="steps">
+    <li>Mở <b>Lightroom Classic</b>.</li>
+    <li><b>File → Plug-in Manager…</b></li>
+    <li>Bấm <kbd>Add</kbd> (góc dưới bên trái).</li>
+    <li>Trỏ tới thư mục <code>AutoTone.lrplugin</code> ở đường dẫn trên.</li>
+    <li>Bấm <kbd>Done</kbd>.</li>
+  </ol>
+  <div class="note"><b>Mẹo — không cần nhớ đường dẫn:</b> mở app → bấm nút <kbd>⋯</kbd> (góc trên) → <b>“Cài plugin…”</b>. App hiện sẵn <b>đường dẫn plugin của máy bạn</b> và cho bấm mở thẳng thư mục đó trong Explorer để copy.</div>
+  <div class="note"><b>Lưu ý:</b> thư mục plugin chỉ xuất hiện <b>sau khi mở app lần đầu</b> (app tự chép plugin ra lúc chạy lần đầu). Hãy mở app một lần trước khi vào Lightroom tìm plugin.</div>
+  <p style="font-size:14px;color:var(--chu-mo)">Plugin chỉ sửa đúng <b>5 trường tone</b> (Exposure, Highlights, Shadows, Temperature, Tint) và giữ nguyên mọi chỉnh sửa khác — an toàn hơn “Read Metadata from File”.</p>
+
+  <h2><span class="num">3</span> Quy trình dùng cơ bản</h2>
+  <p>Giao diện gồm: <b>thanh công cụ</b> trên cùng, <b>lưới ảnh</b> cả buổi ở giữa, <b>bảng Cân tone / Retouch</b> bên phải.</p>
+  <ol class="steps">
+    <li><b>Chọn buổi chụp:</b> bấm <kbd>buổi ▾</kbd> (góc trái) → <b>“Chọn thư mục buổi chụp…”</b> → trỏ tới thư mục ảnh RAW.</li>
+    <li><b>Phân tích:</b> bấm <kbd>1 · Phân tích</kbd>. App đo sáng, cân màu, tách cảnh, lọc ảnh trùng cả buổi. Kết quả hiện trên lưới.</li>
+    <li><b>Ghi và đẩy vào Lightroom:</b> bấm <kbd>2 · Ghi và đẩy</kbd>. Nếu đã cài plugin + Lightroom đang mở, thông số tự áp sau vài giây.</li>
+    <li><b>Export:</b> export thẳng từ Lightroom, hoặc dùng nút Export trong app.</li>
+    <li><b>Retouch</b> (xoá mụn, mịn da, dodge/burn…): mở mô-đun <b>Retouch</b> (cột phải). Ảnh lớn ở trên để xem chi tiết + zoom, dải ảnh ở dưới để chọn ảnh.</li>
+  </ol>
+  <p style="font-size:14px;color:var(--chu-mo)">Các tính năng khác (Duyệt nhanh, xuất báo cáo, hoàn tác, nhật ký plugin…) nằm trong menu <kbd>⋯</kbd>.</p>
+
+  <h2><span class="num">4</span> Bản quyền</h2>
+  <p>App dùng <b>key bản quyền</b>: nhập key một lần để kích hoạt. Khi chưa có key hoặc key hết hạn, app hiện ô <b>nhập key</b> — dán key vào và bấm kích hoạt. Liên hệ nơi bán để lấy key.</p>
+  <div class="note">Khi chưa kích hoạt, app chạy <b>thử 72 giờ</b> để bạn dùng thử.</div>
+
+  <h2><span class="num">5</span> Cập nhật app <span style="font-size:14px;font-weight:400;color:var(--chu-mo)">(không cài lại)</span></h2>
+  <p>App tự kiểm bản mới khi mở. Có bản mới → app hỏi <b>“Có bản cập nhật, tải ngay?”</b> → bấm đồng ý, app tải về và <b>lần mở sau tự dùng bản mới</b> — không phải cài lại.</p>
+  <p>Muốn tự kiểm: menu <kbd>⋯</kbd> → <b>“Kiểm tra cập nhật…”</b>.</p>
+
+  <h2><span class="num">6</span> Xử lý nhanh trục trặc</h2>
+  <table>
+    <tr><th>Hiện tượng</th><th>Cách xử lý</th></tr>
+    <tr><td>Không thấy thư mục plugin</td><td>Mở app lần đầu đã, rồi mới tìm. Hoặc dùng <kbd>⋯</kbd> → “Cài plugin…” để app chỉ đường.</td></tr>
+    <tr><td>Bấm “2 · Ghi và đẩy” mà Lightroom không đổi</td><td>Mở Lightroom; <b>File → Plug-in Manager → AutoTone → Reload Plug-in</b>; chắc chắn đã Add đúng thư mục ở mục 2.</td></tr>
+    <tr><td>Retouch báo thiếu tài nguyên</td><td>Lần đầu bấm Retouch cần mạng để tải thư viện AI. Chờ tải xong hoặc bấm tải lại.</td></tr>
+    <tr><td>Cảnh báo “nhà phát triển không xác định”</td><td>Bình thường (chưa ký số). Windows: More info → Run anyway. macOS: chuột phải → Open.</td></tr>
+    <tr><td>App báo hết hạn dùng thử</td><td>Nhập key bản quyền vào ô hiện trên màn hình.</td></tr>
+  </table>
+
+  <footer>
+    Tone&amp;Retouch — <b>SAY MEDIA</b><br>
+    Mã nguồn đã được bảo vệ (biên dịch sang mã máy). Không sao chép, dịch ngược.
+  </footer>
+</div>
+
+<script>
+  // Nho lua chon sang/toi cua nguoi xem (chi tien ich, khong bat buoc)
+  (function(){
+    var btn=document.getElementById("toggle");
+    try{var saved=localStorage.getItem("ht-theme"); if(saved)document.documentElement.setAttribute("data-theme",saved);}catch(e){}
+    btn.addEventListener("click",function(){
+      var cur=document.documentElement.getAttribute("data-theme");
+      var next = cur==="dark" ? "light" : (cur==="light" ? "dark" :
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark"));
+      document.documentElement.setAttribute("data-theme",next);
+      try{localStorage.setItem("ht-theme",next);}catch(e){}
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1349,3 +1349,42 @@ repo, sinh từ bộ PNG gold của SAY (chữ S vàng, vòng tròn vàng, nền
 bằng Pillow. `dong_goi.py --icon` → `--icon` cho PyInstaller (nhúng vào .exe:
 xác minh resource RT_GROUP_ICON+RT_ICON; .app: icns). `dong_installer.py --icon`
 → `SetupIconFile` + UninstallDisplayIcon. `build-mac.yml` tự dò `icon.icns`.
+
+## Hai bẫy build/giao diện (4/10 tối) — MSVC flag & icon cửa sổ
+
+**Icon cửa sổ/taskbar vẫn là lông vũ dù .exe đã có icon gold:** `--icon` của
+PyInstaller chỉ NHÚNG icon vào .exe (Explorer/shortcut thấy). CỬA SỔ Tkinter +
+nút taskbar lúc chạy dùng icon mặc định (lông vũ xanh) trừ khi gọi
+`root.iconbitmap()`. Sửa: (1) `dong_goi.lenh` khi có `--icon` thêm `--add-data
+<icon>;app.ico` để mang file icon vào gốc tài nguyên gói; (2) `autotone_gui.main`
+gọi `root.iconbitmap(default=dd.tai_nguyen("app.ico"))` sau `root.title`, bọc
+try/except; (3) TASKBAR cần `ctypes.windll.shell32.SetCurrentProcessExplicit
+AppUserModelID("vn.saymedia.autotone")` TRƯỚC `tk.Tk()` — Windows nhóm taskbar
+theo AppUserModelID, không đặt thì nó lấy icon của bootloader. Mac/Linux:
+iconbitmap không nhận .ico → thử iconphoto PNG (chưa cần, .app lấy icns qua
+`--icon`). Xác minh: đọc PE resource của .exe thấy RT_GROUP_ICON+RT_ICON.
+
+**MSVC 14.51 (Build Tools 2026/VS18) BUG với Cython + Python 3.12 — không ổn
+định, không một flag chung:**
+- `autotone` CẦN giữ `/GL`: bỏ `/GL` (`/GL-`) → `C2059 syntax error` (`_Py_CAST`,
+  `'sequence' undeclared`, `Py_XDECREF redefinition`) — lỗi preprocessor.
+- `learn_corrections` CẦN `/GL-`: giữ `/GL` → `C1001 Internal compiler error`
+  (msc1.cpp, LTCG) → `link.exe` trả `0xC0000005`.
+- Hai đòi hỏi TRÁI NGƯỢC. Và lỗi KHÔNG ỔN ĐỊNH: cùng file lúc sập lúc không
+  (build đầu `/O2 /GL` qua cả 8, build sau sập `learn_corrections`).
+- Vá: `bao_mat.bien_dich_mot` THỬ NHIỀU CHIẾN LƯỢC flag, lấy cái chạy — thứ tự
+  `(/O2 /GL)` → `(/O1 /GL-, /LTCG:OFF)` → `(/Od /GL)`; `except BaseException`
+  (C1001 làm process abort). Hết chiến lược mới DỪNG. Linux/Mac: 1 chiến lược
+  rỗng (dùng mặc định gcc/clang). Test: 8/8 module qua.
+- Gốc rễ thật là MSVC 2026 quá mới cho Python 3.12 (build bằng MSC v.1943). Cách
+  sạch hơn (chưa làm): cài toolset MSVC v14.3x (VS 2022) đúng bản Python. Cơ chế
+  thử-lại cho ra .pyd đúng trên máy này mà không phải cài thêm 7 GB toolset cũ.
+
+**Inno Setup Compression=none:** islzma.dll (Inno 6.7.3) sập Access violation khi
+nén file model đã mã hoá (entropy cao). Setup.exe to (~800 MB) nhưng không sập.
+
+**Hướng dẫn dùng:** `HUONG_DAN_SU_DUNG.md` + `.html` (trang 1 file, tông gold/đen
+SAY, cho KHÁCH đọc). Đường dẫn plugin sau cài: Windows
+`%LOCALAPPDATA%\AutoTone\AutoTone.lrplugin`, Mac `~/Library/Application
+Support/AutoTone/AutoTone.lrplugin` (= `duong_dan.plugin()` = `LR_PLUGIN_DIR`).
+Plugin chép ra lúc chạy LẦN ĐẦU — phải mở app một lần trước khi tìm trong LR.

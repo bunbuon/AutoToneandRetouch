@@ -127,36 +127,70 @@ def bien_dich_mot(src: Path, ra_dir: Path, lang: bool = True) -> Path:
 
     Biên dịch trong thư mục tạm để không rải .c / build/ ra cây nguồn. Không
     nuốt lỗi: Cython hay trình C hỏng thì ném ra để dong_goi dừng hẳn."""
+    #[[ BUG MSVC 14.51 (Build Tools 2026, VS18) + Cython + Python 3.12 — KHONG
+    #   co MOT flag chung cho moi module, va loi KHONG ON DINH:
+    #     - autotone          : CAN giu /GL. Bo /GL -> C2059 (_Py_CAST hong).
+    #     - learn_corrections : CAN /GL-. Giu /GL -> C1001 (LTCG internal error).
+    #   Hai doi hoi trai nguoc nhau. Nen THU NHIEU CHIEN LUOC flag, lay cai chay.
+    #   Thu tu: (1) mac dinh /O2 /GL  (2) /O1 /GL-  (3) /Od /GL. Linux/Mac
+    #   (gcc/clang) chi co 1 chien luoc rong (dung mac dinh trinh dich).
+    #
+    #   Day la chua NGON cho bug compiler qua moi. Cach sach hon la cai MSVC
+    #   v14.3x (VS 2022) dung ban Python 3.12 — nhung thu-lai nay cho ra .pyd
+    #   dung tren CHINH may nay ma khong phai cai them 7 GB toolset cu. ]]
+    if sys.platform == "win32":
+        chien_luoc = [
+            (["/O2", "/GL"], ["/LTCG"]),      # mac dinh — autotone can /GL
+            (["/O1", "/GL-"], ["/LTCG:OFF"]),  # learn_corrections can /GL-
+            (["/Od", "/GL"], ["/LTCG"]),      # du phong
+        ]
+    else:
+        chien_luoc = [([], [])]
+
     from Cython.Build import cythonize
-    from setuptools import setup
+    from setuptools import setup, Extension
 
     ten = src.stem
-    with tempfile.TemporaryDirectory(prefix="baomat_") as tam_s:
-        tam = Path(tam_s)
-        shutil.copy2(src, tam / f"{ten}.py")
-        cwd, argv = os.getcwd(), sys.argv
-        try:
-            os.chdir(tam)
-            sys.argv = ["setup.py", "build_ext", "--inplace"]
-            setup(
-                ext_modules=cythonize(
-                    [f"{ten}.py"],
-                    compiler_directives={"language_level": 3},
-                    quiet=True,
-                ),
-                script_args=["build_ext", "--inplace"],
-            )
-        finally:
-            os.chdir(cwd)
-            sys.argv = argv
-        arts = sorted(tam.glob(f"{ten}*.so")) + sorted(tam.glob(f"{ten}*.pyd"))
-        if not arts:
-            raise RuntimeError(f"Cython khong sinh ra .so/.pyd cho {ten}")
-        dich = ra_dir / arts[0].name
-        shutil.copy2(arts[0], dich)
-        if lang:
-            print(f"      ma hoa: {ten}.py -> {dich.name}")
-        return dich
+    loi_cuoi = None
+    for i, (cc_args, ld_args) in enumerate(chien_luoc):
+        with tempfile.TemporaryDirectory(prefix="baomat_") as tam_s:
+            tam = Path(tam_s)
+            shutil.copy2(src, tam / f"{ten}.py")
+            cwd, argv = os.getcwd(), sys.argv
+            try:
+                os.chdir(tam)
+                sys.argv = ["setup.py", "build_ext", "--inplace"]
+                ext = Extension(ten, [f"{ten}.py"],
+                                extra_compile_args=cc_args,
+                                extra_link_args=ld_args)
+                setup(
+                    ext_modules=cythonize(
+                        [ext],
+                        compiler_directives={"language_level": 3},
+                        quiet=True,
+                    ),
+                    script_args=["build_ext", "--inplace"],
+                )
+                arts = sorted(tam.glob(f"{ten}*.so")) + sorted(tam.glob(f"{ten}*.pyd"))
+                if not arts:
+                    raise RuntimeError(f"Cython khong sinh ra .so/.pyd cho {ten}")
+                dich = ra_dir / arts[0].name
+                shutil.copy2(arts[0], dich)
+                if lang:
+                    nhan = f" [{' '.join(cc_args)}]" if i else ""
+                    print(f"      ma hoa: {ten}.py -> {dich.name}{nhan}")
+                return dich
+            except BaseException as ex:         # noqa: BLE001
+                loi_cuoi = ex
+                if lang and len(chien_luoc) > 1:
+                    print(f"      (thu flag {cc_args} cho {ten} khong xong, "
+                          f"thu cach khac...)")
+            finally:
+                os.chdir(cwd)
+                sys.argv = argv
+    #[[ Het chien luoc ma van hong -> nem loi cuoi de dong_goi dung han. ]]
+    raise RuntimeError(f"Khong bien dich duoc {ten} voi moi flag da thu: "
+                       f"{type(loi_cuoi).__name__}: {loi_cuoi}")
 
 
 def dung_cay_nguon(goc: Path, loai_tru, ra: Path,
