@@ -8277,6 +8277,31 @@ def _cua_saytool(co: str, tham: list) -> int:
             pass
         return 1 if thieu else 0
 
+    #[[ CHAN DOAN (--say-tim): in ra tim_tool / goc_trong_goi / la_goc_trong_goi
+    #   + thu thanh_keo() de xem vi sao self-check bao "CHI CO ban du phong".
+    #   Chi de go loi; khong anh huong nguoi dung. ]]
+    if co == "--say-tim":
+        import retouch as _rt
+        _b = _rt.goc_trong_goi()
+        _g = _rt.tim_tool()
+        print("trong_goi    :", _rt.trong_goi())
+        print("goc_trong_goi:", _b)
+        print("tim_tool     :", _g)
+        print("la_goc_trong_goi(tim_tool):",
+              _rt.la_goc_trong_goi(_g) if _g else "n/a")
+        try:
+            _ds = _rt.thanh_keo(_g, lam_lai=True)
+            print("thanh_keo so luong:", len(_ds))
+            print("thanh_keo ten:", [t[0] for t in _ds])
+        except Exception as _ex:                              # noqa: BLE001
+            print("thanh_keo loi:", type(_ex).__name__, _ex)
+        try:
+            _loi = _rt._LOI_KEO.get(str(_g), "")
+            print("_LOI_KEO:", (_loi[:500] if _loi else "(rong)"))
+        except Exception:                                     # noqa: BLE001
+            pass
+        return 0
+
     from saytool.cli import main as say_main
     return int(say_main(tham) or 0)
 
@@ -8362,7 +8387,7 @@ def main():
 
     _tham = sys.argv[1:]
     if _tham and _tham[0] in ("--say-chay", "--say-keo", "--say-kiem",
-                              "--say-tainguyen", "--say-key"):
+                              "--say-tainguyen", "--say-key", "--say-tim"):
         sys.exit(_cua_saytool(_tham[0], _tham[1:]))
 
     #[[ CUA TU KIEM — phai o TRUOC tk.Tk().

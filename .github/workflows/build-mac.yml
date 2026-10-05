@@ -119,18 +119,30 @@ jobs:
           #   macos-14 co clang san (Xcode CLT), khong phai cai them trinh dich. ]]
           if [ "${{ inputs.khong_bao_mat }}" != "true" ]; then
             "$PY" -m pip install cython
-            #[[ torch: CHI de self-check nap model .so luc dong_goi_bao_mat tu kiem
-            #   tren may Mac. --nhe van LOAI torch khoi GOI (xem GOI_TACH) — torch
-            #   o day dung xong roi vut, khong vao ban giao khach. Bo khi khong
-            #   retouch (self-check khong can torch). ]]
-            if [ "${{ inputs.khong_retouch }}" != "true" ]; then
-              "$PY" -m pip install torch || echo "  [!] torch khong cai duoc — self-check model se bo qua"
-            fi
+          fi
+          #[[ torch: BAY GIO NHOI VAO GOI (--torch-trong-goi), khong con --nhe.
+          #
+          #   Truoc day --nhe LOAI torch khoi goi, torch o day chi de self-check
+          #   nap model luc dong_goi_bao_mat. Gio nguoi dung muon "dong goi chung
+          #   het vao 1 ban cai": Retouch phai hien du 8 tinh nang NGAY, khong tai
+          #   gi. Nen torch phai CO trong moi truong build de --collect-all torch
+          #   gom vao goi. Ban Mac cua pip la CPU+MPS (khong CUDA — Mac khong co
+          #   CUDA), chay duoc moi may Mac; co GPU Apple thi thiet_bi.chon() tu
+          #   dung MPS. Bo torch khi --khong-retouch (goi khong co phan retouch).
+          #]]
+          if [ "${{ inputs.khong_retouch }}" != "true" ]; then
+            "$PY" -m pip install torch || echo "  [!] torch khong cai duoc — goi se THIEU torch, Retouch hong"
           fi
           #[[ Kiem NGAY rang ba thu quyet dinh deu nam dung cho, truoc khi
           #   build. Bon lan chay truoc deu phai suy luan tu log gian tiep. ]]
           echo "=== kiểm trước khi build ==="
           "$PY" -c "import sys, cv2, tkinter; print('prefix :', sys.prefix); print('cv2    :', cv2.__version__); print('tk     :', tkinter.TkVersion)"
+          #[[ torch nay PHAI co (nhoi vao goi). Co retouch ma thieu torch thi goi
+          #   ra se hong phan Retouch — chan ngay, dung build ra ban hong. ]]
+          if [ "${{ inputs.khong_retouch }}" != "true" ]; then
+            "$PY" -c "import torch; print('torch  :', torch.__version__, '· MPS', torch.backends.mps.is_available())" \
+              || { echo "DỪNG: torch không import được mà gói cần torch."; exit 1; }
+          fi
           if [ "${{ inputs.khong_bao_mat }}" != "true" ]; then
             "$PY" -c "import Cython; print('cython :', Cython.__version__)"
             "$PY" -c "import shutil,sys; print('clang  :', shutil.which('clang') or 'KHONG CO — build .so se hong')"
@@ -138,7 +150,14 @@ jobs:
 
       - name: Đóng gói
         run: |
-          THEM="--nhe"
+          #[[ --torch-trong-goi: nhoi torch (+ thu vien nang) vao goi de Retouch
+          #   hien du 8 tinh nang ngay, khong tai gi. Thay cho --nhe cu (tai sau).
+          #   Khong retouch thi khong can torch -> ve --nhe cho goi gon. ]]
+          if [ "${{ inputs.khong_retouch }}" = "true" ]; then
+            THEM="--nhe"
+          else
+            THEM="--torch-trong-goi"
+          fi
           if [ "${{ inputs.khong_khoa }}" = "true" ]; then
             THEM="$THEM --khong-khoa"
           fi

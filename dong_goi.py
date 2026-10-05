@@ -331,7 +331,11 @@ def mo_hinh_du(goc_tool) -> Path:
         #]]
         CAN = {"vet.pt", "vet_body.pt", "min_da.pt", "dodge_burn.pt",
                "da_body.pt", "da_body_nho.pt", "da_deu.pt",
-               "nhan.pt", "nong_cam.pt", "toc.pt", "toc_mn.pt"}
+               "nhan.pt", "nong_cam.pt", "toc.pt", "toc_mn.pt",
+               # 4/10: 7 tinh nang mat moi (saytool/buoc_mat_them.py, du lieu ev3) - chua hoc xong thi
+               # tep chua co, mo_hinh_du bo qua; co roi thi tu vao goi (khong co o day = buoc tat lang le)
+               "not_ruoi.pt", "bong_dau.pt", "quang_tham.pt", "bong_mat.pt",
+               "kinh.pt", "lo_mui.pt", "nhan_moi.pt"}
         bo_qua = []
         for f in sorted(nguon.iterdir()):
             if f.is_dir():
@@ -404,6 +408,47 @@ GOI_TACH = ["torch", "torchvision", "torchgen", "functorch",
 # Vao theo mediapipe nhung khong ai import — bo o MOI ban.
 GOI_BO_HAN = ["jax", "jaxlib"]
 
+#[[ BAN DAY DU (--torch-trong-goi): NHOI torch vao goi de Retouch hien DU 8 tinh
+#   nang NGAY, khong phai tai gi, khong con "can tai torch"/"chua hoi duoc tool".
+#
+#   HAI BAY DA GAP (ghi lai de khong di lai):
+#
+#   BAY 1 — de quy khi phan tich torch.
+#     collect_submodules("torch") (goi boi --collect-all va boi hook-torch) DUYET
+#     DE QUY ca cay torch. Mac dinh gioi han de quy Python 1000 -> tran stack C
+#     -> tien trinh PyInstaller chet 0xC0000005. Da chan bang
+#     sys.setrecursionlimit(5000) o DAU tien trinh (cmd qua `-c`, xem lenh()).
+#
+#   BAY 2 — AST hong khi di qua fsspec (va vai dep async cua torch).
+#     Ngay ca khi khong tran, modulegraph di SAU qua torch -> torch.hub ->
+#     fsspec -> fsspec.asyn -> ... (636 frame). Toi mot module nao do,
+#     modulegraph._safe_import_module goi compile(co_ast, ...) voi mot cay AST no
+#     tu sua HONG -> TypeError: required field "id" missing from Name. Day KHONG
+#     phai loi fsspec (ma no sach), ma la loi modulegraph tren Python 3.12 khi
+#     cay import qua sau. saytool KHONG dung fsspec (torch.load tren file CUC BO,
+#     khong tai tu xa), nen LOAI fsspec + may dep async di kem. Cat duoc nhanh do
+#     thi do thi torch nong hon nhieu va het luon bay AST.
+#
+#   CACH DUNG (da kiem): --collect-all torch (de DANG KY submodule — neu chi
+#   --hidden-import+--copy-metadata thi file torch co mat nhung KHONG dang ky,
+#   `import torch` trong goi bao ModuleNotFoundError) + LOAI cac nhanh duoi.
+#
+#   saytool nap model bang torch.load + load_state_dict, KHONG dung torch.jit/
+#   compile/onnx/fx/distributed. Nhung torch.fx KHONG loai duoc: torch/__init__.py
+#   co `import torch.fx.experimental.sym_node` o top-level -> loai la `import
+#   torch` gay. Nen chi loai nhung nhanh KHONG bi __init__ cham toi.
+#
+#   TORCH_NE: nhanh/dep cua torch LOAI khi nhoi torch — vua cat bay AST (fsspec),
+#   vua bot nang (tensorboard...). Chi nhung cai __init__ torch khong hard-import.
+TORCH_NE = [
+    # Bay AST (fsspec + async): saytool khong tai model tu xa.
+    "fsspec", "aiohttp", "requests_oauthlib", "yarl", "multidict",
+    # Nang & saytool khong dung (nap lazy, __init__ khong cham toi):
+    "torch.utils.tensorboard", "torch.utils.benchmark",
+    "torch.utils.bottleneck", "torch.testing", "torch.onnx",
+    "tensorboard", "torch.distributed.tensor",
+]
+
 
 def co_retouch(goc_tool: Path | None) -> bool:
     return bool(goc_tool and (Path(goc_tool) / "saytool" / "cli.py").is_file())
@@ -416,11 +461,32 @@ def co_retouch(goc_tool: Path | None) -> bool:
 MA_HOA_HET = False
 
 
+def co_the_import(ten: str) -> bool:
+    """True nếu gói `ten` CÓ THỂ import trong môi trường đang build.
+
+    #[[ --collect-all X BẮT BUỘC X phải cài trong venv build: no goi
+    #   collect_submodules(X) — import X de duyet cay con; X khong co thi
+    #   PyInstaller BAO LOI va dung ca build. Venv build (venv_build) co du
+    #   torch/cv2/onnx/insightface/mediapipe/scipy/sklearn/skimage/joblib NHUNG
+    #   KHONG co torchvision (saytool khong dung — model nap bang torch.load +
+    #   load_state_dict, da kiem 8 buoc nap du khong co torchvision). Nen o day
+    #   BO QUA goi nao khong import duoc, thay vi ep cai hay lam chet build.
+    #   importlib.util.find_spec KHONG thuc thi goi (nhanh, khong keo torch vao
+    #   RAM) — chi tra None neu khong tim thay. ]]
+    """
+    import importlib.util
+    try:
+        return importlib.util.find_spec(ten) is not None
+    except (ImportError, ValueError, ModuleNotFoundError):
+        return False
+
+
 def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
          sach: bool = True, nhe: bool = False,
          goc_nguon: Path | None = None, diem_vao: str | None = None,
          ngam_them=None, giu_mo_hinh: bool = False,
-         icon: Path | None = None, mac_thu_muc: bool = True) -> list:
+         icon: Path | None = None, mac_thu_muc: bool = True,
+         torch_trong_goi: bool = False) -> list:
     """Dựng dòng lệnh PyInstaller. Tách riêng để kiểm được mà không phải build.
 
     he:  "win" | "mac"
@@ -429,6 +495,10 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     giu_mo_hinh: với --nhe, VẪN mang mô hình (dùng cho bản bảo mật: mô hình đã
         mã hoá ~300 MB, mang theo để tránh lỗ hổng cwd và chạy offline). Không
         ảnh hưởng torch — torch vẫn tải sau theo --nhe.
+    torch_trong_goi: NHỒI torch vào gói (bản đầy đủ). Dùng --hidden-import torch
+        + --copy-metadata torch thay cho --collect-all torch, kèm loại TORCH_LOAI
+        các nhánh nặng không dùng. Bật cái này thì KHÔNG được --nhe (torch phải
+        ở lại). Xem TORCH_LOAI. Retouch khi đó hiện đủ 8 tính năng ngay.
 
     #[[ BAO MAT (4/10): goc_nguon = cây nguồn đã mã hoá (bao_mat.dung_cay_nguon)
     #   thay cho GOC. diem_vao = launcher mỏng "chay.py". ngam_them = MỌI module
@@ -440,7 +510,19 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     goc_nguon = goc_nguon or GOC
     diem_vao = diem_vao or DIEM_VAO
     ngan = ";" if he == "win" else ":"        # dấu ngăn của --add-data
-    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
+    #[[ GOI PyInstaller qua -c de SET recursionlimit TRUOC khi phan tich.
+    #
+    #   Nhoi torch vao goi (ban day du) lam PyInstaller phan tich hang nghin
+    #   submodule torch -> VUOT gioi han de quy Python (mac dinh 1000) -> stack
+    #   C tran -> 0xC0000005 (tren ban moi la RecursionError). Tang len 5000 o
+    #   DAU tien trinh PyInstaller la het. CLI thuan khong set duoc cai nay (phai
+    #   .spec hoac -c), nen dung -c: no set roi goi PyInstaller.__main__.run()
+    #   voi dung args. Dat luon cho MOI ban (vo hai voi ban khong torch).
+    #   Nguon: hook-torch.py tu goi collect_submodules (thu pham de quy); fix
+    #   sys.setrecursionlimit(5000) duoc nhieu du an dong torch xac nhan. ]]
+    _rec = ("import sys; sys.setrecursionlimit(5000); "
+            "from PyInstaller.__main__ import run; run()")
+    cmd = [sys.executable, "-c", _rec, "--noconfirm", "--onedir",
            "--name", TEN]
     #[[ --windowed: Windows -> .exe GUI (khong console). macOS -> LUON tao .app
     #   BUNDLE. Nhung .app bundle lam cv2 recursion KHONG sua duoc (symlink
@@ -517,6 +599,33 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
         for g in RETOUCH_GOI:
             if nhe and g in GOI_TACH:
                 continue
+            #[[ torch TRONG BAN DAY DU (torch_trong_goi): DUNG --collect-all torch.
+            #
+            #   DA THU --hidden-import + --copy-metadata (khong collect-all) de ne
+            #   de quy: KET QUA torch/ co file (284 MB, du .pyd + torch/lib/*.dll)
+            #   NHUNG `import torch` trong goi bao ModuleNotFoundError. Vi sao:
+            #   --copy-metadata chi chep metadata, --hidden-import chi them MOI
+            #   `torch` goc vao do thi; hook-torch chep .py/.dll vao _internal/torch
+            #   NHU DU LIEU, nhung cac SUBMODULE torch KHONG duoc dang ky vao bang
+            #   module cua goi -> trinh nap dong bang (PyiFrozenImporter) khong biet
+            #   torch nam o do -> khong tim thay. (File co mat != module nap duoc.)
+            #
+            #   --collect-all torch goi collect_submodules("torch") -> DANG KY het
+            #   submodule vao do thi, va do la cach DUY NHAT torch nap duoc trong
+            #   goi. De quy cua collect_submodules da duoc chan bang
+            #   setrecursionlimit(5000) o dau tien trinh (xem cmd qua `-c`). Van
+            #   --collect-all torch de DANG KY submodule (xem TORCH_NE: chi
+            #   --hidden-import+--copy-metadata thi `import torch` bao
+            #   ModuleNotFoundError). Kem LOAI TORCH_NE: cat nhanh fsspec/async
+            #   (bay AST modulegraph) + vai nhanh nang khong dung. Dat
+            #   --exclude-module TRUOC --collect-all de modulegraph khong di vao
+            #   chung luc duyet torch. setrecursionlimit(5000) lo phan de quy.
+            #   Chi ap khi torch_trong_goi. ]]
+            if g == "torch" and torch_trong_goi:
+                for _x in TORCH_NE:
+                    cmd += ["--exclude-module", _x]
+                cmd += ["--collect-all", "torch"]
+                continue
             #[[ cv2 TREN macOS — KHONG --collect-all, MA --collect-binaries +
             #   --collect-data (da tra tan goc 4/10, bản .app van recursion sau
             #   khi pin opencv 4.11).
@@ -542,6 +651,14 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
             if he == "mac" and g == "cv2":
                 cmd += ["--collect-binaries", "cv2", "--collect-data", "cv2",
                         "--hidden-import", "cv2"]
+                continue
+            #[[ --collect-all can goi PHAI cai trong venv build — khong co thi
+            #   PyInstaller chet. Bo qua goi vang mat (vd torchvision: saytool
+            #   khong dung, venv build khong cai). Xem co_the_import(). CHI bo
+            #   khi build that (co the_import doc venv hien tai); o che do --thu
+            #   van bo giong het de dong lenh in ra trung voi luc build. ]]
+            if not co_the_import(g):
+                print(f"  (bỏ --collect-all {g}: không có trong môi trường build)")
                 continue
             cmd += ["--collect-all", g]
         if goc_tool:
@@ -738,7 +855,20 @@ def main(argv=None) -> int:
     ap.add_argument("--so-anh", type=Path, default=None, dest="so_anh",
                     help="(voi --bao-mat) thu muc anh: chay that retouch, so ban "
                          "bao mat voi tool goc")
+    #[[ --torch-trong-goi: NHOI torch vao goi (ban day du) de Retouch hien du 8
+    #   tinh nang NGAY, khong con "can tai torch"/"chua hoi duoc tool". Loai tru
+    #   nhau voi --nhe (torch phai o lai). Xem TORCH_LOAI va lenh(). ]]
+    ap.add_argument("--torch-trong-goi", action="store_true",
+                    dest="torch_trong_goi",
+                    help="Nhoi torch vao goi (ban day du); khong di cung --nhe")
     a = ap.parse_args(argv)
+
+    #[[ --torch-trong-goi va --nhe doi nghich: --nhe bo torch ra de tai sau, con
+    #   --torch-trong-goi giu torch lai trong goi. Bat ca hai la mau thuan — tu
+    #   tat --nhe de khong am tham bo torch rồi lai khai nhoi no. ]]
+    if a.torch_trong_goi and a.nhe:
+        print("  [!] --torch-trong-goi va --nhe doi nghich nhau. Bo --nhe.")
+        a.nhe = False
 
     if not chot_khoa(a.khong_khoa) and not a.thu:
         return 1
@@ -851,10 +981,12 @@ def main(argv=None) -> int:
     cmd = lenh(he, retouch_vao, goc_tool, nhe=a.nhe,
                goc_nguon=goc_nguon, diem_vao=diem_vao_bm, ngam_them=ngam_them,
                giu_mo_hinh=bool(a.bao_mat and a.nhe), icon=a.icon,
-               mac_thu_muc=mac_thu_muc)
+               mac_thu_muc=mac_thu_muc, torch_trong_goi=a.torch_trong_goi)
     print(f"  Hệ: {he}   retouch: {'có' if retouch_vao else 'không'}"
           + (f"   ({goc_tool})" if retouch_vao else "")
           + ("   [BAN NHE: thu vien nang tai sau]" if a.nhe else "")
+          + ("   [TORCH TRONG GÓI: đủ 8 tính năng ngay]"
+             if a.torch_trong_goi else "")
           + ("   [ĐÃ MÃ HOÁ LÕI]" if a.bao_mat else ""))
     print("\n  " + " ".join(f'"{c}"' if " " in c else c for c in cmd) + "\n")
     if a.thu:

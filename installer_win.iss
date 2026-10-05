@@ -53,16 +53,23 @@ DefaultGroupName={#TenApp}
 DisableProgramGroupPage=yes
 OutputDir={#RaDir}
 OutputBaseFilename={#TenFile}-Setup
-; KHONG NEN (Compression=none).
+; NEN CO CHON LOC (lzma2) — nen MOI THU TRU model da ma hoa.
 ;
-; VI SAO: islzma.dll cua Inno 6.7.3 SAP (Access violation) khi nen file model
-; DA MA HOA — model ma hoa la du lieu entropy cao, LZMA ep len no vua vo ich
-; (khong nen duoc them) vua kich hoat bug trong islzma. Da thu lzma2/max va
-; lzma2/normal 1 luong: deu sap o dung file mo_hinh/*.pt.
+; VI SAO truoc day Compression=none: islzma.dll cua Inno 6.7.3 SAP (Access
+; violation) khi nen file mo_hinh/*.pt DA MA HOA (du lieu entropy cao). Da thu
+; lzma2/max lan lzma2/normal 1 luong: deu sap o dung file mo_hinh/*.pt.
 ;
-; Gia: Setup.exe to hon (~800 MB thay vi nen). Doi lai: build khong sap, cai
-; nhanh (khong giai nen), va goi von da gon (torch tai sau, model da ma hoa).
-Compression=none
+; GIO nhoi torch vao goi -> goi ~1.5 GB, phan LON la torch (.dll + .py) va thu
+; vien — NEN RAT TOT (torch_cpu.dll, libtorch... nen duoc nhieu). De none thi
+; Setup.exe ~1.5 GB vo ich. Nen BAT nen lzma2, nhung RIENG cay mo_hinh/ (model
+; ma hoa) danh dau `nocompression` o [Files] ben duoi — khong dua chung qua
+; islzma (tranh sap) va chung von khong nen them duoc. Cac file ma hoa khac
+; (loi .pyd) nho va KHONG lam sap islzma (da chay none truoc, nay thu nen).
+;
+; Gia: Setup.exe nho hon nhieu (~700-900 MB thay vi 1.5 GB), cai cham hon chut
+; (giai nen torch) nhung tai ve/luu tru gon hon han.
+Compression=lzma2/normal
+SolidCompression=yes
 ; 64-bit: app PyInstaller la x64.
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
@@ -87,9 +94,16 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
 [Files]
-; Chep TOAN BO thu muc goi onedir (exe + _internal + moi thu) vao {app}.
-; recursesubdirs + createallsubdirs: giu nguyen cay thu muc _internal.
-Source: "{#Nguon}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Chep TOAN BO goi onedir vao {app}, TRU cay _internal\mo_hinh (model ma hoa) —
+; cai do chep rieng ben duoi voi nocompression de khong lam sap islzma.
+;   recursesubdirs + createallsubdirs: giu nguyen cay thu muc _internal.
+;   Excludes: bo cay mo_hinh khoi lan chep NEN nay (chep lai o dong sau).
+Source: "{#Nguon}\*"; DestDir: "{app}"; Excludes: "_internal\mo_hinh\*"; \
+  Flags: recursesubdirs createallsubdirs ignoreversion
+; Model DA MA HOA: entropy cao, LZMA vua vo ich vua lam islzma SAP. Chep khong
+; nen (nocompression), van giu cay con (insightface/, liquify/).
+Source: "{#Nguon}\_internal\mo_hinh\*"; DestDir: "{app}\_internal\mo_hinh"; \
+  Flags: recursesubdirs createallsubdirs ignoreversion nocompression
 
 [Icons]
 ; Shortcut Start Menu + (tuy chon) Desktop, tro vao exe trong {app}.

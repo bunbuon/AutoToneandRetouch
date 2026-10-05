@@ -16,7 +16,7 @@ Tự động cân sáng, cân màu và retouch ảnh sự kiện cho **Lightroom
 2. Kéo **Tone&Retouch** vào thư mục **Applications**.
 3. Lần đầu mở: chuột phải vào app → **Open** → **Open** (vì chưa ký số). Những lần sau mở bình thường.
 
-> **Lần đầu dùng Retouch cần mạng.** Bản cài đã có sẵn phần cân sáng và mô hình retouch. Riêng thư viện xử lý AI (torch, ~1.8 GB) sẽ **tự tải về** lần đầu bạn bấm Retouch — cần mạng và vài phút. Tải một lần, dùng mãi.
+> **Dùng được ngay, không phải tải thêm.** Bản cài đã gồm **đầy đủ**: cân sáng, mô hình retouch, và thư viện xử lý AI (torch). Mở Retouch là thấy **đủ 8 tính năng** và chạy được luôn — không cần mạng, không phải tải gì. (Máy có card NVIDIA muốn chạy nhanh hơn trên card có thể tải thêm bản tăng tốc GPU — tuỳ chọn.)
 
 ---
 
@@ -62,7 +62,7 @@ Giao diện gồm: **thanh công cụ** trên cùng, **lưới ảnh** cả bu�
 
 4. **Export:** Export thẳng từ Lightroom như bình thường, hoặc dùng nút Export trong app.
 
-5. **Retouch (xoá mụn, mịn da, dodge/burn…):** mở mô-đun **Retouch** (cột phải). Bấm Retouch lần đầu sẽ tự tải thư viện AI (xem mục 1). Ảnh lớn ở trên để xem chi tiết + zoom, dải ảnh ở dưới để chọn ảnh.
+5. **Retouch (xoá mụn, mịn da, dodge/burn…):** mở mô-đun **Retouch** (cột phải). Đủ 8 tính năng sẵn sàng ngay, không phải tải gì. Ảnh lớn ở trên để xem chi tiết + zoom, dải ảnh ở dưới để chọn ảnh.
 
 **Các tính năng khác** (Duyệt nhanh, xuất báo cáo, hoàn tác, nhật ký plugin…) nằm trong menu **⋯** trên thanh công cụ.
 
@@ -90,7 +90,7 @@ Muốn tự kiểm: menu **⋯** → **"Kiểm tra cập nhật…"**.
 |---|---|
 | Không thấy thư mục plugin | Mở app lần đầu đã, rồi mới tìm (plugin chép ra lúc chạy lần đầu). Hoặc dùng ⋯ → "Cài plugin…" để app chỉ đường. |
 | Bấm "2 · Ghi và đẩy" mà Lightroom không đổi | Mở Lightroom; **File → Plug-in Manager → AutoTone → Reload Plug-in**; chắc chắn đã Add đúng thư mục ở mục 2. |
-| Retouch báo thiếu tài nguyên | Lần đầu bấm Retouch cần mạng để tải thư viện AI. Chờ tải xong (vài phút) hoặc bấm tải lại. |
+| Retouch thiếu tính năng | Bản cài đầy đủ hiện sẵn 8 tính năng. Nếu chỉ thấy vài thanh kéo, bấm "Đọc lại tính năng" trong khung Retouch; vẫn thiếu thì báo lại để dựng bản mới. |
 | Windows/macOS cảnh báo "nhà phát triển không xác định" | Bình thường (chưa ký số). Windows: More info → Run anyway. macOS: chuột phải → Open. |
 | App mở báo hết hạn dùng thử | Nhập key bản quyền vào ô hiện trên màn hình. |
 

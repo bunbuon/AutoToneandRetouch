@@ -454,7 +454,24 @@ def _hoi_keo(goc):
     """
     khoa_loi = str(goc)
     _LOI_KEO.pop(khoa_loi, None)
-    if la_goc_trong_goi(goc):
+    #[[ CHON LENH HOI saytool.
+    #
+    #   Ban DONG GOI: PHAI dung --say-keo (chinh app tu chay saytool roi thoat).
+    #   KHONG duoc dung `python_cho(goc) -c ...`: tren ban all-in-one khong co
+    #   .venv nen python_cho() tra ve sys.executable = chinh AutoTone.exe — ma
+    #   do la app dong goi, KHONG phai trinh thong dich. `AutoTone.exe -c "<ma>"`
+    #   khong chay ma do (co -c roi vao nhanh mo giao dien / bo qua), subprocess
+    #   khong in @@KEO@@ -> _hoi_keo tra rong -> giao dien lui ve 3 thanh keo du
+    #   phong. Day la loi "CHI CO ban du phong" du saytool trong goi co du 8 buoc.
+    #
+    #   Nen khi DANG CHAY TRONG GOI (trong_goi()) va goi CO saytool
+    #   (goc_trong_goi() khong None), LUON dung --say-keo voi sys.executable —
+    #   KHONG phu thuoc goc co path-match tuyet doi voi _MEIPASS hay khong (duong
+    #   dan co the lech vi resolve/case/config). Chi khi chay TU MA NGUON (khong
+    #   dong goi) moi dung `python -c` voi python that cua tool. ]]
+    if trong_goi() and goc_trong_goi() is not None:
+        cmd = [sys.executable, CO_SAY_KEO]
+    elif la_goc_trong_goi(goc):
         cmd = [sys.executable, CO_SAY_KEO]
     else:
         cmd = [python_cho(goc), "-c", MA_DO_KEO]
@@ -493,25 +510,37 @@ def _hoi_keo(goc):
         _LOI_KEO[khoa_loi] = f"Đọc không ra JSON:\n{ca[-1500:]}"
         return [], {}, {}, []
     #[[ NHAN MOI HINH DANG DA TUNG TRA VE, tu cu toi moi:
-    #     [ds]                   ban dau
+    #     [ds]                   ban dau (hinh dang TRAN: mang cac hang thanh keo)
     #     [ds, mh]               them bang mo hinh
-    #     [ds, mh, tk, nhom]     them thong tin nhom (ban nay)
+    #     [ds, mh, tk, nhom]     them thong tin nhom
     #   Nguoi dung co the con saytool cu tren mot may khac; bo mat hinh dang cu
-    #   la bat ho nang cap chi de mo duoc giao dien. ]]
+    #   la bat ho nang cap chi de mo duoc giao dien.
+    #
+    #   BAY DA SUA (5/10): --say-keo moi tra MANG TRAN cac hang, moi hang la
+    #   [ten, nhan, mac_dinh, goi_y, can_torch] — tuc phan tu dau d[0] la MOT
+    #   HANG (mot list 5 phan tu), va d[1] cung la mot hang (list). Luat cu phan
+    #   biet "tran hay boc" bang `d[1] khong phai dict/list` -> SAI, vi gio d[1]
+    #   LA list (hang thu hai) -> no tuong la hinh dang [ds, mh,...] roi lay
+    #   ds = d[0] (chi 1 hang, 5 "phan tu" la chuoi/so) -> thanh_keo dung duoc 0
+    #   hang -> lui ve 3 thanh keo du phong DU saytool co du 8.
+    #
+    #   PHAN BIET DUNG: hinh dang BOC co d[0] = ds = MANG CAC HANG, nen
+    #   d[0][0] cung la mot list (hang dau). Hinh dang TRAN co d[0] = mot hang,
+    #   nen d[0][1] la CHUOI (nhan). Dua vao do: d[0][0] la list -> BOC; nguoc
+    #   lai -> TRAN. ]]
     ds, mh, tk, nhom = [], {}, {}, []
     if isinstance(d, list) and d and isinstance(d[0], list):
-        ds = d[0]
-        if len(d) > 1 and isinstance(d[1], dict):
-            mh = d[1]
-        if len(d) > 2 and isinstance(d[2], dict):
-            tk = d[2]
-        if len(d) > 3 and isinstance(d[3], list):
-            nhom = [x for x in d[3] if isinstance(x, list) and len(x) == 2]
-        #[[ Mot mang thanh keo tran (hinh dang dau tien) cung khop nhanh tren,
-        #   vi phan tu dau cua no cung la mot list. Phan biet bang: phan tu dau
-        #   cua HINH DANG CU la [ten, nhan, so, goi] — tuc phan tu thu hai la
-        #   chuoi, chu khong phai dict. ]]
-        if not mh and not tk and len(d) > 1 and not isinstance(d[1], (dict, list)):
+        boc = bool(d[0]) and isinstance(d[0][0], list)  # d[0] la mang-cac-hang?
+        if boc:
+            ds = d[0]
+            if len(d) > 1 and isinstance(d[1], dict):
+                mh = d[1]
+            if len(d) > 2 and isinstance(d[2], dict):
+                tk = d[2]
+            if len(d) > 3 and isinstance(d[3], list):
+                nhom = [x for x in d[3] if isinstance(x, list) and len(x) == 2]
+        else:
+            #[[ Hinh dang TRAN: ca d la mang cac hang. ]]
             ds = d
     elif isinstance(d, list):
         ds = d
@@ -555,7 +584,14 @@ def thanh_keo(goc=None, lam_lai: bool = False) -> list:
         except (IndexError, TypeError, ValueError):
             continue
         n2, g2 = NHAN_DEP.get(ten, (nhan, goi))
-        ra.append((ten, n2, md, g2))
+        #[[ GIU can_torch (phan tu thu 5 neu co) de giao dien hien "· can tai
+        #   torch". Ban day du co torch nen can_torch=False het; nhung giu cho
+        #   dung voi ban --nhe (torch tai sau). Hang 4 phan tu (saytool cu) thi
+        #   khong co, de nguyen 4. ]]
+        if len(m) >= 5:
+            ra.append((ten, n2, md, g2, bool(m[4])))
+        else:
+            ra.append((ten, n2, md, g2))
     if not ra:
         return list(THANH_KEO)
     _KEO_NHO[khoa] = ra
@@ -733,7 +769,14 @@ def kiem_tra(goc, timeout: float = 60.0) -> tuple:
           "    except Exception as e: thieu.append(m+': '+type(e).__name__)\n"
           "print('THIEU:'+';'.join(thieu) if thieu else 'OK')\n"
           "import saytool; print('phien ban', getattr(saytool,'__version__','?'))")
-    cmd = [sys.executable, CO_SAY_KIEM] if la_goc_trong_goi(g) else [py, "-c", ma]
+    #[[ Cung ly do voi _hoi_keo(): ban dong goi LUON dung --say-kiem (frozen exe
+    #   khong chay `-c` duoc). Xem chu thich o _hoi_keo(). ]]
+    if trong_goi() and goc_trong_goi() is not None:
+        cmd = [sys.executable, CO_SAY_KIEM]
+    elif la_goc_trong_goi(g):
+        cmd = [sys.executable, CO_SAY_KIEM]
+    else:
+        cmd = [py, "-c", ma]
     try:
         #[[ Cung ly do voi _hoi_keo(): tien trinh con in ra chuoi co the co
         #   tieng Viet, ma stdout tren Windows lay cp1252. encoding="utf-8" o
@@ -1310,7 +1353,10 @@ def lenh(goc: Path, vao: Path, ra: Path, muc: dict,
     #   va ca me anh khong chay — hong o cho khong ai ngo.
     #]]
     co_that = set()
-    for ten, _nhan, _md, _goi in thanh_keo(goc):
+    #[[ thanh_keo() co the tra hang 4 HOAC 5 phan tu (them can_torch) — chi can
+    #   `ten` o day, nen lay m[0], KHONG unpack cung 4 (se vo neu 5 phan tu). ]]
+    for m in thanh_keo(goc):
+        ten = m[0]
         co_that.add(ten)
         v = muc.get(ten)
         if v is not None:
