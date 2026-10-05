@@ -906,8 +906,7 @@ def main() -> int:
          str(list(w._muc_anh)))
     ktra("…ảnh đó mang nhãn “riêng” trên dải, dòng phạm vi nói “mức riêng”",
          bool(w.luoi.ds[0].get("rieng")) and not w.luoi.ds[1].get("rieng")
-         and "mức riêng" in w.lbl_pham_vi.cget("text")
-         and w.btn_ve_chung.winfo_ismapped(), w.lbl_pham_vi.cget("text"))
+         and "mức riêng" in w.lbl_pham_vi.cget("text"), w.lbl_pham_vi.cget("text"))
     ktra("máy xem trước vừa hỏng: kéo thanh KHÔNG tự mở lại, nói ra ở chip",
          w._may_xem is None and "lỗi" in chip(), chip()[:60])
     w._buoc_anh(1)
@@ -955,7 +954,7 @@ def main() -> int:
          and f"nam:{ten0}" not in w._muc_hieu_luc(q[5])
          and not w.v_bat_rieng[k_nam].get(),
          f"Q5 {ten0}={m5.get(ten0)} nam={m5.get(f'nam:{ten0}')} · Q0 nam={m0.get(f'nam:{ten0}')}")
-    w.btn_ve_chung.invoke()
+    w._ve_muc_chung()          # nut "Về mức chung" da bo khoi UI (5/10)
     sang(0)
     #[[ BAM THAT tren dai anh: Ctrl / Shift + bam (su kien Tk co state). Thoi
     #   diem cach nhau 1 giay — khong thi Tk coi hai lan bam la bam dup. ]]
@@ -1007,11 +1006,11 @@ def main() -> int:
              f"{ten_chon()} · ảnh lớn {Path(w._anh_hien or '—').name} · "
              f"“{w.lbl_ten_anh.cget('text')[:30]}”")
     bam(2)
-    w.btn_ve_chung.invoke()
+    w._ve_muc_chung()          # nut "Về mức chung" da bo khoi UI (5/10)
     chay(2)
     ktra("“Về mức chung”: tấm đang xem bỏ mức riêng, bảng về mức chung",
          "Q2.png" not in w._muc_anh and float(w.v_muc[ten0].get()) == chung0[ten0]
-         and not w.luoi.ds[2].get("rieng") and not w.btn_ve_chung.winfo_ismapped(),
+         and not w.luoi.ds[2].get("rieng"),
          str(sorted(w._muc_anh)))
     #[[ Ghi xuong dia THEO THU MUC VAO; doi thu muc qua lai van con, va thu muc
     #   kia khong lan sang. Vua keo (chua toi hen ghi 0,6 s) ma doi thu muc
@@ -1185,7 +1184,7 @@ def main() -> int:
     w.v_muc[ten0].set(moi + 5)
     chay(8)
     ktra("tên tệp dài + mức riêng: bảng điều khiển không phình ra",
-         app.ben_phai.winfo_width() == rong_rt and w.btn_ve_chung.winfo_ismapped()
+         app.ben_phai.winfo_width() == rong_rt
          and "mức riêng" in w.lbl_pham_vi.cget("text"),
          f"{app.ben_phai.winfo_width()} px (chuẩn {rong_rt})")
 
@@ -1221,6 +1220,20 @@ def main() -> int:
         ktra("Reset về 0: mọi thanh của ảnh đang xem về 0",
              het0 and khong_rieng and co_nut,
              f"het0={het0} khong_rieng={khong_rieng} co_nut={bool(co_nut)}")
+        #[[ 5/10: Reset + Sync DOCK o thanh day co dinh cot phai (ngoai vung
+        #   cuon), bo nut "Về mức chung". ]]
+        day = str(app.chan_phai_rt_trong)
+        ktra("Reset + Sync dock ở đáy cột phải (ngoài vùng cuộn), hiện ở Retouch",
+             str(w.btn_reset.master) == day and str(w.btn_sync_chon.master) == day
+             and bool(app.chan_phai_rt.winfo_ismapped())
+             and bool(w.btn_reset.winfo_ismapped()),
+             f"master={w.btn_reset.master} · day_hien={app.chan_phai_rt.winfo_ismapped()}")
+        ktra("bỏ nút “Về mức chung”", not hasattr(w, "btn_ve_chung"))
+        app._chon_khau("phan_tich")
+        for _ in range(3):
+            root.update_idletasks(); root.update()
+        ktra("sang Cân tone: thanh đáy Retouch ẩn",
+             not app.chan_phai_rt.winfo_ismapped())
     else:
         LOI.append("Reset về 0: KHÔNG thấy nút btn_reset")
 

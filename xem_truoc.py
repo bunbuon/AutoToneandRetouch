@@ -96,7 +96,10 @@ def vong_xem():
         try:
             if v == "khoi_dong":
                 BO = Bo(y.get("may", "auto"))
-                ra(loai="san_sang",
+                #[[ may = thiet bi THAT dang tinh ("cuda" / "cpu" / "mps") — giao
+                #   dien dung de noi ro khi dang chay CPU (moi lan keo ~5-13 s
+                #   tren ban cai torch CPU) va goi y tai ban tang toc GPU. ]]
+                ra(loai="san_sang", may=str(getattr(BO, "dev", "")),
                    keo=[{"ten": b.ten, "nhan": b.nhan} for b in tat_ca()])
             elif v == "mo_anh":
                 NC = NguCanh(_Path(y["fp"]), canh_toi_da=CANH)

@@ -460,6 +460,17 @@ class App(ttk.Frame):
         self.cuon_phai_rt.grid(row=1, column=0, sticky="nsew", padx=(16, 4),
                                pady=(4, 8))
         self.cuon_phai_rt.grid_remove()
+        #[[ THANH DAY CO DINH CUA RETOUCH (5/10, nhu Evoto — user: "nut Reset va
+        #   Sync anh de dock o cuoi luon"): Reset / Sync nam NGOAI vung cuon, luon
+        #   thay o day cot phai, khong phai cuon xuong duoi bang keo moi bam duoc.
+        #   Chi hien o mo-dun Retouch (xem _chon_mo_dun). ]]
+        self.chan_phai_rt = tk.Frame(self.ben_phai, background=m["nen"])
+        tk.Frame(self.chan_phai_rt, height=1, background=m["vien"]).pack(fill="x")
+        self.chan_phai_rt_trong = tk.Frame(self.chan_phai_rt, background=m["nen"],
+                                           padx=16, pady=10)
+        self.chan_phai_rt_trong.pack(fill="x")
+        self.chan_phai_rt.grid(row=2, column=0, sticky="ew")
+        self.chan_phai_rt.grid_remove()
         tk.Frame(than, width=1, background=m["vien"]).grid(row=0, column=1,
                                                            sticky="nsw")
 
@@ -548,6 +559,7 @@ class App(ttk.Frame):
         rt_win = getattr(self, "_retouch_win", None)
         if md == "tone":
             self.cuon_phai_rt.grid_remove()
+            self.chan_phai_rt.grid_remove()
             self.cuon_phai.grid()
             self.ben_phai.grid()
             self.cc_phai_rt.grid_remove()
@@ -558,6 +570,7 @@ class App(ttk.Frame):
         else:
             self.cuon_phai.grid_remove()
             self.cuon_phai_rt.grid()
+            self.chan_phai_rt.grid()
             (self.ben_phai.grid if rt_win is not None else self.ben_phai.grid_remove)()
             self.cc_phai.grid_remove()
             self.cc_phai_rt.grid()
@@ -914,7 +927,8 @@ class App(ttk.Frame):
         #   Chay len THANH CONG CU — RetouchWindow chi giu vung giua (luoi anh
         #   da Export / nhat ky). ]]
         self._retouch_win = RetouchWindow(self, cha, ben=self.cuon_phai_rt.trong,
-                                          thanh=self.cc_phai_rt)
+                                          thanh=self.cc_phai_rt,
+                                          chan=self.chan_phai_rt_trong)
         self._retouch_win.grid(row=0, column=0, sticky="nsew")
 
     def _khung_khong_retouch(self, cha):
@@ -4821,7 +4835,7 @@ class RetouchWindow(Khung):
         file trong thư mục ra thì luôn đúng, kể cả khi tool đổi cách in log.
     """
 
-    def __init__(self, app: App, cha=None, ben=None, thanh=None):
+    def __init__(self, app: App, cha=None, ben=None, thanh=None, chan=None):
         #[[ cha = trang Retouch trong cua so chinh. Truyen None thi van la con
         #   truc tiep cua App — de doan ma cu con goi RetouchWindow(app) khong
         #   sap (kiem_ghi_de.py).
@@ -4832,6 +4846,9 @@ class RetouchWindow(Khung):
         #]]
         super().__init__(cha if cha is not None else app)
         self.app = app
+        #[[ chan = thanh day co dinh o cot phai (Reset / Sync, 5/10). Khong
+        #   truyen thi cac nut nam cuoi nhom "Muc ap dung". ]]
+        self._chan = chan
         self.title("Retouch — chặng cuối đường ống")
         self.geometry("880x640")
         self.minsize(760, 520)
@@ -5395,10 +5412,17 @@ class RetouchWindow(Khung):
         self._o_keo = []            # các ô đã dựng, để dựng lại khi đổi thư mục
         self._hang_keo = self._dung_thanh_keo(goc)
 
-        #[[ THANH CONG CU DUOI BANG KEO (nhu Evoto): Reset · Ve muc chung · Sync.
-        #   Pack SAU bang keo -> nam duoi cung cua nhom "Muc ap dung". ]]
-        o_duoi = ttk.Frame(g_keo)
-        o_duoi.pack(fill="x", pady=(8, 2))
+        #[[ RESET + SYNC DOCK O DAY COT PHAI (5/10, nhu Evoto — user: "nut Reset
+        #   va Sync anh de dock o cuoi luon. Bo ve muc chung di"). Nam o thanh day
+        #   CO DINH (App.chan_phai_rt, ngoai vung cuon) — luon thay, khong phai
+        #   cuon. Khong co thanh day (RetouchWindow dung rieng) thi dat cuoi nhom
+        #   "Muc ap dung". Nut "Ve muc chung" BO: muc chung moi thu muc = 0 nen no
+        #   trung voi Reset; ham _ve_muc_chung van giu cho ma cu / test. ]]
+        if self._chan is not None:
+            o_duoi = self._chan
+        else:
+            o_duoi = ttk.Frame(g_keo)
+            o_duoi.pack(fill="x", pady=(8, 2))
         self.btn_reset = gd.NutTron(o_duoi, "Reset về 0", kieu="phu", font=gd.CHU,
                                     command=self._reset_anh_0)
         self.btn_reset.pack(side="left")
@@ -5407,18 +5431,11 @@ class RetouchWindow(Khung):
                             "năng). Muốn reset nhiều ảnh thì Reset rồi bấm Sync.")
         self.btn_sync_chon = gd.NutTron(o_duoi, "Sync ảnh đã chọn", kieu="phu",
                                         font=gd.CHU, command=self._sync_chon)
-        self.btn_sync_chon.pack(side="left", padx=(6, 0))
+        self.btn_sync_chon.pack(side="left", padx=(8, 0))
         self.btn_sync_chon.goi_y = gd.GoiY(
             self.btn_sync_chon, "Chép mức của ảnh đang xem sang các tấm đang chọn "
                                 "ở dải ảnh (Ctrl / Shift + bấm để chọn nhiều tấm; "
                                 "Ctrl+A chọn hết).")
-        self.btn_ve_chung = gd.NutTron(o_duoi, "Về mức chung", kieu="chu", font=gd.CHU,
-                                       command=self._ve_muc_chung)
-        self.btn_ve_chung.pack(side="left", padx=(6, 0))
-        self.btn_ve_chung.goi_y = gd.GoiY(self.btn_ve_chung,
-                                          "Bỏ mức riêng của ảnh đang xem — ảnh này "
-                                          "theo lại mức chung.")
-        self._dat_cho(self.btn_ve_chung, anchor="w")
 
         # ------------------------------------------------ máy & cách chạy
         dong = ttk.Frame(g_chay)
@@ -6251,7 +6268,6 @@ class RetouchWindow(Khung):
                                        else gd.MAU["mo"])
         except tk.TclError:
             return
-        self._hien_an(self.btn_ve_chung, rieng)
         self.btn_sync_chon.configure(
             text=f"Sync ảnh đã chọn ({n})" if n > 1 else "Sync ảnh đã chọn",
             state="normal" if n > 1 else "disabled")
@@ -6829,7 +6845,44 @@ class RetouchWindow(Khung):
         self._xem_cuoi = (self._xem_fp, muc)
         self._xem_muc_gui = muc
         m.gui(viec="tinh", ma=self._xem_ma, fp=self._xem_fp, muc=muc)
+        self._xem_t0 = time.monotonic()
         self._dat_chip_xem("đang tính…")
+        if getattr(self, "_hen_giay_xem", None) is not None:
+            try:
+                self.after_cancel(self._hen_giay_xem)   # mot bo dem moi luc
+            except tk.TclError:
+                pass
+        self._dem_giay_xem()
+
+    def _dem_giay_xem(self):
+        """Đếm giây trên chip lúc đang tính xem trước.
+
+        #[[ 5/10 — user: "keo thanh tren ban .exe khong thay thay doi". Ban cai
+        #   chay torch CPU: moi lan keo 5-13 giay moi co anh (do that tren
+        #   SAY00551: .exe 6-13 s, .bat / CUDA 0.3-2 s, KET QUA GIONG HET). Trong
+        #   luc do anh lon dung yen voi dong "dang tinh…" nho -> tuong keo khong
+        #   an. Dem giay de thay may DANG lam; may chay CPU ma CO card NVIDIA thi
+        #   chi cho tai ban tang toc GPU. ]]
+        """
+        self._hen_giay_xem = None
+        if self._xem_dang_tinh is None or not self._xem_bat:
+            return
+        n = int(time.monotonic() - getattr(self, "_xem_t0", time.monotonic()))
+        chu = f"đang tính… {n} giây" if n >= 1 else "đang tính…"
+        if n >= 3 and getattr(self, "_xem_may", "") == "cpu":
+            if getattr(self, "_co_nvidia", None) is None:
+                try:
+                    import shutil as _sh
+                    self._co_nvidia = bool(_sh.which("nvidia-smi"))
+                except Exception:                            # noqa: BLE001
+                    self._co_nvidia = False
+            chu += (" (máy đang tính bằng CPU — menu ··· › Tải bản tăng tốc GPU "
+                    "để nhanh hơn)" if self._co_nvidia else " (tính bằng CPU)")
+        self._dat_chip_xem(chu)
+        try:
+            self._hen_giay_xem = self.after(1000, self._dem_giay_xem)
+        except tk.TclError:
+            self._hen_giay_xem = None
 
     def _hen_bom_xem(self):
         if self._hen_xem is None and self._may_xem is not None:
@@ -6849,6 +6902,7 @@ class RetouchWindow(Khung):
             t = d.get("loai")
             if t == "san_sang":
                 self._xem_san_sang = True
+                self._xem_may = str(d.get("may") or "")      # "cuda" / "cpu" / ...
                 if self._xem_cho_fp:
                     self._xem_xin_mo(self._xem_cho_fp)
                     if self._xem_bat:
