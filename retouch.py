@@ -381,7 +381,7 @@ MA_DO_KEO = (
     "    from saytool.nhom_mat import NHOM\n"
     "except Exception:\n"
     "    NHOM=[]\n"
-    "ds=[[t.ten,t.nhan,float(t.mac_dinh),t.goi_y] for _b,t in moi_thanh_keo()]\n"
+    "ds=[[t.ten,t.nhan,float(t.mac_dinh),t.goi_y,bool(getattr(_b,'can_torch',False))] for _b,t in moi_thanh_keo()]\n"
     "mh={}; tk={}\n"
     "for b in tat_ca():\n"
     "    f=[]\n"

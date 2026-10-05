@@ -84,13 +84,47 @@ di kem goi. Mo cac file do ra chi thay ma may, khong con Python de doc. Co y.
 #   tich / Retouch dung ProcessPoolExecutor spawn). autotone_gui.main() cung co
 #   freeze_support() dau ham, nhung voi diem vao chay.py thi __main__ la day,
 #   nen phai goi O DAY, SOM NHAT. ]]
+import sys
 import multiprocessing
 multiprocessing.freeze_support()
 
+#[[ CHAN TUYET DOI tien trinh con multiprocessing — KHONG de roi xuong mo GUI.
+#
+#   freeze_support() o tren DANG LE tu sys.exit() khi la tien trinh con spawn
+#   (worker '--multiprocessing-fork', hay helper tracker/forkserver dang
+#   '-c ...'). Nhung thuc te (ban mã hoá, diem vao chay.py) no KHONG chan het:
+#   bam Retouch/Phan tich van mo cua so app thu 2. Nen o day CHAN TUONG MINH:
+#   neu argv co dau hieu tien trinh con multiprocessing, thi sau freeze_support
+#   (da lo phan viec worker) ta ep thoat, KHONG chay kich_hoat/import/main.
+#
+#   is_forking: worker spawn. '-c' + co interpreter flags: helper. Them
+#   '--multiprocessing-fork' / 'spawn_main' / 'resource_tracker' / 'forkserver'
+#   trong argv de chac. ]]
+def _la_tien_trinh_con_mp():
+    av = sys.argv
+    try:
+        if multiprocessing.spawn.is_forking(av):
+            return True
+    except Exception:
+        pass
+    noi = " ".join(av[1:])
+    for dau in ("--multiprocessing-fork", "spawn_main", "resource_tracker",
+                "from multiprocessing.forkserver", "from multiprocessing.resource_tracker"):
+        if dau in noi:
+            return True
+    #[[ '-c' dung ngay sau cac co interpreter (vd -S -E) la helper mp. ]]
+    if "-c" in av[1:]:
+        return True
+    return False
+
+if _la_tien_trinh_con_mp():
+    #[[ freeze_support() o tren da xu ly phan viec can thiet. Neu toi day van
+    #   chua thoat (vi freeze_support khong exit), ep thoat de KHONG mo GUI. ]]
+    sys.exit(0)
+
 #[[ CAP NHAT: chen thu muc ban va len dau sys.path TRUOC `import {diem_vao}` —
 #   loi app trong goi la .pyd/.so, muon ban CODE MOI de len thi thu muc cap nhat
-#   phai dung TRUOC. Sau freeze_support() de tien trinh con spawn khong chay cai
-#   nay. kich_hoat() boc try/except rong; boc them cho chac. ]]
+#   phai dung TRUOC. Chi tien trinh CHINH toi day. kich_hoat() boc try/except. ]]
 try:
     import cap_nhat as _cn
     _cn.kich_hoat()

@@ -5710,7 +5710,17 @@ class RetouchWindow(Khung):
         self._o_keo = []
         self._sc_theo = {}
         self.v_muc = {}
-        ds = self.rt.thanh_keo(goc)
+        ds0 = self.rt.thanh_keo(goc)
+        #[[ saytool nay tra moi thanh keo dang [ten, nhan, mac_dinh, goi_y,
+        #   can_torch?] (5 phan tu — them can_torch 5/10). Cac vong lap ben duoi
+        #   unpack 4 phan tu, nen TACH can_torch ra dict _can_torch_keo va giu
+        #   _ds_keo dung 4 phan tu (tuong thich saytool cu tra 4 phan tu). ]]
+        self._can_torch_keo = {}
+        ds = []
+        for row in ds0:
+            if len(row) >= 5:
+                self._can_torch_keo[row[0]] = bool(row[4])
+            ds.append(list(row[:4]))
         self._ds_keo = ds
         nhom = self.rt.nhom_mat(goc)
         self._nhom_ds = [tuple(x) for x in nhom]
@@ -5777,6 +5787,17 @@ class RetouchWindow(Khung):
         l1 = ttk.Label(dong, text=nhan)
         l1.pack(side="left")
         self._o_keo.append(l1)
+        #[[ CAN TAI TORCH: tinh nang nay can torch ma ban --nhe chua tai. Van
+        #   hien thanh keo (de nguoi dung biet co + dat muc truoc), nhung ghi chu
+        #   "cần tải torch" cho ro — khong phai thieu tinh nang. Tai torch (lan
+        #   dau bam Chay retouch) xong, doc lai la het dau nay. ]]
+        if getattr(self, "_can_torch_keo", {}).get(ten):
+            lct = ttk.Label(dong, text="· cần tải torch", style="Mo2.TLabel")
+            lct.pack(side="left", padx=(6, 0))
+            self._o_keo.append(lct)
+            lct.goi_y = gd.GoiY(lct, "Tính năng này cần thư viện AI (torch) — "
+                                     "bản cài tải về lần đầu bấm “Chạy retouch”. "
+                                     "Đặt mức trước cũng được; tải xong là chạy.")
         chu = goi
         if nh:
             t = self.rt.tin_keo(goc).get(ten) or {}
@@ -8171,7 +8192,8 @@ def _cua_saytool(co: str, tham: list) -> int:
         import json
         try:
             from saytool.buoc import moi_thanh_keo
-            ds = [[t.ten, t.nhan, float(t.mac_dinh), t.goi_y]
+            ds = [[t.ten, t.nhan, float(t.mac_dinh), t.goi_y,
+                   bool(getattr(_b, "can_torch", False))]
                   for _b, t in moi_thanh_keo()]
         except Exception as ex:                              # noqa: BLE001
             print(f"  ! khong doc duoc thanh keo: {type(ex).__name__}: {ex}")
