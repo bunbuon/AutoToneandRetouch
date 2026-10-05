@@ -65,6 +65,21 @@ def vong_xem():
         _sys.stdout.write(_json.dumps(kw) + "\n")
         _sys.stdout.flush()
 
+    #[[ SO LUONG torch TREN CPU (5/10 — user: ".exe keo thanh khong thay doi",
+    #   ban local chay tot). saytool/loi/blem_net2.py va blem_net3.py co dong
+    #   `torch.set_num_threads(2)` chay NGAY LUC NAP (buoc Xoa khuyet diem nap
+    #   chung). Tren GPU (ban local) khong sao; tren CPU (ban cai .exe — torch
+    #   CPU) MOI buoc sau do bi bop con 2 luong: may 32 luong ma moi lan keo mat
+    #   ~15 s thay vi ~5,5 s (do that tren SAY00551). Ghi so luong mac dinh
+    #   TRUOC khi saytool kip bop, nap san hai module do (dong bop chay luon bay
+    #   gio, lan nap sau la no-op), roi tra lai so luong cu truoc moi lan tinh.
+    #   Chi khi tinh bang CPU — GPU giu nguyen nhu saytool muon. ]]
+    try:
+        import torch as _torch
+        _LUONG = int(_torch.get_num_threads())
+    except Exception:                                        # noqa: BLE001
+        _torch, _LUONG = None, 0
+
     try:
         from saytool.mot_anh import Bo
         from saytool.ngu_canh import NguCanh
@@ -72,11 +87,69 @@ def vong_xem():
     except Exception as e:                                   # noqa: BLE001
         ra(loai="hong", loi=f"{type(e).__name__}: {e}")
         return 1
+    try:
+        from saytool.cai_dat import chuan as _chuan
+    except Exception:                                        # noqa: BLE001
+        _chuan = None                # saytool cu / gia: khong dem, tinh ca chuoi
+    for _m in ("saytool.loi.blem_net2", "saytool.loi.blem_net3"):
+        try:
+            __import__(_m)
+        except Exception:                                    # noqa: BLE001
+            pass
 
     BO = None
     NC = None
     FP = None
     CANH = 1400
+
+    def mo_luong():
+        if _torch is not None and _LUONG > 2 and str(getattr(BO, "dev", "")) == "cpu":
+            try:
+                if _torch.get_num_threads() != _LUONG:
+                    _torch.set_num_threads(_LUONG)
+            except Exception:                                # noqa: BLE001
+                pass
+
+    #[[ CHI TINH LAI TU BUOC VUA KEO (5/10). Cac buoc chay NOI TIEP (tat_ca()
+    #   theo thu_tu): keo "Lam thon mat" thi anh sau "Xoa khuyet diem", "Lam
+    #   min da"... KHONG doi — tinh lai ca chuoi moi lan keo la phi (tren CPU
+    #   5-15 s). Giu anh SAU MOI BUOC cua anh dang xem, khoa bang muc cua cac
+    #   buoc tu dau toi buoc do; lan sau chi chay tu buoc dau tien co muc khac.
+    #   Lap DUNG vong cua saytool Bo.chay() (bat / _san_sang / _dat_phan_cung /
+    #   chuan_bi / chay_may / ap) nen ket qua y het — da so tung diem anh.
+    #   Luu BAN CHEP: ap() cua vai buoc sua thang vao mang dau vao. ]]
+    DEM: list = []                   # [(khoa_tien_to, anh_sau_buoc)] cua anh FP
+    NAP_SAN = [False]                # da nap san mo hinh (sau lan mo anh dau)
+
+    def _khoa_buoc(b, cd):
+        ten = {t.ten for t in getattr(b, "thanh_keo", [])}
+        return tuple(sorted((k, cd[k]) for k in cd
+                            if k in ten or str(k).rpartition(":")[2] in ten))
+
+    def chay_dem(nc, muc):
+        if _chuan is None:
+            raise RuntimeError("khong co saytool.cai_dat")
+        cd = _chuan(muc)
+        ds = list(tat_ca())
+        khoa, tich = [], ()
+        for b in ds:
+            tich = tich + (_khoa_buoc(b, cd),)
+            khoa.append(tich)
+        i0 = 0
+        while i0 < len(ds) and i0 < len(DEM) and DEM[i0][0] == khoa[i0]:
+            i0 += 1
+        anh = DEM[i0 - 1][1].copy() if i0 > 0 else nc.anh.copy()
+        del DEM[i0:]
+        for i in range(i0, len(ds)):
+            b = ds[i]
+            if b.bat(cd) and BO._san_sang(b, nc):
+                BO._dat_phan_cung(b, nc)
+                viec = b.chuan_bi(nc, cd)
+                if viec:
+                    viec = b.chay_may(viec)
+                anh = b.ap(nc, anh, viec, cd)
+            DEM.append((khoa[i], anh.copy()))
+        return anh
 
     def nen(img):
         #[[ PNG: khong mat chi tiet, ban truoc / sau so diem voi diem duoc. Anh
@@ -96,6 +169,7 @@ def vong_xem():
         try:
             if v == "khoi_dong":
                 BO = Bo(y.get("may", "auto"))
+                mo_luong()
                 #[[ may = thiet bi THAT dang tinh ("cuda" / "cpu" / "mps") — giao
                 #   dien dung de noi ro khi dang chay CPU (moi lan keo ~5-13 s
                 #   tren ban cai torch CPU) va goi y tai ban tang toc GPU. ]]
@@ -104,6 +178,7 @@ def vong_xem():
             elif v == "mo_anh":
                 NC = NguCanh(_Path(y["fp"]), canh_toi_da=CANH)
                 FP = y["fp"]
+                DEM.clear()                  # anh moi: bo dem cua anh cu
                 _ = NC.anh
                 H, W = NC.anh.shape[:2]
                 #[[ Moi mat: [x, y, rong, cao] theo diem anh cua ban 1400px, mat
@@ -114,12 +189,34 @@ def vong_xem():
                     mat.append([bx1, by1, bx2 - bx1, by2 - by1])
                 ra(loai="da_mo", fp=FP, so_mat=len(mat), mat=mat, rong=W, cao=H,
                    goc=nen(NC.anh))
+                #[[ NAP SAN MO HINH ngay sau lan mo anh dau (5/10): ban cai phai
+                #   giai ma + nap ~6 s o lan tinh DAU — de luc do thi lan keo dau
+                #   tien cho ~15 s. Giao dien da nhan "da_mo" (hien anh goc) roi;
+                #   nguoi dung con dang nhin anh thi mo hinh nap xong. Nap loi
+                #   thi _san_sang ghi lai nhu cu, buoc do bo qua. ]]
+                if not NAP_SAN[0]:
+                    NAP_SAN[0] = True
+                    for _b in tat_ca():
+                        try:
+                            BO._san_sang(_b, NC)
+                        except Exception:                    # noqa: BLE001
+                            pass
+                    mo_luong()
             elif v == "tinh":
                 if NC is None or BO is None or y.get("fp") != FP:
                     ra(loai="hong", loi="chua mo anh nay", ma=y.get("ma"),
                        fp=y.get("fp"))
                     continue
-                out = BO.chay(NC, y["muc"])
+                mo_luong()
+                try:
+                    if os.environ.get("XEM_KHONG_DEM"):      # tat dem (so sanh / lui)
+                        raise RuntimeError("khong dem")
+                    out = chay_dem(NC, y["muc"])
+                except Exception:                            # noqa: BLE001
+                    #[[ Duong dem hong (saytool doi ham noi bo...) -> bo dem,
+                    #   tinh ca chuoi bang Bo.chay nhu cu — khong duoc chet. ]]
+                    DEM.clear()
+                    out = BO.chay(NC, y["muc"])
                 ra(loai="ket_qua", ma=y.get("ma"), fp=FP, anh=nen(out))
             elif v == "thoat":
                 break
