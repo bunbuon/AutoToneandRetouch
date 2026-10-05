@@ -3400,7 +3400,7 @@ class App(ttk.Frame):
                 f"nhiều.\n\nTải một lần, dùng mãi. Tải xong, lần mở app sau sẽ "
                 f"tự dùng card.{nhac_cpu}\n\nTải bây giờ?", parent=self):
             return
-        d = TaiTaiNguyenDialog(self, tn, ["torch"])
+        d = TaiTaiNguyenDialog(self, tn, ["torch"], gpu=True)
         self.wait_window(d)
         if tn.da_co(g):
             messagebox.showinfo(
@@ -5236,7 +5236,14 @@ class RetouchWindow(Khung):
                            ("Đọc lại tính năng", self.do_doc_lai_keo),
                            (None, None),
                            ("Mở thư mục vào", lambda: self._mo_thu_muc(self.v_vao)),
-                           ("Mở thư mục ra", lambda: self._mo_thu_muc(self.v_ra))):
+                           ("Mở thư mục ra", lambda: self._mo_thu_muc(self.v_ra)),
+                           #[[ 5/10 — user: "o dau 3 cham chua thay phan Tai ban
+                           #   tang toc GPU". Muc nay truoc chi o menu ··· cua Can
+                           #   tone; Retouch moi la cho can no (keo thanh / Chay
+                           #   retouch tren CPU cham). ]]
+                           (None, None),
+                           ("Tải bản tăng tốc GPU…",
+                            lambda: getattr(self.app, "tai_gpu", lambda: None)())):
             if nhan is None:
                 self.menu_rt.add_separator()
             else:
@@ -5245,7 +5252,8 @@ class RetouchWindow(Khung):
             thanh, "", icon="them", kieu="chu", nen=nen,
             command=lambda: self.app._bat_menu(self.menu_rt, self.btn_them_rt))
         self.btn_them_rt.goi_y = gd.GoiY(
-            self.btn_them_rt, "Thêm: kiểm tra tool, đọc lại tính năng, mở thư mục…")
+            self.btn_them_rt, "Thêm: kiểm tra tool, đọc lại tính năng, mở thư mục, "
+                              "tải bản tăng tốc GPU…")
         self.btn_them_rt.pack(side="left")
 
     def _dat_dang_chay(self, co: bool):
@@ -6941,9 +6949,26 @@ class RetouchWindow(Khung):
                     self._anh_hien = self._xem_fp
                     self._thanh_cu = None
                     self._cap_nhat_thanh_xem()
+                    #[[ BUOC BAT MA KHONG CHAY DUOC (5/10): truoc day tien trinh
+                    #   xem truoc lang le bo qua — anh lon y nhu chua retouch ma
+                    #   chip van bao "Xem truoc", user tuong keo thanh khong an.
+                    #   Nay noi thang tren chip + ly do o Nhat ky (moi bo mot lan). ]]
+                    bq = [x for x in (d.get("bo_qua") or []) if x]
+                    canh = ""
+                    if bq:
+                        canh = " · KHÔNG chạy được: " + ", ".join(str(x[0]) for x in bq[:3]) \
+                            + (" …" if len(bq) > 3 else "") + " (xem Nhật ký)"
+                        khoa_bq = tuple(str(x[0]) for x in bq)
+                        if khoa_bq != getattr(self, "_xem_bq_cuoi", None):
+                            self._xem_bq_cuoi = khoa_bq
+                            for x in bq:
+                                self._append(f"! xem trước: bỏ qua “{x[0]}” — "
+                                             f"{x[1] if len(x) > 1 else ''}")
+                    else:
+                        self._xem_bq_cuoi = None
                     self._dat_chip_xem(self._nguon_muc() + (
                         "" if self._xem_so_mat else
-                        " · tool không thấy khuôn mặt nào"))
+                        " · tool không thấy khuôn mặt nào") + canh)
                 if self._xem_can_tinh:
                     self._xem_can_tinh = False
                     self._xem_tinh()
@@ -7822,10 +7847,17 @@ class TaiTaiNguyenDialog(tk.Toplevel):
     dau file. Nen lan bam Retouch ke tiep la thay.
     """
 
-    def __init__(self, cha, tn, can=None):
+    def __init__(self, cha, tn, can=None, gpu=False):
+        #[[ gpu=True (5/10): mo tu "Tai ban tang toc GPU…" tren ban cai DAY DU
+        #   (torch CPU + mo hinh da trong goi). User hoi "phan torch dang khong
+        #   chon duoc la da duoc tai hay chua": hop thoai cu ghi torch "can cho
+        #   retouch", khoa o tick (ttk disabled ve ra o TRONG — tuong chua
+        #   chon), hien ca mo-hinh / mediapipe ma goi da co, va noi "ban cai
+        #   khong mang san" — sai voi ban nay. Che do nay chi hien torch CUDA,
+        #   o tick ro, cau chu noi dung la goi TANG TOC. ]]
         super().__init__(cha)
         self.tn = tn
-        self.title("Tải tài nguyên retouch")
+        self.title("Tải bản tăng tốc GPU" if gpu else "Tải tài nguyên retouch")
         self.transient(cha)
         self.resizable(False, False)
         self._dung = False          # nguoi dung bam Dung
@@ -7837,6 +7869,10 @@ class TaiTaiNguyenDialog(tk.Toplevel):
         frm.pack(fill="both", expand=True)
 
         ttk.Label(frm, justify="left", wraplength=560, text=(
+            "Bản tăng tốc GPU: torch CUDA cho card NVIDIA. Bản cài đã chạy đủ "
+            "8 tính năng bằng CPU — gói này chỉ để kéo thanh / Chạy retouch "
+            "nhanh hơn nhiều. Tải một lần, dùng mãi; tải xong hãy ĐÓNG và MỞ "
+            "LẠI app." if gpu else
             "Phần retouch cần thư viện và mô hình nặng, nên bản cài không "
             "mang sẵn. Tải một lần, dùng mãi — lần sau mở app không hỏi lại."
         )).pack(anchor="w")
@@ -7849,18 +7885,28 @@ class TaiTaiNguyenDialog(tk.Toplevel):
         self.hang = {}
         can = set(can or tn.can_cho_retouch())
         for g in tn.tinh_trang():
+            if gpu and g["ten"] != "torch":
+                continue                 # ban day du da co mo hinh / mediapipe
             h = ttk.Frame(frm)
             h.pack(fill="x", pady=2)
             bat = g["ten"] in can
             v = tk.BooleanVar(value=bat or g["da_co"])
             #[[ Goi DA CO thi khoa lai — khong tai lai cai da co. Goi BAT BUOC
             #   cung khoa: bo no thi retouch van khong chay, cho chon chi tao
-            #   ra mot lua chon sai. Chi mediapipe la that su tuy chon. ]]
-            trang_thai = "disabled" if (g["da_co"] or bat) else "normal"
+            #   ra mot lua chon sai. Chi mediapipe la that su tuy chon.
+            #   Che do gpu: o torch de "normal" (tick hien RO) — ttk disabled
+            #   ve o trong tren nen toi, nhin nhu chua chon. ]]
+            if gpu and not g["da_co"]:
+                trang_thai = "normal"
+            else:
+                trang_thai = "disabled" if (g["da_co"] or bat) else "normal"
             ttk.Checkbutton(h, variable=v, state=trang_thai,
                             text=f"{g['ten']}  ({g['mb']} MB)").pack(side="left")
-            ghi = "đã có" if g["da_co"] else ("cần cho retouch" if bat
-                                              else "tuỳ chọn")
+            if gpu:
+                ghi = "đã tải" if g["da_co"] else "bản tăng tốc — tuỳ chọn"
+            else:
+                ghi = "đã có" if g["da_co"] else ("cần cho retouch" if bat
+                                                  else "tuỳ chọn")
             ttk.Label(h, style="Mo.TLabel",
                       text=f"— {g['mo_ta']}  [{ghi}]").pack(side="left",
                                                             padx=(8, 0))
@@ -8505,6 +8551,22 @@ def _cua_saytool(co: str, tham: list) -> int:
         return 0
 
     from saytool.cli import main as say_main
+    #[[ SO LUONG torch KHI CHAY HANG LOAT (5/10 — user: "sua not nut Chay
+    #   retouch"). saytool/loi/blem_net2.py (+ blem_net3) co dong
+    #   `torch.set_num_threads(2)` chay LUC NAP — ma no bi nap MUON, giua luc
+    #   xu ly anh dau, SAU khi duong_ong.chay() da dat so luong theo may
+    #   (duong_ong.py:248). Do that tren CPU: 248 dat 3, 4 s sau blem_net2:37
+    #   bop con 2, moi buoc moi anh chay 2 luong. Tren GPU vo hai (248 cung dat
+    #   2) nen ban local khong lo.
+    #
+    #   Nap san hai module do NGAY DAY: dong bop chay bay gio, roi chay() dat
+    #   lai dung so luong, lan nap muon sau la no-op. Phai SAU `import
+    #   saytool.cli` — cli goi ghim_luong() luc import, phai truoc torch. ]]
+    for _m in ("saytool.loi.blem_net2", "saytool.loi.blem_net3"):
+        try:
+            __import__(_m)
+        except Exception:                                    # noqa: BLE001
+            pass
     return int(say_main(tham) or 0)
 
 

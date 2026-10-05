@@ -140,16 +140,57 @@ def vong_xem():
             i0 += 1
         anh = DEM[i0 - 1][1].copy() if i0 > 0 else nc.anh.copy()
         del DEM[i0:]
+        #[[ BUOC BI BO QUA (nap mo hinh hong) THI KHONG DEM TU DO TRO DI.
+        #   Neu dem, anh "thieu buoc do" nam trong dem voi khoa binh thuong: keo
+        #   thanh PHIA SAU se dung lai no -> tinh nang do mat han voi anh nay du
+        #   lan sau nap duoc (loi gap that 5/10 — "keo khong thay doi"). ]]
+        thieu = False
         for i in range(i0, len(ds)):
             b = ds[i]
-            if b.bat(cd) and BO._san_sang(b, nc):
-                BO._dat_phan_cung(b, nc)
-                viec = b.chuan_bi(nc, cd)
-                if viec:
-                    viec = b.chay_may(viec)
-                anh = b.ap(nc, anh, viec, cd)
-            DEM.append((khoa[i], anh.copy()))
+            if b.bat(cd):
+                if BO._san_sang(b, nc):
+                    BO._dat_phan_cung(b, nc)
+                    viec = b.chuan_bi(nc, cd)
+                    if viec:
+                        viec = b.chay_may(viec)
+                    anh = b.ap(nc, anh, viec, cd)
+                else:
+                    thieu = True
+            if not thieu:
+                DEM.append((khoa[i], anh.copy()))
         return anh
+
+    def bo_qua(muc):
+        """[[nhãn, lý do]] các bước ĐANG BẬT mà không chạy được (nạp hỏng)."""
+        try:
+            cd = _chuan(muc) if _chuan is not None else dict(muc)
+            hong = getattr(BO, "_hong", {}) or {}
+            return [[b.nhan, str(hong[b.ten])[:200]] for b in tat_ca()
+                    if b.ten in hong and b.bat(cd)]
+        except Exception:                                    # noqa: BLE001
+            return []
+
+    #[[ NHAT KY NHO cua tien trinh xem truoc (5/10): ban cai khong co cua so
+    #   console, loi o day truoc gio CHET LANG — phai lap ban chan doan qua OTA
+    #   moi biet. Ghi su kien chinh vao <du lieu app>/xem_truoc.log (toi da
+    #   ~512 KB, qua thi cat). Chi ban dong goi; chay ma nguon thi khong ghi. ]]
+    _NK = None
+    if getattr(_sys, "frozen", False):
+        _g = os.environ.get("AUTOTONE_DATA") or os.path.join(
+            os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "AutoTone")
+        _NK = os.path.join(_g, "xem_truoc.log")
+
+    def nk(*a):
+        if not _NK:
+            return
+        try:
+            if os.path.isfile(_NK) and os.path.getsize(_NK) > 512 * 1024:
+                os.replace(_NK, _NK + ".cu")
+            import time as _t
+            with open(_NK, "a", encoding="utf-8") as fh:
+                fh.write(_t.strftime("%m-%d %H:%M:%S ") + " ".join(str(x) for x in a) + "\n")
+        except Exception:                                    # noqa: BLE001
+            pass
 
     def nen(img):
         #[[ PNG: khong mat chi tiet, ban truoc / sau so diem voi diem duoc. Anh
@@ -175,6 +216,8 @@ def vong_xem():
                 #   tren ban cai torch CPU) va goi y tai ban tang toc GPU. ]]
                 ra(loai="san_sang", may=str(getattr(BO, "dev", "")),
                    keo=[{"ten": b.ten, "nhan": b.nhan} for b in tat_ca()])
+                nk("khoi_dong may=", getattr(BO, "dev", "?"), "luong=",
+                   _torch.get_num_threads() if _torch is not None else "?")
             elif v == "mo_anh":
                 NC = NguCanh(_Path(y["fp"]), canh_toi_da=CANH)
                 FP = y["fp"]
@@ -189,6 +232,10 @@ def vong_xem():
                     mat.append([bx1, by1, bx2 - bx1, by2 - by1])
                 ra(loai="da_mo", fp=FP, so_mat=len(mat), mat=mat, rong=W, cao=H,
                    goc=nen(NC.anh))
+                nk("mo_anh", FP, f"{W}x{H}", "mat=",
+                   [(getattr(f, "src", "?"), round(float(f.width)),
+                     "lmk" if getattr(f, "lmk", None) is not None else "KHONG-lmk")
+                    for f in (NC.mat or [])])
                 #[[ NAP SAN MO HINH ngay sau lan mo anh dau (5/10): ban cai phai
                 #   giai ma + nap ~6 s o lan tinh DAU — de luc do thi lan keo dau
                 #   tien cho ~15 s. Giao dien da nhan "da_mo" (hien anh goc) roi;
@@ -202,25 +249,51 @@ def vong_xem():
                         except Exception:                    # noqa: BLE001
                             pass
                     mo_luong()
+                    nk("nap san xong, hong=", dict(getattr(BO, "_hong", {}) or {}))
             elif v == "tinh":
                 if NC is None or BO is None or y.get("fp") != FP:
                     ra(loai="hong", loi="chua mo anh nay", ma=y.get("ma"),
                        fp=y.get("fp"))
                     continue
+                #[[ Bo.chay nho buoc nap HONG suot phien (_hong) roi lang le bo
+                #   qua — mot lan hong tam (thieu RAM luc do, file dang bi khoa...)
+                #   la tinh nang do chet ca phien. Xem truoc thi nap LAI moi lan
+                #   tinh: hong that (thieu mo hinh) thi hong lai ngay, va bao ra. ]]
+                try:
+                    if getattr(BO, "_hong", None):
+                        BO._hong.clear()
+                except Exception:                            # noqa: BLE001
+                    pass
                 mo_luong()
+                import time as _t
+                _t0 = _t.time()
                 try:
                     if os.environ.get("XEM_KHONG_DEM"):      # tat dem (so sanh / lui)
                         raise RuntimeError("khong dem")
                     out = chay_dem(NC, y["muc"])
-                except Exception:                            # noqa: BLE001
+                except Exception as _ex:                     # noqa: BLE001
                     #[[ Duong dem hong (saytool doi ham noi bo...) -> bo dem,
                     #   tinh ca chuoi bang Bo.chay nhu cu — khong duoc chet. ]]
+                    if not os.environ.get("XEM_KHONG_DEM"):
+                        nk("dem hong -> Bo.chay:", type(_ex).__name__, _ex)
                     DEM.clear()
                     out = BO.chay(NC, y["muc"])
-                ra(loai="ket_qua", ma=y.get("ma"), fp=FP, anh=nen(out))
+                bq = bo_qua(y["muc"])
+                ra(loai="ket_qua", ma=y.get("ma"), fp=FP, anh=nen(out), bo_qua=bq)
+                if _NK:
+                    try:
+                        import numpy as _np
+                        _d = (float((_np.abs(NC.anh.astype(int) - out.astype(int)).sum(2) > 3).mean()) * 100
+                              if out.shape == NC.anh.shape else -1)
+                    except Exception:                        # noqa: BLE001
+                        _d = "?"
+                    nk("tinh ma=", y.get("ma"), f"{_t.time() - _t0:.1f}s", "doi%=",
+                       round(_d, 2) if isinstance(_d, float) else _d,
+                       "muc=", y["muc"], "bo_qua=", bq)
             elif v == "thoat":
                 break
         except Exception as e:                               # noqa: BLE001
+            nk("LOI", v, type(e).__name__, e)
             ra(loai="hong", loi=f"{type(e).__name__}: {e}", ma=y.get("ma"),
                fp=y.get("fp"))
     return 0
