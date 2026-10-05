@@ -72,13 +72,25 @@ di kem goi. Mo cac file do ra chi thay ma may, khong con Python de doc. Co y.
 
 (c) SAY MEDIA. Ma nguon doc quyen - khong sao chep, khong dich nguoc.
 """
-#[[ CAP NHAT phai chay TRUOC `import {diem_vao}`.
+#[[ freeze_support() PHAI LA LENH DAU TIEN — truoc moi import/logic khac.
 #
-#   Day la DIEM VAO THAT cua ban ma hoa. Loi app la .pyd/.so trong goi; muon
-#   ban CODE MOI (da tai ve) de len ban trong goi thi phai chen thu muc cap nhat
-#   len dau sys.path TRUOC khi import module app dau tien. kich_hoat() boc
-#   try/except rong nen ban cap nhat hong khong chan app mo len; boc them o day
-#   cho chac (ban cu khong co module cap_nhat van chay). ]]
+#   Day la DIEM VAO THAT (__main__) cua ban ma hoa. Tren Windows/macOS,
+#   multiprocessing SPAWN chay lai chinh file nay trong MOI tien trinh con, roi
+#   RE-IMPORT __main__. freeze_support() chan dung cho do: trong tien trinh con
+#   no lam phan viec cua worker roi THOAT, khong di tiep xuong duoi. Nhung no chi
+#   chan duoc neu chay TRUOC moi thu khac o __main__. Neu de cap_nhat.kich_hoat()
+#   hay `import autotone_gui` chay truoc, moi tien trinh con se lam viec thua
+#   roi MO THEM MOT CUA SO APP (bug "bam Retouch mo cua so thu 2" — khau Phan
+#   tich / Retouch dung ProcessPoolExecutor spawn). autotone_gui.main() cung co
+#   freeze_support() dau ham, nhung voi diem vao chay.py thi __main__ la day,
+#   nen phai goi O DAY, SOM NHAT. ]]
+import multiprocessing
+multiprocessing.freeze_support()
+
+#[[ CAP NHAT: chen thu muc ban va len dau sys.path TRUOC `import {diem_vao}` —
+#   loi app trong goi la .pyd/.so, muon ban CODE MOI de len thi thu muc cap nhat
+#   phai dung TRUOC. Sau freeze_support() de tien trinh con spawn khong chay cai
+#   nay. kich_hoat() boc try/except rong; boc them cho chac. ]]
 try:
     import cap_nhat as _cn
     _cn.kich_hoat()

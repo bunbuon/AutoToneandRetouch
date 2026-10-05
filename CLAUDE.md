@@ -1438,3 +1438,24 @@ lông vũ. Sửa: `--add-data icon.ico;.` (DEST = "." = gốc, giữ tên gốc 
 và `autotone_gui.main` tìm theo tên gốc `icon.ico` (dự phòng `app.ico` cho gói
 cũ). Bài học: muốn ĐỔI TÊN file khi add-data thì phải copy sang tên đó TRƯỚC rồi
 add, hoặc chấp nhận giữ tên gốc và tìm theo tên gốc.
+
+## Bấm Retouch/Phân tích mở CỬA SỔ APP THỨ 2 — freeze_support phải đầu chay.py (5/10)
+
+User (bản mã hoá): bấm Retouch mở lên một cửa sổ app Tone&Retouch thứ hai thay
+vì chuyển mô-đun. Bản cũ (chưa mã hoá, điểm vào autotone_gui.py) ĐÚNG; chỉ bản
+mã hoá lỗi.
+
+**Nguyên nhân:** khâu Phân tích chạy 8 tiến trình `ProcessPoolExecutor`; trên
+Windows/macOS multiprocessing SPAWN chạy lại `sys.executable` (= AutoTone.exe) và
+RE-IMPORT `__main__`. `freeze_support()` chặn: trong tiến trình con nó làm worker
+rồi THOÁT — NHƯNG chỉ khi chạy TRƯỚC mọi thứ khác ở `__main__`. Bản cũ `__main__`
+= autotone_gui, freeze_support là lệnh gần đầu main() → OK. Bản mã hoá `__main__`
+= **chay.py** (bao_mat.LAUNCHER), mà chay.py gọi `cap_nhat.kich_hoat()` +
+`import autotone_gui` TRƯỚC khi main()/freeze_support() chạy → mỗi tiến trình con
+spawn chạy kich_hoat + import + mở GUI (App thứ 2) thay vì làm worker.
+
+**Sửa:** `bao_mat.LAUNCHER` (chay.py) gọi `multiprocessing.freeze_support()` LÀ
+LỆNH ĐẦU TIÊN, trước cả `cap_nhat.kich_hoat()` và `import autotone_gui`. Đây là
+quy tắc chuẩn của multiprocessing: freeze_support phải sớm nhất trong `__main__`.
+Xác minh: `build/nguon_bao_mat/chay.py` có freeze_support trước kich_hoat.
+(autotone_gui.main() vẫn giữ freeze_support đầu hàm cho bản chạy nguồn.)
