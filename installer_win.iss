@@ -53,23 +53,20 @@ DefaultGroupName={#TenApp}
 DisableProgramGroupPage=yes
 OutputDir={#RaDir}
 OutputBaseFilename={#TenFile}-Setup
-; NEN CO CHON LOC (lzma2) — nen MOI THU TRU model da ma hoa.
+; NEN BANG ZIP (zlib) — KHONG dung islzma.
 ;
-; VI SAO truoc day Compression=none: islzma.dll cua Inno 6.7.3 SAP (Access
-; violation) khi nen file mo_hinh/*.pt DA MA HOA (du lieu entropy cao). Da thu
-; lzma2/max lan lzma2/normal 1 luong: deu sap o dung file mo_hinh/*.pt.
+; VI SAO KHONG lzma/lzma2: islzma.dll cua Inno 6.7.3 SAP (Access violation)
+; KHONG ON DINH tren may build nay — khong chi o model ma hoa (entropy cao) ma
+; CA o AutoTone.exe (file PE thuong). Da gap: lan thi nen tron (v8 ra 1 GB), lan
+; thi sap ngay file dau. Day la crash CHOP CHON (giong 0xC0000005 o PyInstaller/
+; MSVC tren may nay), khong sua bang doi tham so lzma duoc.
 ;
-; GIO nhoi torch vao goi -> goi ~1.5 GB, phan LON la torch (.dll + .py) va thu
-; vien — NEN RAT TOT (torch_cpu.dll, libtorch... nen duoc nhieu). De none thi
-; Setup.exe ~1.5 GB vo ich. Nen BAT nen lzma2, nhung RIENG cay mo_hinh/ (model
-; ma hoa) danh dau `nocompression` o [Files] ben duoi — khong dua chung qua
-; islzma (tranh sap) va chung von khong nen them duoc. Cac file ma hoa khac
-; (loi .pyd) nho va KHONG lam sap islzma (da chay none truoc, nay thu nen).
-;
-; Gia: Setup.exe nho hon nhieu (~700-900 MB thay vi 1.5 GB), cai cham hon chut
-; (giai nen torch) nhung tai ve/luu tru gon hon han.
-Compression=lzma2/normal
-SolidCompression=yes
+; zip/9 dung ZLIB — trinh nen RIENG, on dinh, khong dung islzma -> KHONG sap.
+; Nen kem lzma mot chut (torch_cpu.dll ~500 MB nen ~60% thay vi ~50%), Setup.exe
+; to hon chut nhung CHAC CHAN build ra. Van bo cay mo_hinh (model ma hoa, entropy
+; cao khong nen them duoc) o [Files] voi nocompression. KHONG SolidCompression
+; (solid ep zlib giu ca stream trong RAM — khong can, va de loi hon).
+Compression=zip/9
 ; 64-bit: app PyInstaller la x64.
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible

@@ -539,14 +539,17 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     _wrapper.write_text(
         "import sys, threading, traceback\n"
         "sys.setrecursionlimit(50000)\n"
-        #[[ Stack 64 MB: Windows threading.stack_size KHONG nhan 256 MB
-        #   (ValueError: size not valid) — co tran tren. 64 MB (67108864, boi so
-        #   64 KB) la an toan va van gap 64 lan mac dinh ~1 MB -> du sau cho cay
-        #   torch. Boc try de ban Python nao khong nhan thi ve mac dinh. ]]
-        "try:\n"
-        "    threading.stack_size(64 * 1024 * 1024)\n"
-        "except (ValueError, RuntimeError):\n"
-        "    pass\n"
+        #[[ Stack 128 MB: Windows threading.stack_size KHONG nhan 256 MB
+        #   (ValueError) nhung NHAN 128 MB. 64 MB van thinh thoang 0xC0000005 giua
+        #   luc gom torch (de quy sau, khong deterministic) — da gap v10/v11. 128
+        #   MB (boi so 64 KB) gap doi, giam xac suat tran. Boc try: ban nao khong
+        #   nhan thi ha ve 64 MB roi mac dinh. ]]
+        "for _mb in (128, 64):\n"
+        "    try:\n"
+        "        threading.stack_size(_mb * 1024 * 1024)\n"
+        "        break\n"
+        "    except (ValueError, RuntimeError):\n"
+        "        pass\n"
         "from PyInstaller.__main__ import run\n"
         "_ret = {'code': 0}\n"
         "def _go():\n"
