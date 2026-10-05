@@ -5886,6 +5886,19 @@ class RetouchWindow(Khung):
         self._ten_hien = Path(path).name
         self._nap_muc_vao_bang(self._muc_hieu_luc(path))
         self._cap_nhat_pham_vi()
+        if self._xem_bat and getattr(self, "_xem_tu_dong", False):
+            #[[ Xem truoc dang bat TU DONG (tam truoc co san thong so, nguoi
+            #   dung chua keo gi): sang tam moi thi TAM DO tu quyet — co ket qua
+            #   thi hien ket qua, co thong so thi xem truoc, muc 0 thi anh goc.
+            #   Tat mem (giu may xem truoc); tin ket qua cu ve muon se bi bo vi
+            #   _xem_bat da tat. ]]
+            self._xem_bat = False
+            if self._hen_tinh is not None:
+                try:
+                    self.after_cancel(self._hen_tinh)
+                except tk.TclError:
+                    pass
+                self._hen_tinh = None
         if self._xem_bat:
             #[[ So voi tam ANH LON DANG HIEN, khong phai tam tien trinh con
             #   dang mo: luot nhanh qua lai thi hai tam do khac nhau — so nham
@@ -5893,10 +5906,44 @@ class RetouchWindow(Khung):
             self._xem_gui_mo(path, hien_dia=path != self._anh_hien)
             return
         self._hien_anh_dia(path)
+        if self._tu_xem_neu_co_muc(path):
+            return
         #[[ May xem truoc dang chay san thi MO NGAM tam nay luon — lan keo dau
         #   tien tren tam nay khoi cho tool mo anh + tim mat. ]]
         if self._may_xem is not None:
             self._xem_xin_mo(path)
+
+    def _tu_xem_neu_co_muc(self, path) -> bool:
+        """Ảnh ĐÃ CÓ thông số (mức riêng / mức chung > 0) -> bật xem trước luôn.
+
+        #[[ 5/10 — user: "khi mo 1 folder, neu cac anh da duoc keo thong so thi
+        #   phai duoc tai vao preview luon, nhu hien tai phai keo thanh keo moi
+        #   thay doi lai". Truoc day xem truoc CHI bat khi nguoi dung keo thanh;
+        #   chon mot tam da co muc (nhan "riêng") van hien anh goc tren dia.
+        #   Chi tu bat khi dang o mo-dun Retouch va khong co luot Chay dang
+        #   chay (xem truoc khi do bi tat de nhuong card). Anh muc 0 het: giu
+        #   anh goc nhu cu — khong co gi de tinh. ]]
+        """
+        if self._xem_bat or not path:
+            return False
+        if getattr(self.app, "khau_dang", "") != "retouch":
+            return False
+        if self.worker is not None and self.worker.is_alive():
+            return False
+        #[[ Tam DA CO KET QUA tren dia ("✓ Đã retouch"): hien chinh file ket qua
+        #   (anh that da xuat, khong ton cong tinh) — keo thanh thi van xem truoc. ]]
+        if self._duong_kq(path) is not None:
+            return False
+        try:
+            co = any(_so_muc(v, 0) > 0 for v in self._muc_hieu_luc(path).values())
+        except Exception:                                    # noqa: BLE001
+            co = False
+        if not co:
+            return False
+        self._mo_xem_truoc(path, tu_dong=True)
+        if self._xem_bat:
+            self._xem_tu_dong = True     # bat vi anh co san thong so, khong phai keo
+        return self._xem_bat
 
     def _hien_anh_dia(self, path: str, giu_khung: bool = False):
         """Ảnh lớn từ đĩa: bản KẾT QUẢ nếu đã làm (giữ chuột = bản gốc), không
@@ -6149,6 +6196,9 @@ class RetouchWindow(Khung):
         XEM — chưa có ảnh nào thì là mức chung; (2) ảnh lớn tính lại theo mức
         đó, chưa bật xem trước thì TỰ BẬT (không còn nút "Xem trước")."""
         self._ghi_muc_dang()
+        #[[ Nguoi dung da KEO: xem truoc tu day la cua nguoi dung (giu bat khi
+        #   sang tam khac), khong con la "tu bat theo tam" nua. ]]
+        self._xem_tu_dong = False
         if self._xem_bat:
             self._hen_tinh_xem()
         elif self._anh_dang:
@@ -6935,7 +6985,10 @@ class RetouchWindow(Khung):
             #   chet, va vong "chet -> tu mo lai" khong ai chan. ]]
             if self._may_xem is None and not self._dam_bao_may_xem():
                 return
-            if self._anh_dang and not self._xem_bat:
+            #[[ Tam dang xem DA CO thong so -> tinh xem truoc luon (5/10); chua
+            #   co thi chi mo ngam nhu cu. ]]
+            if self._anh_dang and not self._xem_bat \
+                    and not self._tu_xem_neu_co_muc(self._anh_dang):
                 self._xem_xin_mo(self._anh_dang)
         except Exception:                                    # noqa: BLE001
             traceback.print_exc()

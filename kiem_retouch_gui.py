@@ -395,14 +395,18 @@ def main() -> int:
     w.v_ghide.set(False)
     w._doi_ghide()
 
-    def mang_chung_sang(thu_muc):
+    def mang_chung_sang(thu_muc, muc=None):
         """Từ 5/10 mức chung theo TỪNG thư mục vào (project mới = 0). Các phần
         test dưới kiểm logic mức riêng / mức chung trên một project ĐÃ CÓ mức
         chung — giả lập bằng cách ghi sẵn mức chung đang dùng cho thư mục đó
         (đúng như bản cũ, khi mức chung còn dùng chung mọi thư mục)."""
-        rt.ghi_muc_anh(str(thu_muc), {}, w._muc_chung_day_du())
+        rt.ghi_muc_anh(str(thu_muc), {}, muc if muc is not None else w._muc_chung_day_du())
 
-    mang_chung_sang(vao)
+    #[[ 5/10: thu muc nay KHONG ghi san muc chung — anh muc 0 thi anh lon la
+    #   ban tren dia (cac test ket qua / giu xem goc ben duoi). Anh CO thong so
+    #   thi tu xem truoc — xem test rieng sau. Muc chung cu (nam:vet=40...) giu
+    #   lai cho vao2. ]]
+    chung_dau = w._muc_chung_day_du()
     w.v_ra.set(str(ra))
     w.v_vao.set(str(vao))
     w._dem()
@@ -628,7 +632,7 @@ def main() -> int:
     Image.new("RGB", (2000, 1500), (60, 160, 90)).save(vao2 / "P1.png")
     Image.new("RGB", (2000, 1500), (90, 90, 200)).save(vao2 / "P2_khong_mat.png")
     w.v_goc.set(str(gia))
-    mang_chung_sang(vao2)
+    mang_chung_sang(vao2, chung_dau)
     w.v_ra.set(str(Path(tmp) / "xuat2_ra"))
     w.v_vao.set(str(vao2))
     w._dem()
@@ -640,9 +644,26 @@ def main() -> int:
     chay(3)
     app._chon_khau("retouch")
     ok = cho(lambda: w._xem_fp == str(vao2 / "P0.png"))
-    ktra("vào mô-đun Retouch: máy xem trước mở SẴN ở nền, ảnh lớn vẫn là bản trên đĩa",
-         ok and w._may_xem is not None and not w._xem_bat and not w._xem_dang_hien
-         and "Chưa retouch" in chip(), chip())
+    #[[ 5/10 — user: "anh da duoc keo thong so thi phai tai vao preview luon".
+    #   P0 co san muc chung > 0, chua co ket qua -> vao mo-dun la TU xem truoc. ]]
+    ktra("vào mô-đun Retouch: tấm ĐÃ CÓ thông số → xem trước TỰ BẬT, không cần kéo",
+         ok and w._may_xem is not None and w._xem_bat
+         and getattr(w, "_xem_tu_dong", False), chip())
+    #[[ Xem truoc TU BAT thi moi tam tu quyet: tam muc 0 -> anh goc; quay lai
+    #   tam co thong so -> tu xem truoc lai. ]]
+    k_p1 = w._khoa(str(vao2 / "P1.png"))
+    w._muc_anh[k_p1] = {t: 0.0 for t, *_x in w._ds_keo}
+    w.luoi.chon(str(vao2 / "P1.png"))
+    w._chon_anh(str(vao2 / "P1.png"))
+    chay(3)
+    ktra("xem trước tự bật → sang tấm MỨC 0: ảnh gốc trên đĩa, tắt xem trước",
+         not w._xem_bat and "Chưa retouch" in chip(), chip())
+    w.luoi.chon(str(vao2 / "P0.png"))
+    w._chon_anh(str(vao2 / "P0.png"))
+    ok = cho(xong_xem)
+    ktra("…quay lại tấm CÓ thông số: tự xem trước lại",
+         ok and w._xem_bat and w._anh_dang == str(vao2 / "P0.png"), chip())
+    w._muc_anh.pop(k_p1, None)
     p_cu = w._may_xem.proc if w._may_xem is not None else None
     app._chon_khau("phan_tich")
     chay(3)
