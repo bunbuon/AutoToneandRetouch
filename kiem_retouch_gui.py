@@ -769,8 +769,12 @@ def main() -> int:
     w._buoc_anh(-1)
     cho(xong_xem)
     #[[ Ban saytool khong nhan khoa "nam:vet" -> tinh lai voi muc chung va noi
-    #   ra, khong dung o loi. ]]
+    #   ra, khong dung o loi. Tu 5/10 moi thanh mac dinh 0, nen dat muc CHUNG
+    #   > 0 truoc: khong thi luc lui ve muc chung se la "moi muc o 0" -> preview
+    #   khong tinh, test cho xong_xem mai khong xong. ]]
     tu_choi.write_text("1", encoding="utf-8")
+    w.v_muc[ten0].set(50)               # muc chung > 0 de con viec sau khi lui nhom
+    chay(2)
     w.v_rieng[("nam", ten0)].set(55)
     w._doi_bat_rieng(("nam", ten0))
     ok = cho(lambda: w._xem_bo_nhom and xong_xem())
@@ -998,7 +1002,7 @@ def main() -> int:
     hoi = []
     ag.messagebox.askokcancel = lambda *a, **k: (hoi.append(" ".join(map(str, a))), False)[1]
     try:
-        w.btn_sync_het.invoke()
+        w._sync_het()  # nut da go khoi UI; goi thang ham
     finally:
         ag.messagebox.askokcancel = hoi_that
     chay(2)
@@ -1007,7 +1011,7 @@ def main() -> int:
          and sorted(w._muc_anh) == ["Q0.png", "Q1.png", "Q4.png"], str(sorted(w._muc_anh)))
     ag.messagebox.askokcancel = lambda *a, **k: True
     try:
-        w.btn_sync_het.invoke()
+        w._sync_het()  # nut da go khoi UI; goi thang ham
     finally:
         ag.messagebox.askokcancel = hoi_that
     chay(2)
@@ -1114,7 +1118,7 @@ def main() -> int:
     bam(0)
     ag.messagebox.askokcancel = lambda *a, **k: True
     try:
-        w.btn_sync_het.invoke()
+        w._sync_het()  # nut da go khoi UI; goi thang ham
         w.v_lamlai.set(True)
         goi.clear()
         chay_start()
@@ -1151,6 +1155,32 @@ def main() -> int:
     ktra("đổi mô-đun thì bảng điều khiển không đổi bề ngang",
          rong_tone == rong_rt and app.btn_analyze.winfo_ismapped()
          and not w.btn_run.winfo_ismapped(), f"Cân tone {rong_tone} px · Retouch {rong_rt} px")
+
+    #[[ NUT RESET VE 0 (5/10) — dat o CUOI de khong lam lech trinh tu test tren.
+    #   Keo mot thanh > 0 roi bam Reset: moi thanh ve 0, moi muc rieng theo nhom
+    #   tat het. Nut nam o thanh cong cu DUOI bang keo (cung hang Sync). ]]
+    app._chon_khau("retouch")
+    for _ in range(4):
+        root.update_idletasks()
+        root.update()
+    if hasattr(w, "btn_reset"):
+        w.v_muc[ten0].set(80)
+        for _ in range(3):
+            root.update_idletasks(); root.update()
+        w.btn_reset.invoke()
+        for _ in range(3):
+            root.update_idletasks(); root.update()
+        het0 = all(float(v.get()) == 0.0 for v in w.v_muc.values())
+        khong_rieng = not any(b.get() for b in w.v_bat_rieng.values())
+        #[[ Nut nam trong o_duoi (pack sau bang keo). Khong kiem winfo_ismapped:
+        #   nhom "Muc ap dung" co the thu gon tuy trang thai test. Kiem nut CO
+        #   TON TAI va chuc nang Reset chay dung (het0 + khong_rieng). ]]
+        co_nut = w.btn_reset.winfo_exists()
+        ktra("Reset về 0: mọi thanh của ảnh đang xem về 0",
+             het0 and khong_rieng and co_nut,
+             f"het0={het0} khong_rieng={khong_rieng} co_nut={bool(co_nut)}")
+    else:
+        LOI.append("Reset về 0: KHÔNG thấy nút btn_reset")
 
     root.destroy()
     print()

@@ -5361,34 +5361,19 @@ class RetouchWindow(Khung):
                                      justify="left", anchor="w")
         self.lbl_pham_vi.pack(side="left")
         hoi(o_pv, "Kéo thanh là chỉnh ẢNH ĐANG XEM (như Evoto) — ảnh lớn tính "
-                  "lại ngay. Ảnh chưa chỉnh riêng thì theo MỨC CHUNG.\n\n"
+                  "lại ngay. Mở thư mục mới thì mọi thanh ở 0; tự kéo tính năng "
+                  "muốn dùng.\n\n"
+                  "Reset về 0: đưa mọi thanh của ảnh đang xem về 0.\n\n"
                   "Sync ảnh đã chọn: chép mức của ảnh đang xem sang các tấm đang "
                   "chọn ở dải ảnh — Ctrl + bấm để chọn thêm, Shift + bấm để chọn "
                   "một dãy, Ctrl+A chọn hết.\n\n"
-                  "Sync tất cả: chép cho mọi ảnh trong thư mục và lấy làm mức "
-                  "chung.\n\n"
                   "Lúc chạy, ảnh khác mức nhau thì tool chạy theo từng nhóm mức "
                   "(mỗi nhóm một lượt).")
-        o_sync = ttk.Frame(g_keo)
-        self.btn_ve_chung = gd.NutTron(g_keo, "Về mức chung", kieu="chu", font=gd.CHU,
-                                       command=self._ve_muc_chung)
-        self.btn_ve_chung.goi_y = gd.GoiY(self.btn_ve_chung,
-                                          "Bỏ mức riêng của ảnh đang xem — ảnh này "
-                                          "theo lại mức chung.")
-        self._dat_cho(self.btn_ve_chung, truoc=o_sync, anchor="w", pady=(2, 0))
-        o_sync.pack(fill="x", pady=(6, 2))
-        self.btn_sync_chon = gd.NutTron(o_sync, "Sync ảnh đã chọn", kieu="phu",
-                                        font=gd.CHU, command=self._sync_chon)
-        self.btn_sync_chon.pack(side="left")
-        self.btn_sync_chon.goi_y = gd.GoiY(
-            self.btn_sync_chon, "Chép mức của ảnh đang xem sang các tấm đang chọn "
-                                "ở dải ảnh (Ctrl / Shift + bấm để chọn nhiều tấm).")
-        self.btn_sync_het = gd.NutTron(o_sync, "Sync tất cả", kieu="phu", font=gd.CHU,
-                                       command=self._sync_het)
-        self.btn_sync_het.pack(side="left", padx=(6, 0))
-        self.btn_sync_het.goi_y = gd.GoiY(
-            self.btn_sync_het, "Chép mức của ảnh đang xem cho MỌI ảnh và lấy làm "
-                               "mức chung.")
+        #[[ SYNC + RESET CHUYEN XUONG DUOI (user 5/10, nhu Evoto): hang the nhom
+        #   + bang thanh keo o tren, thanh cong cu (Reset / Ve muc chung / Sync)
+        #   nam DUOI bang keo. Nen cac nut nay dung o cuoi g_keo — xem o_duoi_keo
+        #   phia sau _dung_thanh_keo. BO "Sync tat ca": Sync mac dinh cho ANH DANG
+        #   CHON (user: "khong can toi nut Sync Tat ca"). ]]
         self.o_the = ttk.Frame(g_keo)
         self.o_the.pack(fill="x", pady=(4, 0))
         #[[ BANG THANH KEO KHONG PHAI CUA saytool THI PHAI NOI (9/9: may co
@@ -5405,6 +5390,31 @@ class RetouchWindow(Khung):
         self.v_muc = {}
         self._o_keo = []            # các ô đã dựng, để dựng lại khi đổi thư mục
         self._hang_keo = self._dung_thanh_keo(goc)
+
+        #[[ THANH CONG CU DUOI BANG KEO (nhu Evoto): Reset · Ve muc chung · Sync.
+        #   Pack SAU bang keo -> nam duoi cung cua nhom "Muc ap dung". ]]
+        o_duoi = ttk.Frame(g_keo)
+        o_duoi.pack(fill="x", pady=(8, 2))
+        self.btn_reset = gd.NutTron(o_duoi, "Reset về 0", kieu="phu", font=gd.CHU,
+                                    command=self._reset_anh_0)
+        self.btn_reset.pack(side="left")
+        self.btn_reset.goi_y = gd.GoiY(
+            self.btn_reset, "Đưa mọi thanh của ẢNH ĐANG XEM về 0 (tắt hết tính "
+                            "năng). Muốn reset nhiều ảnh thì Reset rồi bấm Sync.")
+        self.btn_sync_chon = gd.NutTron(o_duoi, "Sync ảnh đã chọn", kieu="phu",
+                                        font=gd.CHU, command=self._sync_chon)
+        self.btn_sync_chon.pack(side="left", padx=(6, 0))
+        self.btn_sync_chon.goi_y = gd.GoiY(
+            self.btn_sync_chon, "Chép mức của ảnh đang xem sang các tấm đang chọn "
+                                "ở dải ảnh (Ctrl / Shift + bấm để chọn nhiều tấm; "
+                                "Ctrl+A chọn hết).")
+        self.btn_ve_chung = gd.NutTron(o_duoi, "Về mức chung", kieu="chu", font=gd.CHU,
+                                       command=self._ve_muc_chung)
+        self.btn_ve_chung.pack(side="left", padx=(6, 0))
+        self.btn_ve_chung.goi_y = gd.GoiY(self.btn_ve_chung,
+                                          "Bỏ mức riêng của ảnh đang xem — ảnh này "
+                                          "theo lại mức chung.")
+        self._dat_cho(self.btn_ve_chung, anchor="w")
 
         # ------------------------------------------------ máy & cách chạy
         dong = ttk.Frame(g_chay)
@@ -5812,14 +5822,15 @@ class RetouchWindow(Khung):
                 if k in self.v_rieng:
                     continue
                 gt = muc_ht.get(f"{nh}:{ten}")
+                #[[ Mac dinh 0 (khong lay md cua buoc): moi project = 0 het. ]]
                 self.v_rieng[k] = tk.DoubleVar(
-                    value=_so_muc(gt, _so_muc(muc_ht.get(ten), md)))
+                    value=_so_muc(gt, _so_muc(muc_ht.get(ten), 0)))
                 self.v_bat_rieng[k] = tk.BooleanVar(value=gt not in (None, ""))
 
         self._dung_the_nhom(goc)
         hang = 1
         for ten, nhan, md, goi in ds:
-            v = tk.DoubleVar(value=_so_muc(muc_ht.get(ten), md))
+            v = tk.DoubleVar(value=_so_muc(muc_ht.get(ten), 0))  # mac dinh 0
             self.v_muc[ten] = v
             if self.nhom_dang and not self.rt.theo_nhom(ten, goc):
                 #[[ Buoc tu khai theo_nhom = False thi khong chia duoc — khong
@@ -6050,7 +6061,12 @@ class RetouchWindow(Khung):
         riêng theo nhóm chỉ giữ cái tool còn có."""
         cf = self.cf.get("muc") or {}
         ten_co = {t for t, *_x in self._ds_keo}
-        d = {ten: _so_muc(cf.get(ten), md) for ten, _n, md, _g in self._ds_keo}
+        #[[ MOI PROJECT = 0 HET (user 5/10, nhu Evoto): thu muc chua luu muc
+        #   bao gio thi MOI thanh = 0, nguoi dung tu keo tinh nang muon dung.
+        #   KHONG lay mac_dinh cua buoc (vet/min_da... mac_dinh 100) lam gia tri
+        #   ban dau nua — gio 0 = tat, nguoi dung chu dong bat. Anh / thu muc DA
+        #   luu muc cu van giu nguyen (cf.get(ten) co gia tri thi dung gia tri do). ]]
+        d = {ten: _so_muc(cf.get(ten), 0) for ten, _n, _md, _g in self._ds_keo}
         #[[ Nhom mat lay tu ban da hoi luc dung bang (_nhom_ds), KHONG goi
         #   rt.nhom_mat(None) o day: ham nay chay moi nhip keo, ma nhom_mat(None)
         #   di do tim tool tren dia. ]]
@@ -6232,10 +6248,9 @@ class RetouchWindow(Khung):
         self.btn_sync_chon.configure(
             text=f"Sync ảnh đã chọn ({n})" if n > 1 else "Sync ảnh đã chọn",
             state="normal" if n > 1 else "disabled")
-        #[[ Sync tat ca chi bat khi co gi de doi: moi anh deu theo muc chung
-        #   (khong anh nao rieng) thi bam vao khong lam gi ca. ]]
-        self.btn_sync_het.configure(
-            state="normal" if (p and self._muc_anh) else "disabled")
+        #[[ Reset ve 0: bat khi co anh dang xem (reset chinh anh do). ]]
+        if hasattr(self, "btn_reset"):
+            self.btn_reset.configure(state="normal" if p else "disabled")
 
     def _mo_ta_muc(self, muc: dict, toi_da: int = 4) -> str:
         """“Xoá khuyết điểm 60 · Làm mịn da 40 · riêng Nam: Làm thon mặt 30”."""
@@ -6255,6 +6270,42 @@ class RetouchWindow(Khung):
         if rieng:
             ra += " · riêng " + ", ".join(rieng[:2]) + (" …" if len(rieng) > 2 else "")
         return ra
+
+    def _reset_anh_0(self):
+        """Đưa MỌI thanh của ảnh đang xem về 0 (tắt hết tính năng), rồi tính
+        lại ảnh lớn — như kéo tay nhưng một phát về 0. Muốn reset nhiều ảnh:
+        Reset tấm này rồi bấm Sync ảnh đã chọn.
+
+        #[[ Dat var duoi co _dang_nap_muc = True de moi var ve 0 KHONG tung lan
+        #   goi _nguoi_doi_muc (hang chuc lan ghi + tinh lai). Xong het thi goi
+        #   MOT lan _nguoi_doi_muc -> ghi muc + tinh lai preview mot luot. ]]
+        """
+        self._dang_nap_muc = True
+        try:
+            for v in self.v_muc.values():
+                try:
+                    if float(v.get()) != 0.0:
+                        v.set(0.0)
+                except (tk.TclError, ValueError):
+                    v.set(0.0)
+            #[[ Tat luon moi muc RIENG theo nhom (bo tick "rieng") — reset la
+            #   sach, khong de sot mot nhom nao con muc. ]]
+            for (nh, ten), bat in self.v_bat_rieng.items():
+                if bool(bat.get()):
+                    bat.set(False)
+                rv = self.v_rieng.get((nh, ten))
+                if rv is not None and float(rv.get()) != 0.0:
+                    rv.set(0.0)
+                o = self._sc_theo.get((nh, ten))
+                if o:
+                    self._mo_hang(o[0], o[1], False)
+        finally:
+            self._dang_nap_muc = False
+        self._danh_dau_the()
+        self._nguoi_doi_muc()
+        p = self._anh_dang
+        if p:
+            self._append(f"… Reset {Path(p).name} về 0 (tắt hết tính năng)")
 
     def _sync_chon(self):
         """Chép mức của ảnh đang xem sang mọi tấm đang chọn ở dải ảnh."""
@@ -7134,7 +7185,8 @@ class RetouchWindow(Khung):
                 f"Các ảnh đang có {len(nhom)} mức khác nhau (mức riêng từng ảnh). "
                 "Ghi đè lên ảnh gốc chỉ chạy một mức cho cả thư mục.\n\n"
                 "Chọn một trong hai:\n"
-                "   • Bấm “Sync tất cả” để mọi ảnh cùng một mức\n"
+                "   • Ctrl+A chọn hết ở dải ảnh rồi bấm “Sync ảnh đã chọn” "
+                "để mọi ảnh cùng một mức\n"
                 "   • Hoặc tắt “Ghi đè lên ảnh gốc” để ra thư mục khác",
                 parent=self)
             return
