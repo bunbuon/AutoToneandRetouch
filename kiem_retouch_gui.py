@@ -1234,8 +1234,52 @@ def main() -> int:
             root.update_idletasks(); root.update()
         ktra("sang Cân tone: thanh đáy Retouch ẩn",
              not app.chan_phai_rt.winfo_ismapped())
+
     else:
         LOI.append("Reset về 0: KHÔNG thấy nút btn_reset")
+
+    #[[ 5/10 — KHOA RETOUCH KHI DANG TAI BAN GPU NGAM (user: "tai va cai day du
+    #   moi cho dung Retouch"). Ban ma nguon khong tu tai (khong frozen) nen
+    #   gia lap trang thai cua _bat_tai_gpu_ngam roi bom tin nhu luong tai. ]]
+    import queue as _queue
+
+    def bom(n=4):
+        for _ in range(n):
+            root.update_idletasks()
+            root.update()
+
+    app._chon_khau("phan_tich")
+    bom()
+    app._gpu_q = _queue.Queue()
+    app._gpu_tt, app._gpu_loi = "dang_tai", ""
+    app._gpu_tien = ("tai", 500_000_000, 2_300_000_000)
+    app._chon_khau("retouch")
+    bom()
+    ktra("đang tải GPU: vào Retouch thấy trang chờ, KHÔNG thấy bảng điều khiển / nút Chạy",
+         app.khoa_rt.winfo_ismapped() and not app.khung_ngoai["retouch"].winfo_ismapped()
+         and not app.ben_phai.winfo_ismapped() and not app.cc_phai_rt.winfo_ismapped()
+         and "22%" in app._krt["tt"].cget("text"), app._krt["tt"].cget("text"))
+    app._gpu_q.put(("loi", "URLError: khong co mang"))
+    app._bom_gpu()
+    bom()
+    ktra("tải lỗi: nói lỗi + có nút Thử lại / Dùng tạm bằng CPU",
+         app.khoa_rt.winfo_ismapped() and app._krt["nut"].winfo_ismapped()
+         and "khong co mang" in app._krt["tt"].cget("text"), app._krt["tt"].cget("text"))
+    app._gpu_tt = "dang_tai"
+    app._gpu_q.put(("xong",))
+    app._bom_gpu()
+    bom()
+    ktra("tải xong: Retouch TỰ MỞ (trang thật + bảng điều khiển), trang chờ ẩn",
+         not app.khoa_rt.winfo_ismapped() and app.khung_ngoai["retouch"].winfo_ismapped()
+         and app.ben_phai.winfo_ismapped() and app.cc_phai_rt.winfo_ismapped())
+    app._gpu_tt, app._gpu_bo_qua = "loi", True
+    app._chon_khau("phan_tich")
+    bom()
+    app._chon_khau("retouch")
+    bom()
+    ktra("tải lỗi + chọn “Dùng tạm bằng CPU”: Retouch mở bình thường",
+         not app.khoa_rt.winfo_ismapped() and app.khung_ngoai["retouch"].winfo_ismapped())
+    app._gpu_tt, app._gpu_bo_qua = "", False
 
     root.destroy()
     print()

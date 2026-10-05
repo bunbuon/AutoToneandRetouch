@@ -305,6 +305,9 @@ class App(ttk.Frame):
 
         self._khung_lam["retouch"] = self._lam_retouch
         self._khung_lam["gu"] = self._lam_gu
+        #[[ Bat dau tai ban tang toc GPU o nen (neu may co card NVIDIA va chua
+        #   co) TRUOC khi vao trang nao — tu day Retouch khoa toi khi tai xong. ]]
+        self._bat_tai_gpu_ngam()
 
         #[[ Mo app len la vao mo-dun Can tone: giua man hinh moi chon buoi chup
         #   (khau "Nap anh" cu nay la nut thu muc tren thanh cong cu). ]]
@@ -426,6 +429,13 @@ class App(ttk.Frame):
         #   cuon), nen khung gian het chieu cao thay vi cao bang noi dung. ]]
         self.khung_cuon["phan_tich"].lap_day()
         self.khung_cuon["retouch"].lap_day()
+        #[[ TRANG CHO RETOUCH (5/10 — user: "sau khi cai xong tu dong tai tai
+        #   nguyen ngam. Tai va cai day du moi cho dung Retouch, tranh mat trai
+        #   nghiem"). Nam CUNG O voi trang Retouch; hien thay no khi dang tai
+        #   ban tang toc GPU — xem _bat_tai_gpu_ngam / _ve_khoa_rt. ]]
+        self.khoa_rt = tk.Frame(self.hop, background=m["toi"])
+        self.khoa_rt.grid(row=0, column=0, sticky="nsew")
+        self.khoa_rt.grid_remove()
 
         # bảng điều khiển phải
         self.ben_phai = tk.Frame(than, background=m["nen"])
@@ -522,7 +532,12 @@ class App(ttk.Frame):
             ma = "phan_tich"
         if ma not in self.khung:
             return
-        lam = self._khung_lam.pop(ma, None)
+        #[[ Retouch DANG KHOA (dang tai ban tang toc GPU): KHONG dung trang that
+        #   — dung no la hoi saytool (--say-keo) va mo may xem truoc, ca hai nap
+        #   torch: nap luc nay la nap ban CPU, tai xong lai phai mo lai. Hien
+        #   trang cho thay vao, xong thi _bom_gpu goi lai _chon_khau("retouch"). ]]
+        khoa_rt = ma == "retouch" and self._gpu_khoa()
+        lam = None if khoa_rt else self._khung_lam.pop(ma, None)
         if lam:
             try:
                 lam(self.khung[ma])
@@ -535,7 +550,12 @@ class App(ttk.Frame):
         #   BEN TRONG canvas, dat bang create_window nen .grid()/.grid_remove()
         #   len no khong lam gi — da tung lam ca vung giua trong tron. ]]
         for k, w in self.khung_ngoai.items():
-            (w.grid() if k == ma else w.grid_remove())
+            (w.grid() if k == ma and not khoa_rt else w.grid_remove())
+        if khoa_rt:
+            self.khoa_rt.grid()
+            self._ve_khoa_rt()
+        else:
+            self.khoa_rt.grid_remove()
         self.khau_dang = ma
         ten = dict(KHAU)[ma]
         md = self.MO_DUN_CUA.get(ma, "tone")
@@ -571,9 +591,10 @@ class App(ttk.Frame):
             self.cuon_phai.grid_remove()
             self.cuon_phai_rt.grid()
             self.chan_phai_rt.grid()
-            (self.ben_phai.grid if rt_win is not None else self.ben_phai.grid_remove)()
+            (self.ben_phai.grid if rt_win is not None and not khoa_rt
+             else self.ben_phai.grid_remove)()
             self.cc_phai.grid_remove()
-            self.cc_phai_rt.grid()
+            (self.cc_phai_rt.grid_remove if khoa_rt else self.cc_phai_rt.grid)()
             self.lbl_job.pack_forget()
             self.dau_trang.grid_remove()
         self.hoi_md.goi_y.dat(MO_KHAU.get("retouch" if md == "retouch"
@@ -583,7 +604,7 @@ class App(ttk.Frame):
         #   no giu mo hinh tren card do hoa, Lightroom dang can. ]]
         if rt_win is not None:
             try:
-                if md == "retouch":
+                if md == "retouch" and not khoa_rt:
                     rt_win.after(300, rt_win._san_may_xem)
                 else:
                     rt_win._nghi_may_xem()
@@ -596,6 +617,154 @@ class App(ttk.Frame):
         self.icon_md.delete("all")
         s = gd.don_vi(self) + 2
         gd.ve_bieu_tuong(self.icon_md, md, s / 2, s / 2, s * 0.8, gd.MAU["chu"])
+
+    # ------------------------------------------------------------ tải GPU ngầm
+    #[[ TU TAI BAN TANG TOC GPU O NEN (5/10 — user: "viec thieu tai nguyen lam
+    #   anh huong toi trai nghiem. Flow sau khi cai dat xong se tu dong tai tai
+    #   nguyen ngam. Sau khi tai va cai dat day du moi cho dung Retouch").
+    #
+    #   Ban cai DAY DU da mang torch CPU + mo hinh + mediapipe — thu duy nhat
+    #   con thieu la torch CUDA (2,3 GB), va no CHI co ich tren may co card
+    #   NVIDIA. Nen: may co card (nvidia-smi) ma chua co -> tai ngam ngay luc
+    #   mo app, KHOA Retouch (trang cho co tien do) toi khi tai + giai nen xong
+    #   roi tu mo — khong can khoi dong lai, vi tien trinh xem truoc / chay
+    #   retouch la tien trinh MOI, nap_het("torch") luc khoi dong se lay ban
+    #   CUDA. May khong card: khong tai gi, Retouch dung ngay bang CPU.
+    #   Tai loi (mat mang...): noi ro, co "Thu lai" va "Dung tam bang CPU" —
+    #   khong de nguoi dung ket han. ]]
+    def _gpu_khoa(self) -> bool:
+        return (getattr(self, "_gpu_tt", "") in ("dang_tai", "loi")
+                and not getattr(self, "_gpu_bo_qua", False))
+
+    def _bat_tai_gpu_ngam(self):
+        self._gpu_tt = ""
+        if not getattr(sys, "frozen", False) or not sys.platform.startswith("win") \
+                or os.environ.get("AUTOTONE_KHONG_TAI_GPU"):
+            return
+        try:
+            import shutil as _sh
+            import tai_nguyen as tn
+            g = tn.GOI.get("torch")
+            if g is None or tn.da_co(g) or not _sh.which("nvidia-smi"):
+                return
+            #[[ Don thu muc giai nen TAM con sot (lan truoc dong app giua chung
+            #   — luong tai la daemon, chet ngang khong kip don). ]]
+            for p in tn.goc().glob(f"{g.ten}_*"):
+                if p.is_dir() and p != tn.thu_muc_goi(g):
+                    _sh.rmtree(p, ignore_errors=True)
+        except Exception:                                    # noqa: BLE001
+            return
+        self._gpu_tn, self._gpu_g = tn, g
+        self._gpu_q = queue.Queue()
+        self._gpu_dung = False
+        self._gpu_tien = ("tai", 0, 0)
+        self._gpu_loi = ""
+        self._gpu_tt = "dang_tai"
+        threading.Thread(target=self._luong_tai_gpu, daemon=True).start()
+        self.after(400, self._bom_gpu)
+
+    def _luong_tai_gpu(self):
+        tn, g, q = self._gpu_tn, self._gpu_g, self._gpu_q
+        try:
+            tn.tai(g, tien_do=lambda pha, da, tong: q.put(("tien", pha, da, tong)),
+                   dung=lambda: self._gpu_dung)
+            q.put(("xong",))
+        except BaseException as ex:                          # noqa: BLE001
+            q.put(("loi", f"{type(ex).__name__}: {str(ex)[:300]}"))
+
+    def _bom_gpu(self):
+        """Tiến độ tải GPU ngầm (luồng chính)."""
+        q = getattr(self, "_gpu_q", None)
+        if q is None:
+            return
+        try:
+            while True:
+                x = q.get_nowait()
+                if x[0] == "tien":
+                    self._gpu_tien = x[1:]
+                elif x[0] == "xong":
+                    self._gpu_tt = "xong"
+                elif x[0] == "loi":
+                    self._gpu_tt = "loi"
+                    self._gpu_loi = x[1]
+        except queue.Empty:
+            pass
+        if getattr(self, "khau_dang", "") == "retouch":
+            if self._gpu_khoa():
+                self._ve_khoa_rt()
+            elif self.khoa_rt.winfo_manager():
+                self._chon_khau("retouch")                   # tai xong: dung trang that
+        if self._gpu_tt == "dang_tai":
+            self.after(400, self._bom_gpu)
+        elif self._gpu_tt == "xong":
+            self.status("Đã tải xong bản tăng tốc GPU — Retouch chạy bằng card NVIDIA",
+                        gd.MAU["xong"])
+
+    def _ve_khoa_rt(self):
+        """Trang chờ của Retouch: tiến độ tải bản GPU, hoặc lỗi + lối thoát."""
+        m = gd.MAU
+        if not hasattr(self, "_krt"):
+            k = {}
+            o = tk.Frame(self.khoa_rt, background=m["toi"])
+            o.place(relx=0.5, rely=0.42, anchor="center")
+            k["tieu_de"] = tk.Label(o, text="Đang chuẩn bị Retouch", font=gd.CHU_TIEU_DE,
+                                    background=m["toi"], foreground=m["chu"])
+            k["tieu_de"].pack(anchor="w")
+            k["mo_ta"] = tk.Label(
+                o, justify="left", wraplength=560, background=m["toi"],
+                foreground=m["mo"], font=gd.CHU,
+                text="Máy có card NVIDIA — app đang tải bản tăng tốc GPU (khoảng "
+                     "2,3 GB, chỉ tải một lần) để kéo thanh và Chạy retouch nhanh "
+                     "trên card. Retouch tự mở khi tải xong, không cần khởi động "
+                     "lại. Trong lúc chờ vẫn dùng Cân tone bình thường.")
+            k["mo_ta"].pack(anchor="w", pady=(8, 14))
+            k["pb"] = ttk.Progressbar(o, length=560, mode="determinate", maximum=100)
+            k["pb"].pack(anchor="w")
+            k["tt"] = tk.Label(o, text="", background=m["toi"], foreground=m["chu"],
+                               font=gd.CHU)
+            k["tt"].pack(anchor="w", pady=(8, 0))
+            k["nut"] = tk.Frame(o, background=m["toi"])
+            k["thu_lai"] = gd.NutTron(k["nut"], "Thử lại", kieu="chinh", font=gd.CHU,
+                                      command=self._khoa_rt_thu_lai)
+            k["thu_lai"].pack(side="left")
+            k["cpu"] = gd.NutTron(k["nut"], "Dùng tạm bằng CPU (chậm hơn)", kieu="phu",
+                                  font=gd.CHU, command=self._khoa_rt_dung_cpu)
+            k["cpu"].pack(side="left", padx=(8, 0))
+            self._krt = k
+        k = self._krt
+        tt = getattr(self, "_gpu_tt", "")
+        if tt == "loi":
+            k["tieu_de"].configure(text="Chưa tải được bản tăng tốc GPU")
+            k["tt"].configure(text=f"Lỗi: {self._gpu_loi}", foreground=m["loi"])
+            if not k["nut"].winfo_manager():
+                k["nut"].pack(anchor="w", pady=(14, 0))
+            return
+        k["tieu_de"].configure(text="Đang chuẩn bị Retouch")
+        if k["nut"].winfo_manager():
+            k["nut"].pack_forget()
+        pha, da, tong = getattr(self, "_gpu_tien", ("tai", 0, 0))
+        pt = (100.0 * da / tong) if tong else 0.0
+        k["pb"].configure(value=pt)
+        if pha == "giai-nen":
+            chu = f"Đang giải nén… {pt:.0f}%"
+        elif tong:
+            chu = f"Đang tải {pt:.0f}%  ·  {da / 1e9:.2f} / {tong / 1e9:.2f} GB"
+        else:
+            chu = "Đang kết nối máy chủ tải…"
+        k["tt"].configure(text=chu, foreground=m["chu"])
+
+    def _khoa_rt_thu_lai(self):
+        self._bat_tai_gpu_ngam()
+        if self._gpu_tt == "dang_tai":
+            self._ve_khoa_rt()
+        else:                                                # đã có / không cần nữa
+            self._chon_khau("retouch")
+
+    def _khoa_rt_dung_cpu(self):
+        """Tải lỗi mà người dùng vẫn muốn làm ngay: mở Retouch bằng torch CPU
+        trong gói (chỉ phiên này — lần mở app sau tự thử tải lại)."""
+        self._gpu_bo_qua = True
+        self._chon_khau("retouch")
 
     def _bat_menu(self, menu: tk.Menu, nut) -> None:
         """Mở một menu ngay dưới nút đã bấm (nút ttk thường, khỏi Menubutton:
@@ -3350,6 +3519,15 @@ class App(ttk.Frame):
         #   Chi co nghia khi DA DONG GOI (co torch CPU san). Chay tu ma nguon
         #   thi torch la cua moi truong, khong lien quan. ]]
         """
+        #[[ Dang tai NGAM (_bat_tai_gpu_ngam) thi khong mo them mot luot tai
+        #   thu hai ghi vao CUNG thu muc — chi noi tien do o dau. ]]
+        if getattr(self, "_gpu_tt", "") == "dang_tai":
+            messagebox.showinfo(
+                "Đang tải bản GPU",
+                "App đang tự tải bản tăng tốc GPU ở nền. Xem tiến độ ở mô-đun "
+                "Retouch — tải xong Retouch tự mở, không cần làm gì thêm.",
+                parent=self)
+            return
         try:
             import tai_nguyen as tn
         except Exception as ex:                              # noqa: BLE001
