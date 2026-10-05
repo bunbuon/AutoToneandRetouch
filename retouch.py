@@ -928,10 +928,26 @@ def tim_tool() -> Path | None:
     #   chay bang no la de lech phien ban.
     #]]
     """
+    b = goc_trong_goi()
     g = doc_cau_hinh().get("goc")
+    #[[ BAN DONG GOI: UU TIEN TOOL TRONG GOI khi config tro mot _internal (co the
+    #   LECH — config cu tro Program Files ban truoc, hoac tro dist khi da cai).
+    #
+    #   LOI THAT (5/10, may dev + ban cai): tim_tool() tra thang config truoc.
+    #   Config tro mot "_internal" KHAC voi _internal cua tien trinh dang chay
+    #   -> la_goc_trong_goi() False -> _hoi_keo dung `python -m saytool.cli` can
+    #   python NGOAI (goi all-in-one khong co) -> "chua hoi duoc tool" -> bang du
+    #   phong 3 thanh keo. Nen khi DONG GOI va config tro mot _internal (hoac rong
+    #   / khong hop le), dung CHINH goc_trong_goi() cua tien trinh nay -> chac
+    #   chan la_goc_trong_goi True -> dung --say-keo trong goi. Chi khi config tro
+    #   mot tool NGOAI that su (khong phai _internal, vd dev tro ToolCloneEvoto)
+    #   moi ton trong config. ]]
+    if b is not None:
+        tro_internal = bool(g) and Path(str(g)).name.lower() == "_internal"
+        if tro_internal or not hop_le(g):
+            return Path(b)
     if hop_le(g):
         return Path(g)
-    b = goc_trong_goi()
     if b is not None:
         return Path(b)
     #[[ TU CHUA KHI TOOL DA CHUYEN CHO.
