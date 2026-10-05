@@ -35,6 +35,10 @@ from pathlib import Path
 
 GOC = Path(__file__).resolve().parent
 RA = GOC / "phat_hanh"
+#[[ SP = site-packages de lay thu vien dong goi. Mac dinh venv_build. Nhung
+#   venv_build gio chua torch CPU (nhoi vao goi cai). De dong goi ban torch
+#   CUDA (nang cap GPU), chi mot venv RIENG co torch CUDA roi truyen
+#   --site-packages <duong dan>. Xem goi_torch() + --site-packages o main(). ]]
 SP = GOC / "venv_build" / "Lib" / "site-packages"
 
 #[[ TORCH KÉO THEO 11 GÓI BẠN ĐỒNG HÀNH.
@@ -80,6 +84,37 @@ def bam(p: Path) -> str:
                 break
             h.update(b)
     return h.hexdigest()
+
+
+#[[ GITHUB RELEASES: 2 GB/file. Cat zip lon thanh manh ~1,9 GB de lot. tai_nguyen
+#   .tai() noi lai theo so_phan. SHA (dien vao GOI) van la cua FILE ZIP DA NOI. ]]
+GH_GIOI_HAN = 1_900_000_000          # 1,9 GB moi manh (chua 2 GB)
+
+
+def cat_manh(zip_file: Path, nguong: int = GH_GIOI_HAN) -> list[Path]:
+    """Neu zip > nguong, cat thanh <ten>.001/.002/... va XOA file goc.
+    Tra ve danh sach manh (hoac [zip_file] neu khong can cat)."""
+    sz = zip_file.stat().st_size
+    if sz <= nguong:
+        return [zip_file]
+    so = (sz + nguong - 1) // nguong
+    print(f"      Cat {sz/1048576:.0f} MB thanh {so} manh (gioi han GitHub 2 GB)...")
+    manhs = []
+    with zip_file.open("rb") as f:
+        for i in range(1, so + 1):
+            mp = zip_file.with_suffix(zip_file.suffix + f".{i:03d}")
+            with mp.open("wb") as out:
+                con = nguong
+                while con > 0:
+                    b = f.read(min(1 << 20, con))
+                    if not b:
+                        break
+                    out.write(b)
+                    con -= len(b)
+            manhs.append(mp)
+            print(f"        {mp.name}  ({mp.stat().st_size/1048576:.0f} MB)")
+    zip_file.unlink()                 # bo file goc, chi giu manh
+    return manhs
 
 
 def them(z: zipfile.ZipFile, nguon: Path, goc_tuong_doi: Path) -> int:
@@ -156,7 +191,10 @@ def goi_torch():
         print(f"  [!] torch thiếu gói đi kèm: {', '.join(thieu)}")
         print("      Gói đóng ra sẽ KHÔNG nạp được. Cài chúng rồi đóng lại.")
         return None
-    return dong_goi("torch (CUDA)", muc, "torch-cu130.zip")
+    #[[ torch-cu124.zip: ban CUDA 2.6.0 (khop torch CPU 2.6.0 trong goi cai).
+    #   Doi ten theo tai_nguyen.GOI["torch"].file_zip — sai ten thi may tai ve
+    #   roi tu choi. ]]
+    return dong_goi("torch (CUDA)", muc, "torch-cu124.zip")
 
 
 def goi_mo_hinh():
@@ -214,6 +252,19 @@ def main(argv=None) -> int:
             pass
 
     tham = list(argv if argv is not None else sys.argv[1:])
+    #[[ --site-packages <duong dan>: doi noi lay thu vien (mac dinh venv_build).
+    #   Dung de dong ban torch CUDA tu mot venv rieng co torch+cu124. ]]
+    global SP
+    i = 0
+    while i < len(tham):
+        if tham[i] == "--site-packages" and i + 1 < len(tham):
+            SP = Path(tham[i + 1])
+            del tham[i:i + 2]
+        elif tham[i].startswith("--site-packages="):
+            SP = Path(tham[i].split("=", 1)[1])
+            del tham[i]
+        else:
+            i += 1
     ten_goi = [t for t in tham if not t.startswith("-")] or list(LAM)
     xau = [t for t in ten_goi if t not in LAM]
     if xau:
@@ -237,23 +288,33 @@ def main(argv=None) -> int:
         print("\n  Không đóng được gói nào.")
         return 1
 
+    #[[ SHA phai tinh TREN FILE ZIP DA NOI (truoc khi cat) — vi tai_nguyen noi
+    #   cac manh lai roi kiem SHA toan file. Tinh xong moi cat thanh manh. ]]
+    sha = {t: bam(p) for t, p in ket.items()}
+    manh = {t: cat_manh(p) for t, p in ket.items()}   # cat neu > 1,9 GB
+
     print("\n  ─── Dán đoạn này vào GOI trong tai_nguyen.py ───\n")
     for t, p in ket.items():
         g = tn.GOI.get(t)
-        mb = round(p.stat().st_size / 1048576)
+        so = len(manh[t])
+        # mb = tong kich thuoc tat ca manh (hoac file don)
+        mb = round(sum(x.stat().st_size for x in manh[t]) / 1048576)
         print(f'    "{t}": Goi(')
         print(f'        ten="{t}", phien_ban="{g.phien_ban if g else "1"}", '
               f'file_zip="{p.name}",')
         print(f'        mb={mb}, mo_ta="{g.mo_ta if g else ""}",')
-        print(f'        sha256="{bam(p)}",')
+        print(f'        sha256="{sha[t]}",')
         print(f'        dau_hieu={g.dau_hieu if g else ()},')
+        if so > 1:
+            print(f'        so_phan={so},')
         print('    ),')
 
     print("\n  ─── Tải lên GitHub Releases ───\n")
     for t, p in ket.items():
         g = tn.GOI.get(t)
         tag = f"{t}-{g.phien_ban}" if g else f"{t}-1"
-        print(f'    gh release create {tag} "{p}" \\')
+        files = " ".join(f'"{x}"' for x in manh[t])
+        print(f'    gh release create {tag} {files} \\')
         print(f'        --repo bunbuon/AutoToneandRetouch \\')
         print(f'        --title "{tag}" --notes "Tài nguyên {t}"')
     print()

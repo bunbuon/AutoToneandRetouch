@@ -76,6 +76,12 @@ class Goi:
     mo_ta: str = ""
     # Thu muc con phai co sau khi giai nen — de biet goi con nguyen hay khong.
     dau_hieu: tuple[str, ...] = field(default_factory=tuple)
+    #[[ SO PHAN: file zip bi CAT lam nhieu manh vi GitHub Releases gioi han 2
+    #   GB/file. torch CUDA ~3,6 GB (nen con ~2 GB+) khong lot MOT file. Khi
+    #   so_phan > 1: tren Releases co <file_zip>.001, .002, ... App tai tung
+    #   manh, NOI lai (binary) roi moi kiem SHA + giai nen. so_phan=1 (mac dinh)
+    #   = y het truoc: mot file <file_zip>. Xem url_phan() + tai(). ]]
+    so_phan: int = 1
 
     @property
     def thu_muc(self) -> str:
@@ -84,6 +90,10 @@ class Goi:
     @property
     def url(self) -> str:
         return f"{KHO}/{self.ten}-{self.phien_ban}/{self.file_zip}"
+
+    def url_phan(self, i: int) -> str:
+        """URL cua manh thu i (1-based) khi file bi cat. .001, .002, ..."""
+        return f"{self.url}.{i:03d}"
 
 
 #[[ DANH SACH GOI.
@@ -95,21 +105,28 @@ class Goi:
 #   goi giai nen do dang: co thu muc nhung thieu ruot thi coi nhu chua tai.
 #]]
 GOI = {
-    #[[ CHI MOT BAN TORCH, LA BAN CUDA.
+    #[[ BAN TORCH CUDA — NANG CAP GPU TUY CHON (goi da nhoi torch CPU san).
     #
-    #   Truoc day co them ban CPU 114 MB va do nvidia-smi de chon. Bo di:
-    #   ban CUDA chay duoc tren CA HAI loai may — khong co card thi torch tu
-    #   lui ve CPU, retouch cham hon chu khong hong. Doi lay viec do, nguoi
-    #   dung khong phai chon gi, va khong con canh do sai (may co card ma
-    #   nvidia-smi khong nam trong PATH) roi tai ve ban chay cham vinh vien.
+    #   Tu 5/10 goi cai NHOI torch CPU (--torch-trong-goi): mo Retouch la du 8
+    #   tinh nang NGAY, khong phai tai gi. Goi nay la ban TANG TOC cho may co
+    #   card NVIDIA: tai ve, lan mo app sau tai_nguyen.nap("torch") chen no len
+    #   DAU sys.path -> torch CUDA thang torch CPU trong goi -> retouch chay tren
+    #   card. May khong co card thi KHONG can tai — torch CPU van chay.
+    #   Nguoi dung bam tay tu menu "... -> Tai ban tang toc GPU".
     #
-    #   Gia: may khong card van tai 1447 MB thay vi 114 MB.
-    #]]
+    #   PHIEN BAN PHAI KHOP torch CPU trong goi (2.6.0): tron 2.6.0 (CPU, trong
+    #   goi) voi mot ban torch khac phien tren cung sys.path co the lam .pyd
+    #   saytool / model lech ABI. Nen ban GPU cung la 2.6.0, chi khac +cu124.
+    #   sha256/mb: dien sau khi dong goi bang tao_goi_phat_hanh.py (venv CUDA). ]]
     "torch": Goi(
-        ten="torch", phien_ban="2.13.0-cu130", file_zip="torch-cu130.zip",
-        mb=1819, mo_ta="Torch + CUDA — co card NVIDIA thi chay tren card",
-        sha256="0409fd33256dba936a3d80440b8d48d6870849665850a09bb688afd925dca003",
+        ten="torch", phien_ban="2.6.0-cu124", file_zip="torch-cu124.zip",
+        mb=2313, mo_ta="Torch CUDA — tăng tốc retouch trên card NVIDIA (tuỳ chọn)",
+        sha256="7c06899c4e4c07df830af3bc36fd87bc1f74ee2c8cce25c0cc19b4ed6ca4434a",
         dau_hieu=("torch/lib", "torch/__init__.py"),
+        #[[ torch CUDA nen ~2,3 GB > gioi han 2 GB/file cua GitHub -> cat 2 manh
+        #   (torch-cu124.zip.001 ~1,9 GB, .002 ~0,5 GB). tao_goi_phat_hanh.py cat;
+        #   tai() noi lai roi kiem sha256 (cua FILE ZIP DA NOI, khong phai manh). ]]
+        so_phan=2,
     ),
     #[[ PHIEN BAN 2 = MO HINH DA MA HOA (4/10). Ban 1 la model THO (doc duoc),
     #   giu nguyen tren Releases cho ban app CU. Ban 2 chi giai duoc boi app BAN
@@ -236,9 +253,54 @@ def tai(g: Goi, tien_do: Callable[[str, int, int], None] | None = None,
 
     zip_tam = goc() / f"_{g.ten}.zip"
     try:
-        _tai_file(g.url, zip_tam,
-                  (lambda a, b: tien_do("tai", a, b)) if tien_do else None,
-                  dung)
+        if g.so_phan > 1:
+            #[[ TAI NHIEU MANH ROI NOI LAI.
+            #
+            #   GitHub gioi han 2 GB/file nen zip lon bi cat thanh .001/.002/...
+            #   Tai lan luot tung manh vao .partNNN, noi (ghi noi tiep) vao
+            #   zip_tam. Tien do gop: tinh tong byte tat ca manh de thanh "tai"
+            #   lien mach, nguoi dung thay mot thanh chay tu 0 toi 100.
+            #
+            #   Mat dien giua chung: zip_tam dang viet do -> finally xoa het, lan
+            #   sau tai lai tu manh dau. Khong giu manh de "tai tiep" cho don
+            #   gian + chac: noi sai mot manh thi SHA toan file se bat duoc. ]]
+            if zip_tam.exists():
+                zip_tam.unlink()
+            tong_tat_ca = 0
+            kich_thuoc = []
+            for i in range(1, g.so_phan + 1):
+                try:
+                    req = urllib.request.Request(g.url_phan(i),
+                                                 headers={"User-Agent": UA},
+                                                 method="HEAD")
+                    with urllib.request.urlopen(req, timeout=60) as r:
+                        sz = int(r.headers.get("Content-Length") or 0)
+                except Exception:                            # noqa: BLE001
+                    sz = 0
+                kich_thuoc.append(sz)
+                tong_tat_ca += sz
+            da_tong = 0
+            with zip_tam.open("wb") as ra:
+                for i in range(1, g.so_phan + 1):
+                    manh = goc() / f"_{g.ten}.part{i:03d}"
+                    _base = da_tong
+                    _tong = tong_tat_ca or 0
+                    def _td(a, b, _base=_base, _tong=_tong):   # noqa: ANN001
+                        if tien_do:
+                            tien_do("tai", _base + a, _tong or b)
+                    _tai_file(g.url_phan(i), manh, _td if tien_do else None, dung)
+                    with manh.open("rb") as f:
+                        while True:
+                            b = f.read(CHUNK)
+                            if not b:
+                                break
+                            ra.write(b)
+                    da_tong += manh.stat().st_size
+                    manh.unlink(missing_ok=True)
+        else:
+            _tai_file(g.url, zip_tam,
+                      (lambda a, b: tien_do("tai", a, b)) if tien_do else None,
+                      dung)
 
         if g.sha256:
             thuc = bam_file(zip_tam)
@@ -273,6 +335,10 @@ def tai(g: Goi, tien_do: Callable[[str, int, int], None] | None = None,
             raise
     finally:
         zip_tam.unlink(missing_ok=True)
+        #[[ Don manh con sot (tai nhieu manh dut giua chung). ]]
+        if g.so_phan > 1:
+            for i in range(1, g.so_phan + 1):
+                (goc() / f"_{g.ten}.part{i:03d}").unlink(missing_ok=True)
 
     if not da_co(g):
         raise OSError(f"goi {g.ten} giai nen xong nhung thieu: "

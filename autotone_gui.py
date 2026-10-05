@@ -1802,6 +1802,7 @@ class App(ttk.Frame):
                            ("Làm mới trạng thái", self.refresh_job_state),
                            ("Cài plugin…", self.show_plugin_help),
                            (None, None),
+                           ("Tải bản tăng tốc GPU…", self.tai_gpu),
                            ("Kiểm tra cập nhật…", self.kiem_cap_nhat)):
             if nhan is None:
                 self.menu_them.add_separator()
@@ -3322,6 +3323,76 @@ class App(ttk.Frame):
         d = TaiTaiNguyenDialog(self, tn, ["mediapipe"])
         self.wait_window(d)
         return tn.da_co(g) and tn.nap("mediapipe")
+
+    def tai_gpu(self):
+        """Tải bản torch CUDA (tăng tốc trên card NVIDIA) — TUỲ CHỌN.
+
+        #[[ Ban cai da nhoi torch CPU: chay duoc moi may, du 8 tinh nang ngay.
+        #   Day la ban NANG CAP cho may co card NVIDIA: tai torch CUDA ve, lan
+        #   sau mo app tai_nguyen.nap("torch") chen no len dau sys.path -> torch
+        #   CUDA thang torch CPU trong goi -> retouch chay tren card (nhanh hon
+        #   nhieu). May khong co card thi khong can bam — torch CPU van chay.
+        #
+        #   Chi co nghia khi DA DONG GOI (co torch CPU san). Chay tu ma nguon
+        #   thi torch la cua moi truong, khong lien quan. ]]
+        """
+        try:
+            import tai_nguyen as tn
+        except Exception as ex:                              # noqa: BLE001
+            messagebox.showerror(
+                "Không có trình tải",
+                f"Bản cài này thiếu phần tải tài nguyên ({type(ex).__name__}).",
+                parent=self)
+            return
+        g = tn.GOI.get("torch")
+        if g is None:
+            messagebox.showinfo(
+                "Không có bản GPU",
+                "Bản cài này chưa khai gói tăng tốc GPU.", parent=self)
+            return
+        #[[ Da tai roi: bao da co, hoi co muon tai lai khong (vd ban loi). ]]
+        if tn.da_co(g):
+            if not messagebox.askyesno(
+                    "Đã có bản GPU",
+                    "Máy đã tải bản tăng tốc GPU rồi. App sẽ tự dùng nó khi có "
+                    "card NVIDIA.\n\nTải lại (nếu bản cũ lỗi)?", parent=self):
+                return
+            #[[ Tai lai: xoa thu muc cu de tai_nguyen.tai() tai moi. ]]
+            try:
+                import shutil
+                shutil.rmtree(tn.thu_muc_goi(g), ignore_errors=True)
+            except Exception:                                # noqa: BLE001
+                pass
+        #[[ Kiem may CO card NVIDIA khong — chi de NHAC, khong chan: nguoi dung
+        #   co the tai truoc roi cam card sau, hoac tai cho may khac. ]]
+        nhac_cpu = ""
+        try:
+            import saytool.thiet_bi as _tb          # noqa: F401
+            import torch as _t
+            if not _t.cuda.is_available():
+                #[[ torch CPU trong goi luon bao cuda khong co — nen doan them
+                #   bang nvidia-smi de biet may co card that khong. ]]
+                import shutil as _sh
+                if not _sh.which("nvidia-smi"):
+                    nhac_cpu = ("\n\nLƯU Ý: không thấy card NVIDIA trên máy này. "
+                                "Bản GPU vẫn tải được nhưng retouch sẽ chạy bằng "
+                                "CPU như hiện tại — chỉ tải nếu máy có card rời.")
+        except Exception:                                    # noqa: BLE001
+            pass
+        if not messagebox.askokcancel(
+                "Tải bản tăng tốc GPU?",
+                f"Bản cài đã chạy đủ 8 tính năng bằng CPU. Bản tăng tốc GPU "
+                f"({g.mb} MB) giúp máy có card NVIDIA chạy retouch nhanh hơn "
+                f"nhiều.\n\nTải một lần, dùng mãi. Tải xong, lần mở app sau sẽ "
+                f"tự dùng card.{nhac_cpu}\n\nTải bây giờ?", parent=self):
+            return
+        d = TaiTaiNguyenDialog(self, tn, ["torch"])
+        self.wait_window(d)
+        if tn.da_co(g):
+            messagebox.showinfo(
+                "Đã tải xong bản GPU",
+                "Tải xong. Hãy ĐÓNG và MỞ LẠI app để dùng card NVIDIA cho "
+                "retouch.", parent=self)
 
     def xoa_du_lieu_buoi(self):
         """Xoa moc goc + so ghi cu cua buoi dang chon, roi quet lai.
@@ -8188,6 +8259,24 @@ def _cua_saytool(co: str, tham: list) -> int:
     except Exception:                                        # noqa: BLE001
         pass
 
+    #[[ --say-xem: VONG LAP XEM TRUOC trong goi (keo thanh -> hien ket qua ngay).
+    #
+    #   Ban mã nguồn chay `python -c MA_CON`; ban DONG GOI khong chay `-c` duoc
+    #   (frozen exe != python) nen MayXem.bat_dau() goi `AutoTone.exe --say-xem`.
+    #   No chay xem_truoc.vong_xem() — doc JSON o stdin, tra anh nen o stdout —
+    #   dung logic y het ban mã nguồn (cung ham). Da chdir sang thu muc tai
+    #   nguyen + set model env o tren nen saytool nap duoc mo_hinh/*.pt. ]]
+    if co == "--say-xem":
+        try:
+            import xem_truoc
+            return int(xem_truoc.vong_xem() or 0)
+        except Exception as ex:                              # noqa: BLE001
+            import json as _json
+            sys.stdout.write(_json.dumps(
+                {"loai": "hong", "loi": f"{type(ex).__name__}: {ex}"}) + "\n")
+            sys.stdout.flush()
+            return 1
+
     if co == "--say-keo":
         import json
         try:
@@ -8387,7 +8476,8 @@ def main():
 
     _tham = sys.argv[1:]
     if _tham and _tham[0] in ("--say-chay", "--say-keo", "--say-kiem",
-                              "--say-tainguyen", "--say-key", "--say-tim"):
+                              "--say-tainguyen", "--say-key", "--say-tim",
+                              "--say-xem"):
         sys.exit(_cua_saytool(_tham[0], _tham[1:]))
 
     #[[ CUA TU KIEM — phai o TRUOC tk.Tk().

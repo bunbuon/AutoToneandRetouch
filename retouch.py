@@ -354,7 +354,24 @@ def lenh_saytool(goc, tham: list) -> list:
     Hai đường khác hẳn nhau nên tách rõ ở đây, thay vì rải if khắp nơi:
       - chạy từ mã nguồn: python của tool  ->  -m saytool.cli ...
       - chạy từ gói:      chính file app   ->  --say-chay ...
+
+    #[[ CUNG BAY voi _hoi_keo()/kiem_tra() (da sua), NHUNG O DUONG CHAY THAT —
+    #   nen loi la "keo het thanh van bao CHUA RETOUCH" (5/10, user test ban v7).
+    #
+    #   Ban DONG GOI: PHAI --say-chay (chinh app chay saytool). KHONG duoc
+    #   `python_cho(goc) -m saytool.cli`: ban all-in-one khong co .venv nen
+    #   python_cho() tra sys.executable = AutoTone.exe — ma AutoTone.exe KHONG
+    #   hieu `-m saytool.cli` (no la app dong goi, khong phai python) -> tien
+    #   trinh con khong chay retouch, khong ra file -> dem() = 0 -> "Chua retouch".
+    #
+    #   la_goc_trong_goi(goc) co the False du dang trong goi: tim_tool() tra mot
+    #   duong khac _MEIPASS mot chut (resolve/case/config) -> roi vao nhanh sai.
+    #   Nen khi DANG CHAY TRONG GOI (trong_goi()) va goi CO saytool
+    #   (goc_trong_goi() khong None), LUON --say-chay voi sys.executable, KHONG
+    #   phu thuoc path-match. Chi chay TU MA NGUON moi dung `-m saytool.cli`. ]]
     """
+    if trong_goi() and goc_trong_goi() is not None:
+        return [sys.executable, CO_SAY_CHAY] + [str(x) for x in tham]
     if la_goc_trong_goi(goc):
         return [sys.executable, CO_SAY_CHAY] + [str(x) for x in tham]
     return [python_cho(goc), "-m", "saytool.cli"] + [str(x) for x in tham]

@@ -438,15 +438,19 @@ GOI_BO_HAN = ["jax", "jaxlib"]
 #   co `import torch.fx.experimental.sym_node` o top-level -> loai la `import
 #   torch` gay. Nen chi loai nhung nhanh KHONG bi __init__ cham toi.
 #
-#   TORCH_NE: nhanh/dep cua torch LOAI khi nhoi torch — vua cat bay AST (fsspec),
-#   vua bot nang (tensorboard...). Chi nhung cai __init__ torch khong hard-import.
+#   TORCH_NE: cac GOI CHI de CAT CHUOI IMPORT lam modulegraph sap voi
+#   "TypeError: required field 'id' missing from Name" (bug AST cua modulegraph
+#   tren Python 3.12 khi di qua mot so chuoi import sau). KHONG loai nhanh con
+#   cua torch (vd torch.utils.benchmark): --collect-all torch gom chung roi, loai
+#   lai chi tao "Hidden import not found" va KHONG chan duoc bug AST (bug nam o
+#   chuoi fsspec/narwhals, khong phai torch). Chi loai cac GOI NGOAI ma saytool
+#   khong dung va la thu pham cat chuoi:
+#     fsspec + async (aiohttp/yarl/multidict/requests_oauthlib): torch.hub tai xa
+#     narwhals: adapter pandas/polars keo theo sklearn/skimage -> chuoi sap AST
+#   saytool khong dung cai nao trong so nay (torch.load file CUC BO, khong narwhals).
 TORCH_NE = [
-    # Bay AST (fsspec + async): saytool khong tai model tu xa.
     "fsspec", "aiohttp", "requests_oauthlib", "yarl", "multidict",
-    # Nang & saytool khong dung (nap lazy, __init__ khong cham toi):
-    "torch.utils.tensorboard", "torch.utils.benchmark",
-    "torch.utils.bottleneck", "torch.testing", "torch.onnx",
-    "tensorboard", "torch.distributed.tensor",
+    "narwhals",
 ]
 
 
@@ -510,19 +514,56 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     goc_nguon = goc_nguon or GOC
     diem_vao = diem_vao or DIEM_VAO
     ngan = ";" if he == "win" else ":"        # dấu ngăn của --add-data
-    #[[ GOI PyInstaller qua -c de SET recursionlimit TRUOC khi phan tich.
+    #[[ GOI PyInstaller qua -c, CHAY TREN MOT THREAD STACK LON.
     #
-    #   Nhoi torch vao goi (ban day du) lam PyInstaller phan tich hang nghin
-    #   submodule torch -> VUOT gioi han de quy Python (mac dinh 1000) -> stack
-    #   C tran -> 0xC0000005 (tren ban moi la RecursionError). Tang len 5000 o
-    #   DAU tien trinh PyInstaller la het. CLI thuan khong set duoc cai nay (phai
-    #   .spec hoac -c), nen dung -c: no set roi goi PyInstaller.__main__.run()
-    #   voi dung args. Dat luon cho MOI ban (vo hai voi ban khong torch).
-    #   Nguon: hook-torch.py tu goi collect_submodules (thu pham de quy); fix
-    #   sys.setrecursionlimit(5000) duoc nhieu du an dong torch xac nhan. ]]
-    _rec = ("import sys; sys.setrecursionlimit(5000); "
-            "from PyInstaller.__main__ import run; run()")
-    cmd = [sys.executable, "-c", _rec, "--noconfirm", "--onedir",
+    #   Nhoi torch vao goi lam PyInstaller phan tich hang nghin submodule torch
+    #   bang DE QUY sau. Hai lop phai lo:
+    #     1) Gioi han de quy PYTHON (mac dinh 1000) -> RecursionError.
+    #        -> sys.setrecursionlimit(5000).
+    #     2) Stack C cua THREAD (mac dinh Windows ~1 MB) tran TRUOC khi cham
+    #        limit Python -> 0xC0000005 (access violation), KHONG phai
+    #        RecursionError, va KHONG deterministic (tuy thu tu module). Da gap
+    #        that: build chay tron mot lan, lan sau cung tham so chet 0xC0000005
+    #        ngay giua phan tich (sau hook-urllib3). setrecursionlimit KHONG cuu
+    #        duoc cai nay vi no la stack C, khong phai Python.
+    #        -> threading.stack_size(256 MB) + chay run() TREN MOT THREAD moi:
+    #           thread do co stack 256 MB, du sau cho cay torch. Main thread
+    #           khong doi stack size duoc giua chung, nen phai la thread rieng.
+    #
+    #   CLI thuan khong set duoc hai cai nay. Code nhieu dong (def _go) truyen
+    #   qua -c de hong xuong dong tren shell, nen GHI RA MOT FILE wrapper roi
+    #   chay `python wrapper.py <args>`. File nam trong build/, dung lai moi lan.
+    #   Loi trong thread tra ve dung ma thoat (SystemExit tu run() bat rieng). ]]
+    _wrapper = GOC / "build" / "chay_pyinstaller.py"
+    _wrapper.parent.mkdir(parents=True, exist_ok=True)
+    _wrapper.write_text(
+        "import sys, threading, traceback\n"
+        "sys.setrecursionlimit(50000)\n"
+        #[[ Stack 64 MB: Windows threading.stack_size KHONG nhan 256 MB
+        #   (ValueError: size not valid) — co tran tren. 64 MB (67108864, boi so
+        #   64 KB) la an toan va van gap 64 lan mac dinh ~1 MB -> du sau cho cay
+        #   torch. Boc try de ban Python nao khong nhan thi ve mac dinh. ]]
+        "try:\n"
+        "    threading.stack_size(64 * 1024 * 1024)\n"
+        "except (ValueError, RuntimeError):\n"
+        "    pass\n"
+        "from PyInstaller.__main__ import run\n"
+        "_ret = {'code': 0}\n"
+        "def _go():\n"
+        "    try:\n"
+        "        run()\n"
+        "    except SystemExit as e:\n"
+        "        _ret['code'] = e.code if e.code is not None else 0\n"
+        "    except BaseException:\n"
+        "        traceback.print_exc()\n"
+        "        _ret['code'] = 1\n"
+        "t = threading.Thread(target=_go)\n"
+        "t.start()\n"
+        "t.join()\n"
+        "sys.exit(_ret['code'] or 0)\n",
+        encoding="utf-8",
+    )
+    cmd = [sys.executable, str(_wrapper), "--noconfirm", "--onedir",
            "--name", TEN]
     #[[ --windowed: Windows -> .exe GUI (khong console). macOS -> LUON tao .app
     #   BUNDLE. Nhung .app bundle lam cv2 recursion KHONG sua duoc (symlink
