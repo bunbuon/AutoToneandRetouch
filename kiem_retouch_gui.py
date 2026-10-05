@@ -394,6 +394,15 @@ def main() -> int:
         Image.new("RGB", (300, 200), (250, 250, 0)).save(ra / f"A{i}.png")
     w.v_ghide.set(False)
     w._doi_ghide()
+
+    def mang_chung_sang(thu_muc):
+        """Từ 5/10 mức chung theo TỪNG thư mục vào (project mới = 0). Các phần
+        test dưới kiểm logic mức riêng / mức chung trên một project ĐÃ CÓ mức
+        chung — giả lập bằng cách ghi sẵn mức chung đang dùng cho thư mục đó
+        (đúng như bản cũ, khi mức chung còn dùng chung mọi thư mục)."""
+        rt.ghi_muc_anh(str(thu_muc), {}, w._muc_chung_day_du())
+
+    mang_chung_sang(vao)
     w.v_ra.set(str(ra))
     w.v_vao.set(str(vao))
     w._dem()
@@ -619,6 +628,7 @@ def main() -> int:
     Image.new("RGB", (2000, 1500), (60, 160, 90)).save(vao2 / "P1.png")
     Image.new("RGB", (2000, 1500), (90, 90, 200)).save(vao2 / "P2_khong_mat.png")
     w.v_goc.set(str(gia))
+    mang_chung_sang(vao2)
     w.v_ra.set(str(Path(tmp) / "xuat2_ra"))
     w.v_vao.set(str(vao2))
     w._dem()
@@ -844,6 +854,12 @@ def main() -> int:
     for i in range(6):
         Image.new("RGB", (600, 400), (20 + 30 * i, 100, 150)).save(vao3 / f"Q{i}.png")
     q = [str(vao3 / f"Q{i}.png") for i in range(6)]
+    #[[ 5/10 — user: "them 1 project voi cac tinh nang chua duoc dua ve 0".
+    #   Gia lap retouch.json CU con muc chung 100 (ban cu ghi muc chung o day,
+    #   dung chung moi thu muc): thu muc MOI van phai hien moi thanh = 0. ]]
+    chung_truoc = w._muc_chung_day_du()     # muc chung project truoc (vao2)
+    rt.ghi_cau_hinh({"muc": {t: 100.0 for t, *_x in w._ds_keo}})
+    w.cf["muc"] = {t: 100.0 for t, *_x in w._ds_keo}
     w.v_ra.set(str(ra3))
     w.v_vao.set(str(vao3))
     w._dem()
@@ -855,6 +871,32 @@ def main() -> int:
          and rt.giong_muc(w.muc_day_du(), chung0)
          and "theo mức chung" in w.lbl_pham_vi.cget("text"),
          w.lbl_pham_vi.cget("text"))
+    ktra("project mới: MỌI thanh = 0 (dù retouch.json cũ còn mức chung 100)",
+         all(float(v.get()) == 0.0 for v in w.v_muc.values())
+         and all(float(v) == 0.0 for v in chung0.values()),
+         str({k: v.get() for k, v in w.v_muc.items()}))
+    #[[ 5/10 — user: "chon anh o luoi anh khi chua Sync ... chua ve muc 0".
+    #   Keo Q0 roi sang Q1 (chua Sync): Q1 phai = 0 het. ]]
+    w.v_muc[ten0].set(35)
+    chay(2)
+    w._buoc_anh(1)
+    chay(2)
+    ktra("chọn ảnh CHƯA Sync: mọi thanh = 0",
+         w._anh_dang == q[1]
+         and all(float(v.get()) == 0.0 for v in w.v_muc.values()),
+         str({k: v.get() for k, v in w.v_muc.items()}))
+    w._buoc_anh(-1)
+    chay(2)
+    w._ve_muc_chung()                         # Q0 bo muc rieng vua keo
+    chay(2)
+    #[[ Phan duoi kiem logic muc rieng / muc chung tren project DA CO muc chung
+    #   (project cu) — dat muc chung cua vao3 = muc chung project truoc. ]]
+    w._muc_chung_tm = dict(chung_truoc)
+    w._muc_chung_ban = True
+    w._luu_muc()
+    w._nap_muc_vao_bang(w._muc_hieu_luc(q[0]))
+    chay(2)
+    chung0 = w._muc_chung_day_du()
     a0 = float(w.v_muc[ten0].get())
     moi = 15.0 if a0 != 15.0 else 25.0
     w.v_muc[ten0].set(moi)
@@ -1016,13 +1058,13 @@ def main() -> int:
         ag.messagebox.askokcancel = hoi_that
     chay(2)
     w._luu_muc()
-    cf = rt.doc_cau_hinh()
-    ktra("Sync tất cả: mọi ảnh theo mức tấm đang xem, thành MỨC CHUNG (retouch.json)",
+    #[[ 5/10: muc chung nam o file CUA THU MUC VAO, khong o retouch.json. ]]
+    mc = rt.doc_muc_chung(str(vao3))
+    ktra("Sync tất cả: mọi ảnh theo mức tấm đang xem, thành MỨC CHUNG của thư mục",
          not w._muc_anh and not any(o.get("rieng") for o in w.luoi.ds)
-         and float((cf.get("muc") or {}).get(ten0, -1)) == moi
+         and float(mc.get(ten0, -1)) == moi
          and rt.giong_muc(w._muc_chung_day_du(), w.muc_day_du())
-         and not rt.doc_muc_anh(str(vao3)), f"mức chung {ten0}="
-         f"{(cf.get('muc') or {}).get(ten0)}")
+         and not rt.doc_muc_anh(str(vao3)), f"mức chung {ten0}={mc.get(ten0)}")
     # ------------- chạy theo nhóm mức
     bam(1)
     w.v_muc[ten0].set(moi + 10)                 # Q1: mức riêng

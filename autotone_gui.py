@@ -4884,7 +4884,11 @@ class RetouchWindow(Khung):
         self._muc_anh: dict = {}              # khoá ảnh -> bộ mức phẳng (dạng muc_day_du)
         self._muc_anh_vao = None              # thư mục vào mà _muc_anh thuộc về
         self._muc_anh_khoa = None
-        self._muc_chung_ban = False           # mức chung đổi mà chưa ghi retouch.json
+        self._muc_chung_ban = False           # mức chung đổi mà chưa ghi xuống đĩa
+        #[[ MUC CHUNG THEO THU MUC VAO (5/10) — khong con o retouch.json dung
+        #   chung moi thu muc. Thu muc moi = {} = moi thanh 0. Xem
+        #   retouch.doc_muc_chung. ]]
+        self._muc_chung_tm: dict = {}
         self._hen_luu_ma = None
         self._dang_nap_muc = False            # đang NẠP mức một tấm vào bảng (không phải người kéo)
         self._nhom_ds: list = []              # [(mã, nhãn)] nhóm mặt, hỏi lúc dựng bảng
@@ -6059,7 +6063,7 @@ class RetouchWindow(Khung):
         """Mức CHUNG (retouch.json "muc") đủ mọi tính năng tool đang có, dạng
         muc_day_du(): tính năng chưa có mức thì lấy mặc định của tool; mức
         riêng theo nhóm chỉ giữ cái tool còn có."""
-        cf = self.cf.get("muc") or {}
+        cf = self._muc_chung_tm or {}          # muc chung CUA THU MUC VAO dang mo
         ten_co = {t for t, *_x in self._ds_keo}
         #[[ MOI PROJECT = 0 HET (user 5/10, nhu Evoto): thu muc chua luu muc
         #   bao gio thi MOI thanh = 0, nguoi dung tu keo tinh nang muon dung.
@@ -6144,7 +6148,7 @@ class RetouchWindow(Khung):
         d = self.muc_day_du()
         p = self._anh_dang
         if not p:
-            self.cf["muc"] = dict(d)
+            self._muc_chung_tm = dict(d)
             self._muc_chung_ban = True
         else:
             k = self._khoa(p)
@@ -6176,17 +6180,15 @@ class RetouchWindow(Khung):
             except tk.TclError:
                 pass
         self._hen_luu_ma = None
+        #[[ Muc rieng tung anh + MUC CHUNG cung nam o file cua thu muc vao
+        #   (khong ghi muc chung vao retouch.json nua — xem _muc_chung_tm). ]]
+        self._muc_chung_ban = False
         if self._muc_anh_vao:
             try:
-                self.rt.ghi_muc_anh(self._muc_anh_vao, self._muc_anh)
+                self.rt.ghi_muc_anh(self._muc_anh_vao, self._muc_anh,
+                                    dict(self._muc_chung_tm))
             except OSError as ex:
-                self._append(f"! không ghi được mức riêng từng ảnh: {ex}")
-        if self._muc_chung_ban:
-            self._muc_chung_ban = False
-            try:
-                self.rt.ghi_cau_hinh({"muc": dict(self.cf.get("muc") or {})})
-            except OSError as ex:
-                self._append(f"! không ghi được mức chung: {ex}")
+                self._append(f"! không ghi được mức của thư mục này: {ex}")
 
     def _doi_bang_muc_anh(self, vao: str):
         """Đổi thư mục vào: ghi nốt mức riêng của thư mục cũ, đọc của thư mục
@@ -6202,6 +6204,11 @@ class RetouchWindow(Khung):
             self._muc_anh = self.rt.doc_muc_anh(vao) if vao else {}
         except Exception:                                    # noqa: BLE001
             self._muc_anh = {}
+        #[[ Muc chung CUA THU MUC NAY — thu muc moi chua co -> {} -> moi thanh 0. ]]
+        try:
+            self._muc_chung_tm = self.rt.doc_muc_chung(vao) if vao else {}
+        except Exception:                                    # noqa: BLE001
+            self._muc_chung_tm = {}
 
     def _cap_nhat_dau_rieng(self, p=None):
         """Nhãn "riêng" trên dải ảnh theo _muc_anh (p: chỉ một tấm)."""
@@ -6345,7 +6352,7 @@ class RetouchWindow(Khung):
                 f"   {self._mo_ta_muc(muc, 8)}\n\n"
                 "Mức riêng của những ảnh đó mất đi. Tiếp tục?", parent=self):
             return
-        self.cf["muc"] = dict(muc)
+        self._muc_chung_tm = dict(muc)
         self._muc_chung_ban = True
         self._muc_anh.clear()
         self._luu_muc()

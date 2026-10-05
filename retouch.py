@@ -1201,12 +1201,38 @@ def doc_muc_anh(vao) -> dict:
     return {str(k): dict(v) for k, v in (m or {}).items() if isinstance(v, dict)}
 
 
-def ghi_muc_anh(vao, muc_anh: dict) -> None:
+#[[ MUC CHUNG THEO TUNG THU MUC VAO (5/10). Truoc day muc chung nam o
+#   retouch.json — DUNG CHUNG MOI THU MUC: mot lan "Sync tat ca" o buoi cu ghi
+#   100 vao do thi project MOI va moi anh chua Sync deu hien 100. User: "them
+#   1 project ... chua duoc dua ve 0", "chon anh chua Sync ... chua ve 0". Nay
+#   muc chung nam CUNG file voi muc rieng cua thu muc do (khoa "muc_chung"):
+#   thu muc moi chua co file -> {} -> moi thanh 0, giong Evoto. ]]
+def doc_muc_chung(vao) -> dict:
+    """Mức chung (ảnh chưa có mức riêng) của MỘT thư mục vào ({} = mọi thanh 0)."""
+    if not vao:
+        return {}
+    f = tep_muc_anh(vao)
+    if not f.is_file():
+        return {}
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    m = d.get("muc_chung") if isinstance(d, dict) else None
+    return dict(m) if isinstance(m, dict) else {}
+
+
+def ghi_muc_anh(vao, muc_anh: dict, muc_chung: dict | None = None) -> None:
+    """Ghi mức riêng từng ảnh (+ mức chung) của MỘT thư mục vào. muc_chung=None
+    thì giữ nguyên mức chung đang có trong file."""
     if not vao:
         return
     f = tep_muc_anh(vao)
+    if muc_chung is None:
+        muc_chung = doc_muc_chung(vao)
     tam = f.with_suffix(".part")
-    tam.write_text(json.dumps({"vao": str(vao), "muc_anh": muc_anh},
+    tam.write_text(json.dumps({"vao": str(vao), "muc_anh": muc_anh,
+                               "muc_chung": dict(muc_chung or {})},
                               ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tam, f)
 
