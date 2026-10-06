@@ -133,6 +133,25 @@ jobs:
           if [ "${{ inputs.khong_retouch }}" != "true" ]; then
             "$PY" -m pip install torch || echo "  [!] torch khong cai duoc — goi se THIEU torch, Retouch hong"
           fi
+          #[[ BO THU VIEN RETOUCH Y HET BAN WINDOWS (6/10 — user: "them tat ca roi
+          #   build thanh 1 ban nhu windows").
+          #
+          #   Truoc day goi Mac CHI co torch: khong insightface (nhan mat + diem
+          #   moc), khong onnxruntime (phan vung da), khong mediapipe (dang nguoi,
+          #   keo dai chan) — dong_goi bao "bo --collect-all ...: khong co trong
+          #   moi truong build" va kiem_goi van DAT. Tren may that moi tinh nang
+          #   can diem moc mat se lang le khong doi gi.
+          #
+          #   Ghim DUNG phien ban goi Windows (venv_build). mediapipe cai --no-deps:
+          #   no doi opencv-contrib-python (de len cv2 4.11 da ghim o tren — dung
+          #   loi recursion cv2 trong .app) va jax/jaxlib (dong_goi --exclude-module
+          #   jax, ban Windows cung khong mang). Cai tay cac goi con lai. ]]
+          if [ "${{ inputs.khong_retouch }}" != "true" ]; then
+            "$PY" -m pip install "protobuf==4.25.9" "onnx==1.22.0" "onnxruntime==1.29.0" \
+              "insightface==1.0.1" "opencv-python==4.11.0.86"
+            "$PY" -m pip install --no-deps "mediapipe==0.10.14"
+            "$PY" -m pip install absl-py attrs flatbuffers matplotlib sounddevice "protobuf==4.25.9"
+          fi
           #[[ Kiem NGAY rang ba thu quyet dinh deu nam dung cho, truoc khi
           #   build. Bon lan chay truoc deu phai suy luan tu log gian tiep. ]]
           echo "=== kiểm trước khi build ==="
@@ -142,11 +161,53 @@ jobs:
           if [ "${{ inputs.khong_retouch }}" != "true" ]; then
             "$PY" -c "import torch; print('torch  :', torch.__version__, '· MPS', torch.backends.mps.is_available())" \
               || { echo "DỪNG: torch không import được mà gói cần torch."; exit 1; }
+            "$PY" -c "import onnxruntime as o, onnx, insightface, mediapipe, cv2; from insightface.app import FaceAnalysis; from mediapipe.python.solutions import pose; print('onnxrt :', o.__version__, o.get_available_providers()); print('onnx   :', onnx.__version__); print('insightface:', insightface.__version__); print('mediapipe  :', mediapipe.__version__); assert cv2.__version__.startswith('4.11'), 'cv2 bi doi sang ' + cv2.__version__" \
+              || { echo "DỪNG: thiếu thư viện retouch (insightface / onnxruntime / mediapipe) hoặc cv2 bị đổi."; exit 1; }
+            if "$PY" -m pip show opencv-contrib-python >/dev/null 2>&1; then
+              echo "DỪNG: opencv-contrib-python lọt vào — sẽ đè cv2 4.11 đã ghim."; exit 1
+            fi
           fi
           if [ "${{ inputs.khong_bao_mat }}" != "true" ]; then
             "$PY" -c "import Cython; print('cython :', Cython.__version__)"
             "$PY" -c "import shutil,sys; print('clang  :', shutil.which('clang') or 'KHONG CO — build .so se hong')"
           fi
+
+      #[[ MO HINH RETOUCH Y HET BAN WINDOWS. dong_goi.py lay resnet34_faceparse
+      #   + yunet tu ~/.cache/skin_spike va buffalo_l tu ~/.insightface — tren may
+      #   build Windows chung co san, may Actions thi chua (log cu: "Chua co san:
+      #   resnet34_faceparse.onnx, face_detection_yunet_2023mar.onnx, buffalo_l").
+      #   Tai tu dung nguon saytool / insightface tu tai, roi DOI CHIEU SHA-256 voi
+      #   dung tep goi Windows dang mang — khac la dung, khong dong goi mo hinh la.
+      #   Tep .sha256 de ngoai thu muc mo hinh (dong_goi chep CA thu muc buffalo_l). ]]
+      - name: Tải mô hình retouch (như bản Windows)
+        if: ${{ !inputs.khong_retouch }}
+        run: |
+          KHO="$HOME/.cache/skin_spike"
+          IFD="$HOME/.insightface/models/buffalo_l"
+          mkdir -p "$KHO" "$IFD"
+          curl -fsSL "https://github.com/yakhyo/face-parsing/releases/download/weights/resnet34.onnx" \
+            -o "$KHO/resnet34_faceparse.onnx"
+          cp models/face_detection_yunet_2023mar.onnx "$KHO/"
+          curl -fsSL "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" \
+            -o "$RUNNER_TEMP/buffalo_l.zip"
+          TAM="$(mktemp -d)"
+          unzip -q "$RUNNER_TEMP/buffalo_l.zip" -d "$TAM"
+          find "$TAM" -name "*.onnx" -exec cp {} "$IFD/" \;
+          rm -rf "$TAM" "$RUNNER_TEMP/buffalo_l.zip"
+          printf '%s  %s\n' \
+            5b805bba7b5660ab7070b5a381dcf75e5b3e04199f1e9387232a77a00095102e resnet34_faceparse.onnx \
+            8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4 face_detection_yunet_2023mar.onnx \
+            > "$RUNNER_TEMP/kho.sha256"
+          printf '%s  %s\n' \
+            df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc 1k3d68.onnx \
+            f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf 2d106det.onnx \
+            5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91 det_10g.onnx \
+            4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb genderage.onnx \
+            4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43 w600k_r50.onnx \
+            > "$RUNNER_TEMP/buffalo.sha256"
+          ( cd "$KHO" && shasum -a 256 -c "$RUNNER_TEMP/kho.sha256" )
+          ( cd "$IFD" && shasum -a 256 -c "$RUNNER_TEMP/buffalo.sha256" )
+          ls -l "$KHO" "$IFD"
 
       - name: Đóng gói
         run: |
@@ -200,6 +261,17 @@ jobs:
       #   muc phang thi cv2 nam canh nhau nhu Windows -> het recursion. ]]
       - name: Kiểm gói
         run: '"$PY" kiem_goi.py dist/AutoTone'
+
+      #[[ kiem_goi chi kiem buoc retouch NAP DUOC. Bai nay chay XEM TRUOC that
+      #   (AutoTone --say-xem, dung duong giao dien) tren t1.jpg — anh nhom 4 mat
+      #   di kem goi insightface: phai nhan mat bang insightface CO diem moc, bat
+      #   het thanh thi anh doi, khong buoc nao bi bo qua. ]]
+      - name: Thử xem trước retouch trên ảnh có mặt
+        if: ${{ !inputs.khong_retouch }}
+        timeout-minutes: 20
+        run: |
+          ANH="$("$PY" -c "import insightface, os; print(os.path.join(os.path.dirname(insightface.__file__), 'data', 'images', 't1.jpg'))")"
+          "$PY" kiem_xem_goi.py dist/AutoTone "$ANH"
 
       - name: Xem có gì trong gói
         run: |
