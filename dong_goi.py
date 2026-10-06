@@ -115,6 +115,17 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #   trong ham (_dung_trang), cung ly do. ]]
         "khung_anh"]
 
+#[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
+#   an — kiem_dong_goi canh).
+#
+#   PIL._tkinter_finder (6/10 — ban macOS mo len chet NGAY: "No module named
+#   'PIL._tkinter_finder'" o ImageTk.PhotoImage khi dung nut dau tien). Lan dau
+#   dua anh vao Tk, Pillow nap _imagingtk (ma C); tren macOS / Linux CHINH
+#   _imagingtk import PIL._tkinter_finder de tim thu vien tkinter — import tu ma
+#   C nen PyInstaller khong thay. Windows khong can (_imagingtk tu tim) nen ban
+#   .exe chua tung loi. ]]
+NGAM_NGOAI = ["PIL._tkinter_finder", "PIL._imagingtk"]
+
 #[[ `tai_nguyen` PHAI co trong NGAM, ke ca o ban day du.
 #
 #   autotone_gui goi no trong `try: import tai_nguyen / except: pass` — nen
@@ -624,6 +635,8 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     for m in NGAM:
         if not retouch and m in NGAM_RETOUCH:
             continue
+        cmd += ["--hidden-import", m]
+    for m in NGAM_NGOAI:
         cmd += ["--hidden-import", m]
     #[[ Khi mã hoá: khai HẾT module trong cây — xem chú thích đầu hàm. ]]
     for m in (ngam_them or []):
