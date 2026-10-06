@@ -5213,6 +5213,10 @@ class RetouchWindow(Khung):
             value=self.cf.get("che_do", rt.CHE_DO_MAC_DINH))
         self.v_lamlai = tk.BooleanVar(value=False)
         self.v_dequy = tk.BooleanVar(value=False)
+        #[[ TU RETOUCH ANH MOI (7/10) — xem _bat_theo_doi. Nho qua cac lan mo. ]]
+        self.v_tu_moi = tk.BooleanVar(value=bool(self.cf.get("tu_moi", False)))
+        self._theo_doi = None
+        self._hen_quet_ma = None
         self.v_nhom = tk.StringVar(value="")
         self._export_cu = self.cf.get("theo_export", "")
 
@@ -5634,6 +5638,15 @@ class RetouchWindow(Khung):
         self.lbl_ghide = ttk.Label(g_tm, style="Canh.TLabel", text="",
                                    wraplength=WRAP, justify="left")
         self._dat_cho(self.lbl_ghide, fill="x", pady=(2, 2))
+        self.o_tu_moi = ct(
+            g_tm, self.v_tu_moi, "Tự retouch ảnh mới thêm vào",
+            "Bật rồi bấm Chạy retouch: chạy xong app vẫn THEO DÕI thư mục Vào. "
+            "Ảnh nào mới chép vào — kể cả trong lúc đang chạy — được tự retouch "
+            "bằng MỨC CHUNG (các thanh ở thẻ Chung lúc bấm Chạy, không dùng mức "
+            "riêng giới tính) rồi xuất ra, hoặc ghi đè nếu đang bật ghi đè. Ảnh "
+            "có sẵn lúc bấm Chạy không bị tính là ảnh mới. Bấm Dừng để thôi theo "
+            "dõi.",
+            lenh=self._doi_tu_moi)
 
         # ------------------------------------------------ mức áp dụng
         #[[ THANH KEO DUNG DONG, theo danh sach saytool DANG co (rt.thanh_keo).
@@ -7443,7 +7456,7 @@ class RetouchWindow(Khung):
             #   LUOT CHAY (xem start), khong theo file thu muc ra. ]]
             da = min(lc["xong"] + int(getattr(self, "_tien_do_tool", 0) or 0), lc["tong"])
             self.pb.configure(maximum=max(lc["tong"], 1), value=da)
-            self.lbl_tt.configure(text=f"Đang chạy {da}/{lc['tong']} ảnh đã chọn"
+            self.lbl_tt.configure(text=f"Đang chạy {da}/{lc['tong']} ảnh"
                                        + self._nhip())
         elif not tong:
             self.pb.configure(maximum=1, value=0)
@@ -7598,8 +7611,17 @@ class RetouchWindow(Khung):
                     return
             except OSError:
                 pass
+        #[[ TU RETOUCH ANH MOI: chup danh sach anh CO SAN + muc cho anh moi NGAY
+        #   LUC BAM — anh xuat hien sau moc nay (ke ca trong luot nay) moi la moi.
+        #   Chi giao cho self._theo_doi luc THAT SU chay / vao theo doi (huy o
+        #   hop hoi nao thi khong theo doi gi). ]]
+        theo_doi = (self._chuan_bi_theo_doi(vao, ra, ghi_de)
+                    if self.v_tu_moi.get() else None)
         tong_tm, _xong_tm = self._dem()
         if not tong_tm:
+            if theo_doi:
+                self._vao_theo_doi(theo_doi, "thư mục chưa có ảnh")
+                return
             messagebox.showinfo("Không có ảnh", f"{vao}\nkhông có ảnh nào.",
                                 parent=self)
             return
@@ -7613,6 +7635,9 @@ class RetouchWindow(Khung):
         luoi = getattr(self, "luoi", None)
         da_chon = {str(p) for p in (luoi.ds_chon() if luoi is not None else [])}
         ds_chay = [p for p in tat_ca if p in da_chon]
+        if not ds_chay and theo_doi:
+            self._vao_theo_doi(theo_doi, "chưa chọn ảnh nào để chạy trước")
+            return
         if not ds_chay:
             messagebox.showinfo("Chưa chọn ảnh nào",
                                 "Bấm chọn ảnh cần retouch ở dải ảnh (Ctrl+A để chọn "
@@ -7624,6 +7649,9 @@ class RetouchWindow(Khung):
         xong = sum(1 for p in ds_chay if xong_cua.get(p))
         lam_lai = bool(self.v_lamlai.get()) or mot_phan
         con = tong if (lam_lai or ghi_de) else tong - xong
+        if not con and theo_doi:
+            self._vao_theo_doi(theo_doi, "ảnh đã chọn đều có kết quả")
+            return
         if not con:
             messagebox.showinfo("Đã xong từ trước",
                                 f"Cả {tong} ảnh đều đã có kết quả.\n\n"
@@ -7673,6 +7701,9 @@ class RetouchWindow(Khung):
         #[[ any(muc.values()) da dung cho ca muc rieng, vi muc_day_du() gop
         #   ca hai vao mot tu dien phang. Chi doi loi chu: "ba thanh keo" la
         #   con so cua ban cu, gio la sau va con them nam nhom. ]]
+        if (not nhom or all(self.rt.muc_trong(m) for m, _a in nhom)) and theo_doi:
+            self._vao_theo_doi(theo_doi, "ảnh đã chọn đều ở mức 0")
+            return
         if not nhom or all(self.rt.muc_trong(m) for m, _a in nhom):
             messagebox.showinfo(
                 "Chưa bật tính năng nào",
@@ -7797,6 +7828,26 @@ class RetouchWindow(Khung):
         except Exception:                                    # noqa: BLE001
             pass
 
+        self._dung_hen_quet()
+        self._theo_doi = theo_doi
+        if theo_doi:
+            self._append("… bật “Tự retouch ảnh mới”: chạy xong sẽ theo dõi thư mục "
+                         "Vào, ảnh mới dùng mức chung: " + self._mo_ta_muc(theo_doi["muc"]))
+        self._chay_viec(
+            vao=vao, ra=ra, ghi_de=ghi_de, lam_lai=lam_lai, de_quy=de_quy,
+            viec=viec, tam_goc=tam_goc, muc_thang=nhom[0][0], xong_dau=xong,
+            tieu_de=f"{con} ảnh cần làm"
+                    + (f" (ảnh đã chọn, trên {len(tat_ca)} ảnh của thư mục)"
+                       if mot_phan else "")
+                    + (f", {sum(1 for *_x, la0 in viec if not la0)} lượt theo mức"
+                       if len(nhom) > 1 else ""))
+
+    def _chay_viec(self, *, vao, ra, ghi_de, lam_lai, de_quy, viec, tam_goc,
+                   muc_thang, xong_dau, tieu_de):
+        """Chạy retouch ở luồng nền — chung cho nút Chạy retouch (start) và lượt
+        tự retouch ảnh mới (_chay_anh_moi). Mọi câu hỏi / kiểm tra đã xong ở bên
+        gọi. viec = [(mức, [ảnh], mức 0 hết?)]; tam_goc None = MỘT lượt thẳng
+        trên thư mục vào với muc_thang."""
         #[[ Tat xem truoc TRUOC khi chay: no giu mo hinh tren card do hoa, ca
         #   me nap them mot bo nua la de het bo nho card. ]]
         if self._may_xem is not None:
@@ -7815,19 +7866,14 @@ class RetouchWindow(Khung):
         self._luong_dang_chay = luong
         #[[ So anh DA CO truoc khi bam Chay. Khong tru no thi lan chay tiep tuc
         #   (600 anh da xong tu luot truoc) se ra toc do nhanh gia. ]]
-        self._xong_dau = xong
+        self._xong_dau = xong_dau
         self._log_cuoi: list[str] = []
         #[[ Gom RIENG cac dong "! BO QUA" thay vi doc lai tu _log_cuoi: chung
         #   duoc in luc NAP BUOC, tuc ngay dau lượt chay, nen mot buoi vai tram
         #   anh la chung da troi khoi 80 dong cuoi tu lau. ]]
         self._bi_bo: list = []
         self._so_dong_log = 0        # đếm để biết tool có nói gì không
-        self._append(f"\n=== {datetime.now():%H:%M:%S}  {con} ảnh cần làm"
-                     + (f" (ảnh đã chọn, trên {len(tat_ca)} ảnh của thư mục)"
-                        if mot_phan else "")
-                     + f", {luong} luồng"
-                     + (f", {sum(1 for *_x, la0 in viec if not la0)} lượt theo mức"
-                        if len(nhom) > 1 else "") + " ===")
+        self._append(f"\n=== {datetime.now():%H:%M:%S}  {tieu_de}, {luong} luồng ===")
 
         #[[ MA SAP: tien trinh bi giet GIUA CHUNG, khong phai chay xong hay
         #   nguoi dung bam Dung. Gap mot trong so nay thi tu chay lai.
@@ -7901,7 +7947,7 @@ class RetouchWindow(Khung):
             ma = 0
             try:
                 if tam_goc is None:
-                    ma = chay_mot(vao, nhom[0][0])
+                    ma = chay_mot(vao, muc_thang)
                 else:
                     n_luot = sum(1 for _m, _a, la0 in viec if not la0)
                     i = 0
@@ -7955,12 +8001,168 @@ class RetouchWindow(Khung):
         self.worker = threading.Thread(target=work, daemon=True)
         self.worker.start()
 
+    # ------------------------------------------------------------ tự retouch ảnh mới
+    #[[ TU RETOUCH ANH MOI (7/10 — user: "Tu dong Retouch cac anh moi khi duoc
+    #   them vao trong Folder dang duoc Retouch. Co the quet Folder de them cac anh
+    #   duoc them moi vao trong qua trinh chay Retouch. Can Option chon bat len.
+    #   Khi duoc bat thi chi dung thong so cua muc chung de ap vao cac anh moi roi
+    #   export").
+    #
+    #   Bat cong tac roi bam Chay retouch: chup lai danh sach anh CO SAN (anh moi
+    #   = xuat hien SAU moc nay, ke ca trong luc luot dau dang chay) va bo muc ap
+    #   cho anh moi = cac thanh THE CHUNG dang dat (khong muc rieng gioi tinh —
+    #   anh moi chua ai xem, chua biet mat ai). Luot dau xong, cu 5 giay quet thu
+    #   muc Vao (o luong chinh, chi liet ke file): anh moi chua co ket qua, kich
+    #   thuoc + gio sua KHONG DOI qua hai lan quet (Lightroom / the nho da chep
+    #   xong) -> mot luot chay rieng cho nhung anh do (thu muc tam, _chay_viec).
+    #   Dung = thoi theo doi. Anh hong khi chay khong thu lai (tranh lap vo han). ]]
+    QUET_GIAY = 5
+
+    def _doi_tu_moi(self):
+        try:
+            self.rt.ghi_cau_hinh({"tu_moi": bool(self.v_tu_moi.get())})
+        except OSError:
+            pass
+        if not self.v_tu_moi.get() and self._theo_doi is not None \
+                and not (self.worker and self.worker.is_alive()):
+            self._dung_theo_doi("đã tắt “Tự retouch ảnh mới”")
+
+    def _chuan_bi_theo_doi(self, vao, ra, ghi_de):
+        """Lúc bấm Chạy (công tắc đang bật): ảnh có sẵn + mức cho ảnh mới.
+        None khi mức Chung đang 0 hết (đã nói ra) — lượt này vẫn chạy bình thường."""
+        muc = self._loc_muc({k: v for k, v in self.muc_day_du().items()
+                             if ":" not in str(k)})
+        if self.rt.muc_trong(muc):
+            messagebox.showinfo(
+                "Tự retouch ảnh mới",
+                "Các thanh ở thẻ Chung đang 0 hết — ảnh mới thêm vào sẽ không có "
+                "gì để retouch, nên lần này KHÔNG theo dõi thư mục.\n\n"
+                "Kéo các thanh ở thẻ Chung tới mức muốn dùng cho ảnh mới rồi bấm "
+                "Chạy retouch lại.", parent=self)
+            return None
+        de_quy = bool(self.v_dequy.get())
+        return {"vao": str(vao), "ra": str(ra), "ghi_de": bool(ghi_de),
+                "de_quy": de_quy, "muc": muc, "so": 0, "cho": {},
+                "biet": {str(p) for p, _x in self.rt.ds_anh(vao, None, de_quy)}}
+
+    def _vao_theo_doi(self, td, ly_do: str = ""):
+        """Bắt đầu / tiếp tục theo dõi (không có lượt nào đang chạy)."""
+        self._theo_doi = td
+        self._dung_tay = False
+        self._dat_dang_chay(True)                # nút Dừng = thôi theo dõi
+        self._append(f"=== THEO DÕI {td['vao']} — ảnh mới thêm vào sẽ tự retouch "
+                     f"bằng mức chung: {self._mo_ta_muc(td['muc'])}"
+                     + (f" ({ly_do})" if ly_do else "") + " ===")
+        self._bao_theo_doi()
+        self._hen_quet()
+
+    def _bao_theo_doi(self):
+        td = self._theo_doi
+        if td is None:
+            return
+        self.app.status(f"Đang theo dõi “{Path(td['vao']).name}” — ảnh mới tự retouch "
+                        f"bằng mức chung (đã làm {td['so']} ảnh mới). Bấm Dừng để "
+                        "thôi.", gd.MAU["xong"])
+
+    def _hen_quet(self):
+        self._dung_hen_quet()
+        try:
+            self._hen_quet_ma = self.after(int(self.QUET_GIAY * 1000), self._quet_moi)
+        except tk.TclError:
+            self._hen_quet_ma = None
+
+    def _dung_hen_quet(self):
+        if self._hen_quet_ma is not None:
+            try:
+                self.after_cancel(self._hen_quet_ma)
+            except tk.TclError:
+                pass
+        self._hen_quet_ma = None
+
+    def _dung_theo_doi(self, ly_do: str = ""):
+        td = self._theo_doi
+        self._dung_hen_quet()
+        self._theo_doi = None
+        if td is not None:
+            self._append("=== thôi theo dõi thư mục" + (f" ({ly_do})" if ly_do else "")
+                         + f" — đã tự retouch {td['so']} ảnh mới ===")
+            self.app.status(f"Đã thôi theo dõi — tự retouch {td['so']} ảnh mới",
+                            gd.MAU["mo"])
+        if not (self.worker and self.worker.is_alive()):
+            self._dat_dang_chay(False)
+
+    def _quet_moi(self):
+        """Một lần quét thư mục Vào tìm ảnh mới (luồng chính, chỉ liệt kê file)."""
+        self._hen_quet_ma = None
+        td = self._theo_doi
+        if td is None or self._dung_tay:
+            return
+        if not self.v_tu_moi.get():
+            self._dung_theo_doi("đã tắt “Tự retouch ảnh mới”")
+            return
+        if self.worker and self.worker.is_alive():
+            self._hen_quet()
+            return
+        try:
+            ds = self.rt.ds_anh(Path(td["vao"]),
+                                None if td["ghi_de"] else Path(td["ra"]), td["de_quy"])
+        except OSError:
+            ds = []
+        san, co_moi = [], False
+        for p, xong in ds:
+            k = str(p)
+            if k in td["biet"]:
+                continue
+            if xong:                       # đã có kết quả (người dùng tự chạy)
+                td["biet"].add(k)
+                continue
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            dau = (st.st_size, st.st_mtime_ns)
+            if st.st_size > 0 and td["cho"].get(k) == dau:
+                san.append(k)
+            else:
+                co_moi = co_moi or k not in td["cho"]
+                td["cho"][k] = dau
+        if co_moi or san:
+            self._dem()                    # dải ảnh hiện ngay tấm mới
+        if not san:
+            self._hen_quet()
+            return
+        for k in san:
+            td["biet"].add(k)
+            td["cho"].pop(k, None)
+        self._chay_anh_moi(san)
+
+    def _chay_anh_moi(self, ds: list):
+        td = self._theo_doi
+        vao, ra = Path(td["vao"]), Path(td["ra"])
+        try:
+            tam_goc = self.rt.tao_thu_muc_tam(vao)
+        except OSError as ex:
+            self._append(f"! không tạo được thư mục tạm cho ảnh mới: {ex}")
+            self._dung_theo_doi("lỗi thư mục tạm")
+            return
+        td["so"] += len(ds)
+        ten = ", ".join(Path(p).name for p in ds[:3]) + (" …" if len(ds) > 3 else "")
+        self._chay_viec(vao=vao, ra=ra, ghi_de=td["ghi_de"], lam_lai=True,
+                        de_quy=td["de_quy"], viec=[(dict(td["muc"]), list(ds), False)],
+                        tam_goc=tam_goc, muc_thang=dict(td["muc"]), xong_dau=0,
+                        tieu_de=f"tự retouch {len(ds)} ảnh mới ({ten}) bằng mức chung")
+        self._bao_theo_doi()
+
     def stop(self):
         #[[ Danh dau TRUOC khi giet: khong danh dau thi vong tu chay lai trong
         #   work() thay ma thoat 0xC0000005 (terminate cung cho ma do tren
         #   Windows) va lai chay tiep - nguoi dung bam Dung ma no khong dung.
         #]]
         self._dung_tay = True
+        #[[ Dang theo doi ma khong co luot nao chay -> Dung = thoi theo doi ngay. ]]
+        if self._theo_doi is not None and not (self.worker and self.worker.is_alive()):
+            self._dung_theo_doi("đã bấm Dừng")
+            return
         p = self.proc
         if p and p.poll() is None:
             self._append("… đang dừng")
@@ -8132,6 +8334,17 @@ class RetouchWindow(Khung):
             #   toi do, dung de ho nhin luoi anh ma doan. ]]
             self.v_xem.set("nhat_ky")
             self._doi_xem()
+        #[[ TU RETOUCH ANH MOI: luot vua xong (luot dau hay luot anh moi, ke ca
+        #   hong — anh hong da nam trong "biet", khong thu lai) -> quay lai theo
+        #   doi, tru khi nguoi dung bam Dung / tat cong tac. ]]
+        if self._theo_doi is not None:
+            if self._dung_tay or not self.v_tu_moi.get():
+                self._dung_theo_doi("đã bấm Dừng" if self._dung_tay
+                                    else "đã tắt “Tự retouch ảnh mới”")
+            else:
+                self._dat_dang_chay(True)
+                self._bao_theo_doi()
+                self._hen_quet()
 
     def on_close(self):
         if self.proc and self.proc.poll() is None:

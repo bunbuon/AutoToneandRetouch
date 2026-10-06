@@ -359,7 +359,9 @@ def main() -> int:
              "xem_truoc.py chỉ còn máy tính ảnh")
         #[[ Bam Chay: tat may xem truoc TRUOC khi khoi luong chay — hai bo mo
         #   hinh tren mot card do hoa la duong ngan nhat toi OOM. ]]
-        bd = than("start", src, lop_rt)
+        #[[ 7/10: phan CHAY NEN cua start() tach thanh _chay_viec (dung chung voi
+        #   luot tu retouch anh moi) — luat ve start van ap cho ca hai. ]]
+        bd = than("start", src, lop_rt) + "\n" + than("_chay_viec", src, lop_rt)
         ktra("bấm Chạy tắt xem trước TRƯỚC khi chạy cả mẻ",
              "_tat_xem_truoc(dong_may=True)" in bd and "threading.Thread(" in bd
              and bd.index("_tat_xem_truoc(dong_may=True)") < bd.index("threading.Thread("),

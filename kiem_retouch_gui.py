@@ -1296,6 +1296,62 @@ def main() -> int:
          str({k: v for k, v in m_chung.items() if v}))
     w._ve_muc_chung()
     chay(2)
+    #[[ 7/10 — user: "Tu dong Retouch cac anh moi khi duoc them vao trong Folder
+    #   dang duoc Retouch ... Can Option chon bat len ... chi dung thong so cua muc
+    #   chung". Bat cong tac, bam Chay -> theo doi; anh moi chep vao -> quet hai
+    #   lan (file on dinh) -> MOT luot rieng cho anh moi bang muc THE CHUNG; anh
+    #   co san khong bi tinh la moi; Dung = thoi theo doi. ]]
+    bam(1)
+    for t in list(w.v_muc):
+        w.v_muc[t].set(0)
+    w.v_muc[ten0].set(35)
+    chay(2)
+    w.v_tu_moi.set(True)
+    anh_moi = vao3 / "Q9_moi.png"
+    goi.clear()
+    dang, n1, sau_moi = False, -1, None
+    ag.messagebox.askokcancel = lambda *a, **k: True
+    try:
+        chay_start()                       # chỉ Q1 đang chọn -> 1 lượt + bắt đầu theo dõi
+        dang = w._theo_doi is not None and bool(w.btn_stop.winfo_manager())
+        Image.new("RGB", (300, 200), (90, 120, 160)).save(anh_moi)
+        goi.clear()
+        w.rt.chay = chay_gia
+        threading.Thread = _ChayLien
+        try:
+            w._quet_moi()                  # lần 1: mới thấy, chưa chắc đã chép xong
+            chay(2)
+            n1 = len(goi)
+            w._quet_moi()                  # lần 2: kích thước đứng yên -> chạy
+            chay(4)
+            sau_moi = w._theo_doi
+            w._quet_moi()                  # lần 3: không còn gì mới
+            chay(2)
+        finally:
+            threading.Thread = luong_that
+            w.rt.chay = chay_that
+    finally:
+        ag.messagebox.askokcancel = hoi_that
+    ktra("Tự retouch ảnh mới: ảnh mới chép vào -> tự chạy CHỈ ảnh đó, bằng mức thẻ Chung",
+         dang and n1 == 0 and len(goi) == 1 and goi[0][1] == ["Q9_moi.png"]
+         and goi[0][2].get(ten0) == 35 and not any(":" in str(k) for k in goi[0][2])
+         and (ra3 / "Q9_moi.png").is_file(),
+         f"theo dõi {dang} · lần 1 {n1} lượt · {[(g[1], g[2].get(ten0)) for g in goi]}")
+    ktra("…xong lượt ảnh mới vẫn theo dõi tiếp, ảnh có sẵn không bị làm lại",
+         sau_moi is not None and w._theo_doi is not None and sau_moi.get("so") == 1,
+         str((sau_moi or {}).get("so")))
+    w.stop()
+    chay(2)
+    ktra("Dừng = thôi theo dõi (không còn hẹn quét, nút Dừng ẩn)",
+         w._theo_doi is None and w._hen_quet_ma is None and not w.btn_stop.winfo_manager())
+    w.v_tu_moi.set(False)
+    for p in (anh_moi, ra3 / "Q9_moi.png"):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    w._ve_muc_chung()
+    chay(2)
     #[[ Ten tep DAI + muc rieng (dong pham vi dai nhat, co nut "Về mức chung"):
     #   bang dieu khien KHONG duoc phinh ra — phinh la anh lon / dai anh nhay
     #   cot. Anh chup 4/10 bat duoc: ban dau nut nam cung dong voi ten tep. ]]
