@@ -375,17 +375,20 @@ def main() -> int:
              and "_mo_xem_truoc(tu_dong=True)" in than("_nguoi_doi_muc", src, lop_rt),
              "_muc_doi → _nguoi_doi_muc → _mo_xem_truoc(tu_dong)")
         #[[ "Sync All cac hieu ung da keo cho cac anh duoc chon hoac tat ca":
-        #   dai anh chon nhieu duoc, bang co hai nut Sync. ]]
-        ktra("dải ảnh Retouch chọn nhiều tấm được, bảng có Sync (đã chọn / tất cả)",
-             "chon_nhieu=True" in trang_rt and "self._sync_chon" in rt_src
-             and "self._sync_het" in rt_src, "Ctrl / Shift + bấm · Sync")
+        #   dai anh chon nhieu duoc, bang co nut Sync. 5/10 user bo nut "Sync tat
+        #   ca" ("Nut Sync se mac dinh Sync cho cac anh duoc chon. K can toi nut
+        #   Sync Tat ca") — chi con Sync anh da chon (Ctrl+A = tat ca). ]]
+        ktra("dải ảnh Retouch chọn nhiều tấm được, bảng có Sync ảnh đã chọn",
+             "chon_nhieu=True" in trang_rt and "self._sync_chon" in rt_src,
+             "Ctrl / Shift + bấm · Sync")
         #[[ Chay theo nhom muc van di qua CHINH lenh `chay` cua saytool — moi
-        #   nhom mot luot rt.chay, KHONG dung lai buoc nao ben nay. Ghi de ma
-        #   nhieu nhom thi tu choi (thu muc tam + ghi de = khong biet anh goc
-        #   that co doi khong). ]]
+        #   nhom mot luot rt.chay, KHONG dung lai buoc nao ben nay. 6/10: ghi de
+        #   nhieu nhom KHONG con tu choi — tool ghi ra thu muc tam rieng, app
+        #   tu thay anh goc (rt.dua_ket_qua_ra). ]]
         ktra("ảnh khác mức chạy theo nhóm, mỗi nhóm một lượt rt.chay",
              "self.rt.nhom_theo_muc(" in bd and bd.count("self.rt.chay(") == 1
-             and "ghi_de and len(nhom) > 1" in bd, "không dựng lại bước của saytool")
+             and "self.rt.dua_ket_qua_ra(" in bd and "ghi_de and len(nhom) > 1" not in bd,
+             "không dựng lại bước của saytool")
         #[[ Luoi va bo dem PHAI doc cung mot danh sach (rt.ds_anh) — hai cach
         #   loc la hai noi co the lech nhau, va khi lech khong ai biet ben nao
         #   dung (chu thich dau lop RetouchWindow). ]]

@@ -27,6 +27,50 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
 
+
+def va_imagetk() -> None:
+    """ImageTk không gắn được vào Tk -> đưa ảnh vào Tk bằng PNG (Tk 8.6 tự đọc).
+
+    #[[ 6/10 — ban macOS mo len chet NGAY o nut dau tien (anh_bo_goc ->
+    #   ImageTk.PhotoImage): "TypeError: bad argument type for built-in
+    #   operation" tai _imagingtk.tkinit. Python build cua ban Mac (python-build-
+    #   standalone) NHUNG SAN _tkinter vao thu vien Python — khong co __file__ ->
+    #   PIL._tkinter_finder.TKINTER_LIB = None -> ma C cua Pillow khong tim duoc
+    #   Tcl/Tk de gan "PyImagingPhoto". Khong sua duoc ben trong Pillow, nen bo
+    #   qua han duong do: lan dau hong thi tu do moi lan paste() deu dua anh qua
+    #   PNG (giu ca kenh trong suot — nut bo goc can no). Windows / may chay duoc
+    #   duong C thi khong doi gi: van thu duong C truoc. ]]
+    """
+    if _IMAGETK_VA:
+        return
+    try:
+        from PIL import ImageTk
+    except Exception:                                        # noqa: BLE001
+        return
+    goc = ImageTk.PhotoImage.paste
+    hong = [False]
+
+    def paste(self, im, *a, **k):
+        if not hong[0]:
+            try:
+                return goc(self, im, *a, **k)
+            except Exception:                                # noqa: BLE001
+                hong[0] = True
+        import base64
+        import io
+        m = im if im.mode in ("RGB", "RGBA", "L", "LA") else im.convert("RGBA")
+        b = io.BytesIO()
+        m.save(b, format="PNG", compress_level=1)
+        self._PhotoImage__photo.configure(data=base64.b64encode(b.getvalue()),
+                                          format="png")
+
+    ImageTk.PhotoImage.paste = paste
+    _IMAGETK_VA.append(True)
+
+
+_IMAGETK_VA: list = []
+va_imagetk()
+
 # ── Bảng màu ────────────────────────────────────────────────────────────────
 #[[ BANG MAU KIEU EVOTO (3/10 toi — user: "tham khao giao dien cua Evoto de
 #   thiet ke lai toan bo giao dien"). Do tu anh chup giao dien Evoto that
