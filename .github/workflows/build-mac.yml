@@ -273,6 +273,27 @@ jobs:
           ANH="$("$PY" -c "import insightface, os; print(os.path.join(os.path.dirname(insightface.__file__), 'data', 'images', 't1.jpg'))")"
           "$PY" kiem_xem_goi.py dist/AutoTone "$ANH"
 
+      #[[ MO APP THAT bang chinh launcher giao khach (6/10 — user mo .command ma
+      #   khong thay app). kiem_goi / kiem_xem_goi chay cac cua tu kiem, KHONG mo
+      #   giao dien. Buoc nay chay "Mo Tone&Retouch.command" y nhu nguoi dung:
+      #   app phai con song sau 20 giay (launcher tu kiem), khong thi in nhat ky
+      #   va DUNG build. Du lieu app vao thu muc tam. ]]
+      - name: Thử mở app như người dùng (launcher .command)
+        timeout-minutes: 5
+        run: |
+          L="dist/AutoTone/_thu_mo.command"
+          tr -d '\r' < mac/mo_tone_retouch.command > "$L"
+          chmod +x "$L"
+          set +e
+          AUTOTONE_DATA="$(mktemp -d)" bash "$L"
+          KQ=$?
+          set -e
+          pkill -f "dist/AutoTone/AutoTone" || true
+          echo "--- nhật ký app ---"
+          tail -n 40 "$HOME/Library/Logs/Tone-Retouch.log" || true
+          rm -f "$L"
+          exit $KQ
+
       - name: Xem có gì trong gói
         run: |
           echo "=== kích thước ==="
@@ -328,14 +349,17 @@ jobs:
           #   van la AutoTone ben trong). ]]
           APPDIR="$STAGE/Tone&Retouch"
           cp -R "$GOI" "$APPDIR"
-          # Launcher .command (viet bang printf de khoi vuong heredoc trong YAML):
-          # double-click -> chay binary AutoTone o nen, dong cua so Terminal ngay.
+          #[[ Launcher .command: tep THAT trong kho (mac/mo_tone_retouch.command),
+          #   khong con viet bang printf. 6/10 — user: mo .command chi thay "Qua
+          #   trinh da hoan thanh", khong thay app: ban cu day moi dau ra vao
+          #   /dev/null roi thoat ngay -> app hong / bi macOS chan khong de lai dau
+          #   vet. Ban moi go co cach ly, chay nohup, ghi nhat ky
+          #   ~/Library/Logs/Tone-Retouch.log, app thoat ngay thi in loi ra. Bo \r
+          #   phong khi tep bi doi xuong dong Windows (bash bao "bad interpreter"). ]]
           LAUNCHER="$APPDIR/Mở Tone&Retouch.command"
-          printf '%s\n' '#!/bin/bash' \
-            'DIR="$(cd "$(dirname "$0")" && pwd)"' \
-            '"$DIR/AutoTone" >/dev/null 2>&1 &' \
-            'exit 0' > "$LAUNCHER"
+          tr -d '\r' < mac/mo_tone_retouch.command > "$LAUNCHER"
           chmod +x "$LAUNCHER"
+          tr -d '\r' < mac/huong_dan_mo.txt > "$APPDIR/Đọc trước khi mở.txt"
           chmod +x "$APPDIR/AutoTone" 2>/dev/null || true
           ln -s /Applications "$STAGE/Applications"
           mkdir -p dist

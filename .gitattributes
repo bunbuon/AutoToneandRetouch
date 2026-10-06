@@ -1,0 +1,4 @@
+# Script chay tren macOS phai giu xuong dong LF — CRLF lam bash bao
+# "/bin/bash^M: bad interpreter" va double-click .command khong mo duoc gi.
+*.command text eol=lf
+*.sh text eol=lf

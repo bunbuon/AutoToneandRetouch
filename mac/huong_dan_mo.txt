@@ -1,0 +1,17 @@
+TONE&RETOUCH TRÊN macOS — CÁCH MỞ
+
+1. Kéo CẢ thư mục "Tone&Retouch" vào Applications (Ứng dụng).
+2. Mở thư mục đó, CHUỘT PHẢI vào "Mở Tone&Retouch.command" › Mở (Open).
+   Lần đầu macOS hỏi "nhà phát triển chưa xác minh" — bấm Mở (Open).
+   Những lần sau chỉ cần nhấp đúp.
+3. Lần đầu app có thể mất 30–60 giây mới hiện cửa sổ (macOS quét thư viện).
+
+NẾU KHÔNG THẤY APP
+Mở Terminal (Ứng dụng › Tiện ích › Terminal), dán từng dòng rồi nhấn Enter:
+
+    xattr -dr com.apple.quarantine "/Applications/Tone&Retouch"
+    "/Applications/Tone&Retouch/AutoTone"
+
+App sẽ chạy ngay trong cửa sổ Terminal đó (giữ nguyên cửa sổ khi đang dùng).
+Nếu vẫn không hiện, chụp các dòng chữ in ra trong Terminal gửi người hỗ trợ.
+Nhật ký của lần mở gần nhất: ~/Library/Logs/Tone-Retouch.log
