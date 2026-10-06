@@ -3749,6 +3749,56 @@ def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
 
 
 TONE_NHOM = ("Contrast2012", "Highlights2012", "Shadows2012", "Whites2012", "Blacks2012")
+# Cot chi plugin tu 3/10 moi xuat — moc chot tu plugin cu de trong (xem
+# attach_catalog_settings).
+COT_PLUGIN_MOI = ("WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012")
+
+
+def bu_cot_plugin_moi(moc: dict, moi: dict) -> dict:
+    """Cột COT_PLUGIN_MOI mà mốc để TRỐNG (chốt từ plugin cũ) lấy được từ bản
+    ghi mới. -> {cột: giá trị} cần bù, {} nếu không bù.
+
+    #[[ 6/10, buoi BVDay3: moc chot tu plugin 4/9 nen bon cot nay rong; catalog
+    #   CHUA BAO GIO doi quy trinh (preset luon bo trong WB / Tone, tool chua ghi
+    #   chung) -> so trong ban xuat moi CHINH LA so goc, bu vao moc.
+    #
+    #   CHI BU KHI KHOP VOI CHINH MOC. Moc preset DAY DU (Temperature 5250,
+    #   Highlights 16) ma catalog nay As Shot / Tone 0 = anh da import lai theo
+    #   quy trinh moi SAU khi chot moc (test_preset_khong_wb_tone muc 4) — bu vao
+    #   thi moc thanh lai (WB As Shot + Highlights 16) va che mat nhanh
+    #   moc-cu-khac-quy-trinh. Nen:
+    #     WhiteBalance: moc khong co Temperature <-> catalog khac Custom
+    #     Contrast / Whites / Blacks: moc Highlights = Shadows = 0 <-> catalog
+    #       ca ba = 0 ]]
+    """
+    def rong(v) -> bool:
+        return str(v if v is not None else "").strip() == ""
+
+    bu = {}
+    wb = str(moi.get("WhiteBalance") or "").strip()
+    if rong(moc.get("WhiteBalance")) and wb:
+        co_t = get_f(moc, "Temperature", 0.0) > 0
+        if (wb.lower() == "custom") == co_t:
+            bu["WhiteBalance"] = wb
+        elif not co_t:
+            #[[ Moc KHONG co Temperature = luc chot anh dang As Shot (preset day
+            #   du luon dat Custom 5250). Catalog nay Custom la do sua / sync tay
+            #   SAU lan ghi — so goc van la As Shot. BVDay3: 127 anh nhu vay. ]]
+            bu["WhiteBalance"] = "As Shot"
+        elif abs(get_f(moc, "Temperature", 0.0) - get_f(moi, "Temperature", 0.0)) < 1:
+            #[[ As Shot Lightroom DA render (co Temperature, xem _asshot_catalog):
+            #   cung nhiet do voi moc = cung trang thai luc chot. ]]
+            bu["WhiteBalance"] = wb
+    tone = [k for k in ("Contrast2012", "Whites2012", "Blacks2012")
+            if rong(moc.get(k)) and not rong(moi.get(k))]
+    if tone:
+        moc_0 = (get_f(moc, "Highlights2012", 0.0) == 0
+                 and get_f(moc, "Shadows2012", 0.0) == 0)
+        moi_0 = all(get_f(moi, k, 0.0) == 0 for k in ("Contrast2012", "Whites2012",
+                                                      "Blacks2012"))
+        if moc_0 == moi_0:
+            bu.update({k: moi[k] for k in tone})
+    return bu
 
 
 def preset_chua_ap(crs: dict) -> tuple[bool, bool]:
@@ -5741,7 +5791,16 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path
         cu = load_baseline(folder)
         if cu:
             moi = dict(base)
-            moi.update(cu)          # mốc cũ đè lên, không bao giờ ngược lại
+            for p, rec in cu.items():   # mốc cũ đè lên, không bao giờ ngược lại
+                #[[ Tru bon cot plugin moi (COT_PLUGIN_MOI) ma moc cu de RONG vi
+                #   chot tu plugin cu: bu tu ban ghi moi — xem
+                #   attach_catalog_settings. Cot da co so thi moc cu van thang. ]]
+                m = base.get(p)
+                if m:
+                    bu = bu_cot_plugin_moi(rec, m)
+                    if bu:
+                        rec = dict(rec, **bu)
+                moi[p] = rec
             base = moi
     #[[ Bon cot cuoi cho quy trinh preset bo trong WB / Tone (3/10): thieu chung
     #   thi lan chay lai khong con nhan ra anh dang o As Shot / Tone 0 (xem
@@ -5913,6 +5972,21 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
         cur = export.get(key)
         old = base.get(key)
         r["ngoai_xuat"] = False
+        if old is not None and cur:
+            #[[ MOC CHOT TU PLUGIN CU (6/10, buoi BVDay3 1813 anh): plugin 4/9 khong
+            #   xuat WhiteBalance / Contrast / Whites / Blacks nen moc co cac cot do
+            #   RONG. Cap nhat plugin xong, ban xuat moi co chung — nhung cac cot
+            #   khac (Exposure, Highlights...) da mang so tool ghi (-45). Lay
+            #   nguyen ban xuat moi lam moc (nhanh moc-cu-khac-quy-trinh duoi) la
+            #   CONG DON len -45 va khong con nhan ra preset bo trong Tone.
+            #   Bu DUNG cac cot moc dang rong tu ban xuat moi: tool khong bao gio
+            #   ghi chung khi chua nhan ra quy trinh moi (nen_tone / nen_wb), tuc
+            #   so trong catalog van la so goc. Ghi lai vao moc. Chi bu khi khop
+            #   voi chinh moc — xem bu_cot_plugin_moi. ]]
+            bu = bu_cot_plugin_moi(old, cur)
+            if bu:
+                old = dict(old, **bu)
+                base[key] = old
         if old is not None:
             #[[ Moc cu la preset DAY DU, catalog lai dang o trang thai preset bo
             #   trong WB/Tone (As Shot, Tone 0) -> anh da duoc import / dat lai

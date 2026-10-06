@@ -89,16 +89,58 @@ def tai_nguyen(*ten) -> Path:
     return goc_tai_nguyen().joinpath(*ten)
 
 
-def plugin() -> Path:
-    """Thư mục plugin Lightroom dùng thật — chép từ gói ra lần đầu.
+#[[ File plugin vua duoc cap nhat tu goi o lan mo app nay (ten file). Giao dien
+#   doc de nhac Reload plugin trong Lightroom. ]]
+PLUGIN_CAP_NHAT: list = []
+_DA_SOAT_PLUGIN: list = []
 
-    Chỉ chép khi CHƯA có. Chép đè mỗi lần chạy sẽ xoá mất thư mục jobs đang
-    chờ Lightroom xử lý, và ăn mất kết quả của lần chạy trước.
+
+def _cap_nhat_plugin(nguon: Path, dich: Path) -> list:
+    """Chép đè file MÃ của plugin (không đụng jobs/) khi khác bản trong gói.
+
+    #[[ 6/10 — user: "AutoTone chi xu ly WB duoc 1 phan, Shadows / Contrast
+    #   khong thay can thiep". Lightroom dang chay plugin 4/9 (7 file) o thu muc
+    #   du lieu: plugin() truoc day CHI chep khi chua co, nen moi ban cai sau do
+    #   (plugin 12 file, xuat them WhiteBalance / Contrast / Whites / Blacks) KHONG
+    #   BAO GIO toi duoc Lightroom. Ban xuat thieu cac cot do -> preset_chua_ap()
+    #   khong nhan ra preset bo trong WB / Tone -> 1743/1813 anh As Shot bi bo qua
+    #   WB, khong ghi Contrast / Whites / Blacks. Canh bao "Reload plugin" cung vo
+    #   ich: Reload nap lai dung ban cu nay.
+    #
+    #   Chep tung file khac noi dung, KHONG copytree de len: jobs/ la trang thai
+    #   luc chay (job dang cho, ban xuat, nhat ky) — xem plugin(). ]]
+    """
+    doi = []
+    for f in sorted(nguon.rglob("*")):
+        rel = f.relative_to(nguon)
+        if not f.is_file() or (rel.parts and rel.parts[0] == "jobs"):
+            continue
+        d = dich / rel
+        try:
+            if d.is_file() and d.read_bytes() == f.read_bytes():
+                continue
+            d.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, d)
+            doi.append(str(rel))
+        except OSError:
+            pass
+    return doi
+
+
+def plugin() -> Path:
+    """Thư mục plugin Lightroom dùng thật — chép từ gói ra lần đầu, các lần sau
+    cập nhật file mã khi bản cài mang plugin mới hơn (giữ nguyên jobs/).
+
+    Không chép đè CẢ thư mục: sẽ xoá mất thư mục jobs đang chờ Lightroom xử
+    lý, và ăn mất kết quả của lần chạy trước.
     """
     dich = goc_du_lieu() / "AutoTone.lrplugin"
     if not dong_goi():
         return Path(__file__).resolve().parent / "AutoTone.lrplugin"
     nguon = goc_tai_nguyen() / "AutoTone.lrplugin"
+    if dich.exists() and nguon.is_dir() and not _DA_SOAT_PLUGIN:
+        _DA_SOAT_PLUGIN.append(True)          # moi lan mo app soat MOT lan
+        PLUGIN_CAP_NHAT[:] = _cap_nhat_plugin(nguon, dich)
     if not dich.exists() and nguon.is_dir():
         try:
             tao(dich.parent)

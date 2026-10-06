@@ -229,6 +229,29 @@ def main() -> int:
         # 8b. giao dien NOI ra canh bao — goi ham THAT App._fill_table
         loi += kiem_giao_dien(list(chay(goc, cu_khong_tone, td / "h1").values()))
 
+        # 9. MOC CHOT TU PLUGIN CU (bon cot moi rong) + preset bo trong WB/Tone,
+        #    tool da ghi mot lan (Exposure 0.6, Highlights -45); cap nhat plugin roi
+        #    chay lai -> nhan ra quy trinh moi, tinh tu MOC (khong cong len so tool
+        #    ghi), moc duoc bu bon cot. Buoi BVDay3 6/10, 1813 anh.
+        (td / "k").mkdir(); (td / "k0").mkdir()
+        moc_cu = {"Exposure2012": "0", "Highlights2012": "0", "Shadows2012": "0",
+                  "Temperature": "", "Tint": ""}
+        at.save_baseline(td / "k", {khoa(r): dict(moc_cu) for r in goc})
+        chua_render = lambda i: dict(as_shot(i), Temperature="", Tint="")   # noqa: E731
+        da_ghi = lambda i: dict(chua_render(i), Exposure2012="0.6",         # noqa: E731
+                                Highlights2012="-45")
+        k = chay(goc, da_ghi, td / "k")
+        so_sanh(loi, "moc plugin cu + plugin moi", chay(goc, chua_render, td / "k0"), k)
+        if not all(r.get("nen_tone") and r.get("nen_wb") for r in k.values()):
+            loi.append("Moc plugin cu + plugin moi: khong nhan ra preset bo trong WB/Tone")
+        if any("moc-cu-khac-quy-trinh" in r.get("notes", "") for r in k.values()):
+            loi.append("Moc plugin cu + plugin moi: lay ban xuat (so tool da ghi) lam moc")
+        at.write_sidecars(list(k.values()), dict(at.DEFAULTS, source="catalog"), td / "k")
+        mk = next(iter(at.load_baseline(td / "k").values()), {})
+        if (mk.get("WhiteBalance"), mk.get("Contrast2012"), mk.get("Highlights2012")) != \
+                ("As Shot", "0", "0"):
+            loi.append(f"Moc plugin cu khong duoc bu bon cot / bi de: {mk}")
+
     for m in loi:
         print("  [!]", m)
     print("TAT CA DAT" if not loi else f"{len(loi)} LOI")

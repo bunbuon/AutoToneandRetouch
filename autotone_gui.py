@@ -314,6 +314,7 @@ class App(ttk.Frame):
         self._chon_khau("phan_tich")
         self.after(80, self._pump)
         self.after(400, self._vong_lam_moi)
+        self.after(1200, self._bao_plugin_cap_nhat)
         self._soi_khoa()
         self.after(3000, self._soi_xuat)
         self._set_busy(False)
@@ -632,6 +633,28 @@ class App(ttk.Frame):
     #   CUDA. May khong card: khong tai gi, Retouch dung ngay bang CPU.
     #   Tai loi (mat mang...): noi ro, co "Thu lai" va "Dung tam bang CPU" —
     #   khong de nguoi dung ket han. ]]
+    def _bao_plugin_cap_nhat(self):
+        """Bản cài vừa chép plugin Lightroom mới đè lên bản cũ -> nhắc Reload.
+
+        #[[ 6/10: plugin cu (4/9) nam o thu muc du lieu suot nhieu ban cai vi
+        #   duong_dan.plugin() chi chep khi chua co. Nay no tu cap nhat file ma
+        #   (duong_dan._cap_nhat_plugin) — nhung Lightroom chi doc file moi khi
+        #   Reload / mo lai. Chua Reload thi ban xuat van thieu cot WhiteBalance /
+        #   Contrast -> tool bo qua WB va ba thanh Tone, y het loi user bao. ]]
+        """
+        doi = list(getattr(dd, "PLUGIN_CAP_NHAT", []) or [])
+        if not doi:
+            return
+        messagebox.showinfo(
+            "Đã cập nhật plugin Lightroom",
+            f"Bản cài này mang plugin AutoTone mới ({len(doi)} file đã cập nhật).\n\n"
+            "Để Lightroom dùng bản mới: trong Lightroom vào File › Plug-in "
+            "Manager… › chọn AutoTone › bấm Reload Plug-in (hoặc tắt hẳn rồi mở "
+            "lại Lightroom).\n\n"
+            "Chưa Reload thì Lightroom vẫn chạy plugin cũ: tool không nhận ra "
+            "preset bỏ trống WB / Tone nên sẽ bỏ qua cân WB và Contrast / Whites / "
+            "Blacks.", parent=self)
+
     def _gpu_khoa(self) -> bool:
         return (getattr(self, "_gpu_tt", "") in ("dang_tai", "loi")
                 and not getattr(self, "_gpu_bo_qua", False))
