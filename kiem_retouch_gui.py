@@ -82,6 +82,16 @@ def main() -> int:
                       ("askokcancel", True), ("askyesno", True),
                       ("askyesnocancel", True), ("askquestion", "yes")):
         setattr(ag.messagebox, _ten, _hop_gia(_ten, _tl))
+    #[[ 6/10: hop hoi "Dung muc Chung hay rieng gioi tinh?" (ag.hoi_nut) cung la
+    #   cua so MODAL — thay bang ban ghi lai, tra loi theo hoi_nut_tra[0]. ]]
+    hoi_nut_ghi: list = []
+    hoi_nut_tra = ["chung"]
+
+    def _hoi_nut_gia(_cha, tieu_de, noi_dung, _nut):
+        hoi_nut_ghi.append((tieu_de, noi_dung))
+        return hoi_nut_tra[0]
+
+    ag.hoi_nut = _hoi_nut_gia
 
     root = tk.Tk()
     root.geometry("1660x940")
@@ -804,10 +814,12 @@ def main() -> int:
     #   > 0 truoc: khong thi luc lui ve muc chung se la "moi muc o 0" -> preview
     #   khong tinh, test cho xong_xem mai khong xong. ]]
     tu_choi.write_text("1", encoding="utf-8")
-    w.v_muc[ten0].set(50)               # muc chung > 0 de con viec sau khi lui nhom
-    chay(2)
+    #[[ 6/10: bat "rieng" nhom DAU TIEN dua muc Chung cua anh ve 0 — nen bat
+    #   rieng TRUOC roi moi keo muc chung > 0 (de con viec sau khi lui nhom). ]]
     w.v_rieng[("nam", ten0)].set(55)
     w._doi_bat_rieng(("nam", ten0))
+    chay(2)
+    w.v_muc[ten0].set(50)               # muc chung > 0 de con viec sau khi lui nhom
     ok = cho(lambda: w._xem_bo_nhom and xong_xem())
     ktra("tool không nhận mức riêng theo nhóm: lùi về mức chung, nói ra",
          ok and not any(":" in k for k in muc_nhan()[-1])
@@ -1086,6 +1098,24 @@ def main() -> int:
          and rt.giong_muc(w._muc_chung_day_du(), w.muc_day_du())
          and not rt.doc_muc_anh(str(vao3)), f"mức chung {ten0}={mc.get(ten0)}")
     # ------------- chạy theo nhóm mức
+    #[[ Muc chung luc nay con "nam:<ten0>" (Sync tat ca tu Q0 dang co nhom Nam
+    #   rieng) -> moi anh "vua Chung vua Rieng" va start() se hoi (6/10). Phan nay
+    #   kiem chay theo MUC TUNG ANH, khong phai gioi tinh: bo nhom Nam ra khoi muc
+    #   chung truoc. ]]
+    bam(0)
+    w.doi_nhom("nam")
+    chay(2)
+    if w.v_bat_rieng[("nam", ten0)].get():
+        w.v_bat_rieng[("nam", ten0)].set(False)
+        w._doi_bat_rieng(("nam", ten0))
+    w.doi_nhom("")
+    chay(2)
+    ag.messagebox.askokcancel = lambda *a, **k: True
+    try:
+        w._sync_het()
+    finally:
+        ag.messagebox.askokcancel = hoi_that
+    chay(2)
     bam(1)
     w.v_muc[ten0].set(moi + 10)                 # Q1: mức riêng
     bam(3)
@@ -1108,7 +1138,11 @@ def main() -> int:
             Image.open(Path(thu_muc) / a).point(lambda v: 255 - v).save(Path(ra) / a)
         yield ("ma", 0)
 
-    def chay_start():
+    def chay_start(het=False):
+        #[[ 6/10: Chay retouch chi chay ANH DANG CHON — het=True la Ctrl+A. ]]
+        if het:
+            w.luoi.chon_het()
+            chay(1)
         w.rt.chay = chay_gia
         threading.Thread = _ChayLien
         try:
@@ -1121,7 +1155,7 @@ def main() -> int:
     hoi = []
     ag.messagebox.askokcancel = lambda *a, **k: (hoi.append(" ".join(map(str, a))), True)[1]
     try:
-        chay_start()
+        chay_start(het=True)
     finally:
         ag.messagebox.askokcancel = hoi_that
     tam = Path(tmp) / ".autotone_retouch_tam"
@@ -1157,8 +1191,11 @@ def main() -> int:
          and (cua_ho / "anh_cua_ho.jpg").is_file()
          and rt.don_thu_muc_tam(d_tam) and not d_tam.exists(),
          f"thư mục tạm lấy tên {d_tam.name}")
-    #[[ Ghi de ma anh khac muc: tu choi — chay theo nhom la chay tren thu muc
-    #   tam, ghi de o do khong biet anh goc that co doi khong. ]]
+    #[[ 6/10: Ghi de ma anh khac muc KHONG con tu choi (user bi chan "Ghi de chi
+    #   chay duoc MOT muc"): tool ghi ra thu muc tam rieng (khong --ghi-de), app
+    #   thay anh goc (rt.dua_ket_qua_ra). Anh muc 0 het giu nguyen. Sao luu anh
+    #   vao truoc, tra lai sau — cac bai sau con dung. ]]
+    sao = {p.name: p.read_bytes() for p in vao3.glob("*.png")}
     loi = []
     loi_that = ag.messagebox.showerror
     ag.messagebox.showerror = lambda *a, **k: loi.append(" ".join(map(str, a)))
@@ -1167,14 +1204,19 @@ def main() -> int:
     w._doi_ghide()
     goi.clear()
     try:
-        chay_start()
+        chay_start(het=True)
     finally:
         ag.messagebox.showerror = loi_that
         ag.messagebox.askokcancel = hoi_that
         w.v_ghide.set(False)
         w._doi_ghide()
-    ktra("ghi đè mà ảnh khác mức: từ chối, không chạy gì",
-         not goi and bool(loi) and "MỘT mức" in loi[-1], (loi or ["—"])[-1][:60])
+    doi = sorted(n for n, b in sao.items() if (vao3 / n).read_bytes() != b)
+    ktra("ghi đè mà ảnh khác mức: chạy từng nhóm, ĐÈ đúng ảnh gốc, ảnh mức 0 giữ nguyên",
+         not loi and len(goi) == 2 and not any(g[4].get("ghi_de") for g in goi)
+         and doi == ["Q0.png", "Q1.png", "Q2.png", "Q4.png", "Q5.png"] and not tam.exists(),
+         f"đổi {doi} · {len(goi)} lượt · lỗi {(loi or ['—'])[-1][:50]}")
+    for n, b in sao.items():
+        (vao3 / n).write_bytes(b)
     #[[ Moi anh cung muc (truong hop thuong): MOT luot thang tren thu muc vao
     #   — y het truoc khi co muc rieng tung anh. ]]
     bam(0)
@@ -1183,13 +1225,77 @@ def main() -> int:
         w._sync_het()  # nut da go khoi UI; goi thang ham
         w.v_lamlai.set(True)
         goi.clear()
-        chay_start()
+        chay_start(het=True)
     finally:
         ag.messagebox.askokcancel = hoi_that
         w.v_lamlai.set(False)
     ktra("mọi ảnh cùng mức: MỘT lượt thẳng trên thư mục vào (như trước)",
          len(goi) == 1 and goi[0][0] == str(vao3) and goi[0][4].get("lam_lai") is True
          and len(goi[0][1]) == 6, " | ".join(f"{g[0]} {len(g[1])} ảnh" for g in goi))
+    #[[ 6/10 — user: "Khi bam Chay Retouch thi anh nao duoc Select thi se chay
+    #   va xuat anh do". Chon 2 tam -> CHI 2 tam do chay (thu muc tam), LAM LAI
+    #   ca khi da co ket qua; tam khac trong thu muc ra khong dung toi. ]]
+    bam(1)
+    bam(2, 0x4)
+    truoc = {n: (ra3 / n).stat().st_mtime_ns for n in ("Q0.png", "Q1.png", "Q2.png")}
+    goi.clear()
+    ag.messagebox.askokcancel = lambda *a, **k: True
+    try:
+        chay_start()
+    finally:
+        ag.messagebox.askokcancel = hoi_that
+    sau = {n: (ra3 / n).stat().st_mtime_ns for n in truoc}
+    ktra("Chạy retouch chỉ chạy ẢNH ĐANG CHỌN (cả tấm đã có kết quả), tấm khác không đụng",
+         len(goi) == 1 and goi[0][1] == ["Q1.png", "Q2.png"]
+         and goi[0][0].startswith(str(tam)) and sau["Q1.png"] != truoc["Q1.png"]
+         and sau["Q2.png"] != truoc["Q2.png"] and sau["Q0.png"] == truoc["Q0.png"]
+         and not tam.exists(), str([g[1] for g in goi]))
+    #[[ 6/10 — user: (1) "Buc nao chon gioi tinh rieng de chinh sua rieng thi mac
+    #   dinh su dung thong so cua cac gioi tinh. Muc Chung se dua thong so ve 0."
+    #   (2) Vua Chung vua Rieng gioi tinh thi Chay retouch HOI dung ben nao. ]]
+    bam(1)
+    w.doi_nhom("nam")
+    chay(2)
+    k_nam = ("nam", ten0)
+    if not w.v_bat_rieng[k_nam].get():
+        w.v_bat_rieng[k_nam].set(True)
+        w._doi_bat_rieng(k_nam)
+    chay(2)
+    m1 = dict(w._muc_anh.get("Q1.png", {}))
+    ktra("bật “riêng” giới tính đầu tiên: mức Chung của ảnh về 0, thanh riêng lấy số Chung cũ",
+         float(w.v_muc[ten0].get()) == 0 and m1.get(ten0) == 0
+         and m1.get(f"nam:{ten0}") == moi,
+         f"chung {w.v_muc[ten0].get()} · nam {m1.get(f'nam:{ten0}')}")
+    w.v_rieng[k_nam].set(50)
+    chay(2)
+    w.doi_nhom("")
+    chay(2)
+    w.v_muc[ten0].set(30)
+    chay(2)
+    hoi_nut_ghi.clear()
+    m_rieng, m_chung = {}, {}
+    ag.messagebox.askokcancel = lambda *a, **k: True
+    try:
+        hoi_nut_tra[0] = "rieng"
+        goi.clear()
+        chay_start()
+        m_rieng = dict(goi[0][2]) if goi else {}
+        hoi_nut_tra[0] = "chung"
+        goi.clear()
+        chay_start()
+        m_chung = dict(goi[0][2]) if goi else {}
+    finally:
+        ag.messagebox.askokcancel = hoi_that
+        hoi_nut_tra[0] = "chung"
+    ktra("vừa Chung vừa riêng giới tính: Chạy retouch HỎI; chọn Riêng -> Chung về 0, giữ mức Nam",
+         len(hoi_nut_ghi) == 2 and m_rieng.get(ten0) == 0
+         and m_rieng.get(f"nam:{ten0}") == 50,
+         f"hỏi {len(hoi_nut_ghi)} lần · {ten0}={m_rieng.get(ten0)} nam={m_rieng.get(f'nam:{ten0}')}")
+    ktra("…chọn Chung -> bỏ mức riêng, mọi khuôn mặt theo mức Chung",
+         m_chung.get(ten0) == 30 and not any(":" in str(k) for k in m_chung),
+         str({k: v for k, v in m_chung.items() if v}))
+    w._ve_muc_chung()
+    chay(2)
     #[[ Ten tep DAI + muc rieng (dong pham vi dai nhat, co nut "Về mức chung"):
     #   bang dieu khien KHONG duoc phinh ra — phinh la anh lon / dai anh nhay
     #   cot. Anh chup 4/10 bat duoc: ban dau nut nam cung dong voi ten tep. ]]

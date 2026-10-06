@@ -5051,6 +5051,42 @@ def _so_muc(v, md) -> float:
         return 0.0
 
 
+def hoi_nut(cha, tieu_de: str, noi_dung: str, nut: list):
+    """Hộp hỏi có nút MANG TÊN RIÊNG (messagebox chỉ có Yes / No / Cancel —
+    "Yes = mức chung" là bắt người dùng nhớ quy ước). nut = [(mã, nhãn), ...]
+    -> mã của nút được bấm; None khi đóng cửa sổ / Esc."""
+    w = tk.Toplevel(cha)
+    w.title(tieu_de)
+    w.transient(cha)
+    w.resizable(False, False)
+    kq = [None]
+    o = ttk.Frame(w, padding=16)
+    o.pack(fill="both", expand=True)
+    ttk.Label(o, text=noi_dung, wraplength=480, justify="left").pack(anchor="w")
+    hang = ttk.Frame(o)
+    hang.pack(fill="x", pady=(14, 0))
+
+    def chon(ma):
+        kq[0] = ma
+        w.destroy()
+
+    for ma, nhan in reversed(nut):
+        ttk.Button(hang, text=nhan, command=lambda m=ma: chon(m)).pack(
+            side="right", padx=(8, 0))
+    w.bind("<Escape>", lambda _e: chon(None))
+    w.protocol("WM_DELETE_WINDOW", lambda: chon(None))
+    try:
+        w.update_idletasks()
+        x = cha.winfo_rootx() + (cha.winfo_width() - w.winfo_width()) // 2
+        y = cha.winfo_rooty() + (cha.winfo_height() - w.winfo_height()) // 3
+        w.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        w.grab_set()
+    except tk.TclError:
+        pass
+    w.wait_window()
+    return kq[0]
+
+
 class RetouchWindow(Khung):
     """Chặng cuối: đưa thư mục Lightroom vừa Export sang tool retouch.
 
@@ -6275,9 +6311,55 @@ class RetouchWindow(Khung):
         o = self._sc_theo.get(k)
         if o:
             self._mo_hang(o[0], o[1], self.v_bat_rieng[k].get())
+        if not self._dang_nap_muc and self.v_bat_rieng[k].get():
+            self._chung_ve_0_khi_rieng(k)
         self._danh_dau_the()
         if not self._dang_nap_muc:
             self._nguoi_doi_muc()
+
+    def _ten_theo_nhom(self) -> set:
+        """Tính năng chia được theo nhóm mặt (có thanh ở thẻ giới tính)."""
+        goc = self._goc_hien()
+        return {t for t, *_x in self._ds_keo if self.rt.theo_nhom(t, goc)}
+
+    def _chung_ve_0_khi_rieng(self, k):
+        """Bật “riêng” ĐẦU TIÊN cho một nhóm mặt -> mức CHUNG của ảnh về 0.
+
+        #[[ 6/10 — user: "Buc nao chon gioi tinh rieng de chinh sua rieng thi
+        #   mac dinh su dung thong so cua cac gioi tinh. Muc Chung se dua thong
+        #   so ve 0." Truoc day muc chung VAN AP cho moi khuon mat khong dat
+        #   rieng (ca tinh nang nhom do chua bat rieng) — dat rieng cho Nu ma Nam
+        #   van bi lam min theo muc chung. Chi lam O LAN BAT DAU (chua nhom nao
+        #   bat rieng): sau do nguoi dung tu keo lai muc chung thi la y ho — luc
+        #   Chay retouch se hoi dung Chung hay Rieng (xem start). Tinh nang
+        #   khong chia nhom (keo dai chan...) khong co the gioi tinh nen GIU muc
+        #   chung. Thanh rieng vua bat lay so cua muc chung truoc khi ve 0. ]]
+        """
+        if any(v.get() for kk, v in self.v_bat_rieng.items() if kk != k):
+            return
+        nhom_duoc = self._ten_theo_nhom()
+        doi = []
+        self._dang_nap_muc = True
+        try:
+            rv = self.v_rieng.get(k)
+            cv = self.v_muc.get(k[1])
+            if rv is not None and cv is not None and float(rv.get()) == 0.0:
+                rv.set(float(cv.get()))
+            for ten, v in self.v_muc.items():
+                if ten in nhom_duoc and float(v.get()) != 0.0:
+                    v.set(0.0)
+                    doi.append(ten)
+        except (tk.TclError, ValueError):
+            pass
+        finally:
+            self._dang_nap_muc = False
+        if doi:
+            p = self._anh_dang
+            self._append(f"… {Path(p).name if p else 'Cả thư mục'}: đặt riêng theo "
+                         "nhóm mặt — các thanh ở thẻ Chung về 0 (chỉ nhóm đặt "
+                         "riêng được retouch)")
+            self.app.status("Đã đưa mức Chung về 0 — ảnh này dùng mức riêng theo "
+                            "giới tính", gd.MAU["xong"])
 
     def _dung_the_nhom(self, goc):
         """Thẻ nhóm: Chung + từng nhóm khuôn mặt, thành hàng viên chọn — ba
@@ -7355,10 +7437,19 @@ class RetouchWindow(Khung):
             xong = min(int(getattr(self, "_tien_do_tool", 0) or 0), tong)
         else:
             xong = sum(1 for _p, da in ds if da)
-        self.pb.configure(maximum=max(tong, 1), value=xong)
-        if not tong:
+        lc = getattr(self, "_luot_chay", None)
+        if lc and self.worker and self.worker.is_alive():
+            #[[ Dang chay anh DA CHON / theo nhom muc tren thu muc tam: dem theo
+            #   LUOT CHAY (xem start), khong theo file thu muc ra. ]]
+            da = min(lc["xong"] + int(getattr(self, "_tien_do_tool", 0) or 0), lc["tong"])
+            self.pb.configure(maximum=max(lc["tong"], 1), value=da)
+            self.lbl_tt.configure(text=f"Đang chạy {da}/{lc['tong']} ảnh đã chọn"
+                                       + self._nhip())
+        elif not tong:
+            self.pb.configure(maximum=1, value=0)
             self.lbl_tt.configure(text="Thư mục vào chưa có ảnh nào")
         else:
+            self.pb.configure(maximum=max(tong, 1), value=xong)
             self.lbl_tt.configure(
                 text=f"{xong}/{tong} ảnh đã có kết quả — còn {tong - xong}"
                      + self._nhip())
@@ -7507,16 +7598,37 @@ class RetouchWindow(Khung):
                     return
             except OSError:
                 pass
-        tong, xong = self._dem()
-        if not tong:
+        tong_tm, _xong_tm = self._dem()
+        if not tong_tm:
             messagebox.showinfo("Không có ảnh", f"{vao}\nkhông có ảnh nào.",
                                 parent=self)
             return
-        con = tong if self.v_lamlai.get() else tong - xong
+        #[[ CHI CHAY ANH DANG CHON (6/10 — user: "Khi bam Chay Retouch thi anh
+        #   nao duoc Select thi se chay va xuat anh do"). Chon o dai anh (Ctrl+A
+        #   = ca thu muc). Chon RIENG MOT PHAN la y muon xuat lai CHINH nhung tam
+        #   do -> lam lai ca tam da co ket qua. Chon het thi giu nhu cu: bo qua tam
+        #   da xong tru khi tick "Lam lai" — me hang nghin anh sap giua chung bam
+        #   chay lai van di tiep tu cho dung. ]]
+        tat_ca = [str(p) for p, _x in self._ds_luoi]
+        luoi = getattr(self, "luoi", None)
+        da_chon = {str(p) for p in (luoi.ds_chon() if luoi is not None else [])}
+        ds_chay = [p for p in tat_ca if p in da_chon]
+        if not ds_chay:
+            messagebox.showinfo("Chưa chọn ảnh nào",
+                                "Bấm chọn ảnh cần retouch ở dải ảnh (Ctrl+A để chọn "
+                                "hết) rồi bấm Chạy retouch.", parent=self)
+            return
+        mot_phan = len(ds_chay) < len(tat_ca)
+        xong_cua = {str(p): bool(x) for p, x in self._ds_luoi}
+        tong = len(ds_chay)
+        xong = sum(1 for p in ds_chay if xong_cua.get(p))
+        lam_lai = bool(self.v_lamlai.get()) or mot_phan
+        con = tong if (lam_lai or ghi_de) else tong - xong
         if not con:
             messagebox.showinfo("Đã xong từ trước",
                                 f"Cả {tong} ảnh đều đã có kết quả.\n\n"
-                                "Muốn làm lại thì tick “Làm lại cả ảnh đã có kết quả”.",
+                                "Muốn làm lại: chọn riêng những tấm cần làm ở dải "
+                                "ảnh, hoặc tick “Làm lại cả ảnh đã có kết quả”.",
                                 parent=self)
             return
 
@@ -7529,11 +7641,35 @@ class RetouchWindow(Khung):
         #   thu muc tam (lien ket cung) + mot luot `chay` cua CHINH saytool.
         #   Nhom muc 0 het (khong retouch) thi chep nguyen ban sang thu muc ra
         #   — thu muc giao khach du anh, va bo dem "da lam" dung. ]]
-        lam_lai = bool(self.v_lamlai.get())
         de_quy = bool(self.v_dequy.get())
-        xong_cua = {str(p): bool(x) for p, x in self._ds_luoi}
-        nhom = self.rt.nhom_theo_muc([str(p) for p, _x in self._ds_luoi],
-                                     lambda p: self._loc_muc(self._muc_hieu_luc(p)))
+        muc_cua = {p: self._loc_muc(self._muc_hieu_luc(p)) for p in ds_chay}
+        #[[ VUA MUC CHUNG VUA MUC RIENG GIOI TINH -> HOI (6/10). Xem
+        #   rt.co_ca_chung_rieng. "Rieng": muc chung cua tinh nang chia nhom ve
+        #   0 — chi nhom da dat rieng duoc retouch; "Chung": bo muc rieng, moi
+        #   khuon mat theo muc chung. Chi doi muc CUA LUOT CHAY NAY, khong sua
+        #   muc da luu. ]]
+        nhom_duoc = self._ten_theo_nhom()
+        ca_hai = [p for p in ds_chay if self.rt.co_ca_chung_rieng(muc_cua[p], nhom_duoc)]
+        if ca_hai:
+            ten = ", ".join(Path(p).name for p in ca_hai[:3]) + (" …" if len(ca_hai) > 3 else "")
+            dung = hoi_nut(
+                self, "Dùng mức Chung hay mức riêng giới tính?",
+                f"{len(ca_hai)} ảnh ({ten}) đang bật CẢ mức Chung LẪN mức riêng "
+                "theo giới tính / nhóm mặt.\n\n"
+                "• Mức Chung: mọi khuôn mặt theo mức Chung, bỏ mức riêng.\n"
+                "• Riêng giới tính: chỉ nhóm đã đặt riêng được retouch theo mức "
+                "của nhóm đó — mức Chung về 0.\n\n"
+                "Chỉ áp cho lượt chạy này, không đổi mức đã lưu.",
+                [("chung", "Dùng mức Chung"), ("rieng", "Dùng riêng giới tính"),
+                 (None, "Huỷ")])
+            if dung is None:
+                return
+            for p in ca_hai:
+                muc_cua[p] = self.rt.chon_chung_rieng(muc_cua[p], nhom_duoc, dung)
+            self._append(f"… {len(ca_hai)} ảnh có cả mức Chung lẫn riêng giới tính: "
+                         + ("dùng mức Chung" if dung == "chung"
+                            else "dùng mức riêng giới tính (Chung về 0)"))
+        nhom = self.rt.nhom_theo_muc(ds_chay, lambda p: muc_cua[p])
         #[[ any(muc.values()) da dung cho ca muc rieng, vi muc_day_du() gop
         #   ca hai vao mot tu dien phang. Chi doi loi chu: "ba thanh keo" la
         #   con so cua ban cu, gio la sau va con them nam nhom. ]]
@@ -7544,22 +7680,11 @@ class RetouchWindow(Khung):
                 + (" và mức riêng từng ảnh" if len(nhom) > 1 else "")
                 + ". Không có gì để làm.", parent=self)
             return
-        #[[ GHI DE + NHIEU NHOM MUC -> TU CHOI. Chay theo nhom la chay tren
-        #   thu muc tam (lien ket cung / ban chep): saytool ghi de len BAN TRONG
-        #   THU MUC TAM — tuy cach no ghi (ghi thang hay ghi file moi roi doi
-        #   ten) ma anh goc that co doi hay khong. Khong doan chuyen mat anh
-        #   goc cua khach. ]]
-        if ghi_de and len(nhom) > 1:
-            messagebox.showerror(
-                "Ghi đè chỉ chạy được MỘT mức",
-                f"Các ảnh đang có {len(nhom)} mức khác nhau (mức riêng từng ảnh). "
-                "Ghi đè lên ảnh gốc chỉ chạy một mức cho cả thư mục.\n\n"
-                "Chọn một trong hai:\n"
-                "   • Ctrl+A chọn hết ở dải ảnh rồi bấm “Sync ảnh đã chọn” "
-                "để mọi ảnh cùng một mức\n"
-                "   • Hoặc tắt “Ghi đè lên ảnh gốc” để ra thư mục khác",
-                parent=self)
-            return
+        #[[ CHAY TREN THU MUC TAM khi: nhieu muc (moi muc mot luot), hoac chi
+        #   chay MOT PHAN thu muc (anh dang chon). Ghi de + thu muc tam KHONG con
+        #   bi chan (6/10 — user bi chan "Ghi de chi chay duoc MOT muc"): saytool
+        #   ghi ra thu muc tam rieng, app tu thay anh goc — rt.dua_ket_qua_ra. ]]
+        theo_tam = len(nhom) > 1 or mot_phan
 
         #[[ HOI XAC NHAN GHI DE — sau khi da dem duoc so anh.
         #
@@ -7611,13 +7736,13 @@ class RetouchWindow(Khung):
             return
 
         tam_goc = None
-        if len(nhom) > 1:
+        if theo_tam:
             try:
                 tam_goc = self.rt.tao_thu_muc_tam(vao)
             except OSError as ex:
                 messagebox.showerror("Không tạo được thư mục tạm",
-                                     f"Chạy theo nhóm mức cần một thư mục tạm:\n{ex}",
-                                     parent=self)
+                                     "Chạy ảnh đã chọn / theo nhóm mức cần một thư "
+                                     f"mục tạm:\n{ex}", parent=self)
                 return
 
         #[[ CHAN DUONG DAN CO DAU TIENG VIET — xem khong_ascii() ben retouch.py.
@@ -7697,8 +7822,10 @@ class RetouchWindow(Khung):
         #   anh la chung da troi khoi 80 dong cuoi tu lau. ]]
         self._bi_bo: list = []
         self._so_dong_log = 0        # đếm để biết tool có nói gì không
-        self._append(f"\n=== {datetime.now():%H:%M:%S}  {con} ảnh cần làm, "
-                     f"{luong} luồng"
+        self._append(f"\n=== {datetime.now():%H:%M:%S}  {con} ảnh cần làm"
+                     + (f" (ảnh đã chọn, trên {len(tat_ca)} ảnh của thư mục)"
+                        if mot_phan else "")
+                     + f", {luong} luồng"
                      + (f", {sum(1 for *_x, la0 in viec if not la0)} lượt theo mức"
                         if len(nhom) > 1 else "") + " ===")
 
@@ -7714,7 +7841,15 @@ class RetouchWindow(Khung):
         #   im, te hon la dung im tu dau. ]]
         self._tien_do_tool = 0
 
-        def chay_mot(thu_muc, muc):
+        #[[ Tien do LUOT CHAY tren thu muc tam: ket qua chi ra thu muc that khi
+        #   xong tung luot, dem file thu muc ra thi thanh tien do dung im. Dem bang
+        #   so anh da dua ra + tien do tool cua luot dang chay (xem _dem). ]]
+        self._luot_chay = ({"tong": sum(len(a) for _m, a, _l in viec), "xong": 0}
+                           if tam_goc is not None else None)
+        if tam_goc is not None:
+            self._xong_dau = 0
+
+        def chay_mot(thu_muc, muc, ra=ra, ghi_de=ghi_de, lam_lai=lam_lai):
             #[[ TU CHAY LAI khi sap giua me anh.
             #
             #   0xC0000374 lam sap tien trinh o anh 556/3465. Tien trinh da
@@ -7770,22 +7905,43 @@ class RetouchWindow(Khung):
                 else:
                     n_luot = sum(1 for _m, _a, la0 in viec if not la0)
                     i = 0
+                    lc = self._luot_chay
                     for m, a, la0 in viec:
                         if self._dung_tay:
                             break
                         if la0:
-                            n = self.rt.chep_nguyen_ban(a, vao, ra, de_quy, lam_lai)
+                            #[[ Muc 0 het = khong retouch. Ghi de thi anh goc giu
+                            #   nguyen la dung; ra thu muc khac thi chep nguyen ban
+                            #   sang de thu muc giao khach du anh. ]]
+                            n = 0 if ghi_de else self.rt.chep_nguyen_ban(
+                                a, vao, ra, de_quy, lam_lai)
+                            if lc is not None:
+                                lc["xong"] += len(a)
                             self.log_q.put(("dong", f"=== {len(a)} ảnh mức 0 hết: "
-                                                    f"chép nguyên bản {n} ảnh sang "
-                                                    f"thư mục ra ==="))
+                                                    + ("giữ nguyên ảnh gốc" if ghi_de
+                                                       else f"chép nguyên bản {n} ảnh "
+                                                            "sang thư mục ra") + " ==="))
                             continue
                         i += 1
                         d = tam_goc / f"nhom_{i}"
+                        d_ra = tam_goc / f"ra_{i}"
                         lien, chep = self.rt.dung_thu_muc_nhom(vao, a, d, de_quy)
                         self.log_q.put(("dong", f"=== lượt {i}/{n_luot}: {len(a)} ảnh"
                                                 + (f" (chép {chep} ảnh vào thư mục "
                                                    f"tạm)" if chep else "") + " ==="))
-                        ma = chay_mot(d, m)
+                        #[[ saytool LUON ghi ra thu muc tam rieng (d_ra, moi tinh,
+                        #   khong --ghi-de, khong --lam-lai — sap giua chung thi
+                        #   chay lai di tiep dung cho), roi app dua tung tam ra
+                        #   thu muc ra / de len anh goc. Dua ra CA KHI hong /
+                        #   dung giua chung: tam nao da xong thi khong mat. ]]
+                        self._tien_do_tool = 0
+                        ma = chay_mot(d, m, ra=d_ra, ghi_de=False, lam_lai=False)
+                        n_ra = self.rt.dua_ket_qua_ra(a, vao, d_ra, ra, de_quy, ghi_de)
+                        if lc is not None:
+                            lc["xong"] += n_ra
+                        self._tien_do_tool = 0
+                        self.log_q.put(("dong", f"=== đã {'ghi đè lên ảnh gốc' if ghi_de else 'đưa ra thư mục ra'}"
+                                                f" {n_ra}/{len(a)} ảnh ==="))
                         if ma != 0 or self._dung_tay:
                             break
             except Exception:                                # noqa: BLE001

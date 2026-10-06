@@ -1167,6 +1167,69 @@ def nhom_theo_muc(anh: list, muc_cua) -> list:
     return list(nhom.values())
 
 
+#[[ MUC CHUNG HAY MUC RIENG GIOI TINH (6/10 — user: "Neu thanh thong so o muc
+#   chung duoc chon va o cac gioi tinh cung duoc chon, khi bam Chay Retouch can
+#   hoi xem su dung thong so cua Chung hay Rieng cac gioi tinh").
+#
+#   Bo muc phang: "vet" = muc CHUNG (moi khuon mat), "nu:vet" = muc RIENG cua
+#   nhom mat Nu (de len muc chung cho mat Nu). Chi tinh nang CHIA DUOC theo
+#   nhom (theo_nhom) moi xet: keo dai chan va buoc tu khai theo_nhom = False
+#   khong co the gioi tinh nen muc chung cua no luon giu nguyen. ]]
+def co_ca_chung_rieng(m: dict, theo_nhom) -> bool:
+    """Ảnh vừa có mức CHUNG > 0 (ở tính năng chia được theo nhóm) vừa có mức
+    RIÊNG theo nhóm mặt > 0 — phải hỏi dùng bên nào."""
+    c = _chuan_muc(m)
+    chung = any(v > 0 for k, v in c.items() if ":" not in k and k in theo_nhom)
+    rieng = any(v > 0 for k, v in c.items() if ":" in k)
+    return chung and rieng
+
+
+def chon_chung_rieng(m: dict, theo_nhom, dung: str) -> dict:
+    """dung="chung": bỏ mọi mức riêng theo nhóm (mọi khuôn mặt theo mức chung).
+    dung="rieng": mức CHUNG của tính năng chia được theo nhóm về 0 — chỉ nhóm
+    đã đặt riêng được retouch. Tính năng không chia nhóm giữ nguyên."""
+    if dung == "chung":
+        return {k: v for k, v in m.items() if ":" not in str(k)}
+    if dung == "rieng":
+        return {k: (0.0 if ":" not in str(k) and str(k) in theo_nhom else v)
+                for k, v in m.items()}
+    return dict(m)
+
+
+def dua_ket_qua_ra(anh: list, vao, ra_tam, ra, de_quy: bool = False,
+                   ghi_de: bool = False) -> int:
+    """Kết quả một lượt chạy trên thư mục tạm -> đúng chỗ của nó: thư mục ra,
+    hoặc ĐÈ LÊN ẢNH GỐC khi ghi_de. -> số tấm đã đưa ra.
+
+    #[[ 6/10 — user bi chan "Ghi de chi chay duoc MOT muc". Truoc day chay theo
+    #   nhom muc + ghi de bi tu choi: saytool --ghi-de tren thu muc tam (lien
+    #   ket cung) thi anh goc that co doi hay khong tuy cach no ghi file. Nay
+    #   saytool LUON ghi ra thu muc tam rieng (khong --ghi-de), app tu thay:
+    #   os.replace cung o (thu muc tam nam canh thu muc vao) — doi ten nguyen
+    #   tu, sap giua chung thi anh goc con nguyen hoac da la ban moi, khong bao
+    #   gio nua voi. Khac o (thu muc ra o o khac) thi chep. ]]
+    """
+    import shutil
+    vao, ra_tam = Path(vao), Path(ra_tam)
+    n = 0
+    for p in anh:
+        p = Path(p)
+        rel = p.relative_to(vao) if de_quy else Path(p.name)
+        q = ra_tam / rel
+        if not q.is_file():
+            continue
+        dich = p if ghi_de else duong_ket_qua(p, vao, ra, de_quy)
+        if dich is None:
+            continue
+        dich.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.replace(q, dich)
+        except OSError:
+            shutil.copy2(q, dich)
+        n += 1
+    return n
+
+
 def gop_muc(ds_muc: list) -> dict:
     """Mức LỚN NHẤT của từng tính năng qua mọi nhóm — để hỏi đủ file mô hình
     cho cả lượt chạy (mo_hinh_can / _hoi_chep)."""
