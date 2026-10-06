@@ -872,10 +872,18 @@ def tao_ban_nhan(ra_goi: Path) -> list:
     return da_tao
 
 
+#[[ RAC NHI PHAN trong goi (7/10): torch/lib cua wheel torch mang ca thu vien
+#   LIEN KET TINH (.lib — chi dung khi bien dich mo rong C++ chong len torch,
+#   khong bao gio nap luc chay): 142 file, 768 MB, rieng dnnl.lib 623 MB. Mau
+#   rglob (co thu muc) chu khong bo vao LOAI_TRU: LOAI_TRU con duoc
+#   bao_mat.dung_cay_nguon lay stem lam ten module loai khoi cay nguon. ]]
+LOAI_TRU_NHI_PHAN = ["torch/lib/*.lib"]
+
+
 def don_goi(thu_muc: Path) -> list:
     """Xoá những file lọt vào gói mà lẽ ra không được có. -> danh sách đã xoá."""
     da_xoa = []
-    for f in LOAI_TRU:
+    for f in LOAI_TRU + LOAI_TRU_NHI_PHAN:
         for p in Path(thu_muc).rglob(f):
             try:
                 p.unlink()
