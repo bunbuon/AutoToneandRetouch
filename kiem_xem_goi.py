@@ -150,13 +150,24 @@ def main(argv=None) -> int:
         print("nhật ký:", dong_mo[-1] if dong_mo else "(không có — bản mã nguồn?)")
         if dong_mo and not ("insightface" in dong_mo[-1] and "'lmk'" in dong_mo[-1]):
             loi.append("mặt không do insightface nhận / thiếu điểm mốc (lmk)")
-        if nk_loi.is_file():
-            hong = [x.strip() for x in nk_loi.read_text(encoding="utf-8", errors="replace").splitlines()
-                    if "InsightFace" in x or "khong tai duoc" in x or "khong tao duoc" in x]
-            for x in hong[:5]:
-                print("  lỗi:", x)
-            if hong:
-                loi.append("xem_truoc_loi.log có lỗi insightface / tải mô hình")
+        dong_loi = (nk_loi.read_text(encoding="utf-8", errors="replace").splitlines()
+                    if nk_loi.is_file() else [])
+        hong = [x.strip() for x in dong_loi
+                if "InsightFace" in x or "khong tai duoc" in x or "khong tao duoc" in x]
+        for x in hong[:5]:
+            print("  lỗi:", x)
+        if hong:
+            loi.append("xem_truoc_loi.log có lỗi insightface / tải mô hình")
+        if loi and dong_loi:
+            #[[ Hong thi in ca duoi xem_truoc_loi.log: tren may build (Actions)
+            #   thu muc du lieu tam bi xoa ngay sau day — khong in la mat dau vet. ]]
+            print("--- 40 dòng cuối xem_truoc_loi.log ---")
+            for x in dong_loi[-40:]:
+                print("   ", x)
+        if loi and nk.is_file():
+            print("--- xem_truoc.log ---")
+            for x in nk.read_text(encoding="utf-8", errors="replace").splitlines()[-15:]:
+                print("   ", x)
     finally:
         shutil.rmtree(du_lieu, ignore_errors=True)
 

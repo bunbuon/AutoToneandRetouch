@@ -8722,6 +8722,17 @@ def _cua_saytool(co: str, tham: list) -> int:
     except Exception:                                        # noqa: BLE001
         pass
 
+    #[[ macOS: onnxruntime (do mat insightface + phan vung da) chay CPU, KHONG
+    #   CoreML. 6/10, ban Mac dau tien co du insightface: tren may build Actions
+    #   bo do mat insightface ra 0 mat (khong bao loi) va lui ve yunet — khong
+    #   diem moc -> moi tinh nang can moc mat khong doi. det_10g khai bao hinh
+    #   dang DONG [1,3,?,?] (cung ly do DirectML phai ghim hinh dang, xem
+    #   saytool/thiet_bi.py); CoreML chua tung duoc thu tren may Mac that. CPU
+    #   Apple Silicon do mat ~0,1-0,2 s/anh, du nhanh. setdefault: van ep tay
+    #   duoc bang SAY_ORT / SAY_ORT_MAT. ]]
+    if sys.platform == "darwin":
+        os.environ.setdefault("SAY_ORT", "cpu")
+
     #[[ --say-xem: VONG LAP XEM TRUOC trong goi (keo thanh -> hien ket qua ngay).
     #
     #   Ban mã nguồn chay `python -c MA_CON`; ban DONG GOI khong chay `-c` duoc
@@ -8871,6 +8882,18 @@ def _cua_saytool(co: str, tham: list) -> int:
             __import__(_m)
         except Exception:                                    # noqa: BLE001
             pass
+    #[[ MPS bao co ma khong chay duoc (may ao macOS) -> chay CPU thay vi de
+    #   moi buoc nap mo hinh hong — xem xem_truoc.mps_hong(). ]]
+    if sys.platform == "darwin" and "--may" in tham:
+        i = tham.index("--may")
+        if i + 1 < len(tham) and tham[i + 1] in ("auto", "mps"):
+            try:
+                from xem_truoc import mps_hong
+                if mps_hong():
+                    tham = tham[:i + 1] + ["cpu"] + tham[i + 2:]
+                    print("  MPS báo có nhưng không chạy được — chạy bằng CPU.", flush=True)
+            except Exception:                                # noqa: BLE001
+                pass
     return int(say_main(tham) or 0)
 
 

@@ -41,6 +41,28 @@ import threading
 #   Moi tin tra ve mang lai "fp" cua anh no noi toi: doi anh nhanh thi tin
 #   cua anh cu van ve sau — phai biet ma bo.
 #]]
+def mps_hong() -> bool:
+    """True khi torch BÁO có MPS (GPU Apple) nhưng KHÔNG chạy được thật.
+
+    #[[ 6/10, may macOS cua GitHub Actions (may ao, khong co GPU that): MPS
+    #   is_available() = True nhung nap mo hinh nao cung "MPS backend out of
+    #   memory (MPS allocated: 0 bytes ...) Tried to allocate 18.00 KiB" -> 6/9
+    #   buoc retouch bi bo qua. May Mac that thuong khong sao, nhung khong duoc
+    #   tin is_available(): THU tinh mot phep nho, hong thi chay CPU. Phai goi
+    #   SAU khi da import saytool (cli ghim so luong truoc torch). ]]
+    """
+    try:
+        import torch
+        b = getattr(torch.backends, "mps", None)
+        if not (b and b.is_available()):
+            return False
+        x = torch.ones(1024, 1024, device="mps")      # 4 MB — co mau that, khong
+        float((x @ x).sum().item())                   # chi vai KB lot qua
+        return False
+    except Exception:                                        # noqa: BLE001
+        return True
+
+
 #[[ VONG LAP TIEN TRINH CON XEM TRUOC — tach thanh HAM de dung duoc o CA HAI:
 #
 #   1. Chay tu MA NGUON: MayXem chay `python -c MA_CON`, MA_CON goi vong_xem().
@@ -268,7 +290,11 @@ def vong_xem():
         v = y.get("viec")
         try:
             if v == "khoi_dong":
-                BO = Bo(y.get("may", "auto"))
+                may = y.get("may", "auto")
+                if may in ("auto", "mps") and mps_hong():
+                    nk("MPS bao co nhung khong chay duoc -> CPU")
+                    may = "cpu"
+                BO = Bo(may)
                 mo_luong()
                 #[[ may = thiet bi THAT dang tinh ("cuda" / "cpu" / "mps") — giao
                 #   dien dung de noi ro khi dang chay CPU (moi lan keo ~5-13 s
