@@ -203,12 +203,38 @@ def co_card_nvidia() -> bool:
     return bool(shutil.which("nvidia-smi"))
 
 
+#[[ GOI DA NAM SAN TRONG GOI APP (6/10 — user: "dong goi du tat ca, khong
+#   can tai ngam hay tai them gi nua").
+#
+#   Ban cai day du da mang mo hinh + mediapipe trong _internal. Nhung neu thu
+#   muc du lieu con ban TAI VE tu ban cai cu (mo-hinh-2 co nong_cam.pt cu,
+#   thieu bong_dau.pt; mediapipe-0.10.14 keo theo matplotlib/protobuf rieng)
+#   thi nap() chen no len DAU sys.path -> app chay bang do cu chu khong phai
+#   do trong ban cai. Goi co trong ban cai thi KHONG nap ban tai ve nua.
+#   Dau hieu tinh tu sys._MEIPASS (ma .py nam trong PYZ, chi thu muc du lieu
+#   / mo hinh moi la file that). torch khong o day: ban CUDA (goi_kem) PHAI
+#   thang torch CPU trong goi — xem nap(). ]]
+_DAU_TRONG_GOI = {"mo-hinh": "mo_hinh/vet.pt", "mediapipe": "mediapipe/modules"}
+
+
+def trong_goi(ten: str) -> bool:
+    """Bản cài (frozen) đã mang sẵn gói này bên trong — khỏi cần bản tải về."""
+    if not getattr(sys, "frozen", False):
+        return False
+    dau = _DAU_TRONG_GOI.get(ten)
+    meipass = getattr(sys, "_MEIPASS", None)
+    return bool(dau and meipass and (Path(meipass) / dau).exists())
+
+
 def da_co(g: Goi) -> bool:
     """Goi da tai ve VA giai nen day du chua?
 
     Chi kiem tra thu muc ton tai la khong du: lan tai truoc co the dut giua
     chung, de lai mot thu muc co vai file. Nen phai soi `dau_hieu`.
+    Ban cai da mang san goi (trong_goi) thi coi nhu da co — khong bao gio tai.
     """
+    if trong_goi(g.ten):
+        return True
     d = thu_muc_goi(g)
     if not d.is_dir():
         return False
@@ -403,6 +429,10 @@ def nap(ten: str) -> bool:
         if not co_card_nvidia():
             return False
         d = str(thu_muc_kem(g))
+    elif trong_goi(ten):
+        #[[ Da co san trong goi app: dung ban do, KHONG chen ban tai ve cu. ]]
+        _DA_NAP.add(ten)
+        return True
     elif da_co(g):
         d = str(thu_muc_goi(g))
     else:

@@ -807,6 +807,43 @@ def kem_goi_gpu(ra_goi: Path) -> bool:
     return True
 
 
+def tao_ban_nhan(ra_goi: Path) -> list:
+    """Tạo sẵn resnet34_faceparse_nhan.onnx trong gói. -> danh sách đã tạo.
+
+    #[[ 6/10. saytool (skin_spike4._ban_nhan) TU TAO ban '_nhan' (mo hinh phan
+    #   vung da them ArgMax + Cast uint8: 256 KB/mat thay vi 60 MB, argmax chay
+    #   tren GPU) CANH tep goc o lan chay dau. Ban cai o C:\\Program Files (va
+    #   .app trong /Applications) KHONG ghi duoc -> moi lan mo xem truoc / chay
+    #   retouch lai nap 93 MB, ghi hong, lui ve ban goc (cham hon). Ban cai v21
+    #   co tep nay chi vi TINH CO: bai kiem chay tren dist/ da tao no. Tao o day
+    #   cho moi ban cai deu co. Bien doi GIONG HET _ban_nhan. Thieu goi onnx thi
+    #   bo qua (app van dung ban goc). ]]
+    """
+    da_tao = []
+    for p in Path(ra_goi).rglob("resnet34_faceparse.onnx"):
+        q = p.with_name(p.stem + "_nhan.onnx")
+        if q.exists():
+            continue
+        try:
+            import onnx
+            from onnx import TensorProto, helper
+            m = onnx.load(str(p))
+            g = m.graph
+            g.node.append(helper.make_node("ArgMax", [g.output[0].name], ["nhan64"],
+                                           axis=1, keepdims=0))
+            g.node.append(helper.make_node("Cast", ["nhan64"], ["nhan"],
+                                           to=TensorProto.UINT8))
+            del g.output[:]
+            g.output.append(helper.make_tensor_value_info("nhan", TensorProto.UINT8, None))
+            tam = q.with_suffix(".tam")
+            onnx.save(m, str(tam))
+            os.replace(tam, q)
+            da_tao.append(q)
+        except Exception as ex:                              # noqa: BLE001
+            print(f"  [!] Không tạo được {q.name}: {type(ex).__name__}: {ex}")
+    return da_tao
+
+
 def don_goi(thu_muc: Path) -> list:
     """Xoá những file lọt vào gói mà lẽ ra không được có. -> danh sách đã xoá."""
     da_xoa = []
@@ -1126,6 +1163,8 @@ def main(argv=None) -> int:
     xoa = don_goi(ra)
     for p in xoa:
         print(f"  đã loại khỏi gói: {p}")
+    for p in tao_ban_nhan(ra):
+        print(f"  đã tạo sẵn: {p.name}")
     if a.kem_gpu and he == "win":
         if not kem_goi_gpu(ra):
             print("  [!] Gói KHÔNG kèm torch CUDA — máy có card sẽ tự tải khi mở app.")

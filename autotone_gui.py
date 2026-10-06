@@ -652,7 +652,15 @@ class App(ttk.Frame):
             #   HONG do lan "tai lai" xoa do dang luc DLL bi khoa). Luc nay chua
             #   tien trinh nao nap no (nap uu tien goi kem) nen xoa duoc. ]]
             if getattr(tn, "co_kem", None) and tn.co_kem(g):
-                for p in [tn.thu_muc_goi(g)] + list(tn.goc().glob(f"{g.ten}_*")):
+                don = [tn.thu_muc_goi(g)] + list(tn.goc().glob(f"{g.ten}_*"))
+                #[[ Mo hinh / mediapipe TAI VE tu ban cai cu: ban nay mang san
+                #   trong goi (tai_nguyen.trong_goi) va nap() khong con dung
+                #   chung — xoa cho khoi lan, khoi ton ~250 MB. ]]
+                for t, gk in tn.GOI.items():
+                    if getattr(tn, "trong_goi", None) and tn.trong_goi(t):
+                        don += list(tn.goc().glob(f"{gk.ten}-*"))
+                        don += list(tn.goc().glob(f"{gk.ten}_*"))
+                for p in don:
                     if p.exists():
                         _sh.rmtree(p, ignore_errors=True)
                 return

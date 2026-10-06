@@ -192,6 +192,65 @@ def vong_xem():
         except Exception:                                    # noqa: BLE001
             pass
 
+    #[[ LOI CUA saytool / onnxruntime VAO FILE (6/10). Giao dien mo tien trinh
+    #   nay voi stderr=DEVNULL, nen "[!] InsightFace khong dung duoc: ..." va
+    #   canh bao cua onnxruntime (in thang ra fd 2) MAT HET — user bao "tool
+    #   khong thay khuon mat nao" ma khong con dau vet. Ghi vao
+    #   <du lieu app>/xem_truoc_loi.log (qua ~512 KB thi ghi lai tu dau). ]]
+    if _NK:
+        try:
+            _floi = _NK[:-4] + "_loi.log"
+            _cu = os.path.isfile(_floi) and os.path.getsize(_floi) > 512 * 1024
+            _fe = open(_floi, "w" if _cu else "a", encoding="utf-8",
+                       errors="replace", buffering=1)
+            _sys.stderr = _fe
+            try:
+                os.dup2(_fe.fileno(), 2)
+            except Exception:                                # noqa: BLE001
+                pass
+        except Exception:                                    # noqa: BLE001
+            pass
+
+    #[[ BO DO MAT TREN GPU RA 0 MAT -> DO LAI BANG CPU (6/10).
+    #   May user (RTX 3060 Ti, ban cai kem torch CUDA): mo anh chan dung ro mat
+    #   ma xem truoc bao "khong thay khuon mat nao" -> moi buoc lam mat / da
+    #   khong doi. Cung goi do, chay lai thi thay mat — loi den tu bo do mat
+    #   onnxruntime tren GPU, va trong goi KHONG co du phong (yunet phai tai,
+    #   haar khong dong goi) nen insightface hong la ra 0 mat. Ra 0 mat ma bo
+    #   do mat CHUA tung thay mat nao tren GPU trong phien nay -> do lai bang
+    #   CPU (SAY_ORT_MAT=cpu, ~0,5 s). CPU thay mat: giu CPU cho do mat ca
+    #   phien. CPU cung 0 mat: anh that su khong co mat -> tra lai nhu cu. ]]
+    MAT = {"gpu_thay": False, "cpu": False}
+
+    def do_lai_mat_cpu(nc):
+        if MAT["cpu"] or MAT["gpu_thay"] or \
+                (os.environ.get("SAY_ORT_MAT") or "").strip().lower() == "cpu":
+            return []
+        try:
+            from saytool.loi import skin_spike4 as _s4
+        except Exception:                                    # noqa: BLE001
+            return []
+        cu_app, cu_env = getattr(_s4, "_APP", None), os.environ.get("SAY_ORT_MAT")
+        os.environ["SAY_ORT_MAT"] = "cpu"
+        _s4._APP = None
+        nc._mat = None
+        try:
+            m = list(nc.mat or [])
+        except Exception as e:                               # noqa: BLE001
+            nk("do lai mat CPU loi:", type(e).__name__, e)
+            m = []
+        if m:
+            MAT["cpu"] = True
+            nc.dinh[:] = [g for g in nc.dinh if "khong thay khuon mat" not in g]
+            nk("do mat GPU ra 0 mat, CPU ra", len(m), "-> giu CPU cho do mat")
+            return m
+        if cu_env is None:
+            os.environ.pop("SAY_ORT_MAT", None)
+        else:
+            os.environ["SAY_ORT_MAT"] = cu_env
+        _s4._APP = cu_app or None
+        return []
+
     def nen(img):
         #[[ PNG: khong mat chi tiet, ban truoc / sau so diem voi diem duoc. Anh
         #   1400px qua ong noi bo, khong qua mang. Nen muc 3: nhanh. ]]
@@ -226,8 +285,13 @@ def vong_xem():
                 H, W = NC.anh.shape[:2]
                 #[[ Moi mat: [x, y, rong, cao] theo diem anh cua ban 1400px, mat
                 #   TO truoc — nut "Vao mat" cua khung anh di lan luot. ]]
+                ds_mat = list(NC.mat or [])
+                if ds_mat:
+                    MAT["gpu_thay"] = MAT["gpu_thay"] or not MAT["cpu"]
+                else:
+                    ds_mat = do_lai_mat_cpu(NC)
                 mat = []
-                for f in sorted(NC.mat or [], key=lambda m: -float(m.width)):
+                for f in sorted(ds_mat, key=lambda m: -float(m.width)):
                     bx1, by1, bx2, by2 = [float(t) for t in f.bbox[:4]]
                     mat.append([bx1, by1, bx2 - bx1, by2 - by1])
                 ra(loai="da_mo", fp=FP, so_mat=len(mat), mat=mat, rong=W, cao=H,
