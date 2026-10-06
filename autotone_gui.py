@@ -8594,32 +8594,51 @@ class UndoDialog(tk.Toplevel):
                             "để catalog khớp với file.")
 
 
-def _dat_buffalo(kho) -> None:
-    """Đặt buffalo_l từ trong gói vào ~/.insightface nếu chưa có.
+_IF_DA_TRO = []
 
-    #[[ VI SAO PHAI CHEP CHU KHONG TRO THANG VAO GOI
+
+def _tro_insightface(kho) -> None:
+    """Cho insightface đọc buffalo_l NGAY TRONG GÓI, không qua ~/.insightface.
+
+    #[[ 6/10 — user: cai ban moi xong van "tool khong thay khuon mat nao".
     #
-    #   insightface tim mo hinh o `os.path.expanduser(root)` voi root la THAM SO
-    #   cua FaceAnalysis, mac dinh '~/.insightface'. Khong co bien moi truong nao
-    #   doi duoc, va saytool goi FaceAnalysis(name="buffalo_l", ...) khong truyen
-    #   root — sua cho do la sua vao du an khac.
+    #   xem_truoc_loi.log: "InsightFace khong dung duoc: [WinError 448] The path
+    #   cannot be traversed because it contains an untrusted mount point:
+    #   'C:\\Users\\ipmac\\.insightface\\models'". ~/.insightface tren may user la
+    #   JUNCTION sang o F: (doi cho cho o C). Inno Setup 6.5+ bat RedirectionGuard
+    #   cho tien trinh Setup, app mo tu trang cuoi bo cai (postinstall) KE THUA no
+    #   (tien trinh con cung vay — da thu) -> khong di qua junction do nguoi dung
+    #   tao duoc -> insightface hong, yunet khong tai duoc vao Program Files -> 0
+    #   mat -> moi buoc mat / da khong doi. Mo app tu Start menu thi khong co guard
+    #   (vi vay truoc do khong tai hien duoc).
     #
-    #   Nen chep mot lan sang ~/.insightface/models/. Ton ~326 MB o thu muc nguoi
-    #   dung, doi lai lan dau bam Retouch khong phai tai gi va khong can mang.
-    #]]
+    #   Truoc day CHEP buffalo_l sang ~/.insightface (_dat_buffalo) vi saytool goi
+    #   FaceAnalysis(name="buffalo_l") khong truyen root. Nay doi MAC DINH root cua
+    #   FaceAnalysis sang ban trong goi (thu muc that, chi doc, khong junction) —
+    #   khong sua ToolCloneEvoto, khong ghi 326 MB vao ho so nguoi dung.
+    #   INSIGHTFACE_HOME cho _thu_muc_ghim (duong DirectML) doc cung cho. ]]
     """
-    import shutil
-    nguon = Path(kho) / "insightface" / "models" / "buffalo_l"
-    if not nguon.is_dir():
+    import os
+    goc_if = Path(kho) / "insightface"
+    if not (goc_if / "models" / "buffalo_l").is_dir():
         return
-    dich = Path.home() / ".insightface" / "models" / "buffalo_l"
-    if dich.is_dir() and list(dich.glob("*.onnx")):
+    os.environ["INSIGHTFACE_HOME"] = str(goc_if)
+    if _IF_DA_TRO:
         return
     try:
-        dich.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(nguon, dich, dirs_exist_ok=True)
-    except OSError:
-        pass                    # khong chep duoc thi de insightface tu tai
+        from insightface.app import face_analysis as _fa
+    except Exception:                                        # noqa: BLE001
+        return
+    cu = _fa.FaceAnalysis.__init__
+
+    def __init__(self, name="buffalo_l", root="~/.insightface",
+                 allowed_modules=None, **kw):
+        if root == "~/.insightface":
+            root = str(goc_if)
+        cu(self, name, root, allowed_modules, **kw)
+
+    _fa.FaceAnalysis.__init__ = __init__
+    _IF_DA_TRO.append(True)
 
 
 def _cua_saytool(co: str, tham: list) -> int:
@@ -8675,7 +8694,8 @@ def _cua_saytool(co: str, tham: list) -> int:
         fp = kho / "resnet34_faceparse.onnx"
         if fp.is_file():
             os.environ.setdefault("FACE_PARSE_ONNX", str(fp))
-        _dat_buffalo(kho)
+        if co not in ("--say-keo", "--say-key", "--say-tainguyen"):
+            _tro_insightface(kho)
     except Exception:                                        # noqa: BLE001
         pass
 

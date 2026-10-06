@@ -356,6 +356,14 @@ def mo_hinh_du(goc_tool) -> Path:
         shutil.copy2(fp, dich / fp.name)
     else:
         thieu.append("resnet34_faceparse.onnx (phân vùng da)")
+    #[[ YuNet = bo do mat DU PHONG cua saytool khi insightface hong. saytool tu
+    #   TAI no vao SKIN_SPIKE_CACHE (= mo_hinh trong goi) — Program Files khong
+    #   ghi duoc nen ban cai khong bao gio co (6/10: insightface hong -> 0 mat). ]]
+    yn = dem / "face_detection_yunet_2023mar.onnx"
+    if yn.is_file():
+        shutil.copy2(yn, dich / yn.name)
+    else:
+        thieu.append("face_detection_yunet_2023mar.onnx (dò mặt dự phòng)")
 
     bf = Path.home() / ".insightface" / "models" / "buffalo_l"
     if bf.is_dir() and list(bf.glob("*.onnx")):

@@ -110,4 +110,9 @@ Name: "{autodesktop}\{#TenApp}"; Filename: "{app}\{#Exe}"; Tasks: desktopicon
 
 [Run]
 ; Hoi mo app ngay sau khi cai xong.
-Filename: "{app}\{#Exe}"; Description: "{cm:LaunchProgram,{#TenApp}}"; Flags: nowait postinstall skipifsilent
+; Mo QUA explorer.exe, KHONG chay thang {app}\{#Exe}: Inno Setup 6.5+ bat
+; RedirectionGuard cho tien trinh Setup va app chay thang tu Setup KE THUA no
+; (ca tien trinh con) -> khong di qua junction do nguoi dung tao (vd
+; ~/.insightface tro sang o khac) -> WinError 448, retouch "khong thay khuon mat
+; nao" (6/10). explorer.exe giao viec mo cho shell dang chay -> app sach guard.
+Filename: "{win}\explorer.exe"; Parameters: """{app}\{#Exe}"""; Description: "{cm:LaunchProgram,{#TenApp}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
