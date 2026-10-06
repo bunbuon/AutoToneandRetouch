@@ -41,6 +41,18 @@ import threading
 #   Moi tin tra ve mang lai "fp" cua anh no noi toi: doi anh nhanh thi tin
 #   cua anh cu van ve sau — phai biet ma bo.
 #]]
+def ort_mat() -> str:
+    """Bộ dò mặt insightface đang chạy trên provider nào của onnxruntime (để ghi
+    nhật ký — 7/10: bản cài cũ dò mặt bằng CPU mà không ai biết)."""
+    try:
+        from saytool.loi import skin_spike4 as _s4
+        app = getattr(_s4, "_APP", None)
+        m = (getattr(app, "models", None) or {}).get("detection") if app else None
+        return (m.session.get_providers() or ["?"])[0] if m is not None else "?"
+    except Exception:                                        # noqa: BLE001
+        return "?"
+
+
 def mps_hong() -> bool:
     """True khi torch BÁO có MPS (GPU Apple) nhưng KHÔNG chạy được thật.
 
@@ -325,7 +337,7 @@ def vong_xem():
                 nk("mo_anh", FP, f"{W}x{H}", "mat=",
                    [(getattr(f, "src", "?"), round(float(f.width)),
                      "lmk" if getattr(f, "lmk", None) is not None else "KHONG-lmk")
-                    for f in (NC.mat or [])])
+                    for f in (NC.mat or [])], "ort=", ort_mat())
                 #[[ NAP SAN MO HINH ngay sau lan mo anh dau (5/10): ban cai phai
                 #   giai ma + nap ~6 s o lan tinh DAU — de luc do thi lan keo dau
                 #   tien cho ~15 s. Giao dien da nhan "da_mo" (hien anh goc) roi;

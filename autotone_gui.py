@@ -9101,6 +9101,17 @@ def _cua_saytool(co: str, tham: list) -> int:
     #   duoc bang SAY_ORT / SAY_ORT_MAT. ]]
     if sys.platform == "darwin":
         os.environ.setdefault("SAY_ORT", "cpu")
+    #[[ Windows (7/10): goi mang onnxruntime-gpu. May KHONG co card NVIDIA thi noi
+    #   ORT dung CPU ngay — khong de no thu CUDA (thieu DLL -> in loi do roi moi
+    #   lui ve CPU, moi phien mot lan). May co card: CUDA, DLL lay tu torch/lib
+    #   cua goi kem (saytool/cuda_dll.py). ]]
+    if sys.platform.startswith("win"):
+        try:
+            import tai_nguyen as _tn
+            if not _tn.co_card_nvidia():
+                os.environ.setdefault("SAY_ORT", "cpu")
+        except Exception:                                    # noqa: BLE001
+            pass
 
     #[[ --say-xem: VONG LAP XEM TRUOC trong goi (keo thanh -> hien ket qua ngay).
     #

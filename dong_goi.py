@@ -78,6 +78,12 @@ LOAI_TRU = [
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe
     #   tren may build — khong di theo app. ]]
     "tao_ban_cap_nhat.py", "dong_installer.py",
+    #[[ onnxruntime-gpu (7/10): do mat / phan vung da chay CUDA nhu ban ma nguon —
+    #   ban cai cu dong goi onnxruntime CPU, moi phep ORT mo 32 luong, 4 luong chuan
+    #   bi giam len nhau (60 giay-CPU / anh, 3,5 s/anh thay vi ~1,5). Provider
+    #   TensorRT di kem wheel nhung khong co thu vien TensorRT -> bo cho khoi lot
+    #   vao goi (0,8 MB) va khoi bi liet ke. ]]
+    "onnxruntime_providers_tensorrt.dll",
 ]
 
 # Module chính của app và các module nó gọi tới lúc chạy
