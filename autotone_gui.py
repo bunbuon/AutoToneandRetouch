@@ -645,7 +645,18 @@ class App(ttk.Frame):
             import shutil as _sh
             import tai_nguyen as tn
             g = tn.GOI.get("torch")
-            if g is None or tn.da_co(g) or not _sh.which("nvidia-smi"):
+            if g is None:
+                return
+            #[[ 6/10: ban cai KEM SAN torch CUDA (goi_kem) -> khong tai gi ca.
+            #   Don goi torch tai ve cu o thu muc du lieu (thua — va co the dang
+            #   HONG do lan "tai lai" xoa do dang luc DLL bi khoa). Luc nay chua
+            #   tien trinh nao nap no (nap uu tien goi kem) nen xoa duoc. ]]
+            if getattr(tn, "co_kem", None) and tn.co_kem(g):
+                for p in [tn.thu_muc_goi(g)] + list(tn.goc().glob(f"{g.ten}_*")):
+                    if p.exists():
+                        _sh.rmtree(p, ignore_errors=True)
+                return
+            if tn.da_co(g) or not _sh.which("nvidia-smi"):
                 return
             #[[ Don thu muc giai nen TAM con sot (lan truoc dong app giua chung
             #   — luong tai la daemon, chet ngang khong kip don). ]]
@@ -3541,6 +3552,17 @@ class App(ttk.Frame):
             messagebox.showinfo(
                 "Không có bản GPU",
                 "Bản cài này chưa khai gói tăng tốc GPU.", parent=self)
+            return
+        #[[ 6/10: ban cai da KEM SAN torch CUDA -> khong tai / khong "tai lai"
+        #   (xoa thu muc torch dang nap la nguyen nhan loi PermissionError). ]]
+        if getattr(tn, "co_kem", None) and tn.co_kem(g):
+            messagebox.showinfo(
+                "Đã có sẵn bản GPU",
+                "Bản cài này đã KÈM SẴN bản tăng tốc GPU — không cần tải. "
+                + ("App đang tự dùng card NVIDIA cho retouch."
+                   if tn.co_card_nvidia() else
+                   "Máy này không thấy card NVIDIA nên retouch chạy bằng CPU."),
+                parent=self)
             return
         #[[ Da tai roi: bao da co, hoi co muon tai lai khong (vd ban loi). ]]
         if tn.da_co(g):

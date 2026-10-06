@@ -164,6 +164,45 @@ def thu_muc_goi(g: Goi) -> Path:
     return goc() / g.thu_muc
 
 
+#[[ GOI KEM SAN TRONG BAN CAI (6/10 — user: "dong goi chung het vao thanh 1
+#   file cai dat de khong bi tinh trang thieu file").
+#
+#   Tai torch CUDA (2,3 GB) ve thu muc du lieu da gay loi that: bam "tai lai"
+#   khi tien trinh xem truoc dang dung torch do -> rmtree xoa DO DANG (DLL dang
+#   nap bi Windows khoa), file .py mat, DLL o lai; tai xong cung khong thay duoc
+#   thu muc (PermissionError WinError 5) -> xem truoc khong nhan mat nao.
+#
+#   Nay ban cai Windows KEM SAN goi torch CUDA o <thu muc cai>/goi_kem/<goi>
+#   (dong_goi.py --kem-gpu). nap("torch") UU TIEN goi kem; chi dung khi may CO
+#   card NVIDIA — may khong card van dung torch CPU trong goi (nhe hon, khong
+#   phai nap DLL CUDA ~1 GB). Goi tai ve thu muc du lieu chi con cho ban cai cu. ]]
+TEN_KEM = "goi_kem"
+
+
+def goc_kem() -> Path | None:
+    """Thư mục gói KÈM SẴN trong bản cài (cạnh AutoTone.exe). None khi chạy mã nguồn."""
+    if not getattr(sys, "frozen", False):
+        return None
+    return Path(sys.executable).resolve().parent / TEN_KEM
+
+
+def thu_muc_kem(g: Goi) -> Path | None:
+    k = goc_kem()
+    return (k / g.thu_muc) if k is not None else None
+
+
+def co_kem(g: Goi) -> bool:
+    """Bản cài có KÈM SẴN gói này (đủ dấu hiệu) không."""
+    d = thu_muc_kem(g)
+    return bool(d is not None and d.is_dir()
+                and all((d / x).exists() for x in g.dau_hieu))
+
+
+def co_card_nvidia() -> bool:
+    """Máy có card NVIDIA (driver cài nvidia-smi) không."""
+    return bool(shutil.which("nvidia-smi"))
+
+
 def da_co(g: Goi) -> bool:
     """Goi da tai ve VA giai nen day du chua?
 
@@ -357,10 +396,17 @@ def nap(ten: str) -> bool:
     if ten in _DA_NAP:
         return True
     g = GOI.get(ten)
-    if g is None or not da_co(g):
+    if g is None:
         return False
-
-    d = str(thu_muc_goi(g))
+    if ten == "torch" and co_kem(g):
+        #[[ Ban cai kem san torch CUDA: chi dung khi may co card NVIDIA. ]]
+        if not co_card_nvidia():
+            return False
+        d = str(thu_muc_kem(g))
+    elif da_co(g):
+        d = str(thu_muc_goi(g))
+    else:
+        return False
     if d not in sys.path:
         sys.path.insert(0, d)
 

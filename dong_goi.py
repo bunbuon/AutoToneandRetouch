@@ -756,6 +756,57 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
     return cmd
 
 
+def kem_goi_gpu(ra_goi: Path) -> bool:
+    """Đặt gói torch CUDA vào <gói>/goi_kem/ — bản cài Windows mang sẵn, khỏi tải.
+
+    #[[ 6/10 — user: "dong goi chung het vao thanh 1 file cai dat de khong bi
+    #   tinh trang thieu file". Lay DUNG goi app von tai (tai_nguyen.GOI["torch"],
+    #   tai tu Releases, kiem SHA-256 cua zip noi lai) vao build/goi_kem_tai/ —
+    #   tai MOT lan, lan build sau dung lai — roi chep vao goi. App nap no qua
+    #   tai_nguyen.nap("torch") (uu tien goi kem, chi khi may co card NVIDIA). ]]
+    """
+    try:
+        sys.path.insert(0, str(GOC))
+        import tai_nguyen as tn
+    except Exception as ex:                                  # noqa: BLE001
+        print(f"  [!] Không nạp được tai_nguyen: {ex}")
+        return False
+    g = tn.GOI.get("torch")
+    if g is None:
+        print("  [!] tai_nguyen không khai gói torch.")
+        return False
+    kho = GOC / "build" / "goi_kem_tai"
+    cu = os.environ.get("AUTOTONE_DATA")
+    os.environ["AUTOTONE_DATA"] = str(kho)
+    try:
+        if not tn.da_co(g):
+            print(f"  Tải gói kèm {g.thu_muc} ({g.mb} MB, một lần)...", flush=True)
+            moc = [0]
+
+            def td(pha, da, tong):
+                pt = int(100 * da / tong) if tong else 0
+                if pt >= moc[0] + 10:
+                    moc[0] = pt - pt % 10
+                    print(f"    {pha} {pt}%", flush=True)
+            tn.tai(g, tien_do=td)
+        nguon = tn.thu_muc_goi(g)
+    except Exception as ex:                                  # noqa: BLE001
+        print(f"  [!] Không tải được gói kèm torch: {type(ex).__name__}: {ex}")
+        return False
+    finally:
+        if cu is None:
+            os.environ.pop("AUTOTONE_DATA", None)
+        else:
+            os.environ["AUTOTONE_DATA"] = cu
+    dich = Path(ra_goi) / tn.TEN_KEM / g.thu_muc
+    if dich.exists():
+        shutil.rmtree(dich, ignore_errors=True)
+    shutil.copytree(nguon, dich)
+    co = sum(f.stat().st_size for f in dich.rglob("*") if f.is_file())
+    print(f"  Gói kèm: {dich}  ({co / 1e9:.2f} GB)")
+    return True
+
+
 def don_goi(thu_muc: Path) -> list:
     """Xoá những file lọt vào gói mà lẽ ra không được có. -> danh sách đã xoá."""
     da_xoa = []
@@ -905,6 +956,10 @@ def main(argv=None) -> int:
     ap.add_argument("--torch-trong-goi", action="store_true",
                     dest="torch_trong_goi",
                     help="Nhoi torch vao goi (ban day du); khong di cung --nhe")
+    #[[ --kem-gpu (6/10): Windows — dat goi torch CUDA vao <goi>/goi_kem/ de
+    #   ban cai mang san, khong tai ngam. Xem kem_goi_gpu(). ]]
+    ap.add_argument("--kem-gpu", action="store_true", dest="kem_gpu",
+                    help="(Windows) Kem san goi torch CUDA trong goi, khoi tai")
     a = ap.parse_args(argv)
 
     #[[ --torch-trong-goi va --nhe doi nghich: --nhe bo torch ra de tai sau, con
@@ -1071,6 +1126,10 @@ def main(argv=None) -> int:
     xoa = don_goi(ra)
     for p in xoa:
         print(f"  đã loại khỏi gói: {p}")
+    if a.kem_gpu and he == "win":
+        if not kem_goi_gpu(ra):
+            print("  [!] Gói KHÔNG kèm torch CUDA — máy có card sẽ tự tải khi mở app.")
+            return 1
 
     print(f"\n  Gói: {ra}")
     if not a.khong_nen:
