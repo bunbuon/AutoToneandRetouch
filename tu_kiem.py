@@ -210,7 +210,12 @@ def chay(nhanh: bool = False) -> Bao:
     # --- 4. Module nạp được -------------------------------------------------
     def _nap():
         ten = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai",
-               "thu_gu", "retouch", "learn_corrections", "khoi_phuc"]
+               "thu_gu", "retouch", "learn_corrections", "khoi_phuc",
+               #[[ 7/10 giai doan 2: autotone_gui tach ra — man Retouch nap LUOI
+               #   (trong App._lam_retouch) nen mo app khong du de biet no con
+               #   nap duoc trong goi; kiem o day. ]]
+               "hop_thoai", "cua_saytool", "man_retouch", "retouch_chung",
+               "retouch_muc", "retouch_may"]
         hong = []
         for t in ten:
             try:
