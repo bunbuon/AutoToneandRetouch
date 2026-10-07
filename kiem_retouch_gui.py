@@ -91,8 +91,8 @@ def main() -> int:
         hoi_nut_ghi.append((tieu_de, noi_dung))
         return hoi_nut_tra[0]
 
-    import man_retouch as mr
-    mr.hoi_nut = _hoi_nut_gia          # 7/10: hoi_nut nay o man_retouch
+    import retouch_may as rm
+    rm.hoi_nut = _hoi_nut_gia          # 7/10: start() nam o retouch_may, tra ten hoi_nut o do
 
     root = tk.Tk()
     root.geometry("1660x940")

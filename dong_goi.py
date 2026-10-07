@@ -120,6 +120,7 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #[[ 7/10 giai doan 2: autotone_gui tach ra — man_retouch nap LUOI trong
         #   App._lam_retouch (import trong ham, PyInstaller khong do duoc). ]]
         "man_retouch", "hop_thoai", "cua_saytool",
+        "retouch_chung", "retouch_muc", "retouch_may",   # man_retouch (.pyd) import, khong do duoc
         #[[ khung_anh: anh lon cua mo-dun Retouch (3/10 toi) — cung import
         #   trong ham (_dung_trang), cung ly do. ]]
         "khung_anh"]

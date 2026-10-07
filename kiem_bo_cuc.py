@@ -337,19 +337,43 @@ def main() -> int:
     lop_rt = next((n for n in ast.walk(cay_rt) if isinstance(n, ast.ClassDef)
                    and n.name == "RetouchWindow"), None)
     ktra("tìm được lớp RetouchWindow", lop_rt is not None)
+    #[[ 7/10 (giai doan 2b): phan lon phuong thuc nam o hai mixin
+    #   retouch_muc.MucMixin / retouch_may.MayMixin — soi ca ba lop nhu MOT lop. ]]
+    lop_rt_ca = [lop_rt] if lop_rt is not None else []
+    src_rt_ca = {id(lop_rt): src_rt}
+    for ten_m, ten_l in (("retouch_muc.py", "MucMixin"), ("retouch_may.py", "MayMixin")):
+        f_m = GOC / ten_m
+        if f_m.is_file():
+            s_m = f_m.read_text(encoding="utf-8")
+            l_m = next((n for n in ast.walk(ast.parse(s_m)) if isinstance(n, ast.ClassDef)
+                        and n.name == ten_l), None)
+            if l_m is not None:
+                lop_rt_ca.append(l_m)
+                src_rt_ca[id(l_m)] = s_m
+    ktra("có hai mixin của Retouch (retouch_muc / retouch_may)", len(lop_rt_ca) == 3,
+         f"{len(lop_rt_ca)} lớp")
+
+    def than_rt(ten_ham: str) -> str:
+        for l_ in lop_rt_ca:
+            t_ = than(ten_ham, src_rt_ca[id(l_)], l_)
+            if t_:
+                return t_
+        return ""
+
     if lop_rt is not None:
-        rt_src = ast.get_source_segment(src_rt, lop_rt) or ""
+        rt_src = "\n".join(ast.get_source_segment(src_rt_ca[id(l_)], l_) or ""
+                           for l_ in lop_rt_ca)
         cu_rt = [t for t in ("ttk.Checkbutton(", "ttk.Scale(", "LabelFrame(",
                              "ttk.Button(", "ttk.Combobox(") if t in rt_src]
         ktra("Retouch không còn widget kiểu cũ",
              not cu_rt, f"còn {cu_rt}" if cu_rt else
              "công tắc · thanh trượt · viên chọn · nhóm thu gọn")
-        init_rt = than("__init__", src_rt, lop_rt)
+        init_rt = than_rt("__init__")
         ktra("Retouch nhận bảng điều khiển + thanh công cụ từ app",
              "ben=None, thanh=None" in init_rt
              and "RetouchWindow(self, cha, ben=self.cuon_phai_rt.trong" in src
              and "thanh=self.cc_phai_rt" in src, "gọi kiểu cũ RetouchWindow(app) vẫn dựng được")
-        trang_rt = than("_dung_trang", src_rt, lop_rt)
+        trang_rt = than_rt("_dung_trang")
         ktra("Retouch có lưới ảnh của thư mục vào",
              "luoi_anh.LuoiAnh(" in trang_rt, "")
         #[[ Toi 3/10: "1 anh mo to va luoi anh ben duoi" — anh lon (khung_anh)
@@ -367,7 +391,7 @@ def main() -> int:
         #   hinh tren mot card do hoa la duong ngan nhat toi OOM. ]]
         #[[ 7/10: phan CHAY NEN cua start() tach thanh _chay_viec (dung chung voi
         #   luot tu retouch anh moi) — luat ve start van ap cho ca hai. ]]
-        bd = than("start", src_rt, lop_rt) + "\n" + than("_chay_viec", src_rt, lop_rt)
+        bd = than_rt("start") + "\n" + than_rt("_chay_viec")
         ktra("bấm Chạy tắt xem trước TRƯỚC khi chạy cả mẻ",
              "_tat_xem_truoc(dong_may=True)" in bd and "threading.Thread(" in bd
              and bd.index("_tat_xem_truoc(dong_may=True)") < bd.index("threading.Thread("),
@@ -375,12 +399,12 @@ def main() -> int:
         #[[ Sang 4/10 — user: "bo nut xem truoc. Vi khi keo se load luon vao
         #   anh". Khong con nut tren thanh cong cu; NGUOI keo thanh (khong phai
         #   luc nap muc cua mot tam) la tu bat xem truoc. ]]
-        cc_rt = than("_dung_thanh_cong_cu", src_rt, lop_rt)
+        cc_rt = than_rt("_dung_thanh_cong_cu")
         ktra("Retouch không còn nút “Xem trước”: kéo thanh là tự xem",
              "btn_xem" not in rt_src and "Xem trước" not in cc_rt.split('"""')[-1]
-             and "self._nguoi_doi_muc()" in than("_muc_doi", src_rt, lop_rt)
-             and "_dang_nap_muc" in than("_muc_doi", src_rt, lop_rt)
-             and "_mo_xem_truoc(tu_dong=True)" in than("_nguoi_doi_muc", src_rt, lop_rt),
+             and "self._nguoi_doi_muc()" in than_rt("_muc_doi")
+             and "_dang_nap_muc" in than_rt("_muc_doi")
+             and "_mo_xem_truoc(tu_dong=True)" in than_rt("_nguoi_doi_muc"),
              "_muc_doi → _nguoi_doi_muc → _mo_xem_truoc(tu_dong)")
         #[[ "Sync All cac hieu ung da keo cho cac anh duoc chon hoac tat ca":
         #   dai anh chon nhieu duoc, bang co nut Sync. 5/10 user bo nut "Sync tat
@@ -403,20 +427,21 @@ def main() -> int:
         rt_py = (GOC / "retouch.py").read_text(encoding="utf-8")
         dem_py = rt_py[rt_py.index("def dem("):rt_py.index("def lenh(")]
         ktra("lưới và bộ đếm đọc cùng một danh sách (rt.ds_anh)",
-             "self.rt.ds_anh(" in than("_dem", src_rt, lop_rt)
+             "self.rt.ds_anh(" in than_rt("_dem")
              and "ds = ds_anh(vao, ra, de_quy)" in dem_py, "một chỗ quyết định")
         ds_py = rt_py[rt_py.index("def ds_anh("):rt_py.index("def dem(")]
         ktra("nhãn “đã làm” và bản ảnh lớn mở theo một luật (rt.duong_ket_qua)",
              "duong_ket_qua(" in ds_py
-             and "self.rt.duong_ket_qua(" in than("_duong_kq", src_rt, lop_rt),
+             and "self.rt.duong_ket_qua(" in than_rt("_duong_kq"),
              "một chỗ quyết định")
-        co_rt = {c.name for c in lop_rt.body if isinstance(c, ast.FunctionDef)}
-        lop_khung = next((n for n in ast.walk(cay) if isinstance(n, ast.ClassDef)
+        co_rt = {c.name for l_ in lop_rt_ca for c in l_.body if isinstance(c, ast.FunctionDef)}
+        #[[ Khung nam o giao_dien.py tu 7/10. ]]
+        lop_khung = next((n for n in ast.walk(ast.parse(gd_src)) if isinstance(n, ast.ClassDef)
                           and n.name == "Khung"), None)
         if lop_khung is not None:
             co_rt |= {c.name for c in lop_khung.body if isinstance(c, ast.FunctionDef)}
         thieu_rt = set()
-        for n2 in ast.walk(lop_rt):
+        for n2 in (x_ for l_ in lop_rt_ca for x_ in ast.walk(l_)):
             if isinstance(n2, ast.Call):
                 for k in n2.keywords:
                     if k.arg in ("command", "khi_mo", "khi_trong", "khi_chon",
