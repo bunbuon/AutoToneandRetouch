@@ -33,6 +33,8 @@ import queue
 import subprocess
 import sys
 import threading
+import time
+from pathlib import Path
 
 #[[ Ma chay o TIEN TRINH CON. De thang day chu khong tach file rieng: file
 #   rieng thi phai nho chep no sang may Mac, nho them vao LOAI_TRU, nho dong
@@ -93,11 +95,26 @@ def vong_xem():
     import sys as _sys
     import base64 as _b64
     import cv2 as _cv2
+    import queue as _queue
+    import threading as _threading
     from pathlib import Path as _Path
 
+    #[[ MOT ONG RA DUY NHAT (7/10 — engine thuong tru). Tin JSON ghi vao stdout
+    #   THAT qua mot khoa, MOT lan write moi dong. Moi print khac (insightface
+    #   "Applied providers", saytool "set det-size", duong ong chay me...) di
+    #   sang stderr (= xem_truoc_loi.log o ban dong goi) — truoc day chung chen
+    #   vao giua dong JSON duoc thi giao dien chi viec bo dong hong, nhung tu khi
+    #   me chay o luong khac thi khong duoc phep may rui nua. ]]
+    _ONG_RA = _sys.stdout
+    _KHOA_RA = _threading.Lock()
+
     def ra(**kw):
-        _sys.stdout.write(_json.dumps(kw) + "\n")
-        _sys.stdout.flush()
+        dong_ = _json.dumps(kw) + "\n"
+        with _KHOA_RA:
+            _ONG_RA.write(dong_)
+            _ONG_RA.flush()
+
+    _sys.stdout = _sys.stderr
 
     #[[ SO LUONG torch TREN CPU (5/10 — user: ".exe keo thanh khong thay doi",
     #   ban local chay tot). saytool/loi/blem_net2.py va blem_net3.py co dong
@@ -209,7 +226,7 @@ def vong_xem():
     #   moi biet. Ghi su kien chinh vao <du lieu app>/xem_truoc.log (toi da
     #   ~512 KB, qua thi cat). Chi ban dong goi; chay ma nguon thi khong ghi. ]]
     _NK = None
-    if getattr(_sys, "frozen", False):
+    if getattr(_sys, "frozen", False) or os.environ.get("XEM_NHAT_KY"):
         _g = os.environ.get("AUTOTONE_DATA") or os.path.join(
             os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "AutoTone")
         _NK = os.path.join(_g, "xem_truoc.log")
@@ -242,6 +259,16 @@ def vong_xem():
                 os.dup2(_fe.fileno(), 2)
             except Exception:                                # noqa: BLE001
                 pass
+        except Exception:                                    # noqa: BLE001
+            pass
+
+    #[[ Chan doan treo: XEM_VET_TREO=<giay> -> cu moi <giay> giay ghi stack moi
+    #   luong vao xem_truoc_loi.log (faulthandler). Chi khi dat bien moi truong. ]]
+    if os.environ.get("XEM_VET_TREO"):
+        try:
+            import faulthandler as _fh
+            _fh.dump_traceback_later(float(os.environ["XEM_VET_TREO"]), repeat=True,
+                                     file=_sys.stderr)
         except Exception:                                    # noqa: BLE001
             pass
 
@@ -291,14 +318,135 @@ def vong_xem():
         ok, buf = _cv2.imencode(".png", img, [_cv2.IMWRITE_PNG_COMPRESSION, 3])
         return _b64.b64encode(buf).decode("ascii") if ok else ""
 
-    for dong in _sys.stdin:
-        dong = dong.strip()
-        if not dong:
-            continue
+    #[[ ENGINE THUONG TRU (7/10 — giai doan 1 tai cau truc): tien trinh nay
+    #   CHAY CA ME ("chay") ngay trong no, mo hinh da nap san — truoc day moi
+    #   lan bam Chay retouch la mot AutoTone.exe --say-chay moi, nap lai mo hinh
+    #   ~4 s, va phai tat xem truoc de nhuong card. Lenh doc o LUONG RIENG: me
+    #   dang chay van nhan duoc "dung_chay" / "thoat" ngay; lenh khac (mo_anh,
+    #   tinh) xep hang, lam sau khi me xong — hai viec KHONG chay chong nhau vi
+    #   dung chung cac buoc (dat_phan_cung, luong torch) va mot card. ]]
+    Q_LENH: _queue.Queue = _queue.Queue()
+    DUNG = [False]
+    DANG_CHAY = [False]
+
+    def _dong_stdin():
+        """Sinh từng dòng lệnh từ stdin.
+
+        Windows KHÔNG được để một lệnh đọc đồng bộ treo sẵn trên ống stdin ở
+        luồng nền: nhân Windows xếp hàng MỌI thao tác trên cùng một file object
+        đồng bộ (ReadFile đang chờ chặn cả fstat / lseek / GetFileType của luồng
+        khác). Luồng chính nạp lười một DLL có chạm stdin lúc khởi tạo — libgfortran
+        của scipy.linalg (insightface -> skimage -> scipy) gọi fstat(0) — là đứng
+        im tới khi giao diện gửi lệnh tiếp theo (treo thật 7/10: "mo_anh" không
+        bao giờ trả lời). Đọc kiểu hỏi-trước (PeekNamedPipe) rồi mới ReadFile đúng
+        số byte có sẵn: không bao giờ có lệnh đọc treo, trễ tối đa ~15 ms.
+        Mac / Linux: read() không khoá fstat, đọc thẳng như cũ."""
+        if os.name != "nt":
+            for dong_ in _sys.stdin:
+                yield dong_
+            return
+        import msvcrt as _ms
+        import _winapi as _wa
+        import time as _t
         try:
-            y = _json.loads(dong)
+            h = _ms.get_osfhandle(0)
+        except OSError:
+            return
+        dem = b""
+        while True:
+            try:
+                n, _ = _wa.PeekNamedPipe(h)
+                if not n:
+                    _t.sleep(0.015)
+                    continue
+                du, _ = _wa.ReadFile(h, n)
+            except OSError:                              # ống đóng / không phải ống
+                break
+            if not du:
+                break
+            dem += du
+            while b"\n" in dem:
+                dong_, dem = dem.split(b"\n", 1)
+                yield dong_.decode("utf-8", "replace")
+        if dem:
+            yield dem.decode("utf-8", "replace")
+
+    def _doc_lenh():
+        try:
+            for dong_ in _dong_stdin():
+                dong_ = dong_.strip()
+                if not dong_:
+                    continue
+                try:
+                    y_ = _json.loads(dong_)
+                except Exception:                            # noqa: BLE001
+                    continue
+                v_ = y_.get("viec")
+                if v_ == "dung_chay":
+                    DUNG[0] = True
+                    continue
+                if v_ == "thoat":
+                    DUNG[0] = True
+                Q_LENH.put(y_)
+                if v_ == "thoat":
+                    return
         except Exception:                                    # noqa: BLE001
-            continue
+            pass
+        Q_LENH.put({"viec": "thoat"})
+
+    _threading.Thread(target=_doc_lenh, daemon=True).start()
+
+    def chay_me(y):
+        """Một mẻ retouch bằng chính đường ống saytool, ngay trong tiến trình này."""
+        from saytool import duong_ong as _do
+        import inspect as _ins
+        ma = y.get("ma")
+        DUNG[0] = False
+        DANG_CHAY[0] = True
+        n = 0
+        try:
+            def bao(*a, **_k):
+                ra(loai="dong", ma=ma, chu=" ".join(str(x) for x in a))
+            kw = dict(dev=y.get("may") or "auto", luong=int(y.get("luong") or 0),
+                      chat_luong=y.get("chat_luong", "auto"),
+                      de_quy=bool(y.get("de_quy")), lam_lai=bool(y.get("lam_lai")),
+                      gioi_han=int(y.get("gioi_han") or 0), bao=bao,
+                      che_do=y.get("che_do") or "auto", mau=y.get("mau", "auto"),
+                      nguyen_ven=bool(y.get("nguyen_ven", True)),
+                      ghi_de=bool(y.get("ghi_de")))
+            if "dung" in _ins.signature(_do.chay).parameters:
+                kw["dung"] = lambda: DUNG[0]
+            nk("chay me ma=", ma, "vao=", y.get("vao"), "ra=", y.get("ra"),
+               "muc=", y.get("muc"), "ghi_de=", kw["ghi_de"])
+            n = _do.chay(y["vao"], y.get("ra") or y["vao"], y.get("muc") or {}, **kw)
+            ra(loai="xong_chay", ma=ma, so=int(n or 0), ma_thoat=0, dung=bool(DUNG[0]))
+            nk("xong me ma=", ma, "so=", n, "dung=", DUNG[0])
+        except Exception as e:                               # noqa: BLE001
+            nk("LOI chay me", type(e).__name__, e)
+            ra(loai="xong_chay", ma=ma, so=n, ma_thoat=1, loi=f"{type(e).__name__}: {e}")
+        finally:
+            DUNG[0] = False
+            DANG_CHAY[0] = False
+            #[[ Tra phan cung ve cho xem truoc: duong ong dat luong / canh o /
+            #   so luong torch theo me — xem truoc la mot anh, mot luong. ]]
+            try:
+                if BO is not None:
+                    for _b in tat_ca():
+                        BO._dat_phan_cung(_b, None)
+            except Exception:                                # noqa: BLE001
+                pass
+            mo_luong()
+
+    def _ort_cau_hinh() -> str:
+        try:
+            from saytool import thiet_bi as _tb
+            p0 = _tb.providers("mat")[0]
+            return p0[0] if isinstance(p0, (tuple, list)) else str(p0)
+        except Exception:                                    # noqa: BLE001
+            return "?"
+
+    while True:
+        y = Q_LENH.get()
         v = y.get("viec")
         try:
             if v == "khoi_dong":
@@ -311,10 +459,23 @@ def vong_xem():
                 #[[ may = thiet bi THAT dang tinh ("cuda" / "cpu" / "mps") — giao
                 #   dien dung de noi ro khi dang chay CPU (moi lan keo ~5-13 s
                 #   tren ban cai torch CPU) va goi y tai ban tang toc GPU. ]]
+                try:
+                    import saytool as _st
+                    _ban = str(getattr(_st, "__version__", "?"))
+                except Exception:                            # noqa: BLE001
+                    _ban = "?"
                 ra(loai="san_sang", may=str(getattr(BO, "dev", "")),
-                   keo=[{"ten": b.ten, "nhan": b.nhan} for b in tat_ca()])
+                   keo=[{"ten": b.ten, "nhan": b.nhan} for b in tat_ca()],
+                   ort=_ort_cau_hinh(), ban=_ban)
                 nk("khoi_dong may=", getattr(BO, "dev", "?"), "luong=",
-                   _torch.get_num_threads() if _torch is not None else "?")
+                   _torch.get_num_threads() if _torch is not None else "?",
+                   "ort=", _ort_cau_hinh(), "saytool=", _ban)
+            elif v == "chay":
+                if BO is None:
+                    ra(loai="xong_chay", ma=y.get("ma"), so=0, ma_thoat=1,
+                       loi="chua khoi_dong")
+                else:
+                    chay_me(y)
             elif v == "mo_anh":
                 NC = NguCanh(_Path(y["fp"]), canh_toi_da=CANH)
                 FP = y["fp"]
@@ -470,18 +631,29 @@ def giai_anh(b64: str):
 
 
 class MayXem:
-    """Tiến trình con tính ảnh xem trước. Không vẽ gì: ai dùng thì gửi việc
-    (gui) và bơm tin về (lay) ở luồng chính.
+    """Tiến trình con tính ảnh xem trước — và từ 7/10 là ENGINE THƯỜNG TRÚ:
+    chạy cả mẻ retouch (chay_me) ngay trong nó, mô hình đã nạp sẵn. Không vẽ
+    gì: ai dùng thì gửi việc (gui) và bơm tin về (lay) ở luồng chính.
 
-    Tin về (dict): san_sang{keo} · da_mo{fp, so_mat, mat, rong, cao, goc} ·
-    ket_qua{ma, fp, anh} · hong{loi, ma, fp} · chet{}.
+    Tin về (dict): san_sang{keo, may, ort, ban} · da_mo{fp, so_mat, mat, rong,
+    cao, goc} · ket_qua{ma, fp, anh} · hong{loi, ma, fp} · chet{}.
+    Tin của MẺ đi hàng riêng (q_chay, chay_me đọc ở luồng chạy): dong{ma, chu}
+    · xong_chay{ma, so, ma_thoat, loi, dung}.
     """
 
     def __init__(self, rt, goc_tool: str):
         self.rt = rt
         self.goc_tool = str(goc_tool)
         self.q: queue.Queue = queue.Queue()
+        self.q_chay: queue.Queue = queue.Queue()
         self.proc = None
+        self._khoa_gui = threading.Lock()
+        self._ma_chay = 0
+        self.dang_chay = False
+        #[[ Tien trinh con co biet "chay" khong: vong lap moi bao san_sang kem
+        #   "ban"; vong lap toi thieu (MA_CON fallback) / ban cu thi khong ->
+        #   retouch.chay di duong tien trinh con. ]]
+        self.co_chay = None
 
     def bat_dau(self, may: str = "auto") -> str:
         """'' nếu khởi động được, không thì câu lỗi để nói ra."""
@@ -508,16 +680,29 @@ class MayXem:
             else:
                 py = self.rt.python_cho(self.goc_tool)
                 cmd = [str(py), "-c", MA_CON]
+            #[[ Cung moi truong voi tien trinh chay me cu (retouch.moi_truong_con:
+            #   UTF-8, PYTORCH_CUDA_ALLOC_CONF, SAY_* tu retouch.json) — tu 7/10 me
+            #   chay ngay trong tien trinh nay. ]]
+            lam_env = getattr(self.rt, "moi_truong_con", None)
+            env = lam_env() if lam_env else dict(os.environ, **self.rt.MOI_TRUONG_UTF8)
+            if not frozen:
+                #[[ Chay tu ma nguon: `python -c MA_CON` voi cwd = thu muc tool, o do
+                #   KHONG co xem_truoc.py -> MA_CON roi ve vong lap toi thieu (khong
+                #   biet "chay", khong dem, khong nhat ky). Dua thu muc app vao
+                #   PYTHONPATH de `import xem_truoc` thay dung file nay. ]]
+                goc_app = str(Path(__file__).resolve().parent)
+                env["PYTHONPATH"] = goc_app + os.pathsep + env.get("PYTHONPATH", "")
             self.proc = subprocess.Popen(
                 cmd, cwd=self.goc_tool,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
                 errors="replace", bufsize=1,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                env=dict(os.environ, **self.rt.MOI_TRUONG_UTF8))
+                env=env)
         except Exception as ex:                              # noqa: BLE001
             self.proc = None
             return f"Không chạy được Python của tool: {type(ex).__name__}: {ex}"
+        self.dang_chay = False
         threading.Thread(target=self._doc, daemon=True).start()
         self.gui(viec="khoi_dong", may=may or "auto")
         return ""
@@ -529,23 +714,70 @@ class MayXem:
                 dong = dong.strip()
                 if dong.startswith("{"):
                     try:
-                        self.q.put(json.loads(dong))
+                        d = json.loads(dong)
                     except Exception:                        # noqa: BLE001
-                        pass
+                        continue
+                    if d.get("loai") == "san_sang":
+                        self.co_chay = "ban" in d
+                    (self.q_chay if d.get("loai") in ("dong", "xong_chay") else self.q).put(d)
         except Exception:                                    # noqa: BLE001
             pass
         self.q.put({"loai": "chet"})
+        self.q_chay.put({"loai": "chet"})
 
     def gui(self, **kw) -> bool:
         p = self.proc
         if not p or p.poll() is not None:
             return False
         try:
-            p.stdin.write(json.dumps(kw) + "\n")
-            p.stdin.flush()
+            with self._khoa_gui:                # luong chay me va luong chinh cung gui
+                p.stdin.write(json.dumps(kw) + "\n")
+                p.stdin.flush()
             return True
         except OSError:
             return False
+
+    def chay_me(self, tham: dict):
+        """Chạy MỘT mẻ trong tiến trình này (gọi ở luồng nền). Sinh ("dong", chữ)…
+        rồi ("ma", mã thoát): 0 xong, 1 lỗi đường ống, mã tiến trình nếu nó chết
+        giữa chừng (để vòng tự-chạy-lại của giao diện nhận ra 0xC0000005...)."""
+        try:
+            while True:
+                self.q_chay.get_nowait()
+        except queue.Empty:
+            pass
+        self._ma_chay += 1
+        ma = self._ma_chay
+        self.dang_chay = True
+        try:
+            if not self.gui(viec="chay", ma=ma, **tham):
+                yield ("dong", "  ! máy xem trước không nhận được lệnh chạy")
+                yield ("ma", 1)
+                return
+            while True:
+                d = self.q_chay.get()
+                t = d.get("loai")
+                if t == "chet":
+                    p = self.proc
+                    rc = p.poll() if p is not None else None
+                    yield ("dong", f"  ! tiến trình engine đã dừng giữa mẻ (mã {rc})")
+                    yield ("ma", int(rc) if rc else 3221225477)
+                    return
+                if d.get("ma") != ma:
+                    continue                      # tin của mẻ cũ
+                if t == "dong":
+                    yield ("dong", str(d.get("chu", "")))
+                elif t == "xong_chay":
+                    if d.get("loi"):
+                        yield ("dong", f"  ! {d['loi']}")
+                    yield ("ma", int(d.get("ma_thoat") or 0))
+                    return
+        finally:
+            self.dang_chay = False
+
+    def dung_chay(self) -> bool:
+        """Xin dừng mẻ đang chạy: ảnh đang làm xong thì thôi, không giết tiến trình."""
+        return self.gui(viec="dung_chay")
 
     def lay(self) -> list:
         ra = []
@@ -558,6 +790,16 @@ class MayXem:
 
     def song(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
+
+    def chay_duoc(self, cho: float = 60.0) -> bool:
+        """Đang sống VÀ biết chạy mẻ (san_sang có 'ban'). Mới mở, chưa kịp
+        san_sang (đang nạp mô hình ~4 s): CHỜ tới `cho` giây — lệnh trong tiến
+        trình con xử lý tuần tự nên chờ xong là gửi được ngay; đi đường tiến
+        trình con lúc này cũng phải nạp mô hình chừng ấy."""
+        het = time.monotonic() + cho
+        while self.song() and self.co_chay is None and time.monotonic() < het:
+            time.sleep(0.1)
+        return self.song() and bool(self.co_chay)
 
     def dong(self) -> None:
         self.gui(viec="thoat")

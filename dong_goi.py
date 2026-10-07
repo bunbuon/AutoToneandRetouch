@@ -72,7 +72,7 @@ LOAI_TRU = [
     "kiem_ket_qua_xuat.lua", "do_buoi.py", "so_sanh_ung_vien.py",
     "test_bu_sang.py", "test_dong_bo_loat.py", "test_wb_asshot.py",
     "test_giao_dien_gon.py", "test_cap_nhat.py", "test_retouch_cwd.py",
-    "kiem_xem_goi.py",
+    "kiem_xem_goi.py", "kiem_engine.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe

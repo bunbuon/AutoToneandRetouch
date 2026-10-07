@@ -1636,13 +1636,53 @@ def _tat_hop_thoai_sap():
         pass          # không tắt được thì thôi, chỉ là phải bấm OK thủ công
 
 
-def chay(goc: Path, vao: Path, ra: Path, muc: dict, **kw):
+def moi_truong_con() -> dict:
+    """Biến môi trường cho MỌI tiến trình saytool app mở (chạy mẻ cũ và máy xem
+    trước / engine thường trú): UTF-8, bộ cấp phát CUDA, SAY_* từ retouch.json,
+    faulthandler. Một chỗ quyết định — xem chú thích trong chay()."""
+    env = dict(os.environ, **MOI_TRUONG_UTF8)
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    cf = doc_cau_hinh()
+    for khoa, bien in (("ram_mb", "SAY_RAM_MB"), ("so_loi", "SAY_LOI"),
+                       ("luong_torch", "SAY_THREADS")):
+        if cf.get(khoa) is not None:
+            env[bien] = str(int(cf[khoa]))
+    if os.name == "nt":
+        env.setdefault("PYTHONFAULTHANDLER", "1")   # con in vet loi neu con kip
+    return env
+
+
+def chay(goc: Path, vao: Path, ra: Path, muc: dict, engine=None, **kw):
     """Chạy và sinh ra từng dòng log. Trả mã thoát ở dòng cuối dạng ('ma', n).
 
     Dùng generator chứ không gom hết rồi trả về: một buổi vài trăm ảnh chạy cả
     chục phút, gom hết thì giao diện đứng im suốt thời gian đó và người dùng
     không biết nó còn sống hay đã treo.
+
+    engine: máy xem trước đang sống (xem_truoc.MayXem) -> mẻ chạy NGAY TRONG nó
+    (7/10, engine thường trú): không mở tiến trình mới, không nạp lại mô hình
+    (~4 s mỗi lần bấm), không phải tắt xem trước nhường card. Cùng giao thức
+    sinh dòng, nên vòng tiến độ / tự-chạy-lại ở giao diện không đổi. Không có
+    engine (chưa mở được, vừa chết) thì đi đường tiến trình con như cũ.
     """
+    if engine is not None and getattr(engine, "chay_duoc", lambda: False)():
+        tham = dict(vao=str(vao), ra=str(ra), muc=dict(muc),
+                    may=kw.get("may", "auto"), chat_luong=kw.get("chat_luong", 98),
+                    de_quy=bool(kw.get("de_quy", False)), lam_lai=bool(kw.get("lam_lai", False)),
+                    gioi_han=int(kw.get("gioi_han", 0) or 0),
+                    luong=int(kw.get("luong", LUONG_MAC_DINH) or 0),
+                    che_do=kw.get("che_do", CHE_DO_MAC_DINH), ghi_de=bool(kw.get("ghi_de", False)))
+        yield ("lenh", "[engine thường trú] chay " + " ".join(
+            f"{k}={v}" for k, v in tham.items() if k != "muc"))
+        yield ("pid", None)
+        ma_cuoi = 1
+        for loai, gt in engine.chay_me(tham):
+            if loai == "ma":
+                ma_cuoi = int(gt or 0)
+                break
+            yield (loai, gt)
+        yield ("ma", ma_cuoi)
+        return
     cmd = lenh(Path(goc), Path(vao), Path(ra), muc, **kw)
     yield ("lenh", " ".join(cmd))
     #[[ EP TIEN TRINH CON IN RA UTF-8.
@@ -1657,7 +1697,7 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, **kw):
     #   errors="replace" o day chi lo phia DOC. Phia GHI cua tien trinh con phai
     #   sua bang bien moi truong.
     #]]
-    env = dict(os.environ, **MOI_TRUONG_UTF8)
+    env = moi_truong_con()
     #[[ GIAM PHAN MANH BO NHO CARD.
     #
     #   Do that 3/9 (do_vram.py, 34 anh, 1 luong, RTX 3060 Ti):
@@ -1678,8 +1718,8 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, **kw):
     #   Dat qua BIEN MOI TRUONG chu khong sua ma nguon ToolCloneEvoto: torch doc
     #   bien nay mot lan luc khoi tao, nen dat o day la du, va go ra cung de.
     #]]
-    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-    #[[ NUM DIEU CHINH BO NHO, doc tu retouch.json neu co.
+    #[[ NUM DIEU CHINH BO NHO, doc tu retouch.json neu co (dat trong
+    #   moi_truong_con; o day chi NOI RA cho nhat ky).
     #
     #   BA KHOA CU DA CHET. Ban 0.9.5 khong con doc SAY_O_VET va
     #   SAY_LO_NONG_CAM nua (da grep ca goi: chi con SAY_RAM_MB, SAY_LOI,
@@ -1698,7 +1738,6 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, **kw):
     for khoa, bien in (("ram_mb", "SAY_RAM_MB"), ("so_loi", "SAY_LOI"),
                        ("luong_torch", "SAY_THREADS")):
         if cf.get(khoa) is not None:
-            env[bien] = str(int(cf[khoa]))
             yield ("dong", f"  {bien}={env[bien]} (dat trong retouch.json)")
     for khoa_cu in ("o_vet", "lo_nong_cam"):
         if cf.get(khoa_cu) is not None:
@@ -1719,7 +1758,6 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, **kw):
     #   Chi dat cho TIEN TRINH CON (qua Popen), khong dong den app dang chay.
     #]]
     if os.name == "nt":
-        env.setdefault("PYTHONFAULTHANDLER", "1")   # con in vet loi neu con kip
         _tat_hop_thoai_sap()
     try:
         p = subprocess.Popen(

@@ -858,15 +858,18 @@ def main() -> int:
     threading.Thread = _ChayLien
     try:
         w.start()
-        tat_ngay = w._may_xem is None and not w._xem_bat
+        #[[ 7/10 ENGINE THUONG TRU: bam Chay GIU tien trinh xem truoc (me chay
+        #   trong no, mo hinh da nap), chi tam dung xem truoc (_xem_bat=False).
+        #   Truoc day: dong tien trinh de nhuong card. ]]
+        tat_ngay = w._may_xem is not None and not w._xem_bat
     finally:
         threading.Thread = luong_that
         w.rt.chay = chay_that
         ag.messagebox.askokcancel = hoi_that
     chay(6)
-    ktra("bấm Chạy: tắt xem trước, đóng tiến trình con (nhường card đồ hoạ)",
-         tat_ngay and bool(goi_chay) and p_con is not None
-         and cho(lambda: p_con.poll() is not None, 5), f"{len(goi_chay)} lượt chạy")
+    ktra("bấm Chạy: xem trước tạm dừng, GIỮ tiến trình xem trước làm engine",
+         tat_ngay and bool(goi_chay) and p_con is not None and p_con.poll() is None,
+         f"{len(goi_chay)} lượt chạy · tiến trình {'còn' if p_con is not None and p_con.poll() is None else 'mất'}")
     ktra("…và ảnh lớn về bản trên đĩa", not w._xem_dang_hien
          and w.xem.kich_thuoc() in (None, (2000, 1500)), str(w.xem.kich_thuoc()))
     w._mo_xem_truoc()

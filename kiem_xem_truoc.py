@@ -27,7 +27,15 @@ from pathlib import Path
 GOC = Path(__file__).resolve().parent
 sys.path.insert(0, str(GOC))
 
-ANH_THU = r"G:\TestRetouchFinal\SAY-Media-08865.jpg"
+#[[ Anh thu PHAI co mat to (>= ~150 px o ban 1400 px): saytool bo qua mat nho hon
+#   nguong (buoc_min_da.MIN_MAT = 100 px, theo Evoto) — SAY-Media-08865 (3 mat
+#   100-120 px) tu 7/10 chi doi 0,3 % diem anh, bai "anh KHAC anh goc" hong oan.
+#   Duoc dua duong dan anh khac o tham so dong lenh. ]]
+import sys as _sys
+_UNG = [r"F:\Sản Phẩm Final\Tháng 9 2026\Look\Chon anh\SAY00551.jpeg",
+        r"G:\TestRetouchFinal\SAY-Media-08865.jpg"]
+ANH_THU = (_sys.argv[1] if len(_sys.argv) > 1 else
+           next((a for a in _UNG if __import__("os").path.isfile(a)), _UNG[-1]))
 dat = hong = 0
 
 
@@ -107,8 +115,18 @@ def main() -> int:
     khac = None
     if sau is not None and goc is not None and sau.size == goc.size:
         from PIL import ImageChops, ImageStat
-        khac = sum(ImageStat.Stat(ImageChops.difference(sau, goc)).mean) / 3
-    ket("tính ra ảnh KHÁC ảnh gốc, đúng số thứ tự và tên ảnh",
+        #[[ Do TRONG O MAT TO NHAT: lam min da / xoa khuyet diem chi cham vao mat
+        #   (mat 164 px tren anh 1400 px: trong mat lech ~0,5, ca anh chi 0,016 —
+        #   do ca anh thi bai nay hong du tool lam dung). Khong co mat: do ca anh. ]]
+        hop = None
+        if mat:
+            x, y, w, h = [int(v) for v in mat[0][:4]]
+            hop = (max(0, x), max(0, y), min(goc.size[0], x + w), min(goc.size[1], y + h))
+        lech = ImageChops.difference(sau, goc)
+        if hop and hop[2] > hop[0] and hop[3] > hop[1]:
+            lech = lech.crop(hop)
+        khac = sum(ImageStat.Stat(lech).mean) / 3
+    ket("tính ra ảnh KHÁC ảnh gốc (đo trong ô mặt), đúng số thứ tự và tên ảnh",
         khac is not None and khac > 0.2 and d.get("fp") == anh,
         f"lệch trung bình {khac:.2f}" if khac is not None else (d or {}).get("loi"))
     may.gui(viec="tinh", ma=2, fp=anh, muc=muc)

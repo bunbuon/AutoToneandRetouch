@@ -6935,6 +6935,25 @@ class RetouchWindow(Khung):
         self.txt.insert("end", msg + "\n")
         self.txt.see("end")
         self.txt.configure(state="disabled")
+        self._ghi_log_tep(msg)
+
+    def _ghi_log_tep(self, msg: str):
+        """Nhật ký Retouch ra file <dữ liệu>/retouch.log (xoay ở 2 MB).
+
+        #[[ 7/10: Nhat ky tren giao dien mat khi dong app; loi bao SAU (anh
+        #   thieu buoc, me dung giua chung, engine sap) can dong that cua lan
+        #   chay do. Mot file cho ca xem truoc + me; xem_truoc.log / _loi.log
+        #   la cua tien trinh con. ]]
+        """
+        try:
+            import duong_dan as _dd
+            p = _dd.du_lieu("retouch.log")
+            if p.is_file() and p.stat().st_size > 2 * 1024 * 1024:
+                os.replace(p, p.with_name("retouch.log.cu"))
+            with open(p, "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now():%m-%d %H:%M:%S} {msg}\n")
+        except Exception:                                    # noqa: BLE001
+            pass
 
     def _kiem(self, chay_thu: bool = False):
         """chay_thu=True: chạy hẳn một tiến trình con để BIẾT thiếu gói nào.
@@ -7290,6 +7309,15 @@ class RetouchWindow(Khung):
             if t == "san_sang":
                 self._xem_san_sang = True
                 self._xem_may = str(d.get("may") or "")      # "cuda" / "cpu" / ...
+                #[[ Suc khoe engine (7/10 — giai doan 1): MOT dong trong nhat ky
+                #   retouch (va retouch.log) moi lan engine mo, noi ro dang tinh
+                #   bang gi — may (cuda/cpu/mps), bo do mat ORT (CUDA / DirectML /
+                #   CoreML / CPU), ban saytool. Truoc day chay CPU hay do mat bang
+                #   CPU deu im lang, chi thay "cham" / "khong thay mat". ]]
+                self._append(f"[engine] máy={self._xem_may or '?'} · bộ dò mặt="
+                             f"{d.get('ort') or '?'} · saytool {d.get('ban') or '?'}"
+                             + ("" if d.get("ban") else
+                                " (bản cũ: mẻ sẽ chạy bằng tiến trình riêng)"))
                 if self._xem_cho_fp:
                     self._xem_xin_mo(self._xem_cho_fp)
                     if self._xem_bat:
@@ -7848,9 +7876,20 @@ class RetouchWindow(Khung):
         tự retouch ảnh mới (_chay_anh_moi). Mọi câu hỏi / kiểm tra đã xong ở bên
         gọi. viec = [(mức, [ảnh], mức 0 hết?)]; tam_goc None = MỘT lượt thẳng
         trên thư mục vào với muc_thang."""
-        #[[ Tat xem truoc TRUOC khi chay: no giu mo hinh tren card do hoa, ca
-        #   me nap them mot bo nua la de het bo nho card. ]]
-        if self._may_xem is not None:
+        #[[ ENGINE THUONG TRU (7/10, giai doan 1 tai cau truc): me chay NGAY
+        #   TRONG may xem truoc — mo hinh da nap, mot bo tren card (xem
+        #   retouch.chay(engine=)). Chua co may thi mo luon (nap ~4 s — truoc
+        #   day moi lan bam deu phai nap). Khong mo duoc (tool hong...) thi lui
+        #   ve tien trinh con cu; luc do moi phai tat may xem truoc de nhuong
+        #   card: no giu mo hinh tren card, ca me nap them mot bo nua la het. ]]
+        if self._may_xem is None and not self._xem_hong:
+            self._dam_bao_may_xem()
+        self._engine_dung = self._may_xem is not None and self._may_xem.song()
+        if self._engine_dung:
+            self._tat_xem_truoc(dong_may=False)
+            self._append("… chạy mẻ trong máy xem trước (mô hình đã nạp sẵn) — "
+                         "xem trước tạm dừng tới khi xong")
+        elif self._may_xem is not None:
             self._tat_xem_truoc(dong_may=True)
             self._append("… đã tắt xem trước để nhường card đồ hoạ cho lượt chạy")
         goc = Path(self.v_goc.get().strip().strip('"'))
@@ -7919,11 +7958,15 @@ class RetouchWindow(Khung):
                 #]]
                 _, truoc = self.rt.dem(thu_muc, ra, de_quy)
                 ma_cuoi = 0
+                #[[ engine = may xem truoc DANG SONG luc goi (doc moi lan: no
+                #   chet giua me thi lan tu-chay-lai di duong tien trinh con). ]]
                 for loai, gt in self.rt.chay(
                         goc, thu_muc, ra, muc, may=may,
                         de_quy=de_quy, lam_lai=lam_lai,
                         luong=luong, che_do=che_do,
-                        ghi_de=ghi_de):
+                        ghi_de=ghi_de,
+                        engine=(self._may_xem if getattr(self, "_engine_dung", False)
+                                else None)):
                     if loai == "pid":
                         self.proc = gt
                         continue
@@ -8163,6 +8206,19 @@ class RetouchWindow(Khung):
         if self._theo_doi is not None and not (self.worker and self.worker.is_alive()):
             self._dung_theo_doi("đã bấm Dừng")
             return
+        #[[ Me dang chay trong ENGINE THUONG TRU: xin dung (anh dang lam xong roi
+        #   thoi), khong giet — giet la mat luon may xem truoc. 20 s khong dung
+        #   duoc (ket trong mot buoc) thi tat han engine. ]]
+        m = self._may_xem
+        if m is not None and getattr(m, "dang_chay", False):
+            self._append("… đang dừng — ảnh đang làm sẽ xong rồi mới dừng")
+            m.dung_chay()
+            self.btn_stop.configure(state="disabled")
+            try:
+                self.after(20000, self._ep_dung_engine)
+            except tk.TclError:
+                pass
+            return
         p = self.proc
         if p and p.poll() is None:
             self._append("… đang dừng")
@@ -8171,6 +8227,14 @@ class RetouchWindow(Khung):
             except OSError as ex:
                 self._append(f"! không dừng được: {ex}")
         self.btn_stop.configure(state="disabled")
+
+    def _ep_dung_engine(self):
+        """Bấm Dừng đã 20 s mà mẻ trong engine chưa dừng -> tắt hẳn tiến trình."""
+        m = self._may_xem
+        if self.worker is not None and self.worker.is_alive() and m is not None \
+                and getattr(m, "dang_chay", False):
+            self._append("! engine không dừng được trong 20 s — tắt hẳn tiến trình")
+            m.dong()
 
     def _pump(self):
         try:
@@ -8264,7 +8328,12 @@ class RetouchWindow(Khung):
             pass
         self._dat_dang_chay(False)
         #[[ Chay xong: mo lai may xem truoc o nen (da tat luc bam Chay de
-        #   nhuong card do hoa) — keo thanh tiep la thay ngay. ]]
+        #   nhuong card do hoa) — keo thanh tiep la thay ngay. Engine thuong
+        #   tru chet GIUA ME (sap 0xC0000005...) thi xoa dau "hong" de mo lai:
+        #   dau do la cua lan chet nay, khong phai xem truoc hong that. ]]
+        if getattr(self, "_engine_dung", False) and (
+                self._may_xem is None or not self._may_xem.song()):
+            self._xem_hong = ""
         try:
             self.after(800, self._san_may_xem)
         except tk.TclError:
