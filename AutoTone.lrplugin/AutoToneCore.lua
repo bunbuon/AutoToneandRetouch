@@ -104,6 +104,9 @@ function M.readJob(path)
                     if key == "Rating" then
                         -- Rating di duong rieng, khong phai develop setting
                         rec.rating = tonumber(val)
+                    elseif key == "ConvertToGrayscale" then
+                        -- 8/10: anh den trang. "1"/"true" = Black & White
+                        rec.settings[key] = (val == "1" or val == "true" or val == "True")
                     else
                         rec.settings[key] = tonumber(val)
                     end
@@ -141,7 +144,10 @@ end
 local function diffFields(cur, want)
     local bad = {}
     for key, val in pairs(want) do
-        if not sameNumber(cur[key], val) then bad[#bad + 1] = key end
+        if type(val) == "boolean" then
+            -- ConvertToGrayscale: Lightroom tra true/false (nil = mau)
+            if (cur[key] == true) ~= val then bad[#bad + 1] = key end
+        elseif not sameNumber(cur[key], val) then bad[#bad + 1] = key end
     end
     if (want.Temperature or want.Tint) and cur.WhiteBalance ~= "Custom" then
         bad[#bad + 1] = "WhiteBalance"
@@ -581,7 +587,9 @@ end
      ExportForAutoTone.lua (menu) dùng CHUNG bảng này — một chỗ sửa, hai đường. ]]
 local EXPORT_FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
                         "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
-                        "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012" }
+                        "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
+                        -- 8/10: anh dang Black & White trong catalog (1 / 0)
+                        "ConvertToGrayscale" }
 -- Rating KHONG phai develop setting nen phai lay rieng bang getRawMetadata,
 -- xem cho ghi tung dong ben duoi. Can de doi chieu voi nhan loc anh cua nguoi dung.
 M.EXPORT_FIELDS = EXPORT_FIELDS
@@ -590,7 +598,9 @@ M.EXPORT_FIELDS = EXPORT_FIELDS
 local EXPORT_TEXT = { WhiteBalance = true }
 
 local function numOrEmpty(v)
-    if type(v) == "number" then
+    if type(v) == "boolean" then
+        return v and "1" or "0"
+    elseif type(v) == "number" then
         return string.format("%.14g", v)   -- du chu so, khong sinh duoi .0 thua
     elseif type(v) == "string" and tonumber(v) then
         return v

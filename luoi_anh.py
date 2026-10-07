@@ -581,6 +581,11 @@ class LuoiAnh(tk.Frame):
                 self._nhan(c, x + 4, y_nw, f"C{o['canh']}", "nw", "#111214",
                            "#d9dadc", f_nho)
                 y_nw += f_nho.metrics("linespace") + 6
+            if o.get("bw"):
+                #[[ 8/10: anh DEN TRANG (may chup B/W) — tool giu B/W, khong doi
+                #   WB / mau. Nhan de nguoi dung thay tool da nhan ra. ]]
+                self._nhan(c, x + 4, y_nw, "B/W", "nw", "#111214", "#d9dadc", f_nho)
+                y_nw += f_nho.metrics("linespace") + 6
             if o.get("rieng"):
                 #[[ Anh co MUC RIENG (Retouch: da keo / Sync rieng cho tam nay).
                 #   7/10 (thiet ke lai): CHAM VANG vien toi thay nhan chu "riêng"

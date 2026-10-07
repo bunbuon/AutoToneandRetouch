@@ -1104,6 +1104,36 @@ def bo_mat_ao_to(faces: list, kich_thuoc, to_pct: float, diem: float) -> list:
             if not (float(f[4]) < diem and float(f[2]) * float(f[3]) > S_ * to_pct / 100.0)]
 
 
+def la_den_trang(im) -> bool:
+    """Preview này là ảnh ĐEN TRẮNG (máy chụp ở kiểu ảnh B/W — Sony Creative
+    Style "B/W", Canon "Monochrome"...)?
+
+    #[[ 8/10 (user: "anh Raw load Preview nhin thay dang de che do BW — can giu
+    #   nguyen mau BW nay va van sua cac thong so khac"). JPEG nhung trong RAW la
+    #   ban MAY dung theo kieu anh dang chon: B/W thi R = G = B tung diem (lech
+    #   1-2 muc vi nen JPEG). Anh mau that luon co da / vai / nen lech hang chuc
+    #   muc — ke ca anh "gan nhu xam" (phong trang, ao den) thi da nguoi van lech
+    #   >= 15. Nen lay phan vi 99,5 cua do lech kenh: <= 6 la den trang.
+    #   Do o ban nho 160 px: nhanh, va JPEG thu nho khong sinh mau gia. ]]
+    """
+    try:
+        nho = im.copy()
+        nho.thumbnail((160, 160))
+        a = np.asarray(nho, dtype=np.int16)
+        if a.ndim != 3 or a.shape[2] < 3:
+            return True                   # preview 1 kenh: chac chan xam
+        lech = a[..., :3].max(axis=2) - a[..., :3].min(axis=2)
+        return bool(np.percentile(lech, 99.5) <= 6)
+    except Exception:                     # noqa: BLE001
+        return False
+
+
+def la_bw_catalog(crs: dict) -> bool:
+    """Lightroom / sidecar đang để ảnh này ở Black & White (ConvertToGrayscale)."""
+    v = str((crs or {}).get("ConvertToGrayscale", "")).strip().lower()
+    return v in ("true", "1")
+
+
 def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             wb_needs_faces: bool = False, face_px: int = 1024,
             face_score: float = 0.5, focus_q: float = 0.92,
@@ -1142,6 +1172,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
         im.draft("RGB", (big, big))   # decode thẳng ở tỉ lệ nhỏ -> rất nhanh
         im = im.convert("RGB")
         im = apply_orientation(im, tags.get("orientation"))
+        out["bw"] = la_den_trang(im)
 
         #[[ Đo mặt ở ĐỘ PHÂN GIẢI NHẬN DIỆN, không phải ở ảnh thống kê 480px.
         #   Mặt trong ảnh sự kiện chỉ ~53px trên khung 1024; thu về 480 thì ô mặt
@@ -5162,6 +5193,22 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     crs = nen_cho_anh(crs, cfg)
     nen_tone, nen_wb = bool(crs.get("__nen_tone")), bool(crs.get("__nen_wb"))
     r["nen_tone"], r["nen_wb"] = nen_tone, nen_wb
+    #[[ ANH DEN TRANG (8/10): preview cua may la B/W, hoac Lightroom / sidecar
+    #   da de Black & White. Giu BW (ghi ConvertToGrayscale — Lightroom mac dinh
+    #   dung RAW ra MAU du may chup B/W), van chinh Exposure / Highlights /
+    #   Shadows / Contrast / curve. KHONG ghi WB va Color Grading: hai thu do do
+    #   tu mau da tren preview — preview xam thi so do la rac (lan ghi 8/10 buoi
+    #   Kyyeu dat 5518 K / tint 23 cho ca loat anh B/W), va trong che do B/W cua
+    #   Lightroom, doi WB la doi pha tron xam — anh doi sang toi ma khong ai muon. ]]
+    bw = bool(r.get("bw")) or la_bw_catalog(crs)
+    r["bw"] = bw
+    if bw:
+        r["gr_sat"] = 0
+        r["gr_ssat"] = 0
+        r["temp_adj"] = 0.0
+        r["tint_adj"] = 0.0
+        if "den-trang" not in str(r.get("notes", "")):
+            r["notes"] = (str(r.get("notes", "")) + ";den-trang: giu BW, khong doi WB/mau").strip(";")
 
     def baseline(crs_key: str) -> float:
         """Giá trị preset gốc: ưu tiên marker của lần chạy trước để không cộng dồn."""
@@ -5243,7 +5290,10 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     elif cfg["wb"] != "off":
         new_temp = float(np.clip(old_temp + r["temp_adj"], 2000, 50000))
         new_tint = float(np.clip(old_tint + r["tint_adj"], -150, 150))
-    if old_temp > 0 and (cfg["wb"] != "off" or ATN_FIELDS["Temperature"] in atn or nen_wb):
+    if bw:
+        new_temp, new_tint = old_temp, old_tint
+        changes["ConvertToGrayscale"] = "True"
+    elif old_temp > 0 and (cfg["wb"] != "off" or ATN_FIELDS["Temperature"] in atn or nen_wb):
         changes["Temperature"] = str(int(round(new_temp)))
         changes["Tint"] = fmt_i(new_tint)
         if str(crs.get("WhiteBalance", "")) != "Custom":
@@ -5251,7 +5301,7 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     #[[ Nen WB khac WB dang co trong Lightroom (As Shot) -> PHAI ghi ca khi tool
     #   khong doi gi (temp_adj = 0): write_lr_job binh thuong bo trong o WB khi
     #   moi == cu, va de trong thi anh o lai As Shot. ]]
-    r["wb_ep_ghi"] = nen_wb and old_temp > 0
+    r["wb_ep_ghi"] = nen_wb and old_temp > 0 and not bw
 
     r.update(old_exposure=old_exp, new_exposure=new_exp,
              old_highlights=int(old_hl), new_highlights=new_hl,
@@ -6584,7 +6634,11 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  # 3/10: chi co so khi preset bo trong nhom Basic Tone (xem
                  # nen_cho_anh); o trong = plugin khong dung toi. Dat CUOI de
                  # moi cho doc job theo vi tri cot (neu con) khong lech.
-                 "Contrast2012", "Whites2012", "Blacks2012"]
+                 "Contrast2012", "Whites2012", "Blacks2012",
+                 #[[ 8/10: anh den trang — "1" = giu Black & White (plugin doc
+                 #   thanh true), o trong = khong dung toi. Dat CUOI: plugin cu
+                 #   doc theo ten cot. ]]
+                 "ConvertToGrayscale"]
 
 # File job vừa ghi gần nhất — giao diện theo dõi nó tới khi plugin đổi đuôi .done
 LAST_JOB: Path | None = None
@@ -6826,7 +6880,7 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
         # catalog mới khớp hệt sidecar — kể cả ảnh vừa được trả về đúng mức preset.
         # wb_ep_ghi: nen WB khac WB dang co trong Lightroom (As Shot) — phai ghi
         # ca khi tool khong doi gi, xem compute_values
-        wb_changed = (r.get("new_temp") != r.get("old_temp")
+        wb_changed = not r.get("bw") and (r.get("new_temp") != r.get("old_temp")
                       or r.get("new_tint") != r.get("old_tint")
                       or bool(r.get("wb_ep_ghi")))
         rows.append([
@@ -6854,6 +6908,7 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             # preset bỏ trống Basic Tone -> đặt đúng số preset SAY (nen_tone)
             *[str(int(r["new_" + k])) if r.get("new_" + k) is not None else ""
               for k in ("Contrast2012", "Whites2012", "Blacks2012")],
+            "1" if r.get("bw") else "",
         ])
     if not rows:
         return None

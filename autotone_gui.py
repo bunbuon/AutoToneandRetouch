@@ -2231,7 +2231,8 @@ class App(ttk.Frame):
             ds = [o_cua(r["path"], dev=r.get("delta_ev"), canh=r.get("scene"),
                         loai=(self._tags(r) or ("",))[0],
                         sao1=(r.get("cull") or "") in ("nham-mat", "loat"),
-                        bo="không ghi" if r.get("ngoai_xuat") else "")
+                        bo="không ghi" if r.get("ngoai_xuat") else "",
+                        bw=bool(r.get("bw")))
                   for r in self.items]
         else:
             #[[ Chua phan tich: anh khong co trong ban xuat Lightroom chi danh dau
