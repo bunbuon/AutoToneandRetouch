@@ -104,6 +104,12 @@ def main() -> int:
     ktra("ảnh màu: như cũ (có WB, có Color Grading, không ép B/W)",
          "Temperature" in c_mau and "ColorGradeMidtoneHue" in c_mau
          and "ConvertToGrayscale" not in c_mau)
+    r_lai = dict(r0(True), rerun=True)
+    c_lai = at.compute_values(r_lai, cfg, dict(crs), {})
+    ktra("B/W chạy lại (có mốc gốc): WB trả về đúng số gốc, không thêm WB mới",
+         c_lai.get("Temperature") == "5500" and c_lai.get("Tint") == "0"
+         and r_lai.get("bw_tra_wb") is True and "ColorGradeMidtoneHue" not in c_lai,
+         f"T={c_lai.get('Temperature')} tint={c_lai.get('Tint')}")
     ktra("B/W lấy từ catalog dù preview màu (người dùng bật B&W trong Lightroom)",
          at.compute_values(r0(False), cfg, dict(crs, ConvertToGrayscale="1"), {})
          .get("ConvertToGrayscale") == "True")

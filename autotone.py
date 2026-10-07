@@ -5190,6 +5190,7 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     #[[ Preset khong ap WB / Tone (quy trinh moi 3/10) -> tinh tren nen SAY, va
     #   phai TU GHI nhom do: Lightroom dang o As Shot / 0 chu khong o nen. Xem
     #   nen_cho_anh(). Anh co preset day du thi crs di qua nguyen ven. ]]
+    crs_goc = dict(crs or {})            # TRUOC nen_cho_anh — so goc that (anh B/W)
     crs = nen_cho_anh(crs, cfg)
     nen_tone, nen_wb = bool(crs.get("__nen_tone")), bool(crs.get("__nen_wb"))
     r["nen_tone"], r["nen_wb"] = nen_tone, nen_wb
@@ -5293,6 +5294,20 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     if bw:
         new_temp, new_tint = old_temp, old_tint
         changes["ConvertToGrayscale"] = "True"
+        #[[ Lan chay TRUOC (khi tool chua biet B/W) co the da ghi WB rac cho anh
+        #   nay — buoi Kyyeu 8/10: 5518 K / tint 23. Chay lai (co moc goc) thi TRA
+        #   WB ve dung so goc (old_* = moc truoc lan ghi dau). Anh chua tung bi
+        #   ghi thi so goc = so dang co -> plugin so thay bang nhau, khong ghi. ]]
+        #   So goc lay TRUOC nen_cho_anh: preset de WB trong (As Shot) thi old_*
+        #   la nen SAY (5250 K) — dung cho anh mau, khong phai so goc cua anh.
+        mk_t, mk_n = ATN_FIELDS["Temperature"], ATN_FIELDS["Tint"]
+        goc_t = get_f(atn, mk_t, 0.0) if mk_t in atn else get_f(crs_goc, "Temperature", 0.0)
+        goc_n = get_f(atn, mk_n, 0.0) if mk_n in atn else get_f(crs_goc, "Tint", 0.0)
+        if goc_t > 0 and (r.get("rerun") or mk_t in atn):
+            new_temp, new_tint = goc_t, goc_n
+            changes["Temperature"] = str(int(round(goc_t)))
+            changes["Tint"] = fmt_i(goc_n)
+            r["bw_tra_wb"] = True
     elif old_temp > 0 and (cfg["wb"] != "off" or ATN_FIELDS["Temperature"] in atn or nen_wb):
         changes["Temperature"] = str(int(round(new_temp)))
         changes["Tint"] = fmt_i(new_tint)
@@ -6880,9 +6895,10 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
         # catalog mới khớp hệt sidecar — kể cả ảnh vừa được trả về đúng mức preset.
         # wb_ep_ghi: nen WB khac WB dang co trong Lightroom (As Shot) — phai ghi
         # ca khi tool khong doi gi, xem compute_values
-        wb_changed = not r.get("bw") and (r.get("new_temp") != r.get("old_temp")
-                      or r.get("new_tint") != r.get("old_tint")
-                      or bool(r.get("wb_ep_ghi")))
+        wb_changed = (not r.get("bw") and (r.get("new_temp") != r.get("old_temp")
+                                           or r.get("new_tint") != r.get("old_tint")
+                                           or bool(r.get("wb_ep_ghi")))
+                      ) or bool(r.get("bw_tra_wb"))
         rows.append([
             # Ưu tiên đường dẫn Lightroom tự đọc ra (xem LR_PATH_KEY). Gửi đường
             # dẫn quét từ đĩa thì lệch hoa/thường là plugin không tìm thấy ảnh.
