@@ -99,6 +99,11 @@ def main() -> int:
     gd.dat_theme(root)
     app = ag.App(root)
     app.grid(row=0, column=0, sticky="nsew")
+    #[[ 7/10: nut Chay retouch va vong tu retouch anh moi di qua chot ban quyen
+    #   (App._khoa_chan). Bai nay dung thu muc du lieu tam, khong co key -> chot
+    #   chan that va khong co anh nao ra. Mo chot o day; chot ban quyen co bai
+    #   rieng (kiem_bq_giao_dien). ]]
+    app._khoa_chan = lambda: False
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
     app._chon_khau("retouch")

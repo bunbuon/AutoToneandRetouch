@@ -2623,7 +2623,20 @@ class RetouchWindow(Khung):
         return not self.rt.mo_hinh_can(goc, muc)
 
     # ------------------------------------------------------------ chạy
+    def _bi_khoa(self) -> bool:
+        """Chốt bản quyền ngay đầu việc nặng (7/10).
+
+        App._khoa_chan nói "mọi đường vào việc thật đều đi qua đây" — nhưng chỉ
+        App.open_retouch gọi nó, còn hai đường khác vào màn này (thanh mô-đun,
+        _chon_khau) và chính nút Chạy retouch / vòng tự retouch ảnh mới thì
+        không: hết hạn mà lớp phủ chưa kịp hiện (soi mỗi phút) là vẫn chạy
+        được mẻ mới. Bản không có App thật (bài kiểm dựng tay) thì không chặn."""
+        chan = getattr(self.app, "_khoa_chan", None)
+        return bool(chan is not None and chan())
+
     def start(self):
+        if self._bi_khoa():
+            return
         if not self._kiem():
             messagebox.showinfo("Chưa dùng được tool retouch",
                                 self.lbl_goc.cget("text"), parent=self)
@@ -3195,6 +3208,9 @@ class RetouchWindow(Khung):
         self._chay_anh_moi(san)
 
     def _chay_anh_moi(self, ds: list):
+        if self._bi_khoa():
+            self._dung_theo_doi("hết hạn bản quyền")
+            return
         td = self._theo_doi
         vao, ra = Path(td["vao"]), Path(td["ra"])
         try:
