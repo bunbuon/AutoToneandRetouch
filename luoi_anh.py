@@ -290,11 +290,11 @@ class LuoiAnh(tk.Frame):
         self.lbl_trong = tk.Label(self.o_trong, text="", background=self._nen,
                                   foreground=gd.MAU["mo"], font=gd.CHU,
                                   justify="center", wraplength=420)
-        self.lbl_trong.pack(pady=(0, 16))
+        self.lbl_trong.pack(pady=(0, 0))
         self.nut_trong = gd.NutTron(self.o_trong, "Chọn thư mục buổi chụp",
                                     kieu="chinh", icon="thu_muc", nen=self._nen,
                                     command=khi_trong)
-        self.nut_trong.pack()
+        self.nut_trong.pack(pady=(16, 0))
         self._cua_trong = self.canvas.create_window(0, 0, window=self.o_trong,
                                                     anchor="center")
 
@@ -376,11 +376,11 @@ class LuoiAnh(tk.Frame):
         dau, _, sau = str(chu or "").partition("\n")
         self.lbl_trong_dau.configure(text=dau)
         self.lbl_trong.configure(text=sau.strip())
-        (self.lbl_trong.pack(pady=(0, 16), after=self.lbl_trong_dau) if sau.strip()
+        (self.lbl_trong.pack(pady=(0, 0), after=self.lbl_trong_dau) if sau.strip()
          else self.lbl_trong.pack_forget())
         (self.icon_trong.pack_forget() if self._cho_dai
          else self.icon_trong.pack(pady=(0, 10), before=self.lbl_trong_dau))
-        (self.nut_trong.pack() if co_nut else self.nut_trong.pack_forget())
+        (self.nut_trong.pack(pady=(16, 0)) if co_nut else self.nut_trong.pack_forget())
 
     def chon(self, path: str | None, cuon_toi: bool = True) -> None:
         """Đặt tấm đang xem. Tấm đó đã nằm trong nhóm đang chọn thì GIỮ nhóm

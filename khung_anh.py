@@ -357,7 +357,7 @@ class KhungAnh(tk.Frame):
         self.lbl_trong = tk.Label(self._o_trong, text="", background=self._nen,
                                   foreground=gd.MAU["mo"], font=gd.CHU,
                                   justify="center", wraplength=460)
-        self.lbl_trong.pack(pady=(0, 16))
+        self.lbl_trong.pack(pady=(0, 0))
         self.nut_trong = gd.NutTron(self._o_trong, "", kieu="chinh", icon="thu_muc",
                                     nen=self._nen)
         self._i_trong = c.create_window(0, 0, window=self._o_trong, anchor="center",
@@ -617,12 +617,12 @@ class KhungAnh(tk.Frame):
         dau, _, sau = str(chu or "").partition("\n")
         self.lbl_trong_dau.configure(text=dau)
         self.lbl_trong.configure(text=sau.strip())
-        (self.lbl_trong.pack(pady=(0, 16), after=self.lbl_trong_dau) if sau.strip()
+        (self.lbl_trong.pack(pady=(0, 0), after=self.lbl_trong_dau) if sau.strip()
          else self.lbl_trong.pack_forget())
         if nut:
             self.nut_trong.configure(text=nut, command=lenh)
             if not self.nut_trong.winfo_manager():
-                self.nut_trong.pack()
+                self.nut_trong.pack(pady=(16, 0))
         else:
             self.nut_trong.pack_forget()
         W, H = self._kt()
