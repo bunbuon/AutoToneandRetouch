@@ -512,6 +512,7 @@ class App(ttk.Frame):
         self.khau_dang = ma
         ten = dict(KHAU)[ma]
         md = self.MO_DUN_CUA.get(ma, "tone")
+        self._md_dang = md
         self.thanh_md.chon(md)
         self.lbl_khau.configure(text=ten)
         self.hoi_khau.goi_y.dat(MO_KHAU.get(ma, ""))
@@ -523,7 +524,7 @@ class App(ttk.Frame):
         else:
             self.dau_chinh.pack_forget()
             self.dau_phu.pack(fill="x")
-            self.nut_ve.configure(text="←  Kết quả" if md == "tone" else "←  Cân tone")
+            self.nut_ve.configure(text="Kết quả" if md == "tone" else "Cân tone")
         #[[ MOI MO-DUN MOT BO: bang dieu khien phai, nut tren thanh cong cu,
         #   dong dau trang. Can tone: tuy chon can sang + "1 · Phan tich / 2 ·
         #   Ghi" + [Luoi anh | Bang so]. Retouch: muc ap dung + thu muc + may
@@ -566,6 +567,12 @@ class App(ttk.Frame):
         #[[ Dai bao cua buoi (quet thu muc, ban xuat Lightroom) la chuyen cua
         #   Can tone — Retouch lam tren anh da Export, khong can no. ]]
         self.dai_quet.hien(md == "tone")
+        self._hien_tien_do()
+        if rt_win is not None:
+            try:
+                rt_win._hien_tien_do_tt()
+            except Exception:                                # noqa: BLE001
+                pass
         self.lbl_md.configure(text="Cân tone" if md == "tone" else "Retouch")
         self.icon_md.delete("all")
         s = gd.don_vi(self) + 2
@@ -1389,16 +1396,13 @@ class App(ttk.Frame):
                             f"({khi}). Mở Lightroom, Plug-in Manager → Reload.")
         except Exception:                                    # noqa: BLE001
             pass
-        try:
-            if f:
-                cu, t_xuat, t_ghi = at.ban_xuat_cu_hon_lan_ghi(f)
-                if cu:
-                    canh.append(
-                        f"⚠  Bản xuất catalog ({t_xuat:%H:%M %d/%m}) cũ hơn lần "
-                        f"tool ghi ({t_ghi:%H:%M %d/%m}). Phân tích lúc này sẽ "
-                        "bỏ nhầm ảnh — mở Lightroom rồi phân tích lại.")
-        except Exception:                                    # noqa: BLE001
-            pass
+        #[[ 8/10 (user: "phan thong bao nay can an di"): canh bao "ban xuat catalog
+        #   cu hon lan tool ghi" KHONG len dai tren cung nua. Ngay sau moi lan ghi,
+        #   ban xuat nao cung "cu hon lan ghi" — dai cam hien thuong truc, nguoi
+        #   dung quen mat no. An toan van giu: at.plan() tu TAT buoc loc "anh sua
+        #   tay" khi ban xuat cu (ban_xuat_cu_hon_lan_ghi), nen khong con cai benh
+        #   bo nham 2032 anh cua 7/9. Ban xuat dang dung + nut "Nạp lại catalog" /
+        #   "Xoá catalog cũ" nam o dai buoi chup tren luoi (_nut_catalog). ]]
 
         if canh:
             self.lbl_tq_canh.configure(text="\n".join(canh))
@@ -1496,6 +1500,12 @@ class App(ttk.Frame):
         self.lbl_scan = self.dai_quet.nhan
         self.btn_fix = self.dai_quet.tao_nut("Cách tạo .xmp cho số còn lại",
                                              command=self.show_sidecar_help)
+        #[[ 8/10: SAU KHI PHAN TICH, ban xuat catalog dung yen — hai nut nay la
+        #   cach doi no (xem refresh_plan / _nut_catalog). ]]
+        self.btn_nap_catalog = self.dai_quet.tao_nut_them(
+            "Nạp lại catalog", command=self.do_nap_lai_catalog, icon="dong_bo")
+        self.btn_xoa_catalog = self.dai_quet.tao_nut_them(
+            "Xoá catalog cũ", command=self.do_xoa_catalog_cu)
 
     def _dat_nut_buoi(self):
         """Nút buổi trên thanh công cụ hiện TÊN buổi đang mở (thư mục), rê
@@ -2972,6 +2982,22 @@ class App(ttk.Frame):
         nhan = getattr(self, "lbl_tien3", None)
         if pb is None or nhan is None:
             return
+        #[[ 8/10 (user: "ben Retouch khong hien thanh da ghi xong, chuyen thanh
+        #   thanh Progress xu ly anh Retouch"): o mo-dun Retouch, thanh + chu
+        #   "Đã ghi xong 738/738" cua Can tone AN — cho do la thanh tien do
+        #   retouch (RetouchWindow._hien_tien_do_tt). ]]
+        if getattr(self, "_md_dang", "tone") == "retouch":
+            for w in (pb, nhan):
+                try:
+                    w.pack_forget()
+                except tk.TclError:
+                    pass
+            return
+        try:
+            if not nhan.winfo_manager():
+                nhan.pack(side="left")
+        except tk.TclError:
+            pass
         co = bool(getattr(self, "busy", False)) or bool(nhan.cget("text"))
         try:
             if co and not pb.winfo_manager():
@@ -3020,6 +3046,11 @@ class App(ttk.Frame):
 
     def _invalidate_measurements(self):
         """Tuỳ chọn vừa đổi ảnh hưởng tới phép đo -> phải quét lại."""
+        self._xuat_khoa = False
+        try:
+            self._nut_catalog()
+        except Exception:                                    # noqa: BLE001
+            pass
         if self.items:
             self.items = []
             self.measure_key = None
@@ -3428,8 +3459,19 @@ class App(ttk.Frame):
                 self.btn_fix.pack(side="left")
         else:
             self.lbl_scan.configure(
-                text=f"{n} ảnh RAW · khớp đủ {hit} ảnh từ catalog Lightroom.{dang_doc}",
+                text=f"{n} ảnh RAW · khớp đủ {hit} ảnh từ catalog Lightroom"
+                     f"{self._moc_ban_xuat()}.{dang_doc}",
                 foreground=gd.MAU["xong"])
+
+    def _moc_ban_xuat(self) -> str:
+        """“ · bản xuất 00:15 08/10” — bản catalog ĐANG DÙNG (8/10: sau khi phân
+        tích nó đứng yên, nên phải nói rõ là bản lúc nào)."""
+        p = self._file_xuat()
+        try:
+            return (" · bản xuất " + datetime.fromtimestamp(p.stat().st_mtime)
+                    .strftime("%H:%M %d/%m")) if p is not None else ""
+        except OSError:
+            return ""
 
     def _xem_anh_thieu(self):
         """Nguồn catalog: ảnh nào có trên đĩa mà thư mục bên Lightroom không có,
@@ -3513,6 +3555,88 @@ class App(ttk.Frame):
             return "", giay
         return "dang_xuat", giay
 
+    def _nut_catalog(self):
+        """Hai nút catalog chỉ hiện khi ĐÃ PHÂN TÍCH với nguồn catalog."""
+        co = bool(self.items) and self.source_value() == "catalog" and bool(self.folder())
+        for b in (getattr(self, "btn_nap_catalog", None),
+                  getattr(self, "btn_xoa_catalog", None)):
+            if b is None:
+                continue
+            try:
+                (b.pack if co else b.pack_forget)()
+            except tk.TclError:
+                pass
+
+    def _tinh_lai_theo_ban_xuat(self, path=None):
+        """Bản xuất vừa đổi (nạp lại / xoá) -> đọc lại, tính lại bảng, khoá lại."""
+        self._xuat_khoa = False
+        try:
+            if self.items:
+                self.refresh_plan()
+            else:
+                self._doc_xuat()
+            self._nhan_catalog()
+        finally:
+            self._xuat_khoa = bool(self.items)
+            self._nut_catalog()
+            try:
+                self.btn_nap_catalog.configure(state="normal")
+            except Exception:                                # noqa: BLE001
+                pass
+
+    def do_nap_lai_catalog(self):
+        """Nhờ Lightroom xuất lại thông số của buổi này, có rồi thì tính lại bảng."""
+        if self._khoa_chan() or not self.folder():
+            return
+        self.btn_nap_catalog.configure(state="disabled")
+
+        def xong(path):
+            self._tinh_lai_theo_ban_xuat(path)
+            khi = ""
+            try:
+                if path:
+                    khi = datetime.fromtimestamp(Path(path).stat().st_mtime).strftime(
+                        " (%H:%M %d/%m)")
+            except OSError:
+                pass
+            self.status(f"Đã nạp lại catalog{khi} — bảng đã tính lại theo bản mới.",
+                        gd.MAU["xong"])
+
+        def that_bai(_ly_do=None):
+            try:
+                self.btn_nap_catalog.configure(state="normal")
+            except Exception:                                # noqa: BLE001
+                pass
+
+        self.status("Đang nhờ Lightroom xuất lại catalog của buổi này…", gd.MAU["canh"])
+        self._ask_lr_export(xong, that_bai=that_bai)
+
+    def do_xoa_catalog_cu(self):
+        """Xoá bản xuất catalog cũ của buổi này rồi nhờ Lightroom xuất bản mới."""
+        f = self.folder()
+        if not f:
+            return
+        p = self._file_xuat()
+        khi = ""
+        try:
+            if p is not None:
+                khi = datetime.fromtimestamp(p.stat().st_mtime).strftime(" lúc %H:%M %d/%m")
+        except OSError:
+            pass
+        if not messagebox.askokcancel(
+                "Xoá catalog cũ?",
+                f"Xoá bản xuất catalog của buổi {f.name}{khi}.\n\n"
+                "App sẽ nhờ Lightroom xuất bản mới ngay sau đó (Lightroom cần đang "
+                "mở). Chưa có bản mới thì ảnh chưa ghi được.", parent=self):
+            return
+        n = at.xoa_ban_xuat(f)
+        self.export = {}
+        self._dau_xuat = None
+        self._tinh_lai_theo_ban_xuat()
+        self.status(f"Đã xoá {n} bản xuất cũ của buổi {f.name} — đang nhờ "
+                    "Lightroom xuất bản mới…", gd.MAU["canh"])
+        self.do_nap_lai_catalog()
+
     def _soi_xuat(self):
         """Mỗi 3 giây: có bản xuất mới thì cập nhật lại dòng trạng thái.
 
@@ -3523,7 +3647,8 @@ class App(ttk.Frame):
         """
         try:
             if self.source_value() == "catalog" and getattr(self, "pairs", None):
-                doi = self._doc_xuat()
+                doi = (False if getattr(self, "_xuat_khoa", False)
+                       else self._doc_xuat())
                 cho, giay = self._dang_cho_xuat()
                 tt = (at.ket_qua_xuat().get("khi"), cho, int(giay // 3) if cho else 0)
                 if doi or tt != getattr(self, "_tt_xuat", None):
@@ -3943,7 +4068,10 @@ class App(ttk.Frame):
             self.chuoi = False
             self.status("Không đo được ảnh nào.", gd.MAU["loi"])
             return
+        self._xuat_khoa = False             # lần tính đầu: đọc bản xuất mới nhất
         self.refresh_plan()
+        self._xuat_khoa = True              # rồi đứng yên tới khi bấm “Nạp lại catalog”
+        self._nut_catalog()
         if getattr(self, "chuoi", False):
             self.chuoi = False
             if self.cancel_flag:
@@ -3967,7 +4095,13 @@ class App(ttk.Frame):
         #   xong, phep tinh van an dung ban moi nhat — chu khong phai chi cai
         #   nhan tren man hinh moi dung.
         #]]
-        if self.source_value() == "catalog" and self._doc_xuat():
+        #[[ 8/10: DA PHAN TICH thi ban xuat DUNG YEN (_xuat_khoa) — user: "khi da
+        #   bam phan tich thi chi can them nut load lai Catalog moi hoac xoa
+        #   Catalog cu". Truoc day moi lan doi tuy chon / moi 3 giay app lang le
+        #   doc lai ban xuat moi nhat, bang so doi duoi tay nguoi dung. Lan tinh
+        #   DAU sau khi do xong van doc ban moi nhat (_on_analyzed mo khoa). ]]
+        if self.source_value() == "catalog" and not getattr(self, "_xuat_khoa", False) \
+                and self._doc_xuat():
             self._nhan_catalog()
         at.plan(self.items, self.cfg, self.folder(), getattr(self, "export", {}),
                 ban_xuat=self._file_xuat() if self.source_value() == "catalog" else None)

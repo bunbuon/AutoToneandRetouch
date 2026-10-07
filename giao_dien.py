@@ -2098,7 +2098,8 @@ class _NutDai(NutTron):
     (từ thời nút nằm trên thanh công cụ) thành hiện / ẩn ở mép phải dải."""
 
     def pack(self, *_a, **_kw):
-        self.grid(row=0, column=2, sticky="e", padx=(0, 10), pady=5)
+        self.grid(row=0, column=getattr(self, "_cot", 2), sticky="e", padx=(0, 10),
+                  pady=5)
         self.master._cap_nhat()
 
     pack_configure = pack
@@ -2169,6 +2170,20 @@ class DaiBao(tk.Frame):
                               nen=nen)
         return self.nut_hd
 
+    def tao_nut_them(self, text: str, command=None, icon: str | None = None) -> NutTron:
+        """Nút hành động THÊM (8/10) — đứng sau nút chính ở mép phải, cũng
+        .pack() / .pack_forget() để hiện / ẩn. Vd. dải buổi chụp: “Nạp lại
+        catalog”, “Xoá catalog cũ”."""
+        nen = _mau_dai(self.muc)[0] or self._nen_ngoai
+        ds = getattr(self, "nut_them", None)
+        if ds is None:
+            ds = self.nut_them = []
+        b = _NutDai(self, text, command=command, kieu="phu", font=CHU, nen=nen,
+                    icon=icon)
+        b._cot = 3 + len(ds)
+        ds.append(b)
+        return b
+
     def hien(self, co: bool) -> None:
         """Cho / không cho dải hiện (mô-đun Retouch không cần nó)."""
         self._duoc_hien = bool(co)
@@ -2183,8 +2198,9 @@ class DaiBao(tk.Frame):
         tk.Frame.configure(self, background=nen)
         self.vach.configure(background=vach)
         tk.Label.configure(self.nhan, background=nen, foreground=chu)
-        if self.nut_hd is not None and self.nut_hd._nen != nen:
-            self.nut_hd.configure(nen=nen)
+        for b in [self.nut_hd] + list(getattr(self, "nut_them", []) or []):
+            if b is not None and b._nen != nen:
+                b.configure(nen=nen)
         if self._co_cho:
             co = (self._duoc_hien
                   and bool(str(tk.Label.cget(self.nhan, "text")).strip()))
@@ -2204,8 +2220,9 @@ class DaiBao(tk.Frame):
             if w <= 1:
                 return
             bot = 3 + 2 * 10 + 4
-            if self.nut_hd is not None and self.nut_hd.winfo_manager():
-                bot += self.nut_hd.winfo_reqwidth() + 10
+            for b in [self.nut_hd] + list(getattr(self, "nut_them", []) or []):
+                if b is not None and b.winfo_manager():
+                    bot += b.winfo_reqwidth() + 10
             rong = max(160, w - bot)
             if int(str(tk.Label.cget(self.nhan, "wraplength")) or 0) != rong:
                 tk.Label.configure(self.nhan, wraplength=rong)

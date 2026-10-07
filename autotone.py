@@ -5598,6 +5598,27 @@ def ban_xuat_cho_thu_muc(folder, job_dir: Path | None = None,
 KET_QUA_XUAT = "ketqua_xuat.txt"
 
 
+def xoa_ban_xuat(folder, job_dir: Path | None = None, gom_con: bool = True) -> int:
+    """Xoá MỌI bản xuất catalog (export_*.tsv) có ảnh của thư mục này — nút
+    “Xoá catalog cũ” (8/10). Trả số file đã xoá. Không đụng job / nhật ký / bản
+    xuất của buổi khác."""
+    if not folder:
+        return 0
+    d = Path(job_dir or LR_JOB_DIR)
+    if not d.is_dir():
+        return 0
+    goc = khoa_duong_dan(folder)
+    n = 0
+    for f in list(d.glob("export_*.tsv")):
+        try:
+            if _phu_thu_muc(_thu_muc_cua_ban_xuat(f), goc, gom_con):
+                f.unlink()
+                n += 1
+        except OSError:
+            continue
+    return n
+
+
 def ket_qua_xuat(job_dir: Path | None = None) -> dict:
     """{} nếu chưa có. Khoá: thu_muc, so_anh, bo_sao, file, loi, cach, khi (mtime)."""
     p = Path(job_dir or LR_JOB_DIR) / KET_QUA_XUAT

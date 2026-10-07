@@ -197,6 +197,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.ben, self.thanh = ben, thanh
         self._dung_trang()
         self._dung_thanh_cong_cu(thanh)
+        self._dung_tien_do_app()
         self._dung_bang(ben, goc)
 
         self.v_vao.trace_add("write", lambda *_: self._doi_vao())
@@ -450,17 +451,67 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             self.khung_anh.grid()
 
     def _hien_pb(self, co: bool):
-        """Thanh tiến độ chỉ hiện khi đang chạy (xem _dung_trang)."""
-        pb = getattr(self, "pb", None)
-        if pb is None:
+        """(8/10) Thanh tiến độ ở đầu trang KHÔNG hiện nữa — tiến độ retouch
+        nằm ở thanh trạng thái đáy cửa sổ (_dat_tien_do_tt), đúng chỗ Cân tone
+        hiện tiến độ đo / ghi. self.pb vẫn giữ số (dùng để tính nhịp)."""
+        self._hien_tien_do_tt()
+
+    # ---- tiến độ retouch ở thanh trạng thái đáy cửa sổ (8/10)
+    def _dung_tien_do_app(self):
+        """Thanh tiến độ + chữ của RETOUCH, đặt ở thanh trạng thái của app (cùng
+        chỗ “Đã ghi xong 738/738” của Cân tone — chỗ đó ẩn khi đang ở Retouch,
+        xem App._hien_tien_do). RetouchWindow dựng rời (bài kiểm) thì không có."""
+        self.pb_tt = self.lbl_tt_chay = None
+        self._chu_tt_chay = ""
+        o = getattr(self.app, "ttb_trai", None)
+        if o is None:
             return
+        m = gd.MAU
+        self.pb_tt = ttk.Progressbar(o, mode="determinate", length=160)
+        self.lbl_tt_chay = tk.Label(o, text="", background=m["toi2"],
+                                    foreground=m["mo"], font=gd.CHU_NHO)
+
+    def _hien_tien_do_tt(self):
+        """Hiện khi đang ở mô-đun Retouch VÀ (đang chạy, hoặc còn chữ của lượt
+        vừa xong — “Retouch xong 13/13 ảnh”)."""
+        pb, lb = getattr(self, "pb_tt", None), getattr(self, "lbl_tt_chay", None)
+        if pb is None or lb is None:
+            return
+        o_rt = getattr(self.app, "_md_dang", "retouch") == "retouch"
+        chay = bool(getattr(self, "worker", None) and self.worker.is_alive())
+        co = o_rt and (chay or bool(self._chu_tt_chay))
         try:
             if co and not pb.winfo_manager():
-                pb.pack(side="right", before=self.lbl_tt)
+                pb.pack(side="left", padx=(0, 10))
+                lb.pack(side="left")
             elif not co and pb.winfo_manager():
                 pb.pack_forget()
+                lb.pack_forget()
         except tk.TclError:
             pass
+
+    def _dat_tien_do_tt(self, da: int, tong: int, chu: str, mau: str | None = None):
+        self._chu_tt_chay = chu
+        pb, lb = getattr(self, "pb_tt", None), getattr(self, "lbl_tt_chay", None)
+        if pb is not None and lb is not None:
+            try:
+                pb.configure(maximum=max(int(tong), 1), value=max(0, min(int(da), int(tong))))
+                lb.configure(text=chu, foreground=mau or gd.MAU["mo"])
+            except tk.TclError:
+                pass
+        self._hien_tien_do_tt()
+
+    def _dem_luot(self) -> int:
+        """Số ảnh LƯỢT ĐANG CHẠY đã ra (đếm file ở thư mục ra tạm của lượt) —
+        từng ảnh một, không đợi dòng tiến độ 10 ảnh một lần của tool."""
+        d, d_ra = getattr(self, "_vao_luot", None), getattr(self, "_ra_luot", None)
+        if d is None or d_ra is None:
+            return int(getattr(self, "_tien_do_tool", 0) or 0)
+        try:
+            _t, sau = self.rt.dem(d, d_ra, bool(self.v_dequy.get()))
+            return max(int(sau), int(getattr(self, "_tien_do_tool", 0) or 0))
+        except Exception:                                    # noqa: BLE001
+            return int(getattr(self, "_tien_do_tool", 0) or 0)
 
     def _cap_nhat_nut_chay(self):
         """“Chạy retouch · N ảnh” — N = số tấm ĐANG CHỌN ở dải ảnh (đúng những
@@ -1309,22 +1360,24 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         else:
             xong = sum(1 for _p, da in ds if da)
         lc = getattr(self, "_luot_chay", None)
-        self._hien_pb(bool(self.worker and self.worker.is_alive()))
-        if lc and self.worker and self.worker.is_alive():
-            #[[ Dang chay anh DA CHON / theo nhom muc tren thu muc tam: dem theo
-            #   LUOT CHAY (xem start), khong theo file thu muc ra. ]]
-            da = min(lc["xong"] + int(getattr(self, "_tien_do_tool", 0) or 0), lc["tong"])
+        chay = bool(self.worker and self.worker.is_alive())
+        if lc and chay:
+            da = min(lc["xong"] + self._dem_luot(), lc["tong"])
             self.pb.configure(maximum=max(lc["tong"], 1), value=da)
-            self.lbl_tt.configure(text=f"Đang chạy {da}/{lc['tong']} ảnh"
-                                       + self._nhip())
+            nhip = self._nhip()
+            self.lbl_tt.configure(text=f"Đang chạy {da}/{lc['tong']} ảnh" + nhip)
+            self._dat_tien_do_tt(da, lc["tong"],
+                                 f"Đang retouch {da}/{lc['tong']} ảnh" + nhip)
         elif not tong:
             self.pb.configure(maximum=1, value=0)
             self.lbl_tt.configure(text="Thư mục vào chưa có ảnh nào")
         else:
             self.pb.configure(maximum=max(tong, 1), value=xong)
+            nhip = self._nhip()
             self.lbl_tt.configure(
-                text=f"{xong}/{tong} ảnh đã có kết quả — còn {tong - xong}"
-                     + self._nhip())
+                text=f"{xong}/{tong} ảnh đã có kết quả — còn {tong - xong}" + nhip)
+            if chay:
+                self._dat_tien_do_tt(xong, tong, f"Đang retouch {xong}/{tong} ảnh" + nhip)
         self._ds_luoi = ds
         if self._hen_luoi is None:
             try:

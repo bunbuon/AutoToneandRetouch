@@ -300,9 +300,19 @@ def main() -> int:
     ktra("không chỗ nào khác tự hẹn _lam_moi_ray",
          "after(4000, self._lam_moi_ray)" not in src, "hẹn rải rác là thêm vòng song song")
     cb = than("_canh_bao_im_lang", src, cay)
-    ktra("cảnh báo bắt cả hai lỗi im lặng của ngày 7/9",
-         "plugin_song_khi_nao" in cb and "ban_xuat_cu_hon_lan_ghi" in cb,
-         "plugin chết · bản xuất cũ hơn lần ghi")
+    #[[ 8/10 (user: "phan thong bao nay can an di"): "ban xuat cu hon lan ghi"
+    #   KHONG con len dai canh bao — at.plan() tu tat buoc loc anh sua tay khi
+    #   ban xuat cu (benh 7/9 van duoc chan), con dai buoi chup co nut "Nạp lại
+    #   catalog" / "Xoá catalog cũ". Plugin chet van phai bao. ]]
+    at_src = (GOC / "autotone.py").read_text(encoding="utf-8")
+    plan_src = at_src[at_src.index("def plan("):]
+    ktra("plugin chết vẫn lên dải cảnh báo; bản xuất cũ do at.plan tự chặn, không báo dải",
+         "plugin_song_khi_nao" in cb and "at.ban_xuat_cu_hon_lan_ghi(" not in cb
+         and "ban_xuat_cu_hon_lan_ghi(" in plan_src[:6000],
+         "plugin chết · bản xuất cũ -> tắt bước lọc trong plan")
+    ktra("đã phân tích thì có nút Nạp lại / Xoá catalog cũ",
+         "do_nap_lai_catalog" in src and "do_xoa_catalog_cu" in src
+         and "tao_nut_them(" in src)
     ktra("cảnh báo im lặng lên dải trên cùng, trang nào cũng thấy",
          "self.lbl_im_lang" in cb and "_hien_dai_canh" in cb,
          "không chỉ trên màn Tổng quan đã ẩn")

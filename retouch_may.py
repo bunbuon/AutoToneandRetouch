@@ -495,13 +495,17 @@ class MayMixin:
             lam = float(lam)
         except (TypeError, ValueError):
             return ""
-        if lam < 1 or giay < 5:
+        #  8/10: engine thường trú ra ảnh đầu sau ~1 s — đợi 5 s thì cả mẻ nhỏ
+        #  xong mà dòng vẫn "đang khởi động"
+        if lam < 1 or giay < 2:
             return "  ·  đang khởi động…"
         moi_anh = giay / lam
         con = max(0.0, float(self.pb.cget("maximum")) - self.pb.cget("value"))
-        phut = con * moi_anh / 60.0
+        giay_con = con * moi_anh
+        phut = giay_con / 60.0
         return (f"  ·  {moi_anh:.1f} s/ảnh  ·  còn ~"
-                + (f"{phut:.0f} phút" if phut < 90
+                + (f"{giay_con:.0f} giây" if giay_con < 90
+                   else f"{phut:.0f} phút" if phut < 90
                    else f"{phut / 60:.1f} giờ"))
 
     # ------------------------------------------------------------ chạy
@@ -658,7 +662,13 @@ class MayMixin:
         #   chay MOT PHAN thu muc (anh dang chon). Ghi de + thu muc tam KHONG con
         #   bi chan (6/10 — user bi chan "Ghi de chi chay duoc MOT muc"): saytool
         #   ghi ra thu muc tam rieng, app tu thay anh goc — rt.dua_ket_qua_ra. ]]
-        theo_tam = len(nhom) > 1 or mot_phan
+        #[[ 8/10: GHI DE cung luon qua thu muc tam (user: "Retouch xong van bao
+        #   0/13 anh"). Ghi de thang len thu muc vao thi KHONG dem duoc anh nao da
+        #   xong (anh ra de len anh vao) — chi con dong tien do 10 anh mot lan cua
+        #   tool, bi dat lai 0 sau moi luot -> luc xong bao 0/13, thanh tien do
+        #   dung im. Qua thu muc tam: dem file ra cua luot tung anh mot, app thay
+        #   anh goc (rt.dua_ket_qua_ra — duong da dung cho anh dang chon). ]]
+        theo_tam = len(nhom) > 1 or mot_phan or ghi_de
 
         #[[ HOI XAC NHAN GHI DE — sau khi da dem duoc so anh.
         #
@@ -848,6 +858,13 @@ class MayMixin:
                            if tam_goc is not None else None)
         if tam_goc is not None:
             self._xong_dau = 0
+        self._vao_luot = self._ra_luot = None
+        #  thanh tiến độ ở đáy cửa sổ: hiện NGAY từ 0, không đợi nhịp đếm đầu
+        try:
+            n0 = (self._luot_chay or {}).get("tong") or sum(len(a) for _m, a, _l in viec)
+            self._dat_tien_do_tt(0, n0, f"Đang retouch 0/{n0} ảnh  ·  đang khởi động…")
+        except Exception:                                    # noqa: BLE001
+            pass
 
         def chay_mot(thu_muc, muc, ra=ra, ghi_de=ghi_de, lam_lai=lam_lai):
             #[[ TU CHAY LAI khi sap giua me anh.
@@ -939,7 +956,11 @@ class MayMixin:
                         #   thu muc ra / de len anh goc. Dua ra CA KHI hong /
                         #   dung giua chung: tam nao da xong thi khong mat. ]]
                         self._tien_do_tool = 0
-                        ma = chay_mot(d, m, ra=d_ra, ghi_de=False, lam_lai=False)
+                        self._vao_luot, self._ra_luot = d, d_ra
+                        try:
+                            ma = chay_mot(d, m, ra=d_ra, ghi_de=False, lam_lai=False)
+                        finally:
+                            self._vao_luot = self._ra_luot = None
                         n_ra = self.rt.dua_ket_qua_ra(a, vao, d_ra, ra, de_quy, ghi_de)
                         if lc is not None:
                             lc["xong"] += n_ra
@@ -1257,6 +1278,15 @@ class MayMixin:
         except tk.TclError:
             pass
         tong, xong = self._dem()
+        #[[ 8/10: chay qua thu muc tam (anh dang chon / nhieu muc / ghi de) thi
+        #   SO CUA LUOT CHAY moi dung — _dem() dem ca thu muc, va o che do ghi de
+        #   khong dem duoc bang file (ra 0/13 du da xong het). ]]
+        lc = getattr(self, "_luot_chay", None)
+        if lc:
+            tong, xong = int(lc["tong"]), min(int(lc["xong"]), int(lc["tong"]))
+        ghi_de_luot = bool(self.v_ghide.get())
+        noi_ra = ("đã ghi đè lên ảnh gốc" if ghi_de_luot
+                  else f"→ {self.v_ra.get()}")
         #[[ TINH NANG BI BO GIUA CHUNG PHAI DUOC NOI LAI O CUOI.
         #
         #   Tu ban 0.9.5, buoc nao nap khong duoc (thieu file mo hinh chang han)
@@ -1282,10 +1312,13 @@ class MayMixin:
             self.app.status(
                 f"Retouch xong {xong}/{tong} ảnh nhưng THIẾU: {ten_bo} — "
                 f"xem nhật ký", gd.MAU["canh"])
+            self._dat_tien_do_tt(xong, tong, f"Retouch xong {xong}/{tong} ảnh",
+                                 gd.MAU["canh"])
         elif ma == 0:
             self._append(f"=== xong, {xong}/{tong} ảnh có kết quả ===")
-            self.app.status(f"Retouch xong: {xong}/{tong} ảnh → {self.v_ra.get()}",
+            self.app.status(f"Retouch xong {xong}/{tong} ảnh · {noi_ra}",
                             gd.MAU["xong"])
+            self._dat_tien_do_tt(xong, tong, f"Retouch xong {xong}/{tong} ảnh")
         else:
             #[[ Dung tay cung ve day. Phan biet bang con lai, khong bang ma
             #   thoat: terminate() tren Windows tra ma khac tren Linux, con
@@ -1317,6 +1350,8 @@ class MayMixin:
             self._append("Chạy lại là tiếp tục từ chỗ dừng — tool tự bỏ qua "
                          "ảnh đã có kết quả.")
             self.app.status(f"Retouch dừng ở {xong}/{tong} ảnh", gd.MAU["canh"])
+            self._dat_tien_do_tt(xong, tong, f"Retouch dừng ở {xong}/{tong} ảnh",
+                                 gd.MAU["canh"])
             #[[ Dung giua chung thi LY DO nam trong nhat ky — dua nguoi dung
             #   toi do, dung de ho nhin luoi anh ma doan. ]]
             self.v_xem.set("nhat_ky")
