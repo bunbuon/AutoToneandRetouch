@@ -1422,7 +1422,9 @@ class App(ttk.Frame):
             if not p.is_file():
                 return None
             im = Image.open(p)
-            co_san = sorted(im.info.get("sizes") or [im.size])
+            #  (KHONG viet sorted(a or [b]) — Cython 3 crash o EarlyReplaceBuiltinCalls)
+            co_san = list(im.info.get("sizes") or [im.size])
+            co_san.sort()
             im.size = next((k for k in co_san if k[0] >= co * 2), co_san[-1])
             im = im.convert("RGBA").resize((co, co), Image.LANCZOS)
             return ImageTk.PhotoImage(im, master=self)
