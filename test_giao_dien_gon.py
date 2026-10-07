@@ -325,8 +325,9 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     ktra("trạng thái lần gửi không lấy job của buổi khác",
          "G0310" in chu1 and "chưa gửi" in chu1 and "Hiu" not in chu1,
          chu1[:60])
+    #  7/10 (thiet ke lai): cau ngan co dau "✓ Buổi G0310 đã đẩy vào Lightroom …"
     ktra("có job của buổi này thì báo đúng job đó",
-         "Lần gửi gần nhất" in chu2 and "G0310" in chu2, chu2[:60])
+         "Lightroom" in chu2 and "G0310" in chu2 and "chưa gửi" not in chu2, chu2[:60])
     app.scan_folder()
     chay(3)
     ktra("chọn buổi xong nút buổi đổi tên ngay", app.nut_buoi.cget("text") == "G0310",

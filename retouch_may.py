@@ -591,12 +591,17 @@ class MayMixin:
             self._vao_theo_doi(theo_doi, "ảnh đã chọn đều có kết quả")
             return
         if not con:
-            messagebox.showinfo("Đã xong từ trước",
-                                f"Cả {tong} ảnh đều đã có kết quả.\n\n"
-                                "Muốn làm lại: chọn riêng những tấm cần làm ở dải "
-                                "ảnh, hoặc tick “Làm lại cả ảnh đã có kết quả”.",
-                                parent=self)
-            return
+            #[[ 7/10: cong tac "Lam lai ca anh da co ket qua" da bo cung nhom May &
+            #   cach chay — nen HOI THANG thay vi bao "tick Lam lai". Chon het ma
+            #   tam nao cung xong la y muon xuat lai ca loat. ]]
+            if hoi_nut(self, "Đã có kết quả",
+                       f"Cả {tong} ảnh đang chọn đều đã có kết quả.\n\n"
+                       "Làm lại tất cả? Ảnh đã xuất sẽ được ghi đè bằng bản mới.",
+                       [("lam_lai", "Làm lại tất cả", "chinh"),
+                        ("huy", "Thôi", "phu")]) != "lam_lai":
+                return
+            lam_lai = True
+            con = tong
 
         #[[ NHOM THEO MUC (sang 4/10 — muc rieng tung anh + Sync).
         #

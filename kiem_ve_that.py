@@ -496,9 +496,12 @@ def kiem_chon_nhieu(tam: Path) -> None:
     chay(4)
     c.xview_moveto(0)
     chay(4)
-    nhan = [c.itemcget(t, "text") for t in c.find_withtag("o") if c.type(t) == "text"]
-    ktra("ảnh có mức riêng mang nhãn “riêng” trên dải", nhan.count("riêng") == 1,
-         f"{nhan.count('riêng')} nhãn")
+    #[[ 7/10 (thiet ke lai): dau "rieng" la CHAM VANG (tag "rieng"), khong con
+    #   la nhan chu — dem cham vang, khong dem chu. ]]
+    cham = [t for t in c.find_withtag("rieng")
+            if c.type(t) == "oval" and c.itemcget(t, "fill") == gd.MAU["nhan"]]
+    ktra("ảnh có mức riêng mang chấm vàng trên dải", len(cham) == 1,
+         f"{len(cham)} chấm")
     #[[ Luoi Can tone (khong chon_nhieu): Ctrl + bam la bam thuong. ]]
     khung2 = tk.Frame(root, height=300)
     khung2.pack(side="top", fill="x")

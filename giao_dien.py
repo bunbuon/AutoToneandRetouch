@@ -725,6 +725,28 @@ def don_vi(w) -> int:
 #   11, macOS khong co ca hai — thieu phong la hien o vuong. Ve bang duong va
 #   hinh tron thi giong nhau o moi may, phong to bao nhieu cung net. ]]
 def ve_bieu_tuong(c: tk.Canvas, ten: str, cx: float, cy: float, s: float,
+                  mau: str, tag: str = "icon", net: float | None = None) -> None:
+    """Đặt biểu tượng `ten` (bộ bieu_tuong.py) cỡ s × s, tâm (cx, cy), lên canvas.
+
+    #[[ 7/10 (user: "thiet ke ca bo Icon cho dep va sac net hon"): anh PIL
+    #   khu rang cua (bieu_tuong.anh_bieu_tuong) thay net canvas — Tk tren
+    #   Windows khong khu rang cua net canvas nen duong cheo / vong tron cu
+    #   loi xin. Khong dung duoc PIL (may la) thi ve net nhu cu. `net`: be day
+    #   net tren luoi 24 (mac dinh 1,8; bieu tuong to o man trong dung mong
+    #   hon cho thanh). ]]
+    """
+    try:
+        import bieu_tuong as _bt
+        if _bt.co(ten):
+            a = _bt.anh_bieu_tuong(c, ten, max(6, round(s)), mau, net)
+            c.create_image(round(cx), round(cy), image=a, anchor="center", tags=tag)
+            return
+    except Exception:                                        # noqa: BLE001
+        pass
+    _ve_net_cu(c, ten, cx, cy, s, mau, tag)
+
+
+def _ve_net_cu(c: tk.Canvas, ten: str, cx: float, cy: float, s: float,
                   mau: str, tag: str = "icon") -> None:
     nh = max(1.0, s / 11)
     if ten == "tone":                       # ba thanh trượt
@@ -781,6 +803,49 @@ def ve_bieu_tuong(c: tk.Canvas, ten: str, cx: float, cy: float, s: float,
         k = 0.22 * s
         c.create_polygon(cx - k, cy - k * 0.5, cx + k, cy - k * 0.5, cx, cy + k * 0.6,
                          fill=mau, outline=mau, tags=tag)
+    #[[ 7/10 (thiet ke lai giao dien): chevron ve bang net thay ky tu "▶ ▼"
+    #   co 7 — ky tu do lech dong, nho xiu va moi phong ve mot kieu. ]]
+    elif ten in ("chevron_phai", "chevron_xuong"):
+        k = 0.2 * s
+        if ten == "chevron_phai":
+            pts = (cx - k * 0.5, cy - k, cx + k * 0.5, cy, cx - k * 0.5, cy + k)
+        else:
+            pts = (cx - k, cy - k * 0.5, cx, cy + k * 0.5, cx + k, cy - k * 0.5)
+        c.create_line(*pts, fill=mau, width=max(1.5, nh * 1.3), capstyle="round",
+                      joinstyle="round", tags=tag)
+    elif ten == "mat":                      # khung lấy nét quanh khuôn mặt
+        a, k = 0.42 * s, 0.16 * s
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                x, y = cx + sx * a, cy + sy * a
+                c.create_line(x - sx * k, y, x, y, x, y - sy * k, fill=mau,
+                              width=nh, capstyle="round", tags=tag)
+        r = 0.17 * s
+        c.create_oval(cx - r, cy - r - 0.04 * s, cx + r, cy + r - 0.04 * s,
+                      outline=mau, width=nh, tags=tag)
+    elif ten == "anh":                      # khung ảnh có núi + mặt trời
+        x0, y0, x1, y1 = cx - 0.45 * s, cy - 0.34 * s, cx + 0.45 * s, cy + 0.34 * s
+        c.create_rectangle(x0, y0, x1, y1, outline=mau, width=nh, tags=tag)
+        c.create_line(x0 + 0.08 * s, y1 - 0.08 * s, cx - 0.1 * s, cy - 0.02 * s,
+                      cx + 0.08 * s, cy + 0.16 * s, cx + 0.2 * s, cy + 0.04 * s,
+                      x1 - 0.08 * s, y1 - 0.08 * s, fill=mau, width=nh,
+                      joinstyle="round", tags=tag)
+        r = 0.07 * s
+        c.create_oval(cx + 0.18 * s - r, cy - 0.16 * s - r, cx + 0.18 * s + r,
+                      cy - 0.16 * s + r, fill=mau, outline=mau, tags=tag)
+    elif ten == "chay":                     # ▶ tam giác
+        k = 0.3 * s
+        c.create_polygon(cx - k * 0.8, cy - k, cx + k, cy, cx - k * 0.8, cy + k,
+                         fill=mau, outline=mau, joinstyle="round", width=nh,
+                         tags=tag)
+    elif ten == "dung":                     # ■
+        k = 0.24 * s
+        c.create_rectangle(cx - k, cy - k, cx + k, cy + k, fill=mau, outline=mau,
+                           tags=tag)
+    elif ten == "so_sanh":                  # nửa trái tô / nửa phải rỗng
+        x0, y0, x1, y1 = cx - 0.42 * s, cy - 0.32 * s, cx + 0.42 * s, cy + 0.32 * s
+        c.create_rectangle(x0, y0, x1, y1, outline=mau, width=nh, tags=tag)
+        c.create_rectangle(x0, y0, cx, y1, fill=mau, outline=mau, tags=tag)
 
 
 # ── Nút bo tròn ───────────────────────────────────────────────────────────────
@@ -846,11 +911,16 @@ class NutTron(tk.Canvas):
     # ---- kích thước
     def rong_chu(self) -> int:
         """Bề ngang chữ + biểu tượng + lề — để bài kiểm hỏi “có bị cắt không”."""
-        t = self._chu + ("  ▾" if self._mui_ten else "")
+        t = self._chu
         w = self._f.measure(t) + 2 * self._padx
         if self._icon:
             w += self._s_icon + (6 if t else 0)
+        if self._mui_ten:
+            w += self._s_mui() + 4
         return w
+
+    def _s_mui(self) -> int:
+        return round(self._f.metrics("linespace") * 0.9)
 
     def _rong_can(self) -> int:
         return self._rong_dat or max(self._cao, self.rong_chu())
@@ -888,16 +958,21 @@ class NutTron(tk.Canvas):
             self._anh = anh_bo_goc(self, w, h, h // 2, mau or self._nen,
                                    self._nen, vien)
             self.itemconfigure(self._i_nen, image=self._anh)
-        t = self._chu + ("  ▾" if self._mui_ten else "")
+        t = self._chu
         self.delete("icon")
-        if self._icon:
-            ss = self._s_icon
-            tw = self._f.measure(t)
-            x0 = (w - (ss + (6 if t else 0) + tw)) / 2
+        #  [biểu tượng] chữ [▾] — cả cụm canh giữa nút
+        ss = self._s_icon if self._icon else 0
+        sm = self._s_mui() if self._mui_ten else 0
+        tw = self._f.measure(t)
+        tong = (ss + (6 if (ss and t) else 0)) + tw + ((4 + sm) if sm else 0)
+        x0 = (w - tong) / 2
+        if ss:
             ve_bieu_tuong(self, self._icon, x0 + ss / 2, h / 2, ss, chu)
-            self.coords(self._i_chu, x0 + ss + (6 if t else 0) + tw / 2, h / 2)
-        else:
-            self.coords(self._i_chu, w / 2, h / 2)
+            x0 += ss + (6 if t else 0)
+        self.coords(self._i_chu, x0 + tw / 2, h / 2)
+        if sm:
+            ve_bieu_tuong(self, "mui_xuong", x0 + tw + 4 + sm / 2, h / 2 + 0.5, sm,
+                          chu if self._kieu != "chu" else MAU["mo"])
         self.itemconfigure(self._i_chu, text=t, fill=chu)
 
     # ---- sự kiện
@@ -1344,10 +1419,10 @@ class Truot(tk.Canvas):
                          highlightthickness=0, borderwidth=0,
                          background=self._nen, takefocus=takefocus)
         y = self._h / 2
-        self._ranh = self.create_line(0, y, 0, y, width=2, capstyle="round",
+        self._ranh = self.create_line(0, y, 0, y, width=3, capstyle="round",
                                       fill=MAU["vien2"])
-        self._to = self.create_line(0, y, 0, y, width=2, capstyle="round",
-                                    fill="#c4c7cc")
+        self._to = self.create_line(0, y, 0, y, width=3, capstyle="round",
+                                    fill="#d5d7db")
         self._num = self.create_image(0, 0, anchor="nw")
         self._vet = variable.trace_add("write", lambda *_a: self._ve())
         for su_kien, ham in (("<ButtonPress-1>", self._nhan),
@@ -1403,7 +1478,7 @@ class Truot(tk.Canvas):
         self.itemconfigure(self._ranh, fill=MAU["vien"] if tat else MAU["vien2"])
         x, x0 = self._x(v), self._x(self._goc)
         self.coords(self._to, min(x, x0), y, max(x, x0), y)
-        self.itemconfigure(self._to, fill=MAU["noi3"] if tat else "#c4c7cc")
+        self.itemconfigure(self._to, fill=MAU["noi3"] if tat else "#d5d7db")
         if tat:
             mau = MAU["noi3"]
         elif self._keo:
@@ -1508,27 +1583,40 @@ class Truot(tk.Canvas):
 
 # ── Thanh mô-đun ─────────────────────────────────────────────────────────────
 class ThanhMoDun(tk.Frame):
-    """Cột biểu tượng sát mép phải, như cột Color / Portrait / Background của
-    Evoto: mỗi mô-đun một nút, nút đang chọn có nền ô vuông bo góc.
+    """Cột mô-đun sát mép phải, như cột Color / Portrait / Background của
+    Evoto: mỗi mô-đun một ô BIỂU TƯỢNG + TÊN bên dưới; ô đang chọn có nền bo
+    góc và vạch vàng mép trái.
 
-    muc = [(mã, tên hiện trong chú thích nổi, tên biểu tượng), ...]
+    muc = [(mã, chú thích nổi, tên biểu tượng), ...] — tên hiện dưới biểu
+    tượng là phần chú thích trước dấu " · " (vd. "Cân tone · phân tích…" →
+    "Cân tone").
+
+    #[[ 7/10 (thiet ke lai): truoc chi co bieu tuong — nguoi moi khong biet
+    #   hinh "ba thanh truot" la Can tone, hinh "nguoi" la Retouch, phai re
+    #   chuot doan. Evoto cung ghi ten duoi bieu tuong. ]]
     """
 
     def __init__(self, cha, muc, khi_chon, nen: str | None = None):
         self._nen = nen or MAU["toi"]
-        super().__init__(cha, background=self._nen, padx=5, pady=10)
+        super().__init__(cha, background=self._nen, padx=4, pady=10)
         self._khi_chon = khi_chon
         self._dang = None
         self.nut: dict = {}
         lh = don_vi(cha)
-        self._s = round(lh * 2.35)
-        for ma, ten, bt in muc:
-            c = tk.Canvas(self, width=self._s, height=self._s, background=self._nen,
+        self._f = _phong(cha, CHU_NHO)
+        self._s_icon = round(lh * 1.25)
+        ten_ngan = [str(ten).split(" · ")[0] for _m, ten, _b in muc]
+        self._rong_o = max([round(lh * 3.3)] + [self._f.measure(t) + 14 for t in ten_ngan])
+        self._s = self._rong_o                     # tương thích: mã cũ đọc _s
+        self._cao_o = self._s_icon + self._f.metrics("linespace") + round(lh * 1.2)
+        for (ma, ten, bt), ngan in zip(muc, ten_ngan):
+            c = tk.Canvas(self, width=self._rong_o, height=self._cao_o, background=self._nen,
                           highlightthickness=0, borderwidth=0, takefocus=1,
                           cursor="hand2")
             c.tu_cuon = False
             c.pack(pady=3)
             c._ma, c._bt, c._re, c._anh = ma, bt, False, None
+            c._ngan = ngan
             c.goi_y = GoiY(c, ten)
             c.bind("<ButtonRelease-1>", lambda _e, m=ma: self._bam(m), add="+")
             c.bind("<KeyPress-space>", lambda _e, m=ma: self._bam(m), add="+")
@@ -1558,16 +1646,24 @@ class ThanhMoDun(tk.Frame):
 
     def _ve(self, c):
         c.delete("all")
-        s = self._s
+        w, h = self._rong_o, self._cao_o
         chon = c._ma == self._dang
         if chon or c._re:
-            c._anh = anh_bo_goc(c, s, s, round(s * 0.24),
+            c._anh = anh_bo_goc(c, w, h, round(min(w, h) * 0.18),
                                 MAU["noi2"] if chon else MAU["noi"], self._nen)
             c.create_image(0, 0, image=c._anh, anchor="nw")
         else:
             c._anh = None
+        if chon:                               # vạch vàng mép trái
+            c.create_line(1.5, h * 0.26, 1.5, h * 0.74, fill=MAU["nhan"], width=3,
+                          capstyle="round")
         mau = MAU["chu"] if (chon or c._re) else MAU["mo"]
-        ve_bieu_tuong(c, c._bt, s / 2, s / 2, s * 0.5, mau)
+        lh = self._f.metrics("linespace")
+        khoi = self._s_icon + 6 + lh                 # biểu tượng + khe + chữ
+        y0 = (h - khoi) / 2
+        ve_bieu_tuong(c, c._bt, w / 2, y0 + self._s_icon / 2, self._s_icon, mau)
+        c.create_text(w / 2, y0 + self._s_icon + 6 + lh / 2, text=c._ngan,
+                      font=self._f, fill=MAU["chu"] if chon else MAU["mo"])
 
 
 class GoiY:
@@ -1678,17 +1774,23 @@ class NutHoi(tk.Canvas):
         bg = nen or nen_cua(cha)
         super().__init__(cha, width=d, height=d, highlightthickness=0,
                          borderwidth=0, background=bg, takefocus=0)
-        self._vong = self.create_oval(1, 1, d - 2, d - 2, outline=MAU["vien2"],
-                                      width=1)
-        self._chu = self.create_text(d / 2, d / 2, text="?", font=f,
-                                     fill=MAU["mo"])
+        #[[ 7/10: bieu tuong "hoi" (bieu_tuong.py, khu rang cua) thay vong oval
+        #   + chu "?" — vong oval cua canvas Tk lom chom, nhin ro nhat o day vi
+        #   dau ? lap lai canh moi tinh nang. Giu _vong / _chu = None cho ma cu. ]]
+        self._d = d
+        self._vong = self._chu = None
+        self._ve_hoi(False)
         self.goi_y = GoiY(self, chu)
         self.bind("<Enter>", lambda _e: self._sang(True), add="+")
         self.bind("<Leave>", lambda _e: self._sang(False), add="+")
 
+    def _ve_hoi(self, vao: bool):
+        self.delete("icon")
+        ve_bieu_tuong(self, "hoi", self._d / 2, self._d / 2, self._d * 1.08,
+                      MAU["nhan"] if vao else MAU["mo2"])
+
     def _sang(self, vao: bool):
-        self.itemconfigure(self._vong, outline=MAU["nhan"] if vao else MAU["vien2"])
-        self.itemconfigure(self._chu, fill=MAU["nhan"] if vao else MAU["mo"])
+        self._ve_hoi(vao)
 
 
 class Nhom(ttk.Frame):
@@ -1715,12 +1817,19 @@ class Nhom(ttk.Frame):
                             highlightbackground=nen,
                             highlightcolor=MAU["nhan"], pady=5)
         self.dau.pack(fill="x")
-        self.l_mui = tk.Label(self.dau, text="▶", background=nen,
-                              foreground=MAU["mo"], font=("Segoe UI", 7))
-        self.l_mui.pack(side="left", padx=(0, 7))
+        #[[ 7/10: chevron VE TAY (canvas) thay ky tu "▶ ▼" co 7 — xem
+        #   ve_bieu_tuong("chevron_*"). Ten nhom co 10 dam vua (CHU_TIEU_DE): dau
+        #   nhom phai doc ra la DAU NHOM, khong lan voi nhan thanh keo co 9. ]]
+        lh = don_vi(self)
+        self._s_mui = max(12, round(lh * 1.05))
+        self.l_mui = tk.Canvas(self.dau, width=self._s_mui, height=self._s_mui,
+                               background=nen, highlightthickness=0, borderwidth=0)
+        self.l_mui.tu_cuon = False
+        self._mau_mui = MAU["mo"]
+        self.l_mui.pack(side="left", padx=(0, 8))
         self.l_ten = tk.Label(self.dau, text=tieu_de, anchor="w",
                               background=nen, foreground=MAU["chu"],
-                              font=CHU_DAM)
+                              font=CHU_TIEU_DE)
         self.l_ten.pack(side="left")
         self.l_tom = ttk.Label(self, text="", style="Mo2.TLabel",
                                wraplength=300, justify="left")
@@ -1734,8 +1843,15 @@ class Nhom(ttk.Frame):
             self.dau.bind(phim, lambda _e: self.dao())
         (self.mo if mo else self.dong)(bao=False)
 
+    def _ve_mui(self):
+        c, s = self.l_mui, self._s_mui
+        c.delete("all")
+        ve_bieu_tuong(c, "chevron_xuong" if self.dang_mo else "chevron_phai",
+                      s / 2, s / 2, s, self._mau_mui, net=2.2)
+
     def _ro(self, vao: bool):
-        self.l_mui.configure(foreground=MAU["chu"] if vao else MAU["mo"])
+        self._mau_mui = MAU["chu"] if vao else MAU["mo"]
+        self._ve_mui()
 
     def _vach_cuoi(self):
         if self.vach is not None:
@@ -1744,7 +1860,7 @@ class Nhom(ttk.Frame):
 
     def mo(self, bao: bool = True):
         self.dang_mo = True
-        self.l_mui.configure(text="▼")
+        self._ve_mui()
         self.l_tom.pack_forget()
         self.than.pack(fill="x", pady=(2, 0))
         self._vach_cuoi()
@@ -1753,7 +1869,7 @@ class Nhom(ttk.Frame):
 
     def dong(self, bao: bool = True):
         self.dang_mo = False
-        self.l_mui.configure(text="▶")
+        self._ve_mui()
         self.than.pack_forget()
         self.l_tom.pack(anchor="w", fill="x", padx=(17, 0), pady=(0, 0))
         self._vach_cuoi()
@@ -2154,6 +2270,7 @@ class NhanGon(tk.Label):
         self._f = _phong(cha, kw.get("font") or CHU)
         super().__init__(cha, **kw)
         self.goi_y = GoiY(self, "")
+        self._goi_y_rieng = ""
         if toi_da is None:
             self.bind("<Configure>", lambda _e: self._dat(), add="+")
         self._dat()
@@ -2188,8 +2305,17 @@ class NhanGon(tk.Label):
         except tk.TclError:
             return
         moi = self._chu_du if hien != t else ""
+        if self._goi_y_rieng:                # chú thích riêng; bị cắt thì kèm câu đủ
+            moi = (moi + "\n\n" + self._goi_y_rieng) if moi else self._goi_y_rieng
         if moi != self.goi_y.chu:            # đừng tắt chú thích đang hiện vô cớ
             self.goi_y.dat(moi)
+
+    def dat_goi_y(self, chu: str) -> None:
+        """Chú thích nổi RIÊNG (luôn hiện khi rê chuột, kể cả chữ không bị cắt)
+        — vd. câu ngắn trên thanh công cụ, chi tiết đầy đủ để ở đây. "" = trở
+        lại mặc định (chỉ hiện câu đủ khi chữ bị cắt)."""
+        self._goi_y_rieng = str(chu or "")
+        self._dat()
 
     def dang_cat(self) -> bool:
         """Chữ đang hiện có bị cắt không — để bài kiểm hỏi."""

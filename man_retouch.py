@@ -162,11 +162,15 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.v_ghide = tk.BooleanVar(value=bool(self.cf.get("ghi_de", False)))
         goc = rt.tim_tool()
         self.v_goc = tk.StringVar(value=str(goc) if goc else "")
-        self.v_may = tk.StringVar(value=self.cf.get("may", "auto"))
-        #[[ SO LUONG: 0 = de saytool tu do may — xem retouch.LUONG_MAC_DINH. ]]
-        self.v_luong = tk.IntVar(value=int(self.cf.get("luong", rt.LUONG_MAC_DINH)))
-        self.v_che_do = tk.StringVar(
-            value=self.cf.get("che_do", rt.CHE_DO_MAC_DINH))
+        #[[ MAY / SO LUONG / CHE DO LUON TU DONG (7/10 — user: "bo 2 muc May &
+        #   cach chay va Tool retouch vi no tu dong ca roi"). Hai nhom do khong
+        #   con tren bang dieu khien, nen KHONG doc lai gia tri cu trong
+        #   retouch.json: may nao tung luu "cpu" / "luong": 2 se bi ket vinh vien
+        #   o con so do ma khong con cho nao de doi. auto = card do hoa neu co
+        #   (CUDA / MPS), 0 luong = saytool tu do theo loi + bo nho. ]]
+        self.v_may = tk.StringVar(value="auto")
+        self.v_luong = tk.IntVar(value=int(rt.LUONG_MAC_DINH))
+        self.v_che_do = tk.StringVar(value=rt.CHE_DO_MAC_DINH)
         self.v_lamlai = tk.BooleanVar(value=False)
         self.v_dequy = tk.BooleanVar(value=False)
         #[[ TU RETOUCH ANH MOI (7/10) — xem _bat_theo_doi. Nho qua cac lan mo. ]]
@@ -240,8 +244,11 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                                                       ("nhat_ky", "Nhật ký")],
                                     command=self._doi_xem, nen=m["toi"], deu=False)
         self.chon_xem.pack(side="left")
+        #[[ 7/10 (thiet ke lai): thanh tien do CHI HIEN KHI DANG CHAY. Truoc day
+        #   no nam thuong truc — luc chua chay (0/41) la mot hop toi trong tron
+        #   o goc, trong nhu o nhap bi hong. Chu "x/y anh da co ket qua" ben
+        #   canh da noi du luc nghi. Xem _hien_pb. ]]
         self.pb = ttk.Progressbar(dau, mode="determinate", length=180)
-        self.pb.pack(side="right")
         self.lbl_tt = gd.NhanGon(dau, text="", anchor="w", background=m["toi"],
                                  foreground=m["mo"], font=gd.CHU)
         self.lbl_tt.pack(side="left", fill="x", expand=True, padx=(14, 14))
@@ -326,7 +333,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                            "Dải ảnh: Ctrl + bấm chọn thêm, Shift + bấm chọn một "
                            "dãy — để Sync mức.", nen=nen)
         hoi.pack(side="right", padx=(8, 0))
-        self.btn_goc = gd.NutTron(t, "Giữ xem gốc", kieu="phu", nen=nen, font=gd.CHU)
+        self.btn_goc = gd.NutTron(t, "Giữ xem gốc", kieu="phu", nen=nen, font=gd.CHU,
+                                  icon="so_sanh")
         self.btn_goc.pack(side="right", padx=(10, 0))
         #[[ Nut GIU chu khong phai nut bam: an xuong la anh goc, tha ra la
         #   ket qua — so sanh nhanh nhat, khong phai bam hai lan. ]]
@@ -344,7 +352,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                                   command=lambda: self.xem.vua_khung())
         self.btn_vua.pack(side="right", padx=(4, 0))
         self.btn_mat = gd.NutTron(t, "Vào mặt", kieu="phu", nen=nen, font=gd.CHU,
-                                  command=lambda: self.xem.vao_mat())
+                                  icon="mat", command=lambda: self.xem.vao_mat())
         self.btn_mat.pack(side="right")
         self.btn_mat.goi_y = gd.GoiY(self.btn_mat, "Nhảy tới khuôn mặt kế tiếp (mặt "
                                                    "to trước), phóng đủ để soi da.")
@@ -441,6 +449,34 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             self.khung_log.grid_remove()
             self.khung_anh.grid()
 
+    def _hien_pb(self, co: bool):
+        """Thanh tiến độ chỉ hiện khi đang chạy (xem _dung_trang)."""
+        pb = getattr(self, "pb", None)
+        if pb is None:
+            return
+        try:
+            if co and not pb.winfo_manager():
+                pb.pack(side="right", before=self.lbl_tt)
+            elif not co and pb.winfo_manager():
+                pb.pack_forget()
+        except tk.TclError:
+            pass
+
+    def _cap_nhat_nut_chay(self):
+        """“Chạy retouch · N ảnh” — N = số tấm ĐANG CHỌN ở dải ảnh (đúng những
+        tấm start() sẽ chạy). Chưa có ảnh / chưa chọn thì chỉ “Chạy retouch”."""
+        btn = getattr(self, "btn_run", None)
+        luoi = getattr(self, "luoi", None)
+        if btn is None:
+            return
+        try:
+            n = len(luoi.ds_chon()) if luoi is not None and self._anh_dang else 0
+        except Exception:                                    # noqa: BLE001
+            n = 0
+        chu = f"Chạy retouch  ·  {n} ảnh" if n else "Chạy retouch"
+        if btn.cget("text") != chu:
+            btn.configure(text=chu)
+
     def _dung_thanh_cong_cu(self, thanh):
         """▶ Chạy retouch (nút vàng) · ⋯ — trên thanh công cụ của app.
 
@@ -452,11 +488,15 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         #   nao ben nay. ]]
         """
         nen = gd.nen_cua(thanh)
-        self.btn_stop = gd.NutTron(thanh, "■  Dừng", kieu="chu", nen=nen,
+        #[[ 7/10 (thiet ke lai): bieu tuong VE (chay / dung) thay ky tu "▶ ■"
+        #   — ky tu do moi phong mot co, lech dong voi chu. Nut Chay mang SO ANH
+        #   se chay (_cap_nhat_nut_chay): bam la chay dung nhung tam dang chon,
+        #   nhin nut la biet truoc. ]]
+        self.btn_stop = gd.NutTron(thanh, "Dừng", kieu="phu", nen=nen, icon="dung",
                                    command=self.stop)
         self.btn_stop.configure(state="disabled")
-        self.btn_run = gd.NutTron(thanh, "▶  Chạy retouch", kieu="chinh", nen=nen,
-                                  command=self.start)
+        self.btn_run = gd.NutTron(thanh, "Chạy retouch", kieu="chinh", nen=nen,
+                                  icon="chay", command=self.start)
         self.btn_run.pack(side="left", padx=(0, 6))
         self.menu_rt = tk.Menu(self, tearoff=0)
         for nhan, lenh in (("Kiểm tra tool", lambda: self._kiem(chay_thu=True)),
@@ -558,7 +598,12 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             hoi(dong, mo)
             o = ttk.Frame(cha_)
             o.pack(fill="x", pady=(3, 0))
-            nut = gd.NutTron(o, "Chọn…", kieu="phu", font=gd.CHU, command=lenh)
+            #[[ 7/10 (thiet ke lai): nut BIEU TUONG thu muc vuong canh o duong dan
+            #   thay chu "Chọn…" — o duong dan rong them ~50 px (duong dan dai
+            #   doc duoc hon), chu thich noi noi ro viec cua nut. ]]
+            nut = gd.NutTron(o, "", kieu="phu", font=gd.CHU, icon="thu_muc",
+                             command=lenh)
+            nut.goi_y = gd.GoiY(nut, f"Chọn thư mục {nhan.lower()}…")
             nut.pack(side="right", padx=(6, 0))
             e = ttk.Entry(o, textvariable=bien)
             e.pack(side="left", fill="x", expand=True)
@@ -566,8 +611,25 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
 
         g_tm = nhom("thu_muc", "Thư mục", True)
         g_keo = nhom("keo", "Mức áp dụng", True)
+        #[[ HAI NHOM "May & cach chay" + "Tool retouch" KHONG HIEN (7/10 — user:
+        #   "bo 2 muc nay di vi no tu dong ca roi"). Van DUNG trong mot khung
+        #   KHONG pack: lbl_goc la noi _kiem() ghi tinh trang tool (dai bao tren
+        #   luoi _dong_bo_dai doc chu cua no, nut Chay bao lai cau do khi tool
+        #   chua dung duoc), _nhac_luong / _tom_tat_rt van goi cac widget cu.
+        #   Tool chua dung duoc thi dai bao tren luoi co nut "Chọn thư mục
+        #   tool…" — duong duy nhat nguoi dung can toi. ]]
+        self._khung_an = ttk.Frame(ben)
+        nhom_hien = nhom
+
+        def nhom(ma, tieu_de, mo):                           # noqa: F811
+            n = gd.Nhom(self._khung_an, tieu_de, mo=mo)
+            n.pack(fill="x", anchor="w")
+            self._nhom_rt[ma] = n
+            return n.than
+
         g_chay = nhom("chay", "Máy & cách chạy", False)
         g_tool = nhom("tool", "Tool retouch", False)
+        nhom = nhom_hien                                     # noqa: F841
 
         # ------------------------------------------------ thư mục
         _d, _l, self.e_vao, self.btn_vao = o_duong(
@@ -668,12 +730,12 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             o_duoi = ttk.Frame(g_keo)
             o_duoi.pack(fill="x", pady=(8, 2))
         self.btn_reset = gd.NutTron(o_duoi, "Reset về 0", kieu="phu", font=gd.CHU,
-                                    command=self._reset_anh_0)
+                                    icon="dat_lai", command=self._reset_anh_0)
         self.btn_reset.pack(side="left")
         self.btn_reset.goi_y = gd.GoiY(
             self.btn_reset, "Đưa mọi thanh của ẢNH ĐANG XEM về 0 (tắt hết tính "
                             "năng). Muốn reset nhiều ảnh thì Reset rồi bấm Sync.")
-        self.btn_sync_chon = gd.NutTron(o_duoi, "Sync ảnh đã chọn", kieu="phu",
+        self.btn_sync_chon = gd.NutTron(o_duoi, "Sync ảnh đã chọn", kieu="phu", icon="dong_bo",
                                         font=gd.CHU, command=self._sync_chon)
         self.btn_sync_chon.pack(side="left", padx=(8, 0))
         self.btn_sync_chon.goi_y = gd.GoiY(
@@ -1247,6 +1309,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         else:
             xong = sum(1 for _p, da in ds if da)
         lc = getattr(self, "_luot_chay", None)
+        self._hien_pb(bool(self.worker and self.worker.is_alive()))
         if lc and self.worker and self.worker.is_alive():
             #[[ Dang chay anh DA CHON / theo nhom muc tren thu muc tam: dem theo
             #   LUOT CHAY (xem start), khong theo file thu muc ra. ]]

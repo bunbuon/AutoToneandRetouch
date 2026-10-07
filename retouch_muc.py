@@ -121,15 +121,42 @@ class MucMixin:
         self._dung_the_nhom(goc)
         hang = 1
         for ten, nhan, md, goi in ds:
-            v = tk.DoubleVar(value=_so_muc(muc_ht.get(ten), 0))  # mac dinh 0
-            self.v_muc[ten] = v
-            if self.nhom_dang and not self.rt.theo_nhom(ten, goc):
-                #[[ Buoc tu khai theo_nhom = False thi khong chia duoc — khong
-                #   hien o the nhom, thay vi hien mot thanh keo khong co tac
-                #   dung gi. ]]
+            self.v_muc[ten] = tk.DoubleVar(value=_so_muc(muc_ht.get(ten), 0))  # mac dinh 0
+        #[[ CHIA VUNG (7/10, thiet ke lai — nhu Evoto chia Da / Mat / Co the):
+        #   chin thanh keo mot cot dai la phai doc tung ten moi tim ra. Nhom
+        #   "Khuôn mặt" truoc, "Cơ thể" sau; trong moi vung giu DUNG thu tu tool
+        #   bao. Chi doi cho HIEN — thu tu chay cua tool khong lien quan. Tool
+        #   chi co mot vung thi khong ghi tieu de vung. ]]
+        hien = [r for r in ds if not (self.nhom_dang and not self.rt.theo_nhom(r[0], goc))]
+        vung = {}
+        for r in hien:
+            vung.setdefault(self.vung_keo(r[0]), []).append(r)
+        nhieu_vung = len(vung) > 1
+        for ma_v, ten_v in self.VUNG_KEO:
+            hang_v = vung.get(ma_v) or []
+            if not hang_v:
                 continue
-            hang = self._mot_hang_keo(sb, hang, goc, ten, nhan, md, goi, v)
+            if nhieu_vung:
+                tv = ttk.Label(sb, text=ten_v.upper(), style="Muc.TLabel")
+                tv.pack(anchor="w", pady=(12 if hang > 1 else 4, 0))
+                self._o_keo.append(tv)
+            for ten, nhan, md, goi in hang_v:
+                hang = self._mot_hang_keo(sb, hang, goc, ten, nhan, md, goi,
+                                          self.v_muc[ten])
         return hang
+
+    #  (mã vùng, tên hiện) — thứ tự hiện trên bảng
+    VUNG_KEO = (("mat", "Khuôn mặt"), ("co_the", "Cơ thể"), ("khac", "Khác"))
+    _KEO_CO_THE = {"vet_body", "da_body", "chan", "keo_chan"}
+
+    @classmethod
+    def vung_keo(cls, ten: str) -> str:
+        """Tính năng thuộc vùng nào: "co_the" (thân / tay / chân) hay "mat"."""
+        t = str(ten or "")
+        if t in cls._KEO_CO_THE or t.endswith("_body") or t.startswith("body_") \
+                or "co_the" in t:
+            return "co_the"
+        return "mat"
 
     def _mot_hang_keo(self, sb, i, goc, ten, nhan, md, goi, v) -> int:
         """Một tính năng = nhãn · dấu ? · số ở trên, thanh trượt ở dưới (dáng
@@ -195,6 +222,7 @@ class MucMixin:
             sc.bind(phim, lambda _e, _s=sc, _b=buoc: (_s.set(_s.get() + _b), "break")[1])
         sc.bind("<Double-Button-1>", lambda _e, _s=sc, _m=md: _s.set(float(_m)))
         self._o_keo += [sc, lb]
+        lb._nhan_hang, lb._sc, lb._bien = l1, sc, bien
 
         # đọc lại chính biến đó, không giữ giá trị chụp lúc dựng
         tid = bien.trace_add("write", lambda *_a, _v=bien, _l=lb: self._muc_doi(_l, _v))
@@ -215,8 +243,22 @@ class MucMixin:
             pass
 
     def _ghi_so(self, lb, bien):
+        """Số của một thanh + MÀU CẢ HÀNG theo trạng thái (7/10, thiết kế lại):
+        mức > 0 → nhãn trắng, số đậm trắng (tính năng ĐANG BẬT); mức 0 → nhãn
+        xám, số mờ; hàng khoá (thẻ nhóm chưa bật “riêng”) → số mờ hẳn. Nhìn
+        lướt bảng là biết ảnh này đang bật những gì, khỏi đọc từng con số."""
         try:
-            lb.configure(text=f"{float(bien.get()):.0f}")
+            v = float(bien.get())
+            lb.configure(text=f"{v:.0f}")
+            sc = getattr(lb, "_sc", None)
+            khoa = sc is not None and str(sc.cget("state")) == "disabled"
+            bat = v > 0 and not khoa
+            m = gd.MAU
+            lb.configure(foreground=m["chu"] if bat else m["mo2"],
+                         font=gd.CHU_DAM if bat else gd.CHU)
+            l1 = getattr(lb, "_nhan_hang", None)
+            if l1 is not None:
+                l1.configure(foreground=m["chu"] if bat else m["mo"])
         except (tk.TclError, ValueError):
             pass
         self._hen_tom_tat()
@@ -254,6 +296,9 @@ class MucMixin:
             lb.configure(foreground=gd.MAU["chu"] if bat else gd.MAU["mo2"])
         except tk.TclError:
             pass
+        bien = getattr(lb, "_bien", None)
+        if bien is not None:
+            self._ghi_so(lb, bien)              # màu theo mức + trạng thái khoá
 
     def _doi_bat_rieng(self, k):
         o = self._sc_theo.get(k)
@@ -576,6 +621,10 @@ class MucMixin:
             chu = f"{Path(p).name} · " + ("mức riêng của ảnh này" if rieng
                                           else "theo mức chung")
         n = len(self.luoi.ds_chon()) if p else 0
+        try:
+            self._cap_nhat_nut_chay()
+        except Exception:                                    # noqa: BLE001
+            pass
         #[[ Ham nay chay MOI nhip keo thanh — chi ve lai khi co gi doi (nut bo
         #   tron ve lai la dung lai anh nen). ]]
         moi = (chu, rieng, n, bool(p and self._muc_anh))

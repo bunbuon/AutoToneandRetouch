@@ -327,7 +327,7 @@ class App(ttk.Frame):
         #   ten trang + dau ? mo ta. Trang chinh (Can tone) dung dong dau rieng
         #   — xem _build_table(). ]]
         self.dau_phu = tk.Frame(self.dau_trang, background=m["toi"])
-        self.nut_ve = gd.NutTron(self.dau_phu, "←  Kết quả", kieu="chu",
+        self.nut_ve = gd.NutTron(self.dau_phu, "Kết quả", kieu="chu", icon="chevron_trai",
                                  command=lambda: self._chon_khau("phan_tich"),
                                  nen=m["toi"])
         self.nut_ve.pack(side="left", padx=(0, 10))
@@ -1412,6 +1412,23 @@ class App(ttk.Frame):
             self.lbl_im_lang.configure(text=chu)
             self._hien_dai_canh()
 
+    def _anh_logo(self, co: int):
+        """Logo app (icon.ico) cỡ `co` px làm PhotoImage — None nếu không đọc được."""
+        try:
+            from PIL import Image, ImageTk
+            p = dd.tai_nguyen("icon.ico")
+            if not p.is_file():
+                p = Path(__file__).resolve().parent / "icon.ico"
+            if not p.is_file():
+                return None
+            im = Image.open(p)
+            co_san = sorted(im.info.get("sizes") or [im.size])
+            im.size = next((k for k in co_san if k[0] >= co * 2), co_san[-1])
+            im = im.convert("RGBA").resize((co, co), Image.LANCZOS)
+            return ImageTk.PhotoImage(im, master=self)
+        except Exception:                                    # noqa: BLE001
+            return None
+
     def _build_folder(self, cha):
         """Buổi chụp trên thanh công cụ — thay cho khâu “Nạp ảnh” cũ.
 
@@ -1422,6 +1439,14 @@ class App(ttk.Frame):
         vào lbl_scan / btn_fix y như trước.
         """
         m = gd.MAU
+        #[[ 7/10 (thiet ke lai): LOGO cua app (icon.ico — chu S vang) dung truoc
+        #   ten, nhu Evoto / Lightroom dat logo goc trai. Khong doc duoc anh (goi
+        #   cu, may la) thi chi con chu — khong duoc lam hong thanh cong cu. ]]
+        logo = self._anh_logo(round(gd.don_vi(self) * 1.45))
+        if logo is not None:
+            self._logo = logo
+            tk.Label(cha, image=logo, background=m["toi"], borderwidth=0).pack(
+                side="left", padx=(0, 8))
         tk.Label(cha, text=TEN_HIEN_THI, background=m["toi"], foreground=m["chu"],
                  font=gd.CHU_TIEU_DE).pack(side="left", padx=(0, 14))
         tk.Frame(cha, width=1, height=gd.don_vi(self) + 6,
@@ -1927,7 +1952,7 @@ class App(ttk.Frame):
             nguyên trong autotone.py, không đụng tới.
         """
         m = gd.MAU
-        self.btn_cancel = gd.NutTron(cha, "Dừng", kieu="chu", nen=m["toi"],
+        self.btn_cancel = gd.NutTron(cha, "Dừng", kieu="chu", nen=m["toi"], icon="dung",
                                      command=self.do_cancel)
         self.btn_analyze = gd.NutTron(cha, "1 · Phân tích", kieu="phu",
                                       nen=m["toi"], command=self.start_analyze)
@@ -2852,6 +2877,7 @@ class App(ttk.Frame):
         #   nay khoe lan gui cua Hiu. Chua chon buoi thi moi lay moi buoi. ]]
         """
         f = self.folder()
+        self._goi_y_job("")
         jobs = ([p for p in sorted(at.LR_JOB_DIR.glob("apply_*.tsv"))
                  if at.job_cua_buoi(p, f)] if at.LR_JOB_DIR.is_dir() else [])
         if jobs:                                   # còn .tsv = plugin chưa áp
@@ -2877,9 +2903,43 @@ class App(ttk.Frame):
         res = at.job_result(last)
         stamp = datetime.fromtimestamp(last.stat().st_mtime).strftime("%H:%M %d/%m")
         self.lbl_job.unbind("<Button-1>")
-        self.lbl_job.configure(
-            text=f"✓ Lần gửi gần nhất {stamp} · {res or last.name}",
-            foreground=gd.MAU["xong"])
+        #[[ 7/10 (thiet ke lai): dong nay nam giua thanh cong cu — truoc day in
+        #   nguyen dong nhat ky plugin ("apply_2026..tsv: ap 922, bo qua 136 (da
+        #   dung san), tong 1058 dong; 0 khong co trong catalog, 0 loi..." —
+        #   khong dau, dai het thanh). Nay: MOT cau ngan co dau; dong day du nam
+        #   trong chu thich noi khi re chuot. ]]
+        self.lbl_job.configure(text=self._tom_job(stamp, res, f.name if f else ""),
+                               foreground=gd.MAU["xong"])
+        self._goi_y_job(f"Lần gửi gần nhất {stamp}\n{res or last.name}")
+
+    @staticmethod
+    def _tom_job(stamp: str, res: str, ten: str) -> str:
+        """Dòng nhật ký plugin -> một câu ngắn có dấu cho thanh công cụ.
+
+        "…: ap 922, bo qua 136 (…), tong 1058 dong; 0 khong co trong catalog,
+        2 loi…" -> "✓ Buổi G0310 đã đẩy vào Lightroom 16:23 03/10 · 922 ảnh ·
+        2 lỗi" (ten = tên buổi — đổi buổi là biết ngay dòng này nói về buổi nào).
+        Không đọc ra số nào (plugin đổi cách ghi) thì vẫn nói được đã gửi lúc nào."""
+        import re as _re
+        r = str(res or "")
+        phan = [f"✓ Buổi {ten} đã đẩy vào Lightroom {stamp}" if ten
+                else f"✓ Đã đẩy vào Lightroom {stamp}"]
+        m = _re.search(r"\bap (\d+)", r)
+        if m:
+            phan.append(f"{int(m.group(1))} ảnh")
+        m = _re.search(r"\b(\d+) loi\b", r)
+        if m and int(m.group(1)):
+            phan.append(f"{int(m.group(1))} lỗi")
+        m = _re.search(r"\b(\d+) khong co trong catalog", r)
+        if m and int(m.group(1)):
+            phan.append(f"{int(m.group(1))} ảnh không có trong catalog")
+        return "  ·  ".join(phan)
+
+    def _goi_y_job(self, chu: str) -> None:
+        """Chú thích nổi của dòng trạng thái gửi Lightroom (dòng đầy đủ)."""
+        dat = getattr(self.lbl_job, "dat_goi_y", None)
+        if dat is not None:
+            dat(chu)
 
     # -------------------------------------------------------------- trạng thái
     def _tien_do_3(self, done: int, total: int, viec: str) -> None:

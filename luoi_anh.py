@@ -214,7 +214,8 @@ class LuoiAnh(tk.Frame):
     tấm, Shift + bấm chọn một dãy, Ctrl+A chọn hết, Esc bỏ chọn nhiều. Tấm
     ĐANG XEM (dang_chon) không đổi khi Ctrl / Shift + bấm: đó là tấm nguồn khi
     Sync mức sang các tấm đã chọn. khi_doi_chon(ds_chon) — tập đã chọn vừa đổi.
-    Ô có "rieng" mang nhãn "riêng" góc trái trên (ảnh có mức riêng).
+    Ô có "rieng" mang CHẤM VÀNG góc trái trên (ảnh có mức riêng) — như dấu
+    "đã chỉnh" của Lightroom / Evoto.
     """
 
     tu_cuon = True          # Cuon nhường lăn chuột cho lưới
@@ -269,10 +270,27 @@ class LuoiAnh(tk.Frame):
 
         # ô trống: chưa có ảnh nào
         self.o_trong = tk.Frame(self.canvas, background=self._nen)
+        #[[ 7/10 (thiet ke lai): man trong co BIEU TUONG lon (khung anh) phia
+        #   tren — nhin la biet day la cho anh se hien, khong chi mot dong chu
+        #   xam lac giua vung toi. Dong dau = tieu de (dam), con lai = giai
+        #   thich (mo) — xem dat_trong(). ]]
+        lh = gd.don_vi(self)
+        self._s_trong = round(lh * 3.6)
+        self.icon_trong = tk.Canvas(self.o_trong, width=self._s_trong,
+                                    height=self._s_trong, background=self._nen,
+                                    highlightthickness=0, borderwidth=0)
+        self.icon_trong.tu_cuon = False
+        gd.ve_bieu_tuong(self.icon_trong, "anh", self._s_trong / 2,
+                         self._s_trong / 2, self._s_trong * 0.8, gd.MAU["mo2"], net=1.3)
+        self.icon_trong.pack(pady=(0, 10))
+        self.lbl_trong_dau = tk.Label(self.o_trong, text="", background=self._nen,
+                                      foreground=gd.MAU["chu"], font=gd.CHU_TIEU_DE,
+                                      justify="center")
+        self.lbl_trong_dau.pack(pady=(0, 4))
         self.lbl_trong = tk.Label(self.o_trong, text="", background=self._nen,
                                   foreground=gd.MAU["mo"], font=gd.CHU,
                                   justify="center", wraplength=420)
-        self.lbl_trong.pack(pady=(0, 14))
+        self.lbl_trong.pack(pady=(0, 16))
         self.nut_trong = gd.NutTron(self.o_trong, "Chọn thư mục buổi chụp",
                                     kieu="chinh", icon="thu_muc", nen=self._nen,
                                     command=khi_trong)
@@ -352,8 +370,16 @@ class LuoiAnh(tk.Frame):
             self._bao_doi_chon()
 
     def dat_trong(self, chu: str, co_nut: bool = True) -> None:
-        """Chữ hiện giữa lưới khi chưa có ảnh nào."""
-        self.lbl_trong.configure(text=chu)
+        """Chữ hiện giữa lưới khi chưa có ảnh nào. Dòng ĐẦU là tiêu đề (đậm,
+        lbl_trong_dau), phần còn lại là lời giải thích (mờ, lbl_trong). Dải ảnh
+        một hàng (dai=True) không có chỗ cho biểu tượng lớn — chỉ hiện chữ."""
+        dau, _, sau = str(chu or "").partition("\n")
+        self.lbl_trong_dau.configure(text=dau)
+        self.lbl_trong.configure(text=sau.strip())
+        (self.lbl_trong.pack(pady=(0, 16), after=self.lbl_trong_dau) if sau.strip()
+         else self.lbl_trong.pack_forget())
+        (self.icon_trong.pack_forget() if self._cho_dai
+         else self.icon_trong.pack(pady=(0, 10), before=self.lbl_trong_dau))
         (self.nut_trong.pack() if co_nut else self.nut_trong.pack_forget())
 
     def chon(self, path: str | None, cuon_toi: bool = True) -> None:
@@ -557,9 +583,17 @@ class LuoiAnh(tk.Frame):
                 y_nw += f_nho.metrics("linespace") + 6
             if o.get("rieng"):
                 #[[ Anh co MUC RIENG (Retouch: da keo / Sync rieng cho tam nay).
-                #   Chu chu khong dung ky hieu but chi: nhin la hieu, va khong
-                #   tuy vao phong co ky hieu do hay khong. ]]
-                self._nhan(c, x + 4, y_nw, "riêng", "nw", "#3a3214", "#ffde17", f_nho)
+                #   7/10 (thiet ke lai): CHAM VANG vien toi thay nhan chu "riêng"
+                #   — ca dai anh deu "riêng" thi hang chuc nhan chu che goc anh,
+                #   doc thanh nhieu. Cham la quy uoc "da chinh" cua Lightroom /
+                #   Evoto; tam dang xem co dong "mức riêng của ảnh này" o bang
+                #   phai noi ro bang chu. ]]
+                r = max(4, round(f_nho.metrics("linespace") * 0.32))
+                cx, cy = x + 6 + r, y_nw + 2 + r
+                c.create_oval(cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2,
+                              fill="#111214", outline="", tags=("o", "rieng"))
+                c.create_oval(cx - r, cy - r, cx + r, cy + r, fill=m["nhan"],
+                              outline="", tags=("o", "rieng"))
             dev = o.get("dev")
             if dev is not None:
                 loai = o.get("loai", "")

@@ -17,6 +17,8 @@ import re
 import tkinter as tk
 from tkinter import ttk
 
+import giao_dien as gd
+
 
 def _cung_thu_muc(a, b) -> bool:
     """Hai đường dẫn có trỏ cùng một thư mục không (Windows: không phân biệt
@@ -48,7 +50,12 @@ def _so_muc(v, md) -> float:
 def hoi_nut(cha, tieu_de: str, noi_dung: str, nut: list):
     """Hộp hỏi có nút MANG TÊN RIÊNG (messagebox chỉ có Yes / No / Cancel —
     "Yes = mức chung" là bắt người dùng nhớ quy ước). nut = [(mã, nhãn), ...]
-    -> mã của nút được bấm; None khi đóng cửa sổ / Esc."""
+    -> mã của nút được bấm; None khi đóng cửa sổ / Esc.
+
+    7/10 (thiết kế lại): nút bo tròn như phần còn lại của app (gd.NutTron);
+    phần tử thứ ba (tuỳ) là kiểu nút — "chinh" (vàng, việc khuyên làm) hay
+    "phu". Không ghi thì mọi nút là "phu": hai lựa chọn ngang hàng (vd. Chung /
+    Riêng) không được tô một bên như thể app đã chọn hộ."""
     w = tk.Toplevel(cha)
     w.title(tieu_de)
     w.transient(cha)
@@ -64,8 +71,10 @@ def hoi_nut(cha, tieu_de: str, noi_dung: str, nut: list):
         kq[0] = ma
         w.destroy()
 
-    for ma, nhan in reversed(nut):
-        ttk.Button(hang, text=nhan, command=lambda m=ma: chon(m)).pack(
+    for muc in reversed(nut):
+        ma, nhan = muc[0], muc[1]
+        kieu = muc[2] if len(muc) > 2 else "phu"
+        gd.NutTron(hang, nhan, kieu=kieu, command=lambda m=ma: chon(m)).pack(
             side="right", padx=(8, 0))
     w.bind("<Escape>", lambda _e: chon(None))
     w.protocol("WM_DELETE_WINDOW", lambda: chon(None))

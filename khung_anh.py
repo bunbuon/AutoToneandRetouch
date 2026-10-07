@@ -339,10 +339,25 @@ class KhungAnh(tk.Frame):
         self._i_chu = c.create_text(0, 0, anchor="center", text="", fill=gd.MAU["mo"],
                                     font=gd._phong(self, gd.CHU), justify="center")
         self._o_trong = tk.Frame(c, background=self._nen)
+        #[[ 7/10 (thiet ke lai): bieu tuong khung anh lon + tieu de dam + dong
+        #   giai thich mo — giong man trong cua luoi anh (luoi_anh.dat_trong). ]]
+        lh = gd.don_vi(self)
+        self._s_trong = round(lh * 3.8)
+        self.icon_trong = tk.Canvas(self._o_trong, width=self._s_trong,
+                                    height=self._s_trong, background=self._nen,
+                                    highlightthickness=0, borderwidth=0)
+        self.icon_trong.tu_cuon = False
+        gd.ve_bieu_tuong(self.icon_trong, "anh", self._s_trong / 2,
+                         self._s_trong / 2, self._s_trong * 0.8, gd.MAU["mo2"], net=1.3)
+        self.icon_trong.pack(pady=(0, 10))
+        self.lbl_trong_dau = tk.Label(self._o_trong, text="", background=self._nen,
+                                      foreground=gd.MAU["chu"], font=gd.CHU_TIEU_DE,
+                                      justify="center", wraplength=460)
+        self.lbl_trong_dau.pack(pady=(0, 4))
         self.lbl_trong = tk.Label(self._o_trong, text="", background=self._nen,
                                   foreground=gd.MAU["mo"], font=gd.CHU,
                                   justify="center", wraplength=460)
-        self.lbl_trong.pack(pady=(0, 14))
+        self.lbl_trong.pack(pady=(0, 16))
         self.nut_trong = gd.NutTron(self._o_trong, "", kieu="chinh", icon="thu_muc",
                                     nen=self._nen)
         self._i_trong = c.create_window(0, 0, window=self._o_trong, anchor="center",
@@ -599,7 +614,11 @@ class KhungAnh(tk.Frame):
         self.hien_truoc = self._goc_do_chuot = False
         self.dang_nap = False
         self.loi = ""
-        self.lbl_trong.configure(text=chu)
+        dau, _, sau = str(chu or "").partition("\n")
+        self.lbl_trong_dau.configure(text=dau)
+        self.lbl_trong.configure(text=sau.strip())
+        (self.lbl_trong.pack(pady=(0, 16), after=self.lbl_trong_dau) if sau.strip()
+         else self.lbl_trong.pack_forget())
         if nut:
             self.nut_trong.configure(text=nut, command=lenh)
             if not self.nut_trong.winfo_manager():

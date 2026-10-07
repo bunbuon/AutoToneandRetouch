@@ -237,7 +237,10 @@ def main() -> int:
     #   co cau du thi la mat chu that. ]]
     gon = set(nhan_gon)
     bi_cat = [w for w in gon if w.dang_cat()]
-    mat = [w for w in bi_cat if w.goi_y.chu != w.cget("text")]
+    #  7/10: nhãn có chú thích RIÊNG (dat_goi_y — vd. dòng gửi Lightroom kèm
+    #  chi tiết) thì chú thích phải CHỨA câu đủ, không cần bằng hẳn
+    mat = [w for w in bi_cat if " ".join(w.cget("text").split())
+           not in " ".join(w.goi_y.chu.split())]
     ktra("nhãn một dòng bị cắt thì rê chuột hiện câu đủ",
          len(bi_cat) >= 2 and not mat,
          f"{len(gon)} nhãn một dòng · {len(bi_cat)} đang cắt “…”")

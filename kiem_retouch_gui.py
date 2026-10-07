@@ -342,30 +342,25 @@ def main() -> int:
                                for x in c),
          " ".join(c[-4:]))
 
-    # ---------------------------------------- 4. nhắc khi đang ép số luồng
-    #[[ retouch.json cua may that con "luong": 2 tu dot chua OOM 3/9. Con so do
-    #   gio VO HIEU HOA phan tu do cua saytool 0.9.5 — 32 loi ma chi chay 2. ]]
-    w.v_luong.set(2)
+    # ---------------------------------------- 4. máy & cách chạy: TỰ ĐỘNG, không hiện
+    #[[ 7/10 (user: "bo 2 muc May & cach chay va Tool retouch vi no tu dong ca
+    #   roi"). Hai nhom KHONG con tren bang dieu khien; gia tri luon la tu dong
+    #   — khong doc lai "may": "cpu" / "luong": 2 cu trong retouch.json (khong con
+    #   cho nao de doi lai, ket vinh vien). ]]
     for _ in range(3):
         root.update_idletasks()
         root.update()
-    #[[ Nhom "May & cach chay" DONG san — canh bao nam trong nhom dong thi
-    #   dong tom tat phai noi ra, khong thi la giau. ]]
-    ktra("nhóm đang đóng thì dòng tóm tắt vẫn nói đang ép",
-         not w._nhom_rt["chay"].dang_mo
-         and "ép 2" in w._nhom_rt["chay"].l_tom.cget("text"),
-         w._nhom_rt["chay"].l_tom.cget("text"))
-    w._nhom_rt["chay"].mo()
-    root.update_idletasks()
-    ktra("ép số luồng thì nói ra là đang ép",
-         "ép 2" in w.lbl_luong.cget("text"), w.lbl_luong.cget("text"))
-    ktra("và hiện nút để về 0", w.btn_luong0.winfo_ismapped())
-    w.btn_luong0.invoke()
-    root.update_idletasks()
-    ktra("bấm nút thì về 0", int(w.v_luong.get()) == 0)
-    ktra("về 0 rồi thì hết nhắc và ẩn nút",
-         "tự dò" in w.lbl_luong.cget("text")
-         and not w.btn_luong0.winfo_ismapped(), w.lbl_luong.cget("text"))
+    ktra("không còn nhóm “Máy & cách chạy” / “Tool retouch” trên bảng",
+         not w._nhom_rt["chay"].winfo_ismapped()
+         and not w._nhom_rt["tool"].winfo_ismapped()
+         and all(n.winfo_ismapped() for k, n in w._nhom_rt.items()
+                 if k not in ("chay", "tool")),
+         " · ".join(f"{k}={'hiện' if n.winfo_ismapped() else 'ẩn'}"
+                    for k, n in w._nhom_rt.items()))
+    ktra("máy / số luồng / chế độ luôn tự động",
+         w.v_may.get() == "auto" and int(w.v_luong.get()) == int(rt.LUONG_MAC_DINH)
+         and w.v_che_do.get() == rt.CHE_DO_MAC_DINH,
+         f"máy={w.v_may.get()} luồng={w.v_luong.get()} chế độ={w.v_che_do.get()}")
 
     # ---------------------------------------- 5. nhịp chạy: s/ảnh và còn bao lâu
     #[[ saytool chi in tien do MOI 10 ANH — voi 5 giay mot anh la gan mot phut
