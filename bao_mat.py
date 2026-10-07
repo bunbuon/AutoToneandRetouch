@@ -47,7 +47,9 @@ from pathlib import Path
 #   cũng không lộ bí quyết; muốn giấu HẾT thì bật dong_goi.MA_HOA_HET. Thêm /
 #   bớt tên ở đây là biên dịch thêm / bớt. ]]
 MA_HOA = ["autotone", "retouch", "khoa", "ban_quyen",
-          "thu_gu", "learn_corrections", "giao_dien", "autotone_gui"]
+          "thu_gu", "learn_corrections", "giao_dien", "autotone_gui",
+          #[[ 7/10 giai doan 2: autotone_gui tach ba phan — cung la ruot app. ]]
+          "man_retouch", "hop_thoai", "cua_saytool"]
 
 #[[ Banner CẢNH BÁO + BẢN QUYỀN. Với module .py còn ship (plumbing) thì đây là
 #   răn đe; với module đã biên dịch thì nguồn không còn nên banner chỉ còn trong

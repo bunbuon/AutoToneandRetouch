@@ -23,7 +23,12 @@ NHỮNG CHỖ tkinter KHÔNG LÀM ĐƯỢC
 from __future__ import annotations
 
 import math
+import os
+import subprocess
+import sys
 import tkinter as tk
+from pathlib import Path
+from tkinter import messagebox
 from tkinter import font as tkfont
 from tkinter import ttk
 
@@ -2376,3 +2381,70 @@ class Ray(tk.Frame):
         o = self.hang.get(ma)
         if o:
             o["cham"].itemconfigure("c", fill=MAU["nhan"] if chay else "#3f3f3f")
+
+
+# ======================================================================
+#  Chuyen tu autotone_gui.py (7/10, giai doan 2 tai cau truc): ten hien
+#  thi, mo thu muc, va lop Khung — ba thu moi man (autotone_gui, man_retouch,
+#  hop_thoai) deu can, de o day thi khong module nao phai import nguoc
+#  autotone_gui. autotone_gui van xuat lai ba ten nay cho ma / bai kiem cu.
+# ======================================================================
+
+#[[ TEN HIEN THI cho nguoi dung (tieu de cua so, nhan, hop thoai). Khac TEN KY
+#   THUAT "AutoTone" (duong_dan.TEN_UD, bundle id, thu muc du lieu) — doi ten
+#   hien thi KHONG dung toi cac thu do. Mot cho sua, moi cho dung lai day. ]]
+TEN_HIEN_THI = "Tone&Retouch"
+
+
+def open_in_explorer(path: Path) -> None:
+    try:
+        if sys.platform == "win32":
+            os.startfile(str(path))                       # noqa: S606
+        elif sys.platform == "darwin":
+            subprocess.run(["open", str(path)], check=False)
+        else:
+            subprocess.run(["xdg-open", str(path)], check=False)
+    except OSError as ex:
+        messagebox.showwarning("Không mở được", f"{path}\n\n{ex}")
+
+
+class Khung(ttk.Frame):
+    """Khung việc nhúng trong cửa sổ chính, thay cho một cửa sổ Toplevel.
+
+    VÌ SAO CÓ LỚP NÀY
+        RetouchWindow, BuoiWindow, GuWindow trước đây là tk.Toplevel — mỗi cái
+        một cửa sổ rời. Mở ba bốn cái là chúng chồng lên nhau và lạc mất cái
+        đang làm. Giờ chúng thành khung nằm trong cột phải.
+
+        Nhưng chúng gọi title(), geometry(), protocol(), destroy() ở hàng chục
+        chỗ. Viết lại hết là sửa nhiều thứ đang chạy tốt để đổi một thứ duy nhất
+        là CHỖ NGỒI của chúng. Nên lớp này nhận những lời gọi đó và không làm gì
+        — ba lớp kia gần như giữ nguyên, chỉ đổi lớp cha.
+
+        destroy() thì KHÔNG nuốt: một khung tự huỷ vẫn phải huỷ thật, và ttk.Frame
+        đã có sẵn hành vi đúng.
+    """
+
+    def title(self, *_a):
+        return ""
+
+    def geometry(self, *_a):
+        return ""
+
+    def minsize(self, *_a):
+        return None
+
+    def resizable(self, *_a):
+        return None
+
+    def protocol(self, *_a):
+        return None
+
+    def transient(self, *_a):
+        return None
+
+    def grab_set(self, *_a):
+        return None
+
+    def lift(self, *_a):                      # noqa: A003
+        return None

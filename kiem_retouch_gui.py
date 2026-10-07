@@ -82,7 +82,7 @@ def main() -> int:
                       ("askokcancel", True), ("askyesno", True),
                       ("askyesnocancel", True), ("askquestion", "yes")):
         setattr(ag.messagebox, _ten, _hop_gia(_ten, _tl))
-    #[[ 6/10: hop hoi "Dung muc Chung hay rieng gioi tinh?" (ag.hoi_nut) cung la
+    #[[ 6/10: hop hoi "Dung muc Chung hay rieng gioi tinh?" (man_retouch.hoi_nut) cung la
     #   cua so MODAL — thay bang ban ghi lai, tra loi theo hoi_nut_tra[0]. ]]
     hoi_nut_ghi: list = []
     hoi_nut_tra = ["chung"]
@@ -91,7 +91,8 @@ def main() -> int:
         hoi_nut_ghi.append((tieu_de, noi_dung))
         return hoi_nut_tra[0]
 
-    ag.hoi_nut = _hoi_nut_gia
+    import man_retouch as mr
+    mr.hoi_nut = _hoi_nut_gia          # 7/10: hoi_nut nay o man_retouch
 
     root = tk.Tk()
     root.geometry("1660x940")

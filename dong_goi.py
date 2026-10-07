@@ -117,6 +117,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #   no BEN TRONG _build_luoi() — PyInstaller khong do duoc import nam
         #   trong ham, thieu o day la ban .exe mo len khong dung duoc man chinh. ]]
         "luoi_anh",
+        #[[ 7/10 giai doan 2: autotone_gui tach ra — man_retouch nap LUOI trong
+        #   App._lam_retouch (import trong ham, PyInstaller khong do duoc). ]]
+        "man_retouch", "hop_thoai", "cua_saytool",
         #[[ khung_anh: anh lon cua mo-dun Retouch (3/10 toi) — cung import
         #   trong ham (_dung_trang), cung ly do. ]]
         "khung_anh"]

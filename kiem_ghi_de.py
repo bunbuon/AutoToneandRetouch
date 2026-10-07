@@ -62,6 +62,7 @@ def main() -> int:
     # --- Lop giao dien ----------------------------------------------------
     import autotone_gui as ag
 
+    import man_retouch as mr          # 7/10: RetouchWindow / _RE_TIEN_DO o day
     tmp = Path(tempfile.mkdtemp(prefix="kiem_gd_"))
     (tmp / "vao").mkdir()
 
@@ -70,7 +71,7 @@ def main() -> int:
     try:
         app = ag.App(goc_tk)
         goc_tk.update()
-        w = ag.RetouchWindow(app)
+        w = mr.RetouchWindow(app)
         goc_tk.update()
     except Exception as ex:                                  # noqa: BLE001
         ket("dựng được cửa sổ Retouch", False, repr(ex))
@@ -139,9 +140,9 @@ def main() -> int:
     ket("ghi đè: không vượt quá tổng", xong == 5, f"xong={xong}")
 
     ket("mẫu bắt đúng dòng tiến độ",
-        ag._RE_TIEN_DO.match("  10/2021  0.74s/anh  con lai ~24.8 phut") is not None)
+        mr._RE_TIEN_DO.match("  10/2021  0.74s/anh  con lai ~24.8 phut") is not None)
     ket("mẫu KHÔNG ăn nhầm dòng log thường",
-        ag._RE_TIEN_DO.match("  . SAY-Media-07354.jpg: vet co the") is None)
+        mr._RE_TIEN_DO.match("  . SAY-Media-07354.jpg: vet co the") is None)
 
     w.destroy()
     goc_tk.destroy()
