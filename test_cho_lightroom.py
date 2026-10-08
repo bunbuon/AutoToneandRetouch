@@ -154,6 +154,25 @@ def main() -> int:
         app.huy_gui()
         ktra("Huy khi Lightroom dang ap -> khong huy, van theo doi",
              r5.exists() and app._dang_cho_lr)
+
+        # 8. (8/10) dang ap: nhip moi kem buoc -> hien buoc; nhip cu -> BI CHAN, noi cach go
+        nhip_f = jobs / at.NHIP_PLUGIN
+        nhip_f.write_text("vong=66\nkhi=2026-10-08 22:21:14\nbuoc=ghi 200/1813\n", encoding="utf-8")
+        ktra("at.plugin_buoc doc dung buoc", at.plugin_buoc(jobs) == "ghi 200/1813", at.plugin_buoc(jobs))
+        app._watch_job(j5)
+        vong()
+        chu = str(app.lbl_job.cget("text"))
+        ktra("dang ap, nhip moi -> hien buoc dang lam", "ghi 200/1813" in chu and "đứng yên" not in chu,
+             chu[:90])
+        cu = time.time() - 120
+        os.utime(nhip_f, (cu, cu))
+        app._watch_job(j5)
+        vong()
+        chu = str(app.lbl_job.cget("text"))
+        ktra("dang ap, nhip cu 2 phut -> 'đứng yên' + hop thoai Lightroom",
+             "đứng yên" in chu and "hộp thoại" in chu and "ghi 200/1813" in chu, chu[:120])
+        nhip_f.write_text("vong=66\nkhi=x\n", encoding="utf-8")
+        ktra("vong lap ranh (khong co buoc) -> plugin_buoc rong", at.plugin_buoc(jobs) == "")
         os.replace(r5, j5.with_suffix(".done"))
         app._watch_job(j5)
         vong()

@@ -22,6 +22,13 @@ return {
 
     LrInitPlugin = "Init.lua",
 
+    --[[ 8/10: BẮT BUỘC chạy Init.lua (vòng nhận job) NGAY KHI MỞ Lightroom.
+         Thiếu dòng này Lightroom hoãn nạp plugin tới lúc người dùng bấm một
+         menu AutoTone. plugin.log 8/10: mở Lightroom 21:26 và 21:31 mà vòng
+         nhận job không chạy tới 22:21 — đúng lúc bấm "xuất thông số". Suốt
+         gần một giờ app gửi job, không ai nhận, Reload cũng không cứu. ]]
+    LrForceInitPlugin = true,
+
     --[[ Export Filter: cắm vào chính luồng Export của người dùng để đọc thư
          mục đích. Người dùng phải tích nó MỘT LẦN trong hộp thoại Export, mục
          "Post-Process Actions", rồi lưu vào preset — sau đó mọi lần Export

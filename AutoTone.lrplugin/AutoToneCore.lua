@@ -338,6 +338,12 @@ function M.applyJob(rows, jobName)
     local notFound = {}     -- duong dan khong co trong catalog
     local todo = {}         -- {photo=, settings=, dev=, rating=}
     local vcopies = 0
+    -- Nhip kem buoc dang lam (xem M.ghiNhip). Boc M.try: nhip hong (dia day,
+    -- file bi khoa) khong duoc phep lam hong ca job.
+    local function nhipAp(cach, buoc)
+        M.try("nhipAp", function() return M.ghiNhip(nil, cach, buoc) end)
+    end
+    nhipAp(0, "bắt đầu " .. #rows .. " ảnh")      -- ngay luc nhan job
 
     -- ---------------------------------------------------------- luot 1: do
     local pending = {}
@@ -361,6 +367,7 @@ function M.applyJob(rows, jobName)
                 return true
             end)
             LrTasks.yield()
+            nhipAp(3, string.format("dò ảnh %d/%d", last, #pending))
             idx = last + 1
         end
         pending = left
@@ -433,6 +440,7 @@ function M.applyJob(rows, jobName)
             return true
         end)
         LrTasks.yield()
+        nhipAp(3, string.format("đọc thông số %d/%d", last, #resolved))
         idx = last + 1
     end
 
@@ -470,6 +478,7 @@ function M.applyJob(rows, jobName)
             M.log(string.format("LOI lo %d-%d: %s", idx, last, tostring(errChunk)))
         end
 
+        nhipAp(3, string.format("ghi %d/%d", last, #todo))
         if last < #todo then LrTasks.sleep(CHUNK_BREATH) end
         idx = last + 1
     end
@@ -500,6 +509,7 @@ function M.applyJob(rows, jobName)
             return true
         end)
         LrTasks.yield()
+        nhipAp(3, string.format("kiểm chứng %d/%d", last, #resolved))
         idx = last + 1
     end
 
@@ -798,16 +808,25 @@ end
      (autotone.plugin_nhip) để nói ngay "plugin không chạy — Reload" thay vì
      để người dùng ngồi chờ yêu cầu xuất. ]]
 local nhipCuoi = 0
+local vongNhip = nil
 
-function M.ghiNhip(vong, cachGiay)
+--[[ 8/10: applyJob cũng gọi (vong = nil, kèm `buoc`) giữa các lô. Trước đây
+     đang áp thì không có nhịp: app không phân biệt được "đang áp 1813 ảnh" với
+     "đứng im" — đo thật 8/10 22:21: nhận job xong, Lightroom 0% CPU suốt 90
+     giây (bước dò ảnh 98 giây thay vì 3-10), trùng lúc hộp thoại "Đã xuất
+     thông số…" của lệnh menu còn mở. Có `buoc` thì app nói được đang ở đâu,
+     và nhịp cũ khi job đang áp nghĩa là Lightroom bị CHẶN, không phải chậm. ]]
+function M.ghiNhip(vong, cachGiay, buoc)
     local now = os.time()
     if now - nhipCuoi < (cachGiay or 10) then return false end
     nhipCuoi = now
+    if vong ~= nil then vongNhip = vong end
     local dir = M.jobDir()
     if not LrFileUtils.exists(dir) then LrFileUtils.createAllDirectories(dir) end
     local fh = io.open(LrPathUtils.child(dir, "plugin_song.txt"), "w")
     if not fh then return false end
-    fh:write("vong=" .. tostring(vong) .. "\nkhi=" .. os.date("%Y-%m-%d %H:%M:%S") .. "\n")
+    fh:write("vong=" .. tostring(vongNhip) .. "\nkhi=" .. os.date("%Y-%m-%d %H:%M:%S") .. "\n")
+    if buoc then fh:write("buoc=" .. tostring(buoc) .. "\n") end
     fh:close()
     return true
 end
@@ -964,17 +983,53 @@ end
      Lightroom tắt giữa chừng thì file còn kẹt ở tên `.running` và không bao
      giờ được xử lý nữa. Gọi lúc nạp plugin, khi chắc chắn chưa vòng nào đang
      chạy — không gọi trong vòng lặp, vì như vậy sẽ cướp job của vòng kia. ]]
+--[[ (giờ, buổi) của một job áp: apply_<YYYYmmdd_HHMMSS>_<buổi>.tsv / .done /
+     .tsv.<mã>.running. Tên buổi có thể có dấu chấm ("raw_19.4"). ]]
+local function khoaJob(ten)
+    local st, buoi = string.match(ten, "^apply_(%d+_%d+)_(.+)%.tsv$")
+    if not st then st, buoi = string.match(ten, "^apply_(%d+_%d+)_(.+)%.tsv%..+%.running$") end
+    if not st then st, buoi = string.match(ten, "^apply_(%d+_%d+)_(.+)%.done$") end
+    return st, buoi
+end
+
+--[[ 8/10: job bỏ dở mà buổi đó ĐÃ CÓ job mới hơn (đang chờ / đã áp) thì KHÔNG
+     áp lại. Gặp thật 8/10: job 21:25 kẹt (Lightroom bị tắt giữa chừng), tới
+     22:21 plugin trả lại và áp nguyên 1813 ảnh thông số CŨ — mất 98 giây, trong
+     khi app đã gửi job mới hơn. Tệ hơn nữa nếu job mới đã áp xong: áp lại job
+     cũ là đè thông số cũ lên kết quả mới. ]]
+local function jobMoiHon(dir, ten)
+    local st0, buoi0 = khoaJob(ten)
+    if not st0 then return nil end
+    for q in LrFileUtils.files(dir) do
+        local tq = LrPathUtils.leafName(q)
+        local st, buoi = khoaJob(tq)
+        if st and buoi == buoi0 and st > st0 then return tq end
+    end
+    return nil
+end
+
 function M.recoverStale()
     local dir = M.jobDir()
     if not LrFileUtils.exists(dir) then return 0 end
     local n = 0
-    for p in LrFileUtils.files(dir) do
+    local ds = {}
+    for p in LrFileUtils.files(dir) do ds[#ds + 1] = p end
+    for _, p in ipairs(ds) do
         local name = LrPathUtils.leafName(p)
         if string.sub(name, -8) == ".running" then
             local back = string.gsub(p, "%.[^.]*%.running$", "")
             if back == p then back = string.gsub(p, "%.running$", "") end
-            M.try("recoverStale", function() LrFileUtils.move(p, back) end)
-            n = n + 1
+            local moi = jobMoiHon(dir, name)
+            if moi then
+                -- .huy: app hieu la "khong ap"; plugin chi quet apply_*.tsv
+                local huy = string.gsub(back, "%.tsv$", "") .. ".huy"
+                M.try("recoverStaleBo", function() LrFileUtils.move(p, huy) end)
+                M.log("bo job cu " .. LrPathUtils.leafName(back) ..
+                      " (buoi da co job moi hon: " .. moi .. ")")
+            else
+                M.try("recoverStale", function() LrFileUtils.move(p, back) end)
+                n = n + 1
+            end
         end
     end
     if n > 0 then M.log("tra lai " .. n .. " job bo do cua lan chay truoc") end

@@ -4770,11 +4770,27 @@ class App(ttk.Frame):
         self._hien_nut_huy(st == "cho")
         self._set_busy(self.busy)
         if st == "dang":
-            # Plugin da gianh duoc job (doi ten thanh .running) va dang ap
-            self.lbl_job.configure(
-                text=f"⚙ Lightroom đã nhận, đang áp {Path(job).name}... ({tries}s) — "
-                     f"không ngắt giữa chừng được",
-                foreground=gd.MAU["canh"])
+            # Plugin da gianh duoc job (doi ten thanh .running) va dang ap.
+            #[[ 8/10: Lightroom nhan job roi DUNG IM — 22:21 Lightroom 0% CPU suot
+            #   90 giay vi hop thoai "Da xuat thong so..." con mo; 21:25 kẹt han,
+            #   nguoi dung tat Lightroom. Plugin moi ghi nhip KEM BUOC trong luc ap
+            #   (at.plugin_buoc), nen nhip cu khi job dang ap = bi CHAN, khong phai
+            #   cham — noi ra cach go, dung de "dang ap... (300s)" chay mai. ]]
+            nhip = at.plugin_nhip()
+            buoc = at.plugin_buoc()
+            if nhip is not None and nhip > LR_NHIP_CHET:
+                self.lbl_job.configure(
+                    text=f"⚠ Lightroom nhận job rồi đứng yên từ {at.mo_ta_khoang(nhip)}"
+                         f"{f' (ở bước {buoc})' if buoc else ''} — thường do một hộp thoại "
+                         f"đang mở trong Lightroom (thông báo, Plug-in Manager…): đóng nó "
+                         f"là áp tiếp. Lightroom đã tắt thì mở lại, job tự chạy lại.",
+                    foreground=gd.MAU["loi"])
+            else:
+                self.lbl_job.configure(
+                    text=f"⚙ Lightroom đã nhận, đang áp {Path(job).name}"
+                         f"{f' · {buoc}' if buoc else f'... ({tries}s)'} — "
+                         f"không ngắt giữa chừng được",
+                    foreground=gd.MAU["canh"])
             self.after(1000, lambda: self._watch_job(job, tries + 1))
             return
 
@@ -4783,8 +4799,9 @@ class App(ttk.Frame):
         if nhip is None or nhip > LR_NHIP_CHET:
             khi = "chưa có nhịp nào" if nhip is None else f"nhịp cuối {at.mo_ta_khoang(nhip)}"
             self.lbl_job.configure(
-                text=f"⚠ Lightroom CHƯA nhận — plugin không chạy ({khi}). Mở Lightroom "
-                     f"(hoặc Plug-in Manager → Reload), hoặc bấm “Huỷ gửi”.",
+                text=f"⚠ Lightroom CHƯA nhận — plugin không chạy ({khi}). Mở Lightroom; "
+                     f"đang mở rồi thì File › Plug-in Manager › AutoTone › Reload Plug-in. "
+                     f"Hoặc bấm “Huỷ gửi”.",
                 foreground=gd.MAU["loi"])
         elif tries >= LR_JOB_TIMEOUT:
             self.lbl_job.configure(

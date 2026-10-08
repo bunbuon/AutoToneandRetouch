@@ -161,6 +161,20 @@ LrTasks.startAsyncTask(function()
                                        "%d không đọc được thông số.)",
                                        noPath + noSettings, noPath, noSettings)
         end
-        LrDialogs.message("AutoTone", msg, "info")
+        --[[ 8/10: KHÔNG dùng hộp thoại modal để báo xong. Hộp thoại còn mở thì
+             vòng nhận job của plugin đứng im: đo 8/10 22:21, job 1813 ảnh nằm 90
+             giây với Lightroom 0% CPU, bước dò ảnh 98 giây thay vì 3-10 — người
+             dùng thấy "app gửi mà Lightroom không nhận". Thông báo tự tắt
+             (bezel) thì không chặn gì. Lightroom quá cũ không có bezel mới lùi
+             về hộp thoại. ]]
+        if type(LrDialogs.showBezel) == "function" then
+            local bezel = string.format("AutoTone: đã xuất thông số của %d ảnh", #lines - 1)
+            if noPath + noSettings > 0 then
+                bezel = bezel .. string.format(" (%d ảnh bỏ qua)", noPath + noSettings)
+            end
+            LrDialogs.showBezel(bezel, 4)
+        else
+            LrDialogs.message("AutoTone", msg, "info")
+        end
     end)
 end)

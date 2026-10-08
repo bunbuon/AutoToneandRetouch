@@ -8230,6 +8230,20 @@ def plugin_nhip(job_dir: Path | None = None) -> float | None:
         return None
 
 
+def plugin_buoc(job_dir: Path | None = None) -> str:
+    """Bước plugin đang làm khi áp job ("dò ảnh 400/1813", "ghi 200/1813"...); ""
+    khi vòng lặp rảnh hoặc plugin bản cũ (8/10 — xem M.ghiNhip trong AutoToneCore)."""
+    try:
+        txt = (Path(job_dir or LR_JOB_DIR) / NHIP_PLUGIN).read_text(encoding="utf-8",
+                                                                    errors="replace")
+    except OSError:
+        return ""
+    for dong in txt.splitlines():
+        if dong.startswith("buoc="):
+            return dong[5:].strip()
+    return ""
+
+
 def plugin_song_khi_nao(job_dir: Path | None = None) -> float | None:
     """Lần cuối plugin ghi vào nhật ký, tính bằng giây trước hiện tại.
 
