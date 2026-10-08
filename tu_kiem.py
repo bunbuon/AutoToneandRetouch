@@ -369,6 +369,40 @@ def chay(nhanh: bool = False) -> Bao:
             return f"midtone {ds[0]['gr_mid']} · highlight {ds[0]['gr_hi']}"
         b.thu("Color Grading theo trạng thái", _grade)
 
+        #[[ 8/10: buoi lam lai (xoa moc / ap lai preset) bi bao nham "bo qua 856
+        #   anh anh da sua tay". Thu muc jobs TAM — khong dung toi jobs that. ]]
+        def _dat_lai():
+            k = at.khoa_duong_dan
+            jobs_cu = at.LR_JOB_DIR
+            with tempfile.TemporaryDirectory(prefix="tu_kiem_dat_lai_") as t:
+                try:
+                    thu_muc = Path(t) / "buoi thu"
+                    thu_muc.mkdir()
+                    jobs = Path(t) / "jobs"
+                    jobs.mkdir()
+                    at.LR_JOB_DIR = jobs
+                    ps = [str(thu_muc / f"A{i:03d}.ARW") for i in range(12)]
+                    so = [f"{-0.40 + 0.03 * i:.2f}" for i in range(12)]
+                    (jobs / f"apply_20261008_094312_{at.ten_job(thu_muc.name)}.done").write_text(
+                        "path\tExposure2012\n" + "".join(f"{p}\t{e}\n" for p, e in zip(ps, so)),
+                        encoding="utf-8")
+                    items = [{"path": p} for p in ps]
+                    lai = {k(p): {"Exposure2012": "0", "Highlights2012": "0",
+                                  "Shadows2012": "0"} for p in ps}
+                    if at.buoi_dat_lai(items, lai, thu_muc) != "khong-moc":
+                        raise AssertionError("mất mốc mà không nhận ra buổi làm lại")
+                    at.save_baseline(thu_muc, {k(p): {"Exposure2012": "0"} for p in ps}, gop=False)
+                    if at.buoi_dat_lai(items, lai, thu_muc) != "dat-lai":
+                        raise AssertionError("áp lại preset cả buổi mà không nhận ra")
+                    le = {k(p): {"Exposure2012": e} for p, e in zip(ps, so)}
+                    le[k(ps[0])] = {"Exposure2012": "0.90"}
+                    if at.buoi_dat_lai(items, le, thu_muc) != "":
+                        raise AssertionError("sửa tay 1 ảnh mà bị coi là làm lại cả buổi")
+                finally:
+                    at.LR_JOB_DIR = jobs_cu
+            return "mất mốc / áp lại preset cả buổi nhận ra; sửa tay lẻ tẻ vẫn giữ"
+        b.thu("Nhận ra buổi làm lại", _dat_lai)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #

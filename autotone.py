@@ -5847,6 +5847,10 @@ BASELINE_NAME = "_autotone_baseline.tsv"
 # So anh bi bo qua vi nguoi dung da sua tay o lan chay gan nhat — giao dien doc
 # de bao cho nguoi dung biet vi sao so anh trong bang it di.
 SO_ANH_NGUOI_SUA = 0
+#[[ Buoi da duoc LAM LAI sau lan tool ghi gan nhat — xem buoi_dat_lai(). "" = khong;
+#   "khong-moc" = file moc da bi xoa; "dat-lai" = ca buoi doi dong loat (ap lai
+#   preset / Reset). Giao dien doc de noi ra thay cho "bo qua N anh sua tay". ]]
+DAT_LAI_BUOI = ""
 #[[ Ly do KHONG loc anh sua tay o lan chay nay, "" neu co loc binh thuong.
 #   Giao dien doc de noi ra — mot buoc loc tu tat ma im lang thi khong ai biet. ]]
 CANH_BAO_XUAT = ""
@@ -6325,7 +6329,8 @@ def load_baseline(folder: Path) -> dict[str, dict]:
     return _read_tsv(baseline_path(folder))
 
 
-def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path:
+def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
+                  thay: set | None = None) -> Path:
     """Ghi mốc preset gốc. Không có sidecar để cắm marker atn: thì phải lưu ra đây,
     nếu không lần chạy thứ hai sẽ cộng dồn lên kết quả lần đầu.
 
@@ -6352,6 +6357,9 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path
         if cu:
             moi = dict(base)
             for p, rec in cu.items():   # mốc cũ đè lên, không bao giờ ngược lại
+                #  ...TRU anh cua buoi da dat lai (thay): moc moi thay moc cu
+                if thay and p in thay and p in base:
+                    continue
                 #[[ Tru bon cot plugin moi (COT_PLUGIN_MOI) ma moc cu de RONG vi
                 #   chot tu plugin cu: bu tu ban ghi moi — xem
                 #   attach_catalog_settings. Cot da co so thi moc cu van thang. ]]
@@ -6500,6 +6508,60 @@ def ban_xuat_cu_hon_lan_ghi(folder: Path, job_dir: Path | None = None,
             datetime.fromtimestamp(t_xuat), datetime.fromtimestamp(t_ghi))
 
 
+def buoi_dat_lai(items: list, export: dict, folder: Path,
+                 dung_sai: float = 0.005) -> str:
+    """Buổi đã được LÀM LẠI trong Lightroom sau lần tool ghi gần nhất chưa?
+    -> "" (chưa), "khong-moc" hoặc "dat-lai".
+
+    #[[ 8/10, buoi ky yeu raw 19.4: nguoi dung xoa _autotone_baseline.tsv, ap lai
+    #   preset cho ca buoi (WB 5000/+10, Tone 0, xoa sao) roi phan tich lai. Job
+    #   cu 09:43 van nam trong thu muc jobs -> danh_dau_nguoi_sua thay 856/1089
+    #   anh khac so tool da ghi va bao "bo qua 856 anh anh da sua tay" — trong
+    #   khi nguoi dung chua sua anh nao.
+    #
+    #   Hai dau hieu, cai nao cung la CA BUOI lam lai chu khong phai sua tay:
+    #     "khong-moc": thu muc buoi KHONG CON file moc ma van co job cua buoi.
+    #       Moi lan ghi deu chot moc vao chinh thu muc do (save_baseline truoc
+    #       write_lr_job) — job ma khong co moc tuc la moc da bi xoa: lam lai tu
+    #       dau. Cung chan luon truong hop hai buoi khac nhau trung TEN thu muc
+    #       (job khop theo ten — job_cua_buoi).
+    #     "dat-lai": con moc, nhung >= 50% anh lech so tool ghi VA >= 80% so anh
+    #       lech mang CUNG MOT bo (Exposure, Highlights, Shadows) — dau van cua ap
+    #       preset / Reset dong loat. Sua tay that le te, moi anh mot so (buoi
+    #       1308: 192/1078 anh, so khac nhau) -> van bao ve nhu cu.
+    #   Dat lai thi moc cu het dung (preset co the da doi): attach_catalog_settings
+    #   (bo_moc=True) lay catalog hien tai lam moc moi. ]]
+    """
+    da_ghi = last_applied(folder)
+    if not da_ghi or not export:
+        return ""
+    if not baseline_path(folder).is_file():
+        return "khong-moc"
+    so, lech = 0, []
+    for r in items:
+        cur = export.get(khoa_duong_dan(r["path"]))
+        if not isinstance(cur, dict):
+            continue
+        truoc = da_ghi.get(_stem_any(r["path"]))
+        try:
+            gio = float(cur.get("Exposure2012"))
+        except (TypeError, ValueError):
+            continue
+        if truoc is None:
+            continue
+        so += 1
+        if abs(gio - truoc) > dung_sai:
+            lech.append(cur)
+    if so < 10 or len(lech) * 2 < so:
+        return ""
+    bo = {}
+    for c in lech:
+        k = (round(get_f(c, "Exposure2012", 0.0), 2), round(get_f(c, "Highlights2012", 0.0)),
+             round(get_f(c, "Shadows2012", 0.0)))
+        bo[k] = bo.get(k, 0) + 1
+    return "dat-lai" if max(bo.values()) * 5 >= len(lech) * 4 else ""
+
+
 def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
                        dung_sai: float = 0.005) -> int:
     """Đánh dấu ảnh có giá trị trong catalog khác cái tool đã ghi lần trước.
@@ -6530,13 +6592,15 @@ def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
 
 
 def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
-                            persist: bool = True) -> tuple[int, int]:
+                            persist: bool = True, bo_moc: bool = False) -> tuple[int, int]:
     """Gắn thông số catalog vào items. Trả về (số ảnh khớp, số ảnh không có trong export).
 
     Ảnh nào đã có mốc thì dùng mốc; chưa có thì lấy giá trị catalog hiện tại làm mốc.
+    bo_moc=True (buổi đã đặt lại — buoi_dat_lai): ảnh có trong bản xuất lấy catalog
+    hiện tại làm mốc MỚI, thay mốc cũ (r["moc_moi"], save_baseline(thay=...)).
     """
     base = load_baseline(folder)
-    da_grade = anh_da_grade(folder)
+    da_grade = anh_da_grade(folder) if not bo_moc else set()
     matched = missing = 0
     for r in items:
         #[[ khoa_duong_dan, KHONG phai normcase: ban xuat va moc deu doc qua
@@ -6546,6 +6610,10 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
         cur = export.get(key)
         old = base.get(key)
         r["ngoai_xuat"] = False
+        r.pop("moc_moi", None)
+        if bo_moc and cur:
+            old = None                      # moc cu het dung: lay catalog hien tai
+            r["moc_moi"] = True
         if old is not None and cur:
             #[[ MOC CHOT TU PLUGIN CU (6/10, buoi BVDay3 1813 anh): plugin 4/9 khong
             #   xuat WhiteBalance / Contrast / Whites / Blacks nen moc co cac cot do
@@ -6832,7 +6900,14 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
 
     # decide() cần AsShotTemperature ở mức cả cảnh nên phải nạp thông số trước
     if cfg.get("source") == "catalog":
-        attach_catalog_settings(items, export or {}, Path(folder or "."), persist=False)
+        global SO_ANH_NGUOI_SUA, CANH_BAO_XUAT, CANH_BAO_PLUGIN, DAT_LAI_BUOI
+        #  Hai phep kiem nay doc ban xuat + job, KHONG doc moc — phai chay TRUOC
+        #  attach_catalog_settings: buoi da dat lai thi mot thu moc moi.
+        cu, t_xuat, t_ghi = ban_xuat_cu_hon_lan_ghi(Path(folder or "."),
+                                                    ban_xuat=ban_xuat)
+        DAT_LAI_BUOI = "" if cu else buoi_dat_lai(items, export or {}, Path(folder or "."))
+        attach_catalog_settings(items, export or {}, Path(folder or "."), persist=False,
+                                bo_moc=DAT_LAI_BUOI == "dat-lai")
         #[[ As Shot cua tung anh — TRUOC khi bo anh nguoi sua: anh user da mo
         #   trong Develop chinh la anh Lightroom da dung, tuc anh co As Shot
         #   THAT de hoc do lech thang K. Bo chung truoc thi mat gan het cap. ]]
@@ -6842,13 +6917,10 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         #   khong di qua bat ky buoc tinh nao: khong can sang, khong san phang
         #   canh, khong loc. Chung phai ra khoi duong ong hoan toan.
         #]]
-        global SO_ANH_NGUOI_SUA, CANH_BAO_XUAT, CANH_BAO_PLUGIN
         CANH_BAO_XUAT = ""
         CANH_BAO_PLUGIN = canh_bao_plugin_cu(export or {}, cfg)
         if CANH_BAO_PLUGIN:
             print("[!] " + CANH_BAO_PLUGIN, file=sys.stderr)
-        cu, t_xuat, t_ghi = ban_xuat_cu_hon_lan_ghi(Path(folder or "."),
-                                                    ban_xuat=ban_xuat)
         if cu:
             #[[ BAN XUAT CU HON LAN GHI -> KHONG duoc chay danh_dau_nguoi_sua.
             #   Gia dinh cua no da hong (xem ban_xuat_cu_hon_lan_ghi). Chay tiep
@@ -6862,6 +6934,12 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
                 "Da bo qua buoc loc anh sua tay de khong bo nham ca buoi. "
                 "Mo Lightroom, nap lai plugin roi phan tich lai.")
             print("[!] " + CANH_BAO_XUAT, file=sys.stderr)
+        elif DAT_LAI_BUOI:
+            #  Buoi da lam lai sau lan ghi truoc -> job cu khong con noi duoc anh
+            #  nao "nguoi dung sua tay". Xem buoi_dat_lai().
+            SO_ANH_NGUOI_SUA = 0
+            print(f"[i] Buoi da dat lai sau lan ghi truoc ({DAT_LAI_BUOI}) — tinh lai tu "
+                  "trang thai catalog hien tai, khong loc anh sua tay.", file=sys.stderr)
         elif cfg.get("bo_qua_nguoi_sua", True):
             n = danh_dau_nguoi_sua(items, export or {}, Path(folder or "."))
             SO_ANH_NGUOI_SUA = n
@@ -6918,7 +6996,8 @@ def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None =
         base = {khoa_duong_dan(r["path"]): r["crs"]
                 for r in items if r.get("crs")}
         if base:
-            save_baseline(root, base)
+            save_baseline(root, base, thay={khoa_duong_dan(r["path"]) for r in items
+                                            if r.get("moc_moi") and r.get("crs")})
         write_lr_job(items, root.name)
         return baseline_path(root)
 

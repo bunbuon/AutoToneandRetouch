@@ -4136,6 +4136,13 @@ class App(ttk.Frame):
         # Bao ro vi sao bang it anh hon thu muc — xem danh_dau_nguoi_sua()
         if getattr(at, "SO_ANH_NGUOI_SUA", 0):
             msg += f" · bỏ qua {at.SO_ANH_NGUOI_SUA} ảnh anh đã sửa tay"
+        #[[ 8/10: buoi lam lai sau lan ghi truoc (xoa moc / ap lai preset) — noi
+        #   ro tool tinh tu trang thai MOI, khong phai "bo qua N anh sua tay". ]]
+        dl = getattr(at, "DAT_LAI_BUOI", "")
+        if dl == "khong-moc":
+            msg += " · buổi đã làm lại (mốc cũ đã xoá) → tính từ catalog hiện tại"
+        elif dl:
+            msg += " · cả buổi đã áp lại preset sau lần ghi trước → tính từ trạng thái mới"
         ngoai = sum(1 for r in self.items if r.get("ngoai_xuat"))
         if ngoai:
             msg += f" · {ngoai} ảnh không có trong bản xuất Lightroom → không ghi"

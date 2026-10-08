@@ -193,6 +193,11 @@ def kiem_chot_xuat_cu(td: Path, jobs: Path) -> list:
     cfg = dict(at.DEFAULTS, source="catalog", bo_qua_nguoi_sua=True)
     tao = []
 
+    #  Lan ghi catalog THAT luon chot moc vao thu muc buoi truoc khi gui job
+    #  (write_sidecars). 8/10: job ma khong co moc = buoi da lam lai -> plan() tat
+    #  buoc loc anh sua tay (at.buoi_dat_lai, "khong-moc").
+    at.save_baseline(d, {at.khoa_duong_dan(r["path"]): dict(tq.PRESET) for r in items},
+                     gop=False)
     done = jobs / "apply_20261003_100000_cx.done"          # tool ghi Exposure +0.40
     done.write_text("path\tExposure2012\n"
                     + "".join(f"{r['path']}\t0.40\n" for r in items), encoding="utf-8")

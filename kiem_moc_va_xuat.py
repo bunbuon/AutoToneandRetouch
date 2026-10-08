@@ -198,7 +198,7 @@ def main() -> int:
 
     ws = (goc / "autotone.py").read_text(encoding="utf-8")
     ktra("write_sidecars vẫn gọi save_baseline (mốc được chốt khi ghi)",
-         "save_baseline(root, base)" in ws, "đường chốt mốc còn nguyên")
+         "save_baseline(root, base" in ws, "đường chốt mốc còn nguyên")
 
     print()
     if LOI:
