@@ -2314,9 +2314,10 @@ DEFAULTS = {
     #[[ TAT tu 8/10 dem (v47 -> v48), user: "can thiep HSL khong kha quan, da van
     #   am do; khong dua ve trang duoc thi bo qua". Do 468 anh LR v47 khop tung diem:
     #   da TRUNG BINH da trung anh mau (hue 34.6 vs 36.6, chroma 0.059 vs 0.058, L
-    #   0.738 vs 0.748; lech 13.5 -> 5.7) — nhung mat nhin van do: cai "trang" cua
-    #   anh mau la DA DEU MAU sau retouch (Evoto lam phang vung do o ma / mui), khong
-    #   phai mau trung binh. HSL Orange xoay ca dai -> vung vốn do (ma) con do hon.
+    #   0.738 vs 0.748; lech 13.5 -> 5.7) — nhung mat user van thay do. Chua rõ vi
+    #   sao: gia thuyet "anh mau da deu mau hon sau retouch" KHONG duoc so do tho ung
+    #   ho (IQR hue trong khung mat: mau 6.0 vs LR 5.4 do). Khop mau trung binh khong
+    #   bang khop cam nhan — can user cham vai anh cu the truoc khi thu lai.
     #   Tat thi lan ghi sau TRA HSL ve so goc cua preset (anh_da_hsl). Code giu de
     #   bat lai khi co cach do "da deu mau". ]]
     "hsl_da_ky_yeu": False,
