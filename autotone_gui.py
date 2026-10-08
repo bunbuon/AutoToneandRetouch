@@ -5212,7 +5212,10 @@ def main():
     #[[ LOI TRONG CALLBACK KHONG DUOC IM LANG (8/10). Ban .exe khong co console:
     #   Tk in traceback ra stderr = khong ai thay, nguoi dung chi thay "bam nut
     #   khong an" (bao cao "ghi vao Lightroom lan 2 khong hoat dong"). Ghi ra
-    #   <du lieu>/loi_giao_dien.log va hien mot hop ngan. ]]
+    #   <du lieu>/loi_giao_dien.log va hien mot hop ngan — MOI LOI MOT LAN: vong
+    #   after() moi giay ma loi thi khong duoc dap hop thoai lien tuc. ]]
+    _da_bao: set = set()
+
     def _bao_loi_callback(exc, val, tb):
         chu = "".join(traceback.format_exception(exc, val, tb))
         try:
@@ -5221,8 +5224,12 @@ def main():
                 fh.write(f"\n=== {datetime.now():%Y-%m-%d %H:%M:%S}\n{chu}")
         except Exception:                                # noqa: BLE001
             pass
+        khoa_loi = f"{exc.__name__}: {val}"
+        if khoa_loi in _da_bao or len(_da_bao) >= 3:
+            return
+        _da_bao.add(khoa_loi)
         try:
-            messagebox.showerror("Lỗi", f"{exc.__name__}: {val}\n\nĐã ghi chi tiết vào "
+            messagebox.showerror("Lỗi", f"{khoa_loi}\n\nĐã ghi chi tiết vào "
                                  "loi_giao_dien.log trong thư mục dữ liệu của app.",
                                  parent=root)
         except Exception:                                # noqa: BLE001
