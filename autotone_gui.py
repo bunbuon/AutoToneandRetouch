@@ -122,7 +122,10 @@ WBS = [("Da trắng hồng  (khuyên dùng)", "skin"),
 #   chi dien so vao o "Bu sang ca buoi"; so do moi la thu duoc tinh. Xem chu
 #   thich bu_sang_ca_buoi trong autotone.DEFAULTS. ]]
 LOAI_BUOI = [("Cưới", "cuoi"),
-             ("Sự kiện — sáng hơn", "su_kien")]
+             ("Sự kiện — sáng hơn", "su_kien"),
+             #[[ 8/10: hoc tu anh ky yeu nguoi dung tu sua — xem bu_sang_ky_yeu /
+             #   nen_tone_ky_yeu trong autotone.DEFAULTS ]]
+             ("Kỷ yếu — sáng trong, đen sâu", "ky_yeu")]
 
 SOURCES = [("Sidecar .xmp  (phải bấm Ctrl+S trong Lightroom)", "sidecar"),
            ("Lightroom catalog qua plugin  (không cần Ctrl+S)", "catalog")]
@@ -1664,9 +1667,13 @@ class App(ttk.Frame):
         dong_lb.pack(fill="x", pady=(4, 2))
         hoi(dong_lb, "Cưới: không bù. Sự kiện: bù sáng "
                      f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f} EV "
-                     "cho cả buổi — chọn xong vẫn sửa được số ở thanh dưới."
+                     "cho cả buổi. Kỷ yếu: bù sáng "
+                     f"{float(at.DEFAULTS.get('bu_sang_ky_yeu', 0.25)):+.2f} EV, tone nền "
+                     "sáng trong — đen sâu hơn, vùng sáng nén lại (khi preset để trống "
+                     "Tone), và bật “Đẩy tone về da trắng hồng”. Chọn xong vẫn sửa được "
+                     "số ở thanh dưới."
             ).pack(side="right", padx=(8, 0))
-        NGAN_LB = {"cuoi": "Cưới", "su_kien": "Sự kiện"}
+        NGAN_LB = {"cuoi": "Cưới", "su_kien": "Sự kiện", "ky_yeu": "Kỷ yếu"}
         self.cb_loai_buoi = gd.PhanDoan(
             dong_lb, self.v_loai_buoi,
             [(nhan, NGAN_LB.get(ma, nhan)) for nhan, ma in LOAI_BUOI],
@@ -1940,7 +1947,7 @@ class App(ttk.Frame):
                      f"{so(self.v_maxup, 1.0):.2f} · Can thiệp "
                      f"×{so(self.v_gain, 1.0):.2f}"),
             "ghim": ("Tự kéo " + ", ".join(ghim)) if ghim else "Tắt hết",
-            "loai_buoi": (f"{'Sự kiện' if loai == 'su_kien' else 'Cưới'} · bù sáng "
+            "loai_buoi": (f"{ {'su_kien': 'Sự kiện', 'ky_yeu': 'Kỷ yếu'}.get(loai, 'Cưới') } · bù sáng "
                           f"{so(self.v_bu_sang, 0.0):+.2f} EV"),
             "canh": tach + (" · đồng bộ " + " + ".join(dong) if dong else ""),
             "loc": ("Lọc " + ", ".join(loc)) if loc else "Không lọc ảnh",
@@ -3185,9 +3192,13 @@ class App(ttk.Frame):
         Không quét lại ảnh: bù sáng cộng vào delta cuối trong decide(), số đo
         giữ nguyên."""
         ma = dict(LOAI_BUOI).get(self.v_loai_buoi.get(), "cuoi")
-        bu = (float(at.DEFAULTS.get("bu_sang_su_kien", 0.30)) if ma == "su_kien"
-              else 0.0)
+        bu = {"su_kien": float(at.DEFAULTS.get("bu_sang_su_kien", 0.30)),
+              "ky_yeu": float(at.DEFAULTS.get("bu_sang_ky_yeu", 0.25))}.get(ma, 0.0)
         self.v_bu_sang.set(f"{bu:.2f}")
+        #  Ky yeu = concept da trang hong: bat san (tat tay duoc; doi loai khac
+        #  thi KHONG tu tat — nguoi dung co the da chu y bat)
+        if ma == "ky_yeu" and not self.v_grade.get():
+            self.v_grade.set(True)
         self.refresh_plan()
 
     def _doi_che_do_sang(self):

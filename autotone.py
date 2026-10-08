@@ -2223,6 +2223,22 @@ DEFAULTS = {
     #]]
     "bu_sang_ca_buoi": 0.0,
     "bu_sang_su_kien": 0.30,
+    #[[ LOAI BUOI "KY YEU" (8/10) — hoc tu 564 anh nguoi dung tu sua (AnhKyTest)
+    #   so voi CHINH anh Lightroom ve ban v41 (1088 preview 2048px, buoi raw 19.4):
+    #     mat anh duyet sang hon LR: trong nha +0.24, ngoai troi +0.29 EV
+    #     phan vi do sang (log2) anh duyet - LR:
+    #        p1 -0.52  p5 -0.11  p10 +0.09  p25 +0.38  p50 +0.48  p75 +0.30
+    #        p90 +0.12  p95 +0.06  p99 +0.03
+    #   = trung tinh sang hon, vung sang giu, DEN SAU hon. Bu Exposure +0.25 (he
+    #   so Exposure do tren chinh 1088 anh: p50 x1.35, p90 x1.0, p99 x0.37) con
+    #   thieu: den -0.5..-0.75 (p1), sang -0.1..-0.2 (p90-p95), duoi trung tinh
+    #   +0.1..+0.15 (p25) -> nen tone ky yeu: Blacks -30 (SAY -18), Highlights
+    #   nen 1 (SAY 16, tuc -15), va KHONG ep Darks (duong S chi con Lights).
+    #   Tone nen chi ap khi preset bo trong Basic Tone (nen_cho_anh) — preset
+    #   co tone rieng thi ton trong preset. ]]
+    "bu_sang_ky_yeu": 0.25,
+    "nen_tone_ky_yeu": {"Contrast2012": 5, "Highlights2012": 1, "Shadows2012": 16,
+                        "Whites2012": -25, "Blacks2012": -30},
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -2791,9 +2807,17 @@ DEFAULTS = {
     #       v40 dich hong cu     +5.1           -5.9 (6.0)          4792/+14
     #       mau da hoc lam dich  +8.4           +3.9 (4.5)          4981/+13
     #       diem dieu khien nay  +2.5           -0.4 (3.0)          4877/+19
-    #   (che do Ngay: +2.9 / +1.4 (3.4)). ]]
-    "skin_ref_rgb_hong": [218, 159, 170],
-    "skin_ref_rgb_hong_ngoai": [218, 156, 164],
+    #   (che do Ngay: +2.9 / +1.4 (3.4)).
+    #
+    #   8/10 chieu — DO TREN ANH LIGHTROOM VE THAT (1088 preview 2048px, ban v41
+    #   tren chinh buoi do): da LR LANH hon anh duyet 0.17 stop log2(B/R) (dG
+    #   -0.03, hue +1.4) — LR ve da xanh hon mo hinh WB dung luc hieu chinh.
+    #   Diem dieu khien phai dich 0.17 / DO DOC VONG: luoi hieu chinh do duoc dich
+    #   diem dieu khien 1 stop thi da ra chi dich ~0.36 stop -> dich 0.47 stop,
+    #   tu +0.2 xuong -0.27 stop B/R (G giu -0.35; them -0.18 de bu dG -0.03 thi
+    #   ~20 anh cham tran tint). ]]
+    "skin_ref_rgb_hong": [218, 147, 147],
+    "skin_ref_rgb_hong_ngoai": [218, 145, 142],
     #[[ WB THEO TRANG THAI — xem dau decide(): can tren mau da DU DOAN trong
     #   Lightroom o WB preset, khong tren preview cua may. Chi anh preset DAT WB;
     #   quy trinh preset bo trong WB (nen_wb) khong doi. False = nhu truoc 8/10. ]]
@@ -4049,7 +4073,8 @@ def nen_cho_anh(crs: dict, cfg: dict) -> dict:
     """
     thieu_tone, thieu_wb = preset_chua_ap(crs)
     out = dict(crs)
-    nt = cfg.get("nen_tone") or {}
+    nt = ((cfg.get("nen_tone_ky_yeu") if cfg.get("loai_buoi") == "ky_yeu" else None)
+          or cfg.get("nen_tone") or {})
     if thieu_tone and nt:
         out.update({k: nt[k] for k in nt})
         out["__nen_tone"] = True
@@ -5282,7 +5307,9 @@ def decide(items: list, cfg: dict) -> None:
                 #    thêm tương phản lúc đó chỉ làm cháy thêm.
                 c = int(cfg.get("curve_contrast", 0))
                 if c and clip_after <= cfg["curve_contrast_max_clip"]:
-                    cv_lt, cv_dk = c, -c
+                    #  Ky yeu: anh duyet SANG hon o duoi trung tinh (p25 +0.38) —
+                    #  khong ep Darks xuong, chi giu Lights (xem bu_sang_ky_yeu)
+                    cv_lt, cv_dk = c, (0 if cfg.get("loai_buoi") == "ky_yeu" else -c)
 
                 # Đã mở vùng tối thì đừng ép Darks xuống nữa — hai cái ngược nhau
                 if cv_sh > 0:
