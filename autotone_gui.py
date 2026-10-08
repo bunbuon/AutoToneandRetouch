@@ -1677,10 +1677,9 @@ class App(ttk.Frame):
                      f"Tint +{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Tint', 0)):.0f}); "
                      "cảnh đèn vàng nặng (cân trắng kéo lạnh gần hết mức) sáng thêm "
                      f"+{float(at.DEFAULTS.get('bu_sang_canh_am_ky_yeu', 0.5)):.1f} EV; "
-                     "màu da chỉnh bằng HSL ở ĐÚNG dải màu chứa da đo được (thường là "
-                     "Orange), một mức chung cả buổi, cộng vào HSL của preset — các dải "
-                     "khác không đụng. Không tự bật Color Grading (nó ám màu cả khung). "
-                     "Chọn xong vẫn sửa được số ở thanh dưới."
+                     "KHÔNG chỉnh HSL (giữ HSL của preset; ảnh tool từng chỉnh HSL "
+                     "được trả về số preset). Không tự bật Color Grading (nó ám màu cả "
+                     "khung). Chọn xong vẫn sửa được số ở thanh dưới."
             ).pack(side="right", padx=(8, 0))
         NGAN_LB = {"cuoi": "Cưới", "su_kien": "Sự kiện", "ky_yeu": "Kỷ yếu"}
         self.cb_loai_buoi = gd.PhanDoan(

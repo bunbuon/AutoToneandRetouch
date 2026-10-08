@@ -441,7 +441,8 @@ def chay(nhanh: bool = False) -> Bao:
                    "crs": dict(crs), "atn": {}, "new_temp": 5000, "new_tint": 10, "scene": 0,
                    "bw": False, "notes": ""} for i in range(6)]
             ds.append(dict(ds[0], path="x:/hbw.arw", bw=True))
-            kq = at.hsl_da_theo_trang_thai(ds, dict(at.DEFAULTS, loai_buoi="ky_yeu", source="catalog"))
+            kq = at.hsl_da_theo_trang_thai(ds, dict(at.DEFAULTS, loai_buoi="ky_yeu", source="catalog",
+                                                    hsl_da_ky_yeu=True))
             if kq.get("dai") != "Orange" or not (kq.get("hue", 0) < 0 < kq.get("sat", 0)):
                 raise AssertionError(f"HSL kênh da sai: {kq}")
             if ds[-1].get("hsl_ghi") or not all(r.get("hsl_ghi") for r in ds[:-1]):

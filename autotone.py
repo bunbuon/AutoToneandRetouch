@@ -2311,7 +2311,15 @@ DEFAULTS = {
     #   Dich hue = hue da anh mau DO TUNG DIEM (trong 36.9, ngoai 36.5) — dich
     #   skin_dich_hong (34.4) do hon 2.5 do. Mo hinh doan hue da DO hon LR that
     #   1.3 do (874 anh) -> bu. ]]
-    "hsl_da_ky_yeu": True,
+    #[[ TAT tu 8/10 dem (v47 -> v48), user: "can thiep HSL khong kha quan, da van
+    #   am do; khong dua ve trang duoc thi bo qua". Do 468 anh LR v47 khop tung diem:
+    #   da TRUNG BINH da trung anh mau (hue 34.6 vs 36.6, chroma 0.059 vs 0.058, L
+    #   0.738 vs 0.748; lech 13.5 -> 5.7) — nhung mat nhin van do: cai "trang" cua
+    #   anh mau la DA DEU MAU sau retouch (Evoto lam phang vung do o ma / mui), khong
+    #   phai mau trung binh. HSL Orange xoay ca dai -> vung vốn do (ma) con do hon.
+    #   Tat thi lan ghi sau TRA HSL ve so goc cua preset (anh_da_hsl). Code giu de
+    #   bat lai khi co cach do "da deu mau". ]]
+    "hsl_da_ky_yeu": False,
     "hsl_da_k_hue": 0.418,        # do hue OkLab cua DA cho moi diem Hue o dai da
     "hsl_da_k_sat": 0.01085,      # ln(chroma) cua DA cho moi diem Saturation o dai da
     "hsl_da_dich_hue": 36.7,      # hue OkLab da anh mau (do), 0 = lay tu skin_dich_hong

@@ -70,7 +70,8 @@ def chay(items, d: Path, jobs: Path, **kw):
     its = copy.deepcopy(items)
     exp = {at.khoa_duong_dan(r["path"]): dict(PRESET) for r in its}
     cfg = dict(at.DEFAULTS, source="catalog", bo_qua_nguoi_sua=False, burst=False, blink=False,
-               wb="off", bu_sang_ca_buoi=0.0, max_ev_up=1.0, loai_buoi="ky_yeu", dong_bo_loat=False)
+               wb="off", bu_sang_ca_buoi=0.0, max_ev_up=1.0, loai_buoi="ky_yeu", dong_bo_loat=False,
+               hsl_da_ky_yeu=True)          # HSL tat mac dinh tu 8/10 dem — kiem co che
     cfg.update(kw)
     cu = at.LR_JOB_DIR
     at.LR_JOB_DIR = jobs

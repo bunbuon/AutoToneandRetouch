@@ -19,6 +19,7 @@ Mục kiểm
     7. trong_so_hsl(): tâm dải = 1, giữa hai tâm = 0.5 / 0.5.
     8. HSL của preset KHÔNG tính hai lần (lỗi v46): mức tool cộng giống hệt khi preset
        HSL = 0; ghi = số preset + mức.
+    9. Mặc định TẮT (8/10 đêm): Kỷ yếu không chỉnh HSL, ảnh từng chỉnh -> trả số preset.
 
 Chạy:  python test_hsl_da.py
 """
@@ -66,8 +67,9 @@ def chay(items, d: Path, jobs: Path, cot_hsl=True, them: dict | None = None, **k
             e["SaturationAdjustmentOrange"] = "10"
         e.update((them or {}).get(Path(r["path"]).stem, {}))
         exp[at.khoa_duong_dan(r["path"])] = e
+    #  8/10 dem: HSL kenh da TAT mac dinh — bai nay kiem co che nen bat tuong minh
     cfg = dict(at.DEFAULTS, source="catalog", bo_qua_nguoi_sua=False, burst=False, blink=False,
-               wb="skin", bu_sang_ca_buoi=0.0, max_ev_up=1.0)
+               wb="skin", bu_sang_ca_buoi=0.0, max_ev_up=1.0, hsl_da_ky_yeu=True)
     cfg.update(kw)
     cu = at.LR_JOB_DIR
     at.LR_JOB_DIR = jobs
@@ -138,6 +140,16 @@ def main() -> int:
             loi.append(f"Ghi phai = preset + muc: {m8}")
         if (m8.get("SaturationAdjustmentRed"), m8.get("SaturationAdjustmentYellow")) != (-25.0, -45.0):
             loi.append(f"Red / Yellow phai giu so preset: {m8}")
+
+        # 9. MAC DINH (8/10 dem, HSL tat): Ky yeu khong chinh HSL; anh tool da ghi
+        #    HSL (job cu o jobs/) -> tra so goc
+        if at.DEFAULTS.get("hsl_da_ky_yeu"):
+            loi.append("HSL kenh da phai TAT mac dinh (user 8/10 dem)")
+        md, hsl_md, _, _ = chay(items, d, jobs, loai_buoi="ky_yeu", hsl_da_ky_yeu=False)
+        if hsl_md.get("hue") or hsl_md.get("sat"):
+            loi.append(f"HSL tat ma van ra muc: {hsl_md}")
+        if not md["M1"].get("hsl_ghi") or md["M1"].get("hsl_moi", {}).get("HueAdjustmentOrange") != 0.0:
+            loi.append(f"HSL tat, anh da tung ghi HSL -> phai tra so goc: {md['M1'].get('hsl_moi')}")
 
         # 4. Cuoi: khong HSL; anh tool da ghi HSL (job cu o jobs/) -> tra so goc
         cu_, hsl_c, _, _ = chay(items, d, jobs, loai_buoi="cuoi")
