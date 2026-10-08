@@ -2295,18 +2295,30 @@ DEFAULTS = {
     #   am hong ~9e-3. Theo TUNG anh (dich hue - hue du doan) KHONG tot hon hang so
     #   (5.6 vs 5.3, mo hinh hue +-2 do) -> MOT muc cho ca buoi, tinh tu trung vi.
     #
-    #   QUY DOI THANH TRUOT LA GIA DINH, CHUA DO TREN LIGHTROOM: Hue +-100 ~ +-30 do
-    #   (hue HSV) o tam dai, Saturation +100 ~ chroma x2. Vong test sau do lai.
-    #   Chroma du doan (da_trong_lr) DAM hon LR that: ti so LR / du doan 0.56,
-    #   tuong quan 0.85 (raw 19.4, Sony A7 IV + Adobe Standard). Dat 0.60: voi 0.56
-    #   buoi raw 19.4 tinh ra Sat +40, ma quet tren diem anh khop thi +30 tot nhat
-    #   (lech da p90 20.5 vs 24.6) — hieu chinh tren CHINH buoi duy nhat co so. ]]
+    #   Chroma du doan (da_trong_lr, KHONG mo hinh HSL cua preset — anh huong cua
+    #   no nam san trong he so nay) DAM hon LR that: ti so LR / du doan 0.56..0.60;
+    #   do lai 8/10 dem tren 874 anh LR v43 o WB v46: 0.60 cho ti so 1.00.
+    #
+    #   v46 "DA DO HAN" (8/10 dem): preset cua user CO HSL (Red -5/-25, Orange
+    #   -3/-35, Yellow 0/-45 — truoc v45 plugin khong xuat nen tool khong biet). v46
+    #   mo hinh LAI HSL do trong du doan, trong khi he so chroma 0.60 da gom san no
+    #   -> tru hai lan -> tool tuong da nhat 35% -> Sat cham tran +50 (ghi Orange
+    #   -36/+15), Hue -33. Do v43 -> v46 tung diem anh (tru phan WB doi): DA hue
+    #   -13.8 do OkLab, chroma x1.72, L -0.022 cho Hue -33 / Sat +50. Ket qua da
+    #   30.3 do / chroma 0.077 vs anh mau 36.7 / 0.058: do han, dam hon 32%.
+    #   Nay: KHONG mo hinh HSL preset (nam trong 0.60), quy doi lay THANG tu phan
+    #   ung do tren da: 0.418 do OkLab / diem Hue, ln(chroma) 0.01085 / diem Sat.
+    #   Dich hue = hue da anh mau DO TUNG DIEM (trong 36.9, ngoai 36.5) — dich
+    #   skin_dich_hong (34.4) do hon 2.5 do. Mo hinh doan hue da DO hon LR that
+    #   1.3 do (874 anh) -> bu. ]]
     "hsl_da_ky_yeu": True,
-    "hsl_k_hue": 0.30,            # do hue (HSV) o tam dai cho moi diem thanh Hue
-    "hsl_k_sat": 0.01,            # ti le chroma cho moi diem thanh Saturation
+    "hsl_da_k_hue": 0.418,        # do hue OkLab cua DA cho moi diem Hue o dai da
+    "hsl_da_k_sat": 0.01085,      # ln(chroma) cua DA cho moi diem Saturation o dai da
+    "hsl_da_dich_hue": 36.7,      # hue OkLab da anh mau (do), 0 = lay tu skin_dich_hong
+    "hsl_da_hue_bu": 1.3,         # cong vao hue da du doan (mo hinh doan do hon LR)
     "hsl_da_chroma_lr": 0.60,     # chroma da LR that / du doan cua da_trong_lr
-    "hsl_da_hue_max": 50,
-    "hsl_da_sat_max": 50,
+    "hsl_da_hue_max": 40,
+    "hsl_da_sat_max": 30,
     "hsl_da_min_anh": 5,          # it hon so anh co mat nay thi khong chinh
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
@@ -4659,32 +4671,32 @@ def mau_dich_lab(ref_rgb) -> np.ndarray:
     return oklab(srgb_to_linear(np.asarray(ref_rgb, dtype=np.float64) / 255.0))
 
 
-def _ap_hsl_lab(c: float, h: float, hsl: dict, cfg: dict) -> tuple[float, float]:
-    """(chroma, góc OkLab) của da SAU HSL Lightroom {HueAdjustmentX, SaturationAdjustmentX}
-    — mô hình: hue dịch k_hue độ (HSV) / điểm, chroma ×(1 + k_sat × Sat), theo trọng số
-    dải tại hue da (trong_so_hsl). Dải không có trong dict coi là 0."""
-    if not hsl:
+def _ap_hsl_lab(c: float, h: float, doi: dict, cfg: dict) -> tuple[float, float]:
+    """(chroma, góc OkLab) của DA sau khi HSL ở dải da ĐỔI THÊM `doi` điểm so với
+    preset ({HueAdjustmentX: Δ, SaturationAdjustmentX: Δ}). Phản ứng ĐO trên da thật
+    (v43 -> v46, 8/10 đêm: Hue -33 / Sat +50 -> da -13.8° / ×1.72): hsl_da_k_hue độ
+    OkLab / điểm Hue, ln(chroma) hsl_da_k_sat / điểm Sat. Chỉ dùng cho dải chứa da —
+    tool chỉ ghi dải đó."""
+    if not doi:
         return c, h
-    k_h = float(cfg.get("hsl_k_hue") or 0.30)
-    k_s = float(cfg.get("hsl_k_sat") or 0.01)
-    hl = hue_oklab_sang_lr(h)
-    w = trong_so_hsl(hl)
-    dh = sum(wt * float(hsl.get(f"HueAdjustment{d}", 0.0) or 0.0) for d, wt in w.items()) * k_h
-    ds = sum(wt * float(hsl.get(f"SaturationAdjustment{d}", 0.0) or 0.0) for d, wt in w.items()) * k_s
+    dh = sum(float(v or 0.0) for k, v in doi.items() if k.startswith("HueAdjustment"))
+    ds = sum(float(v or 0.0) for k, v in doi.items() if k.startswith("SaturationAdjustment"))
     if not dh and not ds:
         return c, h
-    return c * max(1.0 + ds, 0.0), hue_lr_sang_oklab(hl + dh)
+    return (c * math.exp(float(cfg.get("hsl_da_k_sat") or 0.01085) * ds),
+            h + math.radians(float(cfg.get("hsl_da_k_hue") or 0.418) * dh))
 
 
 def da_trong_lr(r: dict, cfg: dict, crs: dict, temp: float, tint: float,
                 ref_rgb=None, hsl: dict | None = None) -> np.ndarray | None:
     """Màu da DỰ ĐOÁN trong Lightroom (OkLab) khi ảnh ở WB (temp, tint) và mang
-    Saturation / Vibrance / HSL / Color Grading của `crs`. Đưa về CÙNG độ sáng với
-    màu đích (chỉ so màu, không so sáng tối). None = không có màu da đo được.
+    Saturation / Vibrance / Color Grading của `crs`. Đưa về CÙNG độ sáng với màu
+    đích (chỉ so màu, không so sáng tối). None = không có màu da đo được.
 
-    `hsl`: sáu ô HSL kênh da muốn mô hình (vd r["hsl_moi"] = số gốc + phần tool
-    chỉnh); None = HSL của preset trong `crs`. Đây là cách "đo lại" trạng thái da
-    SAU bước HSL trước khi quyết định Color Grading — xem chinh_mau_da().
+    HSL CỦA PRESET không mô hình riêng: ảnh hưởng của nó nằm sẵn trong hệ số
+    hsl_da_chroma_lr (đo trên ảnh Lightroom vẽ thật có preset đó). `hsl`: sáu ô HSL
+    MỚI (vd r["hsl_moi"]) — mô hình PHẦN ĐỔI so với preset (_ap_hsl_lab). Đây là cách
+    "đo lại" da SAU bước HSL trước khi quyết định Color Grading — xem chinh_mau_da().
 
     Không biết WB máy thì coi preview đã render ở chính (temp, tint) — tức như
     cách cũ, không đổi gì về WB."""
@@ -4715,10 +4727,10 @@ def da_trong_lr(r: dict, cfg: dict, crs: dict, temp: float, tint: float,
         c *= max(1.0 + vib * low * low * che * 1.2, 0.0)
     if sat:
         c *= max(1.0 + sat, 0.0)
-    #  HSL (Lightroom ap sau Saturation / Vibrance, truoc Color Grading)
-    if hsl is None:
-        hsl = {k: get_f(crs, k, 0.0) for k in COT_HSL}
-    c, h = _ap_hsl_lab(c, h, dict(hsl), cfg)
+    #  HSL tool doi them (Lightroom ap sau Saturation / Vibrance, truoc Color Grading)
+    if hsl:
+        doi = {k: float(dict(hsl).get(k, get_f(crs, k, 0.0))) - get_f(crs, k, 0.0) for k in COT_HSL}
+        c, h = _ap_hsl_lab(c, h, doi, cfg)
     ab = np.array([c * math.cos(h), c * math.sin(h)])
     for vung, vec in _wheel_preset(crs).items():
         ab = ab + _VUNG_DA[vung] * vec
@@ -4792,8 +4804,10 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
     #  Cung DICH voi WB cua tung anh (trong / ngoai) — hai dich keo nguoc nhau
     #  thi grade xoay da di mot huong, WB keo ve huong kia
     ref_trong, ref_ngoai = dich_da_cuoi(cfg)
-    h_trong = float(math.atan2(*mau_dich_lab(ref_trong)[[2, 1]]))
-    h_ngoai = float(math.atan2(*mau_dich_lab(ref_ngoai)[[2, 1]]))
+    #  Cung hue dich voi buoc HSL (hue_da_dich) — hai buoc ma nham hai dich thi
+    #  Color Grading keo nguoc cai HSL vua lam
+    h_trong = hue_da_dich(cfg, ref_trong)
+    h_ngoai = hue_da_dich(cfg, ref_ngoai)
     catalog = cfg.get("source") == "catalog"
     for r in items:
         for key in ("gr_ghi", "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot", "da_lech1"):
@@ -4820,7 +4834,7 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
         ab = lab[1:]
         if float(math.hypot(ab[0], ab[1])) <= 1e-6:
             continue
-        h_p = float(math.atan2(ab[1], ab[0]))
+        h_p = hue_da_du_doan(lab, cfg)
         d = (h_t - h_p + math.pi) % (2.0 * math.pi) - math.pi
         r["da_lech1"] = round(math.degrees(d), 1)        # hue da con lech dich, sau HSL
         if not cfg.get("grade"):
@@ -4921,6 +4935,25 @@ def trong_so_hsl(hue: float) -> dict:
     return {TAM_HSL[0][0]: 1.0}
 
 
+def hue_da_dich(cfg: dict, ref_rgb) -> float:
+    """Hue (radian OkLab) của da ĐÍCH cho chuỗi màu da. Kỷ yếu: hue đo từng điểm trên
+    da ảnh mẫu (hsl_da_dich_hue); không thì hue của màu đích ref_rgb."""
+    h = float(cfg.get("hsl_da_dich_hue") or 0.0)
+    if cfg.get("loai_buoi") == "ky_yeu" and h:
+        return math.radians(h)
+    t = mau_dich_lab(ref_rgb)
+    return float(math.atan2(t[2], t[1]))
+
+
+def hue_da_du_doan(lab, cfg: dict) -> float:
+    """Hue (radian) da dự đoán (da_trong_lr), bù độ lệch mô hình đo trên Lightroom
+    vẽ thật (hsl_da_hue_bu) — chỉ Kỷ yếu, nơi đã đo."""
+    h = float(math.atan2(lab[2], lab[1]))
+    if cfg.get("loai_buoi") == "ky_yeu":
+        h += math.radians(float(cfg.get("hsl_da_hue_bu") or 0.0))
+    return h
+
+
 def _hsl_goc(r: dict) -> dict:
     """Số GỐC (mốc, trước khi tool chạm tới) của sáu ô HSL kênh da."""
     crs = r.get("crs") or {}
@@ -4953,7 +4986,8 @@ def hsl_da_theo_trang_thai(items: list, cfg: dict) -> dict:
         #  Ban xuat cua plugin CU khong co cot HSL: khong biet so goc -> khong ghi
         if catalog and r.get("crs") and "HueAdjustmentOrange" not in r["crs"]:
             r["hsl_thieu_cot"] = True
-    #  1. DO trang thai da sau WB + Tone (cung dich voi Color Grading: dich_da_cuoi)
+    #  1. DO trang thai da sau WB + Tone (cung dich voi Color Grading: dich_da_cuoi,
+    #     hue_da_dich). Lech = (dich - du doan) do OkLab, ti le chroma dich / du doan.
     k_c = float(cfg.get("hsl_da_chroma_lr") or 1.0)
     ref_trong, ref_ngoai = dich_da_cuoi(cfg)
     mau = []
@@ -4968,32 +5002,34 @@ def hsl_da_theo_trang_thai(items: list, cfg: dict) -> dict:
         c_p = float(math.hypot(lab[1], lab[2])) * k_c
         if c_p <= 1e-6:
             continue
-        h_p, h_t = math.degrees(math.atan2(lab[2], lab[1])), math.degrees(math.atan2(t_lab[2], t_lab[1]))
+        h_p = math.degrees(hue_da_du_doan(lab, cfg))
+        h_t = math.degrees(hue_da_dich(cfg, ref))
         c_t = float(math.hypot(t_lab[1], t_lab[2]))
         r["da_lech0"] = (round((h_t - h_p + 180.0) % 360.0 - 180.0, 1), round(c_t / c_p, 3))
         if not r.get("hsl_thieu_cot"):
-            mau.append((hue_oklab_sang_lr(math.radians(h_p)), hue_oklab_sang_lr(math.radians(h_t)), c_p, c_t))
-    #  2. HSL kenh da — chi khi bat va trung vi lech VUOT vung "da on" (da_on_*)
+            mau.append((h_p, h_t, c_p, c_t))
+    #[[ 2. HSL kenh da — chi khi bat va trung vi lech VUOT vung "da on" (da_on_*).
+    #   Muc tinh THANG bang phan ung do tren da (hsl_da_k_hue / hsl_da_k_sat):
+    #   khong chia trong so dai nua — phan ung do da gom ca do phu cua dai Orange
+    #   len da (v46: chia trong so ~0.6 la lam muc gap ~1.6 lan, cong voi Sat manh
+    #   gap 2.7 lan gia dinh -> da do han). ]]
     dai, hue, sat = "", 0, 0
     if bat and len(mau) >= int(cfg.get("hsl_da_min_anh") or 1):
-        ts = [trong_so_hsl(m[0]) for m in mau]
+        ts = [trong_so_hsl(hue_oklab_sang_lr(math.radians(m[0]))) for m in mau]
         w_tv = {d: float(np.median([float(dict(w).get(d, 0.0)) for w in ts])) for d in DAI_HSL_DA}
         dai = max(DAI_HSL_DA, key=lambda d: w_tv[d])
-        us, vs = [], []
-        for (h_p, h_t, c_p, c_t), w in zip(mau, ts):
-            ww = max(float(dict(w).get(dai, 0.0)), 0.3)
-            us.append(((h_t - h_p + 180.0) % 360.0 - 180.0) / ww)
-            vs.append((c_t / c_p - 1.0) / ww)
         lech_h = [x[0] for x in (r.get("da_lech0") for r in items) if x]
         lech_c = [x[1] for x in (r.get("da_lech0") for r in items) if x]
         on_h = abs(float(np.median(lech_h))) <= float(cfg.get("da_on_hue") or 0.0)
         on_c = abs(float(np.median(lech_c)) - 1.0) <= float(cfg.get("da_on_chroma") or 0.0)
-        k_h = float(cfg.get("hsl_k_hue") or 0.30)
-        k_s = float(cfg.get("hsl_k_sat") or 0.01)
-        hm_ = float(cfg.get("hsl_da_hue_max") or 50)
-        sm_ = float(cfg.get("hsl_da_sat_max") or 50)
-        hue = 0 if on_h else int(round(float(np.clip(float(np.median(us)) / k_h, -hm_, hm_))))
-        sat = 0 if on_c else int(round(float(np.clip(float(np.median(vs)) / k_s, -sm_, sm_))))
+        k_h = float(cfg.get("hsl_da_k_hue") or 0.418)
+        k_s = float(cfg.get("hsl_da_k_sat") or 0.01085)
+        us = [((h_t - h_p + 180.0) % 360.0 - 180.0) / k_h for h_p, h_t, _c, _t in mau]
+        vs = [math.log(c_t / c_p) / k_s for _h, _t, c_p, c_t in mau]
+        hm_ = float(cfg.get("hsl_da_hue_max") or 40)
+        sm_ = float(cfg.get("hsl_da_sat_max") or 30)
+        hue = 0 if on_h else int(round(float(np.clip(float(np.median(us)), -hm_, hm_))))
+        sat = 0 if on_c else int(round(float(np.clip(float(np.median(vs)), -sm_, sm_))))
     n = 0
     for r in items:
         if r.get("hsl_thieu_cot"):

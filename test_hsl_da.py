@@ -17,6 +17,8 @@ Mục kiểm
     5. Bản xuất plugin cũ (không có cột HSL): không ghi HSL, cảnh báo Reload plugin.
     6. File job mang đủ sáu cột HSL.
     7. trong_so_hsl(): tâm dải = 1, giữa hai tâm = 0.5 / 0.5.
+    8. HSL của preset KHÔNG tính hai lần (lỗi v46): mức tool cộng giống hệt khi preset
+       HSL = 0; ghi = số preset + mức.
 
 Chạy:  python test_hsl_da.py
 """
@@ -116,6 +118,26 @@ def main() -> int:
             loi.append("File job thieu cot HSL")
         if rows["M1"].get("HueAdjustmentOrange") != str(h) or rows["BW"].get("HueAdjustmentOrange"):
             loi.append(f"Job: M1 Orange {rows['M1'].get('HueAdjustmentOrange')} phai {h}; BW phai trong")
+
+        # 8. (8/10 dem, v46 "da do han") HSL CUA PRESET khong duoc tinh hai lan: preset
+        #    cua user Red -5/-25, Orange -3/-35, Yellow 0/-45 -> MUC tool cong vao phai
+        #    Y HET preset HSL 0 (anh huong preset nam san trong hsl_da_chroma_lr), ghi =
+        #    so preset + muc. v46 mo hinh lai -> tuong da nhat 35% -> Sat cham tran +50.
+        d8 = Path(td) / "raw 19.4 preset"
+        d8.mkdir()
+        p_user = {"HueAdjustmentRed": "-5", "SaturationAdjustmentRed": "-25", "HueAdjustmentOrange": "-3",
+                  "SaturationAdjustmentOrange": "-35", "HueAdjustmentYellow": "0", "SaturationAdjustmentYellow": "-45"}
+        it8 = bo_anh(d8)
+        (Path(td) / "jobs8").mkdir()
+        kq8, hsl8, _, _ = chay(it8, d8, Path(td) / "jobs8", loai_buoi="ky_yeu",
+                               them={Path(r["path"]).stem: p_user for r in it8})
+        if (hsl8.get("hue"), hsl8.get("sat")) != (hsl.get("hue"), hsl.get("sat")):
+            loi.append(f"Muc HSL phai KHONG phu thuoc HSL cua preset: preset user {hsl8} vs preset 0 {hsl}")
+        m8 = kq8["M2"].get("hsl_moi") or {}
+        if (m8.get("HueAdjustmentOrange"), m8.get("SaturationAdjustmentOrange")) != (-3.0 + hsl8.get("hue", 0), -35.0 + hsl8.get("sat", 0)):
+            loi.append(f"Ghi phai = preset + muc: {m8}")
+        if (m8.get("SaturationAdjustmentRed"), m8.get("SaturationAdjustmentYellow")) != (-25.0, -45.0):
+            loi.append(f"Red / Yellow phai giu so preset: {m8}")
 
         # 4. Cuoi: khong HSL; anh tool da ghi HSL (job cu o jobs/) -> tra so goc
         cu_, hsl_c, _, _ = chay(items, d, jobs, loai_buoi="cuoi")
