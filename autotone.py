@@ -5463,29 +5463,32 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
         if tran_dam and v > 0 and c_dam * math.exp(k_s * v) > tran_dam:
             v = max(0.0, math.log(tran_dam / max(c_dam, 1e-6)) / k_s)
             chan = True
-        u, v = int(round(u)), int(round(v))
+        #  BIEN RIENG cho so nguyen: Cython suy u / v la double (moi phep gan tren
+        #  deu la so thuc) -> int(round(u)) gan lai van la double, va f"{u:+d}"
+        #  hong CHI o ban ma hoa (tu_kiem trong goi bat duoc 9/10).
+        ui, vi = int(round(u)), int(round(v))
         kq["canh_chan"] += int(chan)
-        if not u and not v:
+        if not ui and not vi:
             kq["canh_on"] += 1
             continue
         kq["canh_chinh"] += 1
-        us.append(u)
-        vs.append(v)
+        us.append(ui)
+        vs.append(vi)
         for r in items:
             if r.get("scene") != canh or r.get("bw") or r.get("hsl_thieu_cot"):
                 continue
             goc = hsl_dang_co(r)
             moi = dict(goc)
-            moi["HueAdjustmentOrange"] = float(np.clip(goc["HueAdjustmentOrange"] + u, -100, 100))
-            moi["SaturationAdjustmentOrange"] = float(np.clip(goc["SaturationAdjustmentOrange"] + v,
+            moi["HueAdjustmentOrange"] = float(np.clip(goc["HueAdjustmentOrange"] + ui, -100, 100))
+            moi["SaturationAdjustmentOrange"] = float(np.clip(goc["SaturationAdjustmentOrange"] + vi,
                                                              -100, 100))
             r["hsl_moi"], r["hsl_ghi"] = moi, True
             kq["n"] += 1
-            nhan = f"hsl-da-cuoi:Orange{u:+d}/{v:+d}"
+            nhan = f"hsl-da-cuoi:Orange{ui:+d}/{vi:+d}"
             if nhan not in str(r.get("notes", "")):
                 r["notes"] = (str(r.get("notes", "")) + ";" + nhan).strip(";")
             if r.get("da_duyet"):
-                r["da_lech1"] = round((dich_h - (r["da_duyet"][0] + k_h * u) + 180.0) % 360.0
+                r["da_lech1"] = round((dich_h - (r["da_duyet"][0] + k_h * ui) + 180.0) % 360.0
                                       - 180.0, 1)
     if us:
         kq["hue"], kq["sat"] = int(np.median(us)), int(np.median(vs))
