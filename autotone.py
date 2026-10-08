@@ -7479,28 +7479,8 @@ def analyze(pairs, cfg: dict, jobs: int = 1, progress=None, cancel=None):
     """Đo toàn bộ ảnh. `progress(done, total)` để cập nhật UI, `cancel()` -> True thì dừng.
 
     Trả về (items đo được, danh sách lỗi)."""
-    needs_faces = cfg["wb"] == "skin"
-    tasks = [(str(p), cfg["preview_px"], cfg["meter"], cfg["meter_highlight_cut"],
-              needs_faces, cfg["face_px"], cfg["face_score"],
-              cfg["focus_quantile"], cfg["focus_face_gain"],
-              cfg.get("face_min_ratio", 0.25),
-              cfg.get("subject_keep", 0.60),
-              cfg.get("subject_dark_ev", 2.0),
-              cfg.get("face_min_score_sub", 0.0),
-              cfg.get("big_low_ratio", 0.0),
-              cfg.get("big_low_gap", 0.13),
-              cfg.get("big_low_floor", 0.70),
-              # Chi do mat khi nguoi dung tick loc mat — do khong khi thi phi
-              # mot lan giai nen 3000px cho moi anh.
-              bool(cfg.get("blink")),
-              # Do theo vung da sang khi vung do du lon — xem hl_da_ti_le.
-              float(cfg.get("hl_da_ti_le", 0.0)),
-              float(cfg.get("hl_da_muc", 220.0)),
-              float(cfg.get("af_gan_mat", 0.0)),
-              bool(cfg.get("af_xoay_theo_anh", True)),
-              bool(cfg.get("af_nikon", False)),
-              float(cfg.get("mat_ao_to_pct", 0.0)),
-              float(cfg.get("mat_ao_diem", 0.6))) for p, _ in pairs]
+    do = cau_hinh_do(cfg)
+    tasks = [(str(p), *do) for p, _ in pairs]
     total = len(tasks)
     results: list = []
 
@@ -7551,6 +7531,154 @@ def analyze(pairs, cfg: dict, jobs: int = 1, progress=None, cancel=None):
             failed = [r for r in failed if r["path"] not in done]
 
     return items, failed
+
+
+def cau_hinh_do(cfg: dict) -> tuple:
+    """MỌI tham số đi vào measure() (trừ đường dẫn ảnh), đúng thứ tự của nó.
+
+    Một chỗ duy nhất: analyze() dựng việc đo từ đây, và kết quả đo lưu theo
+    buổi (luu_ket_qua_do) dùng chính bộ này làm khoá — thêm tham số đo mà quên
+    khoá thì nạp nhầm kết quả đo bằng cách cũ."""
+    return (cfg["preview_px"], cfg["meter"], cfg["meter_highlight_cut"],
+            cfg["wb"] == "skin", cfg["face_px"], cfg["face_score"],
+            cfg["focus_quantile"], cfg["focus_face_gain"],
+            cfg.get("face_min_ratio", 0.25),
+            cfg.get("subject_keep", 0.60),
+            cfg.get("subject_dark_ev", 2.0),
+            cfg.get("face_min_score_sub", 0.0),
+            cfg.get("big_low_ratio", 0.0),
+            cfg.get("big_low_gap", 0.13),
+            cfg.get("big_low_floor", 0.70),
+            # Chi do mat khi nguoi dung tick loc mat — do khong khi thi phi
+            # mot lan giai nen 3000px cho moi anh.
+            bool(cfg.get("blink")),
+            # Do theo vung da sang khi vung do du lon — xem hl_da_ti_le.
+            float(cfg.get("hl_da_ti_le", 0.0)),
+            float(cfg.get("hl_da_muc", 220.0)),
+            float(cfg.get("af_gan_mat", 0.0)),
+            bool(cfg.get("af_xoay_theo_anh", True)),
+            bool(cfg.get("af_nikon", False)),
+            float(cfg.get("mat_ao_to_pct", 0.0)),
+            float(cfg.get("mat_ao_diem", 0.6)))
+
+
+#[[ KET QUA PHAN TICH LUU THEO BUOI (8/10).
+#
+#   User: "khi 1 buoi da duoc phan tich can luu lai thong so da phan tich va
+#   hien thi neu mo lai dung folder do". Truoc day ket qua do chi nam trong RAM
+#   — dong app / mo buoi khac roi quay lai la "chua phan tich", phai do lai
+#   1813 anh.
+#
+#   Chi luu ket qua DO (measure), khong luu ke hoach: ke hoach phu thuoc ban
+#   xuat catalog, baseline, gu.json... nen nap xong van tinh lai nhu vua phan
+#   tich. Nap CHI KHI chac chan giong het lan do:
+#     - cung ban engine (dau file autotone — doi ban app la doi cach do, nap
+#       ket qua do bang code cu se lam lech am tham, loai loi kho tim nhat);
+#     - cung tham so do (cau_hinh_do);
+#     - MOI anh RAW hien co trong thu muc deu co trong lan do, cung kich thuoc
+#       va gio sua. Anh bi xoa bot thi van nap (do tung anh doc lap); them anh
+#       moi thi khong. ]]
+THU_MUC_KET_QUA_DO = "phan_tich"
+GIU_KET_QUA_DO = 40                  # so buoi giu lai, buoi cu nhat bi xoa truoc
+_DAU_ENGINE: list = []
+
+
+def dau_engine() -> str:
+    """Dấu của chính file engine đang chạy (.py hay .pyd đã mã hoá). Đổi bản = đổi dấu."""
+    if not _DAU_ENGINE:
+        import hashlib
+        try:
+            h = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:16]
+        except OSError:
+            h = f"khong-doc-duoc-{os.getpid()}-{time.time()}"     # khong bao gio khop
+        _DAU_ENGINE.append(h)
+    return _DAU_ENGINE[0]
+
+
+def file_ket_qua_do(thu_muc) -> Path:
+    import hashlib
+    goc = os.path.normcase(os.path.normpath(str(thu_muc)))
+    h = hashlib.sha1(goc.encode("utf-8", "surrogatepass")).hexdigest()[:10]
+    return dd.goc_du_lieu() / THU_MUC_KET_QUA_DO / f"{ten_job(Path(thu_muc).name)}_{h}.pkl"
+
+
+def _chu_ky_anh(path) -> tuple:
+    try:
+        st = os.stat(path)
+        return (int(st.st_size), int(st.st_mtime_ns))
+    except OSError:
+        return (-1, -1)
+
+
+def luu_ket_qua_do(thu_muc, cfg: dict, pairs, items: list, failed: list) -> Path | None:
+    """Ghi kết quả đo của buổi (gọi NGAY sau analyze(), trước khi plan() đụng vào
+    items). Hỏng thì trả None — không lưu được không phải lý do làm hỏng lượt đo."""
+    import pickle
+    import zlib
+    f = file_ket_qua_do(thu_muc)
+    goi = {"dang": 1, "engine": dau_engine(), "thu_muc": str(thu_muc),
+           "cau_hinh": cau_hinh_do(cfg),
+           "anh": {str(p): _chu_ky_anh(p) for p, _ in pairs},
+           "items": items, "failed": list(failed or []), "luc": time.time()}
+    try:
+        du_lieu = zlib.compress(pickle.dumps(goi, protocol=4), 3)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tam = f.with_name(f.name + ".tmp")
+        tam.write_bytes(du_lieu)
+        os.replace(tam, f)
+    except Exception:                                        # noqa: BLE001
+        return None
+    try:
+        #  file vua ghi luon giu (dong ho may lech thi mtime khong dang tin)
+        cu = sorted((x for x in f.parent.glob("*.pkl") if x != f),
+                    key=lambda x: x.stat().st_mtime, reverse=True)
+        for x in cu[max(0, GIU_KET_QUA_DO - 1):]:
+            x.unlink()
+    except OSError:
+        pass
+    return f
+
+
+def nap_ket_qua_do(thu_muc, cfg: dict, pairs) -> tuple:
+    """-> (kết quả, lý do). Kết quả là dict {items, failed, luc, n_bo} khi KHỚP
+    hoàn toàn với lần đo đã lưu, None nếu không — lúc đó `lý do` nói vì sao
+    (chuỗi rỗng = buổi này chưa từng phân tích)."""
+    import pickle
+    import zlib
+    f = file_ket_qua_do(thu_muc)
+    if not f.is_file():
+        return None, ""
+    try:
+        goi = pickle.loads(zlib.decompress(f.read_bytes()))
+    except Exception:                                        # noqa: BLE001
+        return None, "file kết quả cũ hỏng"
+    if not isinstance(goi, dict) or goi.get("dang") != 1:
+        return None, "kết quả cũ là định dạng khác"
+    if goi.get("engine") != dau_engine():
+        return None, "kết quả cũ đo bằng bản app khác"
+    if tuple(goi.get("cau_hinh") or ()) != cau_hinh_do(cfg):
+        return None, "cách đo đã đổi so với lần trước"
+    anh = goi.get("anh") or {}
+    moi = doi = 0
+    for p, _ in pairs:
+        ck = anh.get(str(p))
+        if ck is None:
+            moi += 1
+        elif tuple(ck) != _chu_ky_anh(p):
+            doi += 1
+    if moi or doi:
+        return None, ", ".join(x for x in (f"{moi} ảnh mới" if moi else "",
+                                           f"{doi} ảnh đã đổi" if doi else "") if x)
+    co = {str(p): str(sc) for p, sc in pairs}
+    items = []
+    for it in goi.get("items") or []:
+        sc = co.get(str(it.get("path")))
+        if sc is not None:
+            it["sidecar"] = sc               # che do nguon doi thi duong .xmp theo lan nay
+            items.append(it)
+    failed = [r for r in goi.get("failed") or [] if str(r.get("path")) in co]
+    return {"items": items, "failed": failed, "luc": float(goi.get("luc") or 0),
+            "n_bo": len(goi.get("items") or []) - len(items)}, ""
 
 
 def plan(items: list, cfg: dict, folder: Path | None = None,

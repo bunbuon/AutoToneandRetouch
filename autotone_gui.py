@@ -229,6 +229,7 @@ class App(ttk.Frame):
 
         self.items: list = []          # kết quả đo, dùng lại khi đổi tuỳ chọn
         self.measure_key = None        # (thư mục, đệ quy, meter, preview_px) của lần đo
+        self._do_luc, self._do_nap = None, False   # lúc đo (epoch) · nạp từ kết quả đã lưu?
         self.cfg: dict = dict(at.DEFAULTS)
         self.pairs: list = []
         self.missing: list = []
@@ -3110,6 +3111,8 @@ class App(ttk.Frame):
         if self.items:
             self.items = []
             self.measure_key = None
+            self._do_luc, self._do_nap = None, False
+            self._cho_xuat_sau_nap = False
             self.tree.delete(*self.tree.get_children())
             self.status("Cách đo sáng đã đổi — bấm “1 · Phân tích” để quét lại.", gd.MAU["canh"])
         self._cap_nhat_luoi()
@@ -3295,7 +3298,10 @@ class App(ttk.Frame):
             self.v_folder.set(os.path.normpath(d))
             self.scan_folder()
 
-    def scan_folder(self):
+    def scan_folder(self, nap_cu: bool = True):
+        """Quét thư mục buổi. `nap_cu`: buổi đã phân tích trước đây thì nạp lại
+        kết quả đo đã lưu (at.nap_ket_qua_do) — start_analyze tắt cái này vì nó
+        sắp đo lại."""
         root = self.folder()
         #[[ Doi buoi thi chu "Da ghi xong 34/34" cua buoi truoc khong con la
         #   chuyen cua buoi nay — xoa, thanh tien do an theo. ]]
@@ -3348,11 +3354,50 @@ class App(ttk.Frame):
             self.lbl_scan.configure(text=f"{n} ảnh RAW, đủ sidecar .xmp.",
                                     foreground=gd.MAU["xong"])
         self._invalidate_measurements()
+        if nap_cu and n:
+            self._nap_ket_qua_cu(root)
         #[[ Dong trang thai lan gui (duoi nut Ghi) la cua BUOI — doi buoi thi
         #   doi theo, khong de no noi chuyen buoi truoc. Cot trai cung vay: doc
         #   lai ngay, khong doi toi nhip 4 giay. ]]
         self.refresh_job_state()
         self._lam_moi_ray()
+
+    def _nap_ket_qua_cu(self, root) -> bool:
+        """Mở lại buổi đã phân tích -> nạp kết quả đo đã lưu, tính lại kế hoạch
+        như vừa bấm Phân tích. -> True nếu nạp được.
+
+        #[[ 8/10 user: "khi 1 buoi da duoc phan tich can luu lai thong so da phan
+        #   tich va hien thi neu mo lai dung folder do". Chi nap khi KHOP HET
+        #   (cung ban engine, cung cach do, moi anh RAW con nguyen) — xem
+        #   at.nap_ket_qua_do. Khong khop thi noi ly do, KHONG nap mot nua. ]]"""
+        if self.busy:
+            return False
+        try:
+            cfg = self.read_cfg()
+            kq, ly_do = at.nap_ket_qua_do(root, cfg, self.pairs)
+        except Exception:                                    # noqa: BLE001
+            return False
+        if kq is None or not kq["items"]:
+            if ly_do:
+                self.status(f"Buổi này đã phân tích trước đây, nhưng {ly_do} — bấm "
+                            f"“1 · Phân tích” để đo lại.", gd.MAU["canh"])
+            return False
+        self.items = kq["items"]
+        self.measure_key = (str(root), self.v_recursive.get(), cfg["meter"], cfg["preview_px"])
+        self._do_hong = list(kq["failed"])
+        self._do_luc, self._do_nap = kq["luc"], True
+        self._xuat_khoa = False             # như _on_analyzed: đọc bản xuất mới nhất
+        self.refresh_plan()
+        self._xuat_khoa = True
+        self._nut_catalog()
+        #  ban xuat app vua nho Lightroom lam (_xin_xuat_nen) chua ve — xem _soi_xuat
+        self._cho_xuat_sau_nap = self.source_value() == "catalog"
+        luc = datetime.fromtimestamp(kq["luc"]).strftime("%H:%M %d/%m")
+        self.status(f"↺ Đã nạp kết quả phân tích lúc {luc} — không cần đo lại "
+                    f"(bấm “1 · Phân tích” nếu muốn đo lại) · "
+                    + str(self.lbl_status.cget("text")),
+                    str(self.lbl_status.cget("foreground")))
+        return True
 
     #[[ BAN XUAT TU LIGHTROOM PHAI DUOC DOC LAI, KHONG DOC MOT LAN ROI THOI.
     #
@@ -3706,6 +3751,17 @@ class App(ttk.Frame):
         """
         try:
             if self.source_value() == "catalog" and getattr(self, "pairs", None):
+                #[[ 8/10: vua NAP ket qua do da luu luc mo buoi — tinh ngay bang ban
+                #   xuat dang co, nhung ban xuat MOI app vua nho Lightroom lam
+                #   (_xin_xuat_nen trong scan_folder) ve SAU. Phan tich that mat vai
+                #   phut nen luc xong ban moi da ve; nap thi tuc thi. Nen: cho Lightroom
+                #   xuat xong (hoac thoi cho) roi tinh lai MOT lan, sau do moi dung yen
+                #   — y nhu sau khi bam Phan tich. ]]
+                if (getattr(self, "_cho_xuat_sau_nap", False) and self.items
+                        and not self.busy and not self._dang_cho_xuat()[0]):
+                    self._cho_xuat_sau_nap = False
+                    if self._doc_xuat():
+                        self._tinh_lai_theo_ban_xuat()
                 doi = (False if getattr(self, "_xuat_khoa", False)
                        else self._doc_xuat())
                 cho, giay = self._dang_cho_xuat()
@@ -3970,7 +4026,7 @@ class App(ttk.Frame):
         if not root:
             messagebox.showinfo("Thiếu thư mục", "Chọn thư mục chứa ảnh RAW trước đã.")
             return
-        self.scan_folder()
+        self.scan_folder(nap_cu=False)          # sắp đo lại — đừng nạp kết quả cũ
         if not self.pairs:
             return
 
@@ -4035,6 +4091,11 @@ class App(ttk.Frame):
                     pairs, cfg, jobs,
                     progress=lambda d, t: self.q.put(("progress", (d, t))),
                     cancel=lambda: self.cancel_flag)
+                #[[ 8/10: LUU ket qua do cua buoi — o luong nen, TRUOC khi bao ve
+                #   luong chinh (sau do plan() se sua items tai cho). Bam Dung giua
+                #   chung thi khong luu: mo lai buoi se nap ket qua thieu. ]]
+                if items and not self.cancel_flag:
+                    at.luu_ket_qua_do(root, cfg, pairs, items, failed)
                 #[[ Ghi thoi gian NGAY TAI DAY, o luong nen, truoc khi bao ve
                 #   luong chinh. Ghi o cho khac thi phai nho truyen moc bat dau
                 #   di qua hai lop, va mot ngay nao do se quen.
@@ -4093,6 +4154,7 @@ class App(ttk.Frame):
 
     def _on_analyzed(self, items, failed, cfg, root):
         self.items = items
+        self._do_luc, self._do_nap = time.time(), False
         self.measure_key = (str(root), self.v_recursive.get(), cfg["meter"], cfg["preview_px"])
         self._set_busy(False)
         self.pb.configure(value=0)
@@ -4176,7 +4238,12 @@ class App(ttk.Frame):
         deltas = [r["delta_ev"] for r in self.items]
         changed = sum(1 for d in deltas if d)
         self._cap_nhat_luoi(giu_cuon=True)
-        self.lbl_tong.configure(text=f"{n} ảnh · {nsc} cảnh · {changed} ảnh sẽ đổi")
+        luc = getattr(self, "_do_luc", None)
+        self.lbl_tong.configure(
+            text=f"{n} ảnh · {nsc} cảnh · {changed} ảnh sẽ đổi"
+                 + (f" · đo lúc {datetime.fromtimestamp(luc).strftime('%H:%M %d/%m')}"
+                    + (" (đã lưu)" if getattr(self, "_do_nap", False) else "")
+                    if luc else ""))
         msg = (f"{n} ảnh · {nsc} cảnh · {changed} ảnh sẽ đổi · "
                f"ΔEV từ {min(deltas):+.2f} đến {max(deltas):+.2f} "
                f"(trung bình {sum(deltas)/n:+.2f})")

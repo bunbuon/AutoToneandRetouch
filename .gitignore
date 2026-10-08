@@ -50,6 +50,8 @@ de_xuat_*.json
 anh_nho/
 #  muc retouch rieng tung anh (retouch.ghi_muc_anh) — moi thu muc vao mot file
 retouch_anh/
+#  ket qua do cua tung buoi (at.luu_ket_qua_do) — mo lai buoi khoi phan tich lai
+phan_tich/
 
 # --- ban chep de mang sang may khac --------------------------------------
 #

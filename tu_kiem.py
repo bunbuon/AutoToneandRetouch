@@ -450,6 +450,44 @@ def chay(nhanh: bool = False) -> Bao:
             return f"{kq['dai']} Hue {kq['hue']:+d} / Sat {kq['sat']:+d}"
         b.thu("HSL kênh da", _hsl_da)
 
+        #[[ 8/10: ket qua phan tich luu theo buoi — chay TRONG GOI ma hoa, ghi vao
+        #   thu muc TAM (khong dung kho phan_tich/ that cua nguoi dung: buoc don
+        #   co the xoa buoi cu cua ho). dau_engine phai doc duoc file .pyd — doc
+        #   khong duoc thi khong bao gio nap lai duoc, tinh nang chet am tham. ]]
+        def _luu_phan_tich():
+            import tempfile
+            cu = os.environ.get("AUTOTONE_DATA")
+            tam = Path(tempfile.mkdtemp(prefix="tk_pt_"))
+            os.environ["AUTOTONE_DATA"] = str(tam / "du_lieu")
+            try:
+                d = tam / "Buoi"
+                d.mkdir()
+                for i in range(3):
+                    (d / f"A{i}.ARW").write_bytes(b"RAW" * (i + 1))
+                pairs, _ = at.collect_pairs(d, need_sidecar=False)
+                cfg = dict(at.DEFAULTS)
+                its = [{"path": str(p), "ok": True, "metered_ev": -1.0 + i,
+                        "dt_obj": datetime(2026, 10, 8, 9, i)} for i, (p, _s) in enumerate(pairs)]
+                if at.luu_ket_qua_do(d, cfg, pairs, its, []) is None:
+                    raise AssertionError("không ghi được kết quả đo")
+                kq, ly = at.nap_ket_qua_do(d, cfg, pairs)
+                if kq is None or [r["metered_ev"] for r in kq["items"]] != [-1.0, 0.0, 1.0]:
+                    raise AssertionError(f"nạp lại sai: {ly}")
+                kq2, ly2 = at.nap_ket_qua_do(d, dict(cfg, preview_px=int(cfg["preview_px"]) + 1), pairs)
+                if kq2 is not None:
+                    raise AssertionError("đổi cách đo mà vẫn nạp kết quả cũ")
+                dau = at.dau_engine()
+                if dau.startswith("khong-doc-duoc"):
+                    raise AssertionError(f"không đọc được file engine {at.__file__}")
+                return f"lưu/nạp đúng · engine {Path(at.__file__).name} {dau[:8]} · đổi cách đo: {ly2}"
+            finally:
+                if cu is None:
+                    os.environ.pop("AUTOTONE_DATA", None)
+                else:
+                    os.environ["AUTOTONE_DATA"] = cu
+                shutil.rmtree(tam, ignore_errors=True)
+        b.thu("Lưu/nạp kết quả phân tích", _luu_phan_tich)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #
