@@ -212,10 +212,19 @@ def bien_dich_mot(src: Path, ra_dir: Path, lang: bool = True) -> Path:
                 ext = Extension(ten, [f"{ten}.py"],
                                 extra_compile_args=cc_args,
                                 extra_link_args=ld_args)
+                #[[ annotation_typing=False — BAT BUOC (8/10). Mac dinh Cython 3
+                #   coi chu thich kieu la KHAI BAO KIEU THAT: `base: dict[str, dict]`
+                #   -> m = base.get(p) bi suy la dict, `if m:` dich thanh doc kich
+                #   thuoc dict KHONG kiem None -> m = None doc rac thanh "dung" ->
+                #   bu_cot_plugin_moi(rec, None) -> TypeError "Argument 'moi' has
+                #   incorrect type". Chi ban MA HOA hong (ghi vao Lightroom lan 2 —
+                #   save_baseline gop moc), ma nguon va moi bai kiem van dat. Tat
+                #   di thi ban build chay DUNG nghia Python nhu ban da kiem. ]]
                 setup(
                     ext_modules=cythonize(
                         [ext],
-                        compiler_directives={"language_level": 3},
+                        compiler_directives={"language_level": 3,
+                                             "annotation_typing": False},
                         quiet=True,
                     ),
                     script_args=["build_ext", "--inplace"],

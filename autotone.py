@@ -4344,7 +4344,9 @@ def banh_xe_nguoc(v) -> tuple[int, int]:
 
 def _theo_may(bang: dict | None, model: str, mac_dinh: float) -> float:
     """Tra bảng {tên máy: số} theo tên máy khớp DÀI nhất; khoá "" là số chung."""
-    b = {str(k).upper(): float(v) for k, v in (bang or {}).items()}
+    #  dict(...) boc ngoai: `(bang or {}).items()` voi bang la THAM SO lam
+    #  Cython 3 crash khi annotation_typing=False (xem bao_mat.bien_dich_mot)
+    b = {str(k).upper(): float(v) for k, v in dict(bang or {}).items()}
     m = str(model or "").upper()
     khop = [k for k in b if k and k in m]
     if khop:
@@ -5867,7 +5869,8 @@ def canh_bao_plugin_cu(export: dict, cfg: dict | None = None) -> str:
     #   Quy trinh cu (preset day du) thi Highlights / Shadows = 16 -> khong bao.
     #]]
     """
-    recs = [v for v in (export or {}).values() if isinstance(v, dict)]
+    #  dict(...) boc ngoai: xem _theo_may (Cython 3 crash voi (tham_so or {}))
+    recs = [v for v in dict(export or {}).values() if isinstance(v, dict)]
     if (recs and (cfg or {}).get("grade")
             and not any("SplitToningHighlightSaturation" in v for v in recs)):
         return ("Đang bật “Đẩy tone về da trắng hồng” nhưng plugin trong Lightroom là "
@@ -6352,8 +6355,10 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path
                 #[[ Tru bon cot plugin moi (COT_PLUGIN_MOI) ma moc cu de RONG vi
                 #   chot tu plugin cu: bu tu ban ghi moi — xem
                 #   attach_catalog_settings. Cot da co so thi moc cu van thang. ]]
+                #  isinstance chu khong `if m:` tron — xem bao_mat.bien_dich_mot:
+                #  Cython tung dich `if m:` thanh doc kich thuoc dict khi m = None
                 m = base.get(p)
-                if m:
+                if isinstance(m, dict) and m:
                     bu = bu_cot_plugin_moi(rec, m)
                     if bu:
                         rec = dict(rec, **bu)

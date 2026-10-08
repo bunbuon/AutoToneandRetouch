@@ -323,6 +323,52 @@ def chay(nhanh: bool = False) -> Bao:
             return "2 cảnh, đúng như mong đợi"
         b.thu("Tách cảnh", _tach_canh)
 
+        #[[ 8/10: CHI BAN MA HOA hong o save_baseline (ghi vao Lightroom lan 2):
+        #   Cython suy kieu tu chu thich `base: dict[str, dict]`, dich `if m:`
+        #   thanh doc kich thuoc dict khong kiem None — xem bao_mat.bien_dich_mot.
+        #   Ma nguon dat moi bai kiem; bai nay chay TRONG GOI nen bat duoc. Di dung
+        #   nhanh hong: moc cu co anh ma lan ghi nay khong co. ]]
+        def _moc_lan_hai():
+            k = at.khoa_duong_dan
+            with tempfile.TemporaryDirectory(prefix="tu_kiem_moc_") as t:
+                thu_muc = Path(t) / "buoi thu"
+                thu_muc.mkdir()
+                goc = {"Exposure2012": "0", "Temperature": "5950", "Tint": "19",
+                       "WhiteBalance": "Custom"}
+                at.save_baseline(thu_muc, {k(f"x:/a{i}.arw"): dict(goc) for i in range(3)},
+                                 gop=False)
+                moi = dict(goc, Exposure2012="-0.5", Saturation="19",
+                           SplitToningHighlightSaturation="10")
+                at.save_baseline(thu_muc, {k("x:/a0.arw"): moi, k("x:/b.arw"): dict(goc)})
+                moc = at.load_baseline(thu_muc)
+                if len(moc) != 4:
+                    raise AssertionError(f"mốc có {len(moc)} ảnh, đúng ra 4")
+                a0 = moc.get(k("x:/a0.arw")) or {}
+                if a0.get("Exposure2012") != "0":
+                    raise AssertionError("mốc cũ bị ghi đè")
+                if a0.get("Saturation") != "19":
+                    raise AssertionError("không bù cột màu vào mốc cũ")
+            return "giữ mốc cũ, thêm ảnh mới, bù cột màu"
+        b.thu("Ghi lần 2 (gộp mốc)", _moc_lan_hai)
+
+        def _grade():
+            crs = {"Temperature": "5950", "Tint": "19", "WhiteBalance": "Custom",
+                   "Saturation": "19", "Vibrance": "25",
+                   "ColorGradeMidtoneHue": "0", "ColorGradeMidtoneSat": "0",
+                   "SplitToningHighlightHue": "36", "SplitToningHighlightSaturation": "10"}
+            ds = [{"path": f"x:/g{i}.arw", "face_rgb": [0.30, 0.19, 0.12], "wb_may_K": 5000,
+                   "model": "ILCE-7M4", "crs": dict(crs), "atn": {}, "new_temp": 5950,
+                   "new_tint": 19, "scene": 0, "bw": False, "notes": ""} for i in range(2)]
+            ds.append(dict(ds[0], path="x:/g9.arw", bw=True, da_grade=True))
+            cfg = dict(at.DEFAULTS, grade=True, source="catalog", dong_bo_loat=False)
+            at.grade_theo_trang_thai(ds, cfg)
+            if not (ds[0].get("gr_ghi") and ds[0].get("gr_mid") and ds[0].get("gr_hi")):
+                raise AssertionError("da cam mà không grade")
+            if tuple(ds[2].get("gr_mid") or ()) != (0, 0):
+                raise AssertionError("ảnh B/W đã grade không được trả về số preset")
+            return f"midtone {ds[0]['gr_mid']} · highlight {ds[0]['gr_hi']}"
+        b.thu("Color Grading theo trạng thái", _grade)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #

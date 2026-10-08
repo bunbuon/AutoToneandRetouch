@@ -1136,7 +1136,9 @@ def khoa_anh(p, vao, de_quy: bool = False) -> str:
 
 def _chuan_muc(m: dict) -> dict:
     ra = {}
-    for k, v in (m or {}).items():
+    #  dict(...) boc ngoai: `(m or {}).items()` voi m la THAM SO lam Cython 3
+    #  crash khi annotation_typing=False (xem bao_mat.bien_dich_mot)
+    for k, v in dict(m or {}).items():
         if v is None or v == "":
             continue
         try:
