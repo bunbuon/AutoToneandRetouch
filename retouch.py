@@ -886,6 +886,8 @@ MO_HINH = {
     "vet_body": ["mo_hinh/vet_body.pt"],
     "nong_cam": ["mo_hinh/nong_cam.pt"],
     "nhan_tran": ["mo_hinh/nhan.pt"],
+    #  8/10: Xoá nếp nhăn vùng mắt (buoc_mat_them.BuocNhanMat)
+    "nhan_mat": ["mo_hinh/nhan_mat.pt"],
 }
 
 UNG_VIEN = {

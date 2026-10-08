@@ -147,7 +147,8 @@ class MucMixin:
 
     #  (mã vùng, tên hiện) — thứ tự hiện trên bảng
     VUNG_KEO = (("mat", "Khuôn mặt"), ("co_the", "Cơ thể"), ("khac", "Khác"))
-    _KEO_CO_THE = {"vet_body", "da_body", "chan", "keo_chan"}
+    #  8/10: "cao" (Tăng chiều cao, buoc_chan.BuocCao) cũng là thân người
+    _KEO_CO_THE = {"vet_body", "da_body", "chan", "keo_chan", "cao"}
 
     @classmethod
     def vung_keo(cls, ten: str) -> str:

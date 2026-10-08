@@ -359,7 +359,9 @@ def mo_hinh_du(goc_tool) -> Path:
                # 4/10: 7 tinh nang mat moi (saytool/buoc_mat_them.py, du lieu ev3) - chua hoc xong thi
                # tep chua co, mo_hinh_du bo qua; co roi thi tu vao goi (khong co o day = buoc tat lang le)
                "not_ruoi.pt", "bong_dau.pt", "quang_tham.pt", "bong_mat.pt",
-               "kinh.pt", "lo_mui.pt", "nhan_moi.pt"}
+               "kinh.pt", "lo_mui.pt", "nhan_moi.pt",
+               # 7/10: xoa nep nhan vung mat (saytool/buoc_mat_them.BuocNhanMat + saytool/vung_mat.py)
+               "nhan_mat.pt"}
         bo_qua = []
         for f in sorted(nguon.iterdir()):
             if f.is_dir():
