@@ -27,13 +27,14 @@ APP KHÔNG CÓ CỬA SỔ CONSOLE
 """
 from __future__ import annotations
 
+import inspect
 import io
 import os
 import shutil
 import sys
 import tempfile
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -487,6 +488,39 @@ def chay(nhanh: bool = False) -> Bao:
                     os.environ["AUTOTONE_DATA"] = cu
                 shutil.rmtree(tam, ignore_errors=True)
         b.thu("Lưu/nạp kết quả phân tích", _luu_phan_tich)
+
+        #[[ 8/10: loc trung khung luat moi (chi anh 1-4 nguoi CO NGUOI NHAM MAT bi
+        #   1 sao, tren 4 nguoi giu nguyen), loc mat bo mat nghieng, lens MF uu
+        #   tien mat giua khung — chay TRONG GOI ma hoa. ]]
+        def _loc_moi():
+            t0 = datetime(2026, 10, 8, 9, 0, 0)
+
+            def loat(faces, ears, lech=0.1, ti=0.95):
+                ds = []
+                for i, e in enumerate(ears):
+                    ds.append({"path": f"x:/L{faces}_{i}.arw", "dt_obj": t0 + timedelta(seconds=i * 0.5),
+                               "scene_sig": [1.0] * 72, "faces_n": faces, "notes": "",
+                               "ear_min": e, "ear_mat": [{"ear": e, "lech": lech, "ti_mat": ti}]})
+                at.group_bursts(ds, 3.0, 0.12, 3)
+                return ds
+            cfg = dict(at.DEFAULTS, burst=True)
+            a = loat(2, [0.30, 0.05, 0.30, 0.30])
+            at.pick_burst(a, 2, 1, 0.6, cfg=cfg)
+            if [bool(r.get("cull")) for r in a] != [False, True, False, False]:
+                raise AssertionError(f"luật trùng khung sai: {[r.get('cull') for r in a]}")
+            d = loat(6, [0.05] * 4)
+            at.pick_burst(d, 2, 1, 0.6, cfg=cfg)
+            if any(r.get("cull") for r in d):
+                raise AssertionError("ảnh trên 4 người bị lọc")
+            n = loat(1, [0.05] * 3, lech=1.8, ti=0.4)
+            at.pick_burst(n, 2, 1, 0.6, cfg=cfg)
+            if any(r.get("cull") for r in n):
+                raise AssertionError("mặt nghiêng vẫn bị tính nhắm mắt")
+            if "mf_giua_sigma" not in inspect.signature(at.measure).parameters or \
+                    at.cau_hinh_do(dict(at.DEFAULTS))[-1] != float(at.DEFAULTS["mf_giua_sigma"]):
+                raise AssertionError("tham số mf_giua_sigma không tới được measure()")
+            return "trùng khung: chỉ loại ảnh nhắm mắt · >4 người giữ · mặt nghiêng bỏ qua · MF giữa khung"
+        b.thu("Lọc trùng khung / mặt nghiêng / MF", _loc_moi)
 
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.

@@ -184,7 +184,9 @@ def _pick_txt(r: dict) -> str:
     if cull == "nham-mat":
         return f"loại {r.get('rating', 1)}★ nhắm mắt"
     if cull == "loat":
-        return f"loại {r.get('rating', 1)}★ trùng khung"
+        #  8/10: loc trung khung chi loai anh co nguoi nham mat — xem at.pick_burst
+        return (f"loại {r.get('rating', 1)}★ trùng khung"
+                + (" · nhắm mắt" if r.get("loat_ly_do") == "nham-mat" else ""))
     if r.get("burst", -1) < 0:
         return ""
     if r.get("pick"):
@@ -1877,11 +1879,14 @@ class App(ttk.Frame):
         #   cac anh trong CUNG mot loat; no khong tra loi "co ai nham mat
         #   khong". Loc mat doc EAR trong ear.csv, nguong 0.12 hieu chuan tren
         #   93 nhan that cua buoi 1308. ]]
+        #  8/10: luat moi cua user — xem at.pick_burst / at.mat_nghieng
         ct(g_loc, self.v_burst, "Lọc ảnh trùng khung",
-           "Chụp liên tiếp — giữ 2 tấm đẹp nhất mỗi pose, ảnh loại gắn 1 sao")
+           "Chụp liên tiếp: ảnh 1–4 người CÓ NGƯỜI NHẮM MẮT → 1 sao; ai cũng mở mắt "
+           "thì giữ; ảnh trên 4 người giữ nguyên. Đo mắt khi phân tích (~0.8s/ảnh)")
         o = ct(g_loc, self.v_blink, "Lọc ảnh mắt không dùng được",
-               "1 người hoặc nhóm 2–4; ảnh tập thể đông người bỏ qua. "
-               "Đo luôn khi phân tích, chậm thêm ~0.8s/ảnh")
+               "1 người hoặc nhóm 2–4; ảnh tập thể đông người bỏ qua. Chỉ xét mặt "
+               "trực diện / 3/4 — mặt nghiêng bỏ qua. Đo luôn khi phân tích, chậm "
+               "thêm ~0.8s/ảnh")
         self.cb_blink = o.winfo_children()[0]
         ct(g_loc, self.v_upright, "Auto Transform cho ảnh backdrop / màn LED",
            "Ghi Upright = Auto cho ảnh nhiều đường thẳng (backdrop, màn LED) "
@@ -4042,7 +4047,8 @@ class App(ttk.Frame):
         #   tat, nguoi dung chay lai roi tuong luat khong an. Im lang la loai
         #   loi tot nhieu cong nhat de tim.
         #]]
-        if cfg.get("blink"):
+        #  8/10: loc trung khung cung can do mat (chi loai anh co nguoi nham mat)
+        if cfg.get("blink") or cfg.get("burst"):
             co_mp = True
             try:
                 import mediapipe as _mp   # noqa: F401
@@ -4061,8 +4067,9 @@ class App(ttk.Frame):
             if not co_mp and not (root / str(cfg.get("blink_csv", "ear.csv"))).is_file():
                 messagebox.showwarning(
                     "Chưa cài mediapipe",
-                    "Đã tick lọc ảnh mắt không dùng được, nhưng máy chưa có "
-                    "mediapipe nên không đo được độ mở mắt.\n\n"
+                    "Đã tick lọc ảnh trùng khung / mắt không dùng được, nhưng máy "
+                    "chưa có mediapipe nên không đo được độ mở mắt — không ảnh nào "
+                    "bị gắn sao vì mắt.\n\n"
                     + ("Bấm Retouch → cửa sổ tải, tick “mediapipe”.\n\n"
                        if getattr(sys, "frozen", False) else
                        "Cài một lần:\n\n    pip install mediapipe==0.10.14\n\n")
@@ -4690,7 +4697,7 @@ class App(ttk.Frame):
                 dong.append(f"{at.SO_ANH_NGUOI_SUA} ảnh anh đã sửa tay → giữ nguyên, "
                             f"không ghi đè")
             if loat:
-                dong.append(f"{loat} ảnh trùng khung → 1 sao")
+                dong.append(f"{loat} ảnh trùng khung có người nhắm mắt → 1 sao")
             if mat:
                 dong.append(f"{mat} ảnh mắt không dùng được → 1 sao")
             if not catalog:

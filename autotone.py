@@ -1052,6 +1052,25 @@ def _ear_mot_mat(lm, w, h, spec):
     return float(doc / ngang)
 
 
+def _goc_quay(lm, w, h):
+    """(lệch mũi, tỉ lệ hai mắt) từ FaceMesh — ước lượng mặt quay ngang bao nhiêu.
+
+    lệch mũi = (x đỉnh mũi − giữa hai mép má) / nửa bề ngang mặt: 0 = trực diện,
+    ~0.5–0.7 = 3/4, ~1 trở lên = nghiêng hẳn. tỉ lệ hai mắt = bề ngang mắt hẹp /
+    mắt rộng (mắt xa bị co lại khi quay): 1 = trực diện. Xem blink_nghieng_max."""
+    try:
+        xl, xr, xn = lm[234].x * w, lm[454].x * w, lm[1].x * w
+        nua = abs(xr - xl) / 2.0
+        lech = (xn - (xl + xr) / 2.0) / nua if nua > 1e-6 else None
+        def rong(a, b):
+            return float(np.hypot((lm[a].x - lm[b].x) * w, (lm[a].y - lm[b].y) * h))
+        wl, wr = rong(33, 133), rong(362, 263)
+        ti = min(wl, wr) / max(wl, wr) if max(wl, wr) > 1e-6 else None
+        return (None if lech is None else float(lech)), (None if ti is None else float(ti))
+    except Exception:                                # noqa: BLE001
+        return None, None
+
+
 def do_ear(blob, tags, faces, det_wh, out: dict) -> None:
     """Đo EAR cho mọi mặt YuNet tìm được, ghi vào out. Không bao giờ ném lỗi."""
     mesh = _facemesh()
@@ -1067,7 +1086,7 @@ def do_ear(blob, tags, faces, det_wh, out: dict) -> None:
         arr = np.asarray(big)
         sx = big.size[0] / float(max(det_wh[0], 1))
         sy = big.size[1] / float(max(det_wh[1], 1))
-        vals, dung = [], 0
+        vals, dung, ds_mat = [], 0, []
         for f in faces:
             x, y, bw, bh = f[0], f[1], f[2], f[3]
             cx, cy = (x + bw / 2) * sx, (y + bh / 2) * sy
@@ -1083,12 +1102,23 @@ def do_ear(blob, tags, faces, det_wh, out: dict) -> None:
                 continue
             dung += 1
             lm = res.multi_face_landmarks[0].landmark
+            mot = []
             for spec in (_L_EYE, _R_EYE):
                 e = _ear_mot_mat(lm, EAR_CROP_PX, EAR_CROP_PX, spec)
                 if e is not None:
                     vals.append(e)
+                    mot.append(e)
+            #  8/10: goc quay TUNG mat — loc mat chi xet mat truc dien / 3/4
+            #  (mat nghieng: mot mat bi che, EAR thap gia). Xem blink_nghieng_max.
+            lech, ti = _goc_quay(lm, EAR_CROP_PX, EAR_CROP_PX)
+            ds_mat.append({"ear": min(mot) if mot else None,
+                           "lech": None if lech is None else round(lech, 3),
+                           "ti_mat": None if ti is None else round(ti, 3),
+                           "box": (round(float(x), 1), round(float(y), 1),
+                                   round(float(bw), 1), round(float(bh), 1))})
         out["ear_faces"] = dung
         out["ear_min"] = min(vals) if vals else None
+        out["ear_mat"] = ds_mat
     except Exception as ex:                          # noqa: BLE001
         out["ear_err"] = f"{type(ex).__name__}: {ex}"
 
@@ -1154,7 +1184,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             af_nikon: bool = False,
             # Dat CUOI de moi loi goi theo vi tri san co giu nguyen.
             mat_ao_to_pct: float = 0.0,
-            mat_ao_diem: float = 0.6) -> dict:
+            mat_ao_diem: float = 0.6,
+            mf_giua_sigma: float = 0.0) -> dict:
     """Đọc RAW -> preview -> thống kê. Chạy trong worker process."""
     out = {"path": str(path), "ok": False, "error": ""}
     try:
@@ -1714,6 +1745,17 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
 
                 out["faces_bg_dropped"] = nfaces0 - len(face_patches)
 
+            #  Lens MF: mat cang xa tam khung cang nhe ky — xem mf_giua_sigma
+            if lens_co and mf_giua_sigma > 0 and face_patches:
+                def _gan_tam(fp):
+                    bx, by, bw_, bh_ = fp[5][:4]
+                    d = float(np.hypot((bx + bw_ / 2) / max(fw_, 1) - 0.5,
+                                       (by + bh_ / 2) / max(fh_, 1) - 0.5) / np.sqrt(0.5))
+                    return float(np.exp(-0.5 * (d / mf_giua_sigma) ** 2))
+                face_patches = [fp[:1] + (fp[1] * _gan_tam(fp),) + fp[2:]
+                                for fp in face_patches]
+                out["mf_giua"] = True
+
             #[[ Ghi lai DUNG nhung khung da di vao phep do sang.
             #   all_boxes  : moi khung YuNet bao, ke ca khung bi loai
             #   meter_boxes: khung con lai sau tat ca cac vong loc -> chinh la
@@ -1847,6 +1889,13 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
         if face_patches:
             allpx = np.concatenate([p_[2] for p_ in face_patches], axis=0)
             face_rgb = [float(allpx[:, c].mean()) + EPS for c in range(3)]
+            #[[ Lens MF: mau da theo TRONG SO MAT (da nhan gan tam), khong theo so
+            #   diem anh — gop diem anh thi mat ria bi fisheye keo gian (nhieu diem
+            #   anh nhat) quyet dinh WB. Xem mf_giua_sigma. ]]
+            if out.get("mf_giua") and len(face_patches) > 1:
+                wts_ = np.array([max(p_[1], 1e-9) for p_ in face_patches], dtype=np.float64)
+                tb_ = np.array([p_[2].mean(axis=0) for p_ in face_patches], dtype=np.float64)
+                face_rgb = [float(np.average(tb_[:, c], weights=wts_)) + EPS for c in range(3)]
             #[[ Muc sang cua VUNG SANG tren da (p95 cua kenh lon nhat, thang
             #   sRGB 0-1). Day la cai quyet dinh da con chi tiet hay khong: tran,
             #   go ma, song mui cham tran truoc phan con lai.
@@ -2164,6 +2213,24 @@ DEFAULTS = {
     #]]
     "mat_ao_to_pct": 15.0,
     "mat_ao_diem": 0.6,
+    #[[ LENS MF (khau EXIF = 0): CHU THE O GIUA KHUNG (8/10 — user: "anh chup lens
+    #   MF can xac dinh vung da nguoi, thuong o giua buc anh, roi do vung da do
+    #   de can WB va Tone").
+    #
+    #   Lens MF khong co diem AF that, do net cung khong noi chu the (fisheye net
+    #   ca khung) -> trong so mat chi con co mat x diem tin. Ma fisheye KEO GIAN
+    #   mat o ria: mat bi cat o mep thanh "to nhat" va lan at nguoi o giua. Gap
+    #   that BVDay3 DSC06058: nguoi giua khung (chu the ro rang) thua mat bi cat
+    #   sat mep phai (d 0.67); DC_02781 tuong tu.
+    #
+    #   Giu nguyen tap mat da loc, chi nhan trong so voi exp(-(d/sigma)^2/2), d =
+    #   khoang cach tam mat toi tam khung (0 = tam, 1 = goc) — cho ca do sang, mat
+    #   chu the va MAU DA (WB). Do tren 347 anh fisheye raw 19.4 doi chieu anh user
+    #   sua (do sang tuong doi trong canh): sigma 0.5 trung tinh (p90 0.385 vs
+    #   0.387, >0.5 EV 20 vs 19); CHON LAI theo mat gan tam nhat thi XAU han
+    #   (>0.5 EV 39 vs 19 — anh nhom: ca nhom deu la chu the, mot mat thi nhieu).
+    #   0 = tat. ]]
+    "mf_giua_sigma": 0.5,
     #[[ Bo khung TO ma DIEM THAP khi trong anh co khung nho hon ma diem cao han
     #   han. Xem chu thich day du trong measure(). 0 = TAT.
     #   DA KIEM TREN 893 ANH DA DUYET — BAT MAC DINH ngay 31.08.2026.
@@ -2663,11 +2730,12 @@ DEFAULTS = {
     #   check-in backdrop chup lien tuc nhung nguoi ta doi dang tay lien tuc;
     #   gom ca loat roi giu 2 anh se mat sach cac pose khac.
     #
-    #   TINH NANG NAY KHONG PHAI LOC NHAM MAT. No chi so cac anh TRONG CUNG
-    #   mot loat voi nhau roi giu 2 tam nhinh hon — khong tra loi cau hoi
-    #   "nguoi trong anh co nham mat khong". Anh chup don le ma nham mat van
-    #   lot qua; anh loat ma ai cung mo mat van bi cat bot. Ghi chu rieng:
-    #   "loai-trong-loat", cot cull = "loat".
+    #   8/10 DOI LUAT (user): trong loat, CHI anh 1-4 nguoi CO NGUOI NHAM MAT
+    #   moi bi 1 sao; ai cung mo mat thi giu; anh tren 4 nguoi giu nguyen. Dung
+    #   chung phep do EAR / nguong / luat mat nghieng voi loc mat — xem
+    #   pick_burst. burst_keep / burst_eye_weight chi con xep hang hien thi.
+    #   Anh chup don le (khong thuoc loat nao) khong bi bo loc nay dung toi —
+    #   do la viec cua loc mat. Ghi chu "loai-trong-loat", cull = "loat".
     #]]
     "burst": False,
     "burst_gap_sec": 3.0,       # cach nhau duoi bay nhieu giay thi cung mot loat
@@ -2715,6 +2783,21 @@ DEFAULTS = {
     "blink_max_faces": 4,       # dong hon bay nhieu nguoi thi khong loai
     "blink_csv": "ear.csv",     # ten file EAR nam trong chinh thu muc anh
     "blink_reject_rating": 1,   # sao gan cho anh bi loai
+    #[[ CHI XET MAT TRUC DIEN / 3/4 (8/10 — user: "chi loc cac anh thay truc
+    #   dien mat cua chu the hoac 3/4 mat; cac anh goc nghieng bo qua"). Mat
+    #   nghieng: mat xa bi che / FaceMesh doan bua -> EAR thap gia.
+    #   Do bang FaceMesh (_goc_quay): lech = do lech dinh mui khoi giua hai mep
+    #   ma / nua be ngang mat; ti_mat = mat hep / mat rong. Nghieng neu
+    #   |lech| >= blink_nghieng_lech, HOAC |lech| >= 1.0 ma ti_mat < blink_nghieng_ti.
+    #   Hieu chuan bang mat tren 937 mat that (raw 19.4 + BVDay3, bang anh xep
+    #   theo |lech|): < 1.0 deu truc dien -> 3/4 ro; 1.0-1.5 la vung giao — mat
+    #   xa con rong (ti >= 0.5) van la 3/4, hep hon la gan nghieng; >= 1.5 hau
+    #   het nghieng han. Ap len 137 mat EAR < 0.12: bat dung 2 mat nghieng (mot
+    #   mat nghieng han, mot mat quay manh deo kinh ram), khong sot mat nghieng
+    #   nao. Ap luc LAP KE HOACH tu so do tung mat (ear_mat) — doi nguong khong
+    #   phai phan tich lai. ]]
+    "blink_nghieng_lech": 1.5,
+    "blink_nghieng_ti": 0.5,
     # Xuat thong so tu Lightroom thi BO qua anh co dung so sao nay. Cung quy
     # uoc voi burst_reject_rating. Dat 0 de xuat het.
     "export_skip_rating": 1,
@@ -3281,35 +3364,46 @@ def group_bursts(items: list, gap_sec: float, pose_thresh: float,
 
 
 def pick_burst(items: list, keep: int, reject_rating: int,
-               eye_weight: float = 0.6) -> int:
-    """Chấm điểm trong từng loạt, giữ `keep` ảnh đẹp nhất, phần còn lại gắn sao.
+               eye_weight: float = 0.6, cfg: dict | None = None,
+               folder=None) -> int:
+    """LỌC ẢNH TRÙNG KHUNG — chỉ gắn sao cho ảnh trong loạt CÓ NGƯỜI NHẮM MẮT.
 
-    Điểm = mắt mở + nét mặt. Hai thứ này quyết định ảnh dùng được hay không;
-    bố cục thì các ảnh trong cùng một loạt vốn đã giống nhau.
-
-    ĐÂY KHÔNG PHẢI LỌC NHẮM MẮT. So sánh ở đây là TƯƠNG ĐỐI, chỉ giữa các ảnh
-    trong cùng một loạt: chọn tấm mắt mở HƠN, nét HƠN. Nó không kết luận ảnh
-    nào có người nhắm mắt — muốn thế phải dùng pick_blinks, một tính năng riêng.
-    Ảnh bị loại ở đây mang ghi chú "loai-trong-loat" và cull="loat", không bao
-    giờ mang nhãn nhắm mắt, để về sau không lấy nhãn bên này kiểm bên kia.
-
-    eye_weight: trọng số cho độ mở mắt (phần còn lại dành cho độ nét). Để chỉnh
-    được vì phép đo mắt chưa có nhãn thật xác nhận; đặt 0 là chỉ còn xét nét.
+    #[[ LUAT 8/10 CUA NGUOI DUNG: "loc anh trung khung phai la cac buc anh duoi 4
+    #   nguoi ma khong co ai nham mat. Neu co nguoi nham mat thi moi danh gia 1
+    #   sao. Neu tren 4 nguoi thi khong loc ma giu nguyen."
+    #
+    #   Truoc day: moi loat giu `keep` (2) tam diem cao nhat (mat mo + net), con
+    #   lai 1 sao — BAT KE so nguoi va bat ke co ai nham mat, nen loat ma ai cung
+    #   mo mat van bi cat (BVDay3: 573/1813 anh 1 sao). Diem "mat mo" dung de xep
+    #   hang con la phep do eye_open da bi nhan that bac bo.
+    #
+    #   Nay, trong moi loat:
+    #     - anh > blink_max_faces (4) nguoi            -> giu nguyen
+    #     - anh 1..4 nguoi co mat EAR < blink_thresh   -> 1 sao (cull "loat")
+    #     - ai cung mo mat / khong do duoc mat          -> giu
+    #   "Nham mat" dung CUNG phep do va CUNG nguong voi loc mat (EAR 0.12 hieu
+    #   chuan tren 93 nhan that), chi xet mat truc dien / 3/4 — xem
+    #   ear_truc_dien. Nhan van la "loat" (bo loc trung khung gan), kem
+    #   loat_ly_do = "nham-mat". `keep` va `eye_weight` chi con dung de xep
+    #   hang hien thi (pick_score), khong quyet dinh loai. ]]
 
     Trả về số ảnh bị đánh dấu loại.
     """
+    c = dict(DEFAULTS, **(cfg or {}))
     by: dict[int, list] = {}
     for r in items:
         b = r.get("burst", -1)
         if b >= 0:
             by.setdefault(b, []).append(r)
+    if not by:
+        return 0
 
+    lay = _nguon_ear(items, c, folder)
+    thr = float(c.get("blink_thresh") or 0.0)
+    max_faces = int(c.get("blink_max_faces", 4))
     dropped = 0
     for group in by.values():
-        if len(group) <= keep:
-            continue
-        # chuẩn hoá từng tiêu chí TRONG loạt: so ảnh với nhau, không so với
-        # thang tuyệt đối — loạt chụp tối thì mọi ảnh đều kém nét như nhau.
+        # chuẩn hoá từng tiêu chí TRONG loạt — chỉ để xếp hạng hiển thị
         eyes = [r.get("eye_open") for r in group]
         shrp = [r.get("face_sharp") for r in group]
 
@@ -3326,17 +3420,25 @@ def pick_burst(items: list, keep: int, reject_rating: int,
         for r, a, b in zip(group, ne, ns):
             r["pick_score"] = ew * a + (1.0 - ew) * b
 
-        ranked = sorted(group, key=lambda r: -r["pick_score"])
-        for i, r in enumerate(ranked):
-            if i < keep:
+        for r in group:
+            ear, nguoi = lay(r) if lay is not None else (None, r.get("faces_n") or 0)
+            nguoi = int(nguoi or r.get("faces_n") or 0)
+            if nguoi > max_faces:
                 r["pick"] = True
-            else:
+                r["loat_ly_do"] = "dong-nguoi"
+                continue
+            if 1 <= nguoi and ear is not None and thr > 0 and float(ear) < thr:
                 r["pick"] = False
                 r["rating"] = reject_rating
                 r["cull"] = "loat"
+                r["loat_ly_do"] = "nham-mat"
                 r["notes"] = ";".join(
                     [n for n in [r.get("notes", ""), "loai-trong-loat"] if n])
                 dropped += 1
+            else:
+                r["pick"] = True
+                if ear is None and nguoi >= 1:
+                    r["loat_ly_do"] = "chua-do-mat"
     return dropped
 
 
@@ -3407,12 +3509,12 @@ def pick_blinks(items: list, cfg: dict, folder: Path | None = None) -> int:
     #   mot ham, cung do phan giai, nen cung mot con so. ear.csv van doc duoc de
     #   khong pha thu muc da do bang eye_ear.py truoc day.
     #]]
-    trong_luot = sum(1 for r in items if r.get("ear_min") is not None)
+    trong_luot = sum(1 for r in items if r.get("ear_min") is not None or r.get("ear_mat"))
     if trong_luot:
         loi = next((r.get("ear_err") for r in items if r.get("ear_err")), "")
         if loi:
             print(f"[!] Mot so anh khong do duoc mat: {loi}", file=sys.stderr)
-        return _loc_theo_ear(items, cfg, lambda r: (r.get("ear_min"),
+        return _loc_theo_ear(items, cfg, lambda r: (ear_truc_dien(r, cfg),
                                                     r.get("faces_n") or 0))
 
     thieu = next((r.get("ear_err") for r in items if r.get("ear_err")), "")
@@ -3435,6 +3537,51 @@ def pick_blinks(items: list, cfg: dict, folder: Path | None = None) -> int:
 
     return _loc_theo_ear(items, cfg, lambda r: ear.get(_stem_any(r.get("path")))
                          or (None, 0))
+
+
+def mat_nghieng(m: dict, cfg: dict | None = None) -> bool:
+    """Mặt (một phần tử ear_mat) quay NGHIÊNG — không đưa vào lọc mắt. Xem
+    blink_nghieng_lech trong DEFAULTS."""
+    c = cfg or DEFAULTS
+    lech, ti = m.get("lech"), m.get("ti_mat")
+    if lech is None:
+        return False
+    a = abs(float(lech))
+    return (a >= float(c.get("blink_nghieng_lech", 1.5))
+            or (a >= 1.0 and ti is not None and float(ti) < float(c.get("blink_nghieng_ti", 0.5))))
+
+
+def ear_truc_dien(r: dict, cfg: dict | None = None):
+    """EAR nhỏ nhất CHỈ trên các mặt trực diện / 3/4 (bỏ mặt nghiêng). Số đo cũ chưa
+    có ear_mat thì lùi về ear_min. None = không còn mặt nào xét được."""
+    ds = r.get("ear_mat")
+    if ds is None:
+        return r.get("ear_min")
+    #[[ CHI MAT CHU THE (meter_boxes — cung tap mat dem ra faces_n cho luat
+    #   "<= 4 nguoi"). EAR do tren MOI mat YuNet thay, ke ca khan gia ti xiu
+    #   phia sau: BVDay3 8/10 loc mat ra 765/1813 anh (42%) vi mat hau canh
+    #   mo / nho cho EAR thap gia. User: "thay truc dien mat cua CHU THE". ]]
+    mb = {tuple(round(float(v), 1) for v in b[:4]) for b in (r.get("meter_boxes") or [])}
+    if mb:
+        chu = [m for m in ds if tuple(round(float(v), 1) for v in (m.get("box") or ())[:4]) in mb]
+        if chu:
+            ds = chu
+    vals = [float(m["ear"]) for m in ds
+            if m.get("ear") is not None and not mat_nghieng(m, cfg)]
+    r["mat_nghieng"] = sum(1 for m in ds if mat_nghieng(m, cfg))
+    return min(vals) if vals else None
+
+
+def _nguon_ear(items: list, cfg: dict, folder=None):
+    """Hàm r -> (EAR mặt trực diện, số người) — CÙNG nguồn cho lọc mắt và lọc trùng
+    khung: số đo trong lượt phân tích, không có thì ear.csv. None = không có số."""
+    if any(r.get("ear_min") is not None or r.get("ear_mat") for r in items):
+        return lambda r: (ear_truc_dien(r, cfg), r.get("faces_n") or 0)
+    name = str(cfg.get("blink_csv") or "ear.csv")
+    ear = read_ear_csv(Path(folder) / name) if folder else {}
+    if ear:
+        return lambda r: ear.get(_stem_any(r.get("path"))) or (None, 0)
+    return None
 
 
 def _loc_theo_ear(items: list, cfg: dict, lay) -> int:
@@ -7549,9 +7696,10 @@ def cau_hinh_do(cfg: dict) -> tuple:
             cfg.get("big_low_ratio", 0.0),
             cfg.get("big_low_gap", 0.13),
             cfg.get("big_low_floor", 0.70),
-            # Chi do mat khi nguoi dung tick loc mat — do khong khi thi phi
-            # mot lan giai nen 3000px cho moi anh.
-            bool(cfg.get("blink")),
+            # Chi do mat khi nguoi dung tick loc mat HOAC loc trung khung (8/10:
+            # loc trung khung gio chi gan sao cho anh co nguoi nham mat) — do
+            # khong khi thi phi mot lan giai nen 3000px cho moi anh.
+            bool(cfg.get("blink") or cfg.get("burst")),
             # Do theo vung da sang khi vung do du lon — xem hl_da_ti_le.
             float(cfg.get("hl_da_ti_le", 0.0)),
             float(cfg.get("hl_da_muc", 220.0)),
@@ -7559,7 +7707,8 @@ def cau_hinh_do(cfg: dict) -> tuple:
             bool(cfg.get("af_xoay_theo_anh", True)),
             bool(cfg.get("af_nikon", False)),
             float(cfg.get("mat_ao_to_pct", 0.0)),
-            float(cfg.get("mat_ao_diem", 0.6)))
+            float(cfg.get("mat_ao_diem", 0.6)),
+            float(cfg.get("mf_giua_sigma", 0.0)))
 
 
 #[[ KET QUA PHAN TICH LUU THEO BUOI (8/10).
@@ -7694,7 +7843,7 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         group_bursts(items, float(cfg["burst_gap_sec"]),
                      float(cfg["burst_pose_thresh"]), int(cfg["burst_min"]))
         pick_burst(items, int(cfg["burst_keep"]), int(cfg["burst_reject_rating"]),
-                   float(cfg.get("burst_eye_weight", 0.6)))
+                   float(cfg.get("burst_eye_weight", 0.6)), cfg=cfg, folder=folder)
     if cfg.get("blink"):
         pick_blinks(items, cfg, folder)
     #[[ Gan nhan trong/ngoai TRUOC khi tach canh — group_scenes() doc no de

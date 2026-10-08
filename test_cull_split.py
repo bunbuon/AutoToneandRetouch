@@ -136,55 +136,117 @@ def t_match_by_name():
     return bad
 
 
-def t_burst_never_labels_blink():
-    """Lọc trùng khung chỉ được gắn nhãn 'loat', không bao giờ gắn nhãn nhắm mắt."""
-    bad = 0
-    items = [mk(i, secs=i * 0.5, eye=2.0 - i * 0.1) for i in range(6)]
+def _loat(n, faces, ears, nghieng=None):
+    """Mot loat n anh lien tiep, moi anh `faces` nguoi, EAR do trong luot = ears[i]
+    (None = chua do). nghieng[i] = (lech, ti_mat) cua mat do (mac dinh truc dien)."""
+    items = [mk(i, secs=i * 0.5, faces=faces) for i in range(n)]
+    for i, r in enumerate(items):
+        r["path"] = f"X:\\anh\\L{faces}_{i:02d}.ARW"
+        e = ears[i]
+        if e is not None:
+            lech, ti = (nghieng or {}).get(i, (0.1, 0.95))
+            r["ear_min"] = e
+            r["ear_mat"] = [{"ear": e, "lech": lech, "ti_mat": ti}]
     at.group_bursts(items, 3.0, 0.12, 3)
-    at.pick_burst(items, 2, 1, 0.6)
-    culled = [r for r in items if r.get("cull")]
-    if not culled:
-        bad += fails("loc loat khong loai duoc anh nao — kich ban test sai")
-    for r in culled:
-        if r["cull"] != "loat" or "nham-mat" in r["notes"]:
-            bad += fails(f"{r['path']}: loc loat gan nhan sai -> {r['cull']} / {r['notes']}")
+    return items
+
+
+def t_burst_luat_moi():
+    """8/10: trong loat, CHI anh 1-4 nguoi co nguoi nham mat bi 1 sao; ai mo mat thi giu."""
+    bad = 0
+    items = _loat(6, 2, [0.30, 0.05, 0.30, 0.30, 0.08, 0.30])
+    n = at.pick_burst(items, 2, 1, 0.6, cfg=dict(at.DEFAULTS, burst=True))
+    loai = {i for i, r in enumerate(items) if r.get("cull")}
+    if loai != {1, 4} or n != 2:
+        bad += fails(f"phai loai dung anh 1 va 4 (nham mat), loai {sorted(loai)}")
+    for i in (1, 4):
+        r = items[i]
+        if r.get("cull") != "loat" or r.get("rating") != 1 or r.get("loat_ly_do") != "nham-mat":
+            bad += fails(f"anh {i}: nhan sai {r.get('cull')} / {r.get('rating')} / {r.get('loat_ly_do')}")
+    for i in (0, 2, 3, 5):
+        if items[i].get("rating") or not items[i].get("pick"):
+            bad += fails(f"anh {i} mo mat ma van bi gan sao / khong giu")
+    return bad
+
+
+def t_burst_mo_mat_giu_het():
+    """Loat dai ma ai cung mo mat -> giu HET (truoc day chi giu 2 tam)."""
+    bad = 0
+    items = _loat(8, 1, [0.30] * 8)
+    if at.pick_burst(items, 2, 1, 0.6, cfg=dict(at.DEFAULTS, burst=True)) != 0 or \
+            any(r.get("cull") or r.get("rating") for r in items):
+        bad += fails("loat mo mat van bi cat bot")
+    return bad
+
+
+def t_burst_dong_nguoi():
+    """Anh tren 4 nguoi: khong loc, giu nguyen du co nguoi nham mat; 4 nguoi van loc."""
+    bad = 0
+    items = _loat(4, 6, [0.05] * 4)
+    at.pick_burst(items, 2, 1, 0.6, cfg=dict(at.DEFAULTS, burst=True))
+    if any(r.get("cull") for r in items) or any(r.get("loat_ly_do") != "dong-nguoi" for r in items):
+        bad += fails("anh 6 nguoi bi loc")
+    items = _loat(4, 4, [0.05] * 4)
+    at.pick_burst(items, 2, 1, 0.6, cfg=dict(at.DEFAULTS, burst=True))
+    if not all(r.get("cull") == "loat" for r in items):
+        bad += fails("anh 4 nguoi nham mat phai bi loc (nguong blink_max_faces = 4)")
+    return bad
+
+
+def t_burst_chua_do_mat():
+    """Khong do duoc mat (thieu mediapipe, khong ear.csv) -> khong ket luan, giu het."""
+    bad = 0
+    items = _loat(5, 1, [None] * 5)
+    at.pick_burst(items, 2, 1, 0.6, cfg=dict(at.DEFAULTS, burst=True))
+    if any(r.get("cull") for r in items):
+        bad += fails("chua do mat ma van loai")
+    return bad
+
+
+def t_mat_nghieng_bo_qua():
+    """8/10: loc mat (va loc trung khung) chi xet mat truc dien / 3/4 — mat nghieng bo qua."""
+    bad = 0
+    cases = [((0.30, 0.95), True, "truc dien"), ((0.80, 0.70), True, "3/4"),
+             ((1.20, 0.70), True, "3/4 manh, mat xa con rong"),
+             ((1.20, 0.45), False, "gan nghieng, mat xa hep"),
+             ((1.80, 0.60), False, "nghieng han")]
+    cfg = dict(at.DEFAULTS, blink=True)
+    for (lech, ti), loai, ten in cases:
+        it = [mk(1, secs=0, faces=1)]
+        it[0]["path"] = "X:\\anh\\NG.ARW"
+        it[0]["ear_min"] = 0.05
+        it[0]["ear_mat"] = [{"ear": 0.05, "lech": lech, "ti_mat": ti}]
+        at.pick_blinks(it, cfg, None)
+        if (it[0].get("cull") == "nham-mat") != loai:
+            bad += fails(f"loc mat, mat {ten} (lech {lech}, ti {ti}): loai={not loai}, mong doi={loai}")
+        items = _loat(3, 1, [0.05] * 3, nghieng={i: (lech, ti) for i in range(3)})
+        at.pick_burst(items, 2, 1, 0.6, cfg=dict(at.DEFAULTS, burst=True))
+        if all(r.get("cull") == "loat" for r in items) != loai:
+            bad += fails(f"loc trung khung, mat {ten}: sai")
+    # hai nguoi: mot nghieng nham "gia", mot truc dien mo mat -> giu
+    it = [mk(1, secs=0, faces=2)]
+    it[0]["path"] = "X:\\anh\\HAI.ARW"
+    it[0]["ear_min"] = 0.04
+    it[0]["ear_mat"] = [{"ear": 0.04, "lech": 2.0, "ti_mat": 0.2},
+                        {"ear": 0.30, "lech": 0.1, "ti_mat": 0.95}]
+    at.pick_blinks(it, cfg, None)
+    if it[0].get("cull"):
+        bad += fails("EAR thap cua mat NGHIENG van lam loai anh")
     return bad
 
 
 def t_one_reason_only():
-    """Ảnh đã bị loại vì trùng khung thì lọc mắt không ghi đè lý do."""
+    """Anh da bi loai vi trung khung thi loc mat khong ghi de ly do."""
     bad = 0
-    with tempfile.TemporaryDirectory() as td:
-        tmp = Path(td)
-        items = [mk(i, secs=i * 0.5) for i in range(6)]
-        for i, r in enumerate(items):
-            r["path"] = f"X:\\anh\\IMG_{i:04d}.ARW"
-        write_ear(tmp, [(f"IMG_{i:04d}", 1, 0.05) for i in range(6)])  # cả loạt đều hỏng
-        cfg = dict(at.DEFAULTS, burst=True, blink=True)
-        at.group_bursts(items, 3.0, 0.12, 3)
-        at.pick_burst(items, 2, 1, 0.6)
-        at.pick_blinks(items, cfg, tmp)
-        for r in items:
-            if r["notes"].count("loai-") > 1:
-                bad += fails(f"{r['path']} mang 2 ly do loai: {r['notes']}")
-        kept = [r for r in items if r.get("pick")]
-        if not any(r.get("cull") == "nham-mat" for r in kept):
-            bad += fails("anh giu lai trong loat ma mat hong van phai bi loc rieng")
-    return bad
-
-
-def t_eye_weight():
-    """Hạ burst_eye_weight về 0 thì xếp hạng chỉ còn dựa vào độ nét."""
-    bad = 0
-    items = [mk(i, secs=i * 0.5) for i in range(4)]
-    # mắt và nét ngược chiều nhau để thấy rõ trọng số quyết định ai bị loại
-    for i, r in enumerate(items):
-        r["eye_open"] = float(i)          # ảnh cuối mắt mở nhất
-        r["face_sharp"] = float(3 - i)    # ảnh đầu nét nhất
-    at.group_bursts(items, 3.0, 0.12, 3)
-    at.pick_burst(items, 2, 1, 0.0)       # chỉ xét nét
-    if items[0].get("cull") or not items[0].get("pick"):
-        bad += fails("eye_weight=0 ma anh net nhat van bi loai")
+    items = _loat(6, 1, [0.05] * 6)                  # ca loat deu nham mat
+    cfg = dict(at.DEFAULTS, burst=True, blink=True)
+    at.pick_burst(items, 2, 1, 0.6, cfg=cfg)
+    at.pick_blinks(items, cfg, None)
+    for r in items:
+        if r["notes"].count("loai-") != 1:
+            bad += fails(f"{r['path']} phai mang dung 1 ly do loai: {r['notes']}")
+    if not all(r.get("cull") == "loat" for r in items):
+        bad += fails("anh trong loat nham mat phai mang nhan cua bo loc trung khung")
     return bad
 
 

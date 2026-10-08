@@ -125,9 +125,12 @@ def chu_thich_cu(at) -> list[str]:
         "dặt, 1.2 = mạnh tay.",
         "Ngăn làm cháy thêm — không gỡ được chỗ đã cháy sẵn",
         "Nghỉ lâu mà vẫn đứng nguyên một phông thì không tính là cảnh mới",
-        "Chụp liên tiếp — giữ 2 tấm đẹp nhất mỗi pose, ảnh loại gắn 1 sao",
-        "1 người hoặc nhóm 2–4; ảnh tập thể đông người bỏ qua. Đo luôn khi phân "
-        "tích, chậm thêm ~0.8s/ảnh",
+        # 8/10: luat moi loc trung khung + loc mat bo mat nghieng
+        "Chụp liên tiếp: ảnh 1–4 người CÓ NGƯỜI NHẮM MẮT → 1 sao; ai cũng mở mắt "
+        "thì giữ; ảnh trên 4 người giữ nguyên. Đo mắt khi phân tích (~0.8s/ảnh)",
+        "1 người hoặc nhóm 2–4; ảnh tập thể đông người bỏ qua. Chỉ xét mặt "
+        "trực diện / 3/4 — mặt nghiêng bỏ qua. Đo luôn khi phân tích, chậm "
+        "thêm ~0.8s/ảnh",
         f"EV, cộng sau chống cháy. Cưới 0 · Sự kiện {bu:+.2f}. Ảnh không có mặt "
         "giữ nguyên.",
         # "nghỉ quá [5] phút thì coi là cảnh mới" — nhãn đổi thành "nghỉ quá
