@@ -522,6 +522,74 @@ def chay(nhanh: bool = False) -> Bao:
             return "trùng khung: chỉ loại ảnh nhắm mắt · >4 người giữ · mặt nghiêng bỏ qua · MF giữa khung"
         b.thu("Lọc trùng khung / mặt nghiêng / MF", _loc_moi)
 
+        #[[ 9/10: HSL mau da anh cuoi — quyet dinh tren da DO THAT o anh duyet
+        #   (at.hsl_da_cuoi). Chay TRONG GOI ma hoa: anh duyet tong hop (da vang,
+        #   nhat) -> Orange Hue am / Sat duong; da o dich -> khong dung. ]]
+        def _hsl_cuoi():
+            import csv as _csv
+            import math as _m
+            import tempfile
+            import time as _t
+            from PIL import Image as _Im
+            tam = Path(tempfile.mkdtemp(prefix="tk_hslc_"))
+            try:
+                buoi = tam / "Cuoi"
+                (buoi / "_duyet").mkdir(parents=True)
+                jobs = tam / "jobs"
+                jobs.mkdir()
+                W_, H_, hop = 1024, 683, (450.0, 250.0, 120.0, 150.0, 0.95)
+
+                def mau(h, c, L=0.76):
+                    a, b2 = c * _m.cos(_m.radians(h)), c * _m.sin(_m.radians(h))
+                    l_ = L + 0.3963377774 * a + 0.2158037573 * b2
+                    m_ = L - 0.1055613458 * a - 0.0638541728 * b2
+                    s_ = L - 0.0894841775 * a - 1.2914855480 * b2
+                    l3, m3, s3 = l_ ** 3, m_ ** 3, s_ ** 3
+                    lin = [4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3,
+                           -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
+                           -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3]
+                    return tuple(int(round(255 * (12.92 * v if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055)))
+                                 for v in (min(max(x, 0.0), 1.0) for x in lin))
+
+                def duyet(ten, h, c):
+                    im = _Im.new("RGB", (W_, H_), (90, 90, 90))
+                    im.paste(mau(h, c), (450, 250, 570, 400))
+                    im.save(buoi / "_duyet" / f"{ten}.jpg", quality=95)
+                say = {"HueAdjustmentRed": "0", "SaturationAdjustmentRed": "4", "HueAdjustmentOrange": "7",
+                       "SaturationAdjustmentOrange": "-25", "HueAdjustmentYellow": "0",
+                       "SaturationAdjustmentYellow": "-4"}
+                items = [{"path": str(buoi / f"A{i}.ARW"), "scene": 1, "bw": False, "notes": "",
+                          "meter_boxes": [hop], "preview_wh": (W_, H_), "new_temp": 5100, "new_tint": 14,
+                          "old_temp": 5100, "old_tint": 14, "new_exposure": 0.2, "new_highlights": -20,
+                          "new_shadows": 16, "crs": dict(say)} for i in range(2)]
+                jp = jobs / f"apply_20261009_100000_{at.ten_job(buoi.name)}.done"
+                with open(jp, "w", encoding="utf-8", newline="") as fh:
+                    w = _csv.writer(fh, delimiter="\t")
+                    w.writerow(["path", "Exposure2012", "Highlights2012", "Shadows2012", "Temperature", "Tint"])
+                    for r in items:
+                        w.writerow([r["path"], "+0.20", -20, 16, 5100, 14])
+                cu = _t.time() - 120
+                os.utime(jp, (cu, cu))
+                cfg = dict(at.DEFAULTS, source="catalog", loai_buoi="cuoi", hsl_da_cuoi=True)
+                for i in range(2):
+                    duyet(f"A{i}", 45.0, 0.040)
+                kq = at.hsl_da_cuoi(items, cfg, buoi, jobs)
+                moi = items[0].get("hsl_moi") or {}
+                if not (items[0].get("hsl_ghi") and moi.get("HueAdjustmentOrange", 7) < 7
+                        and moi.get("SaturationAdjustmentOrange", -25) > -25):
+                    raise AssertionError(f"da vàng/nhạt mà HSL sai: {moi} · {kq}")
+                for i in range(2):
+                    duyet(f"A{i}", 37.6, 0.051)
+                kq2 = at.hsl_da_cuoi(items, cfg, buoi, jobs)
+                if any(r.get("hsl_ghi") for r in items):
+                    raise AssertionError(f"da ở đích mà vẫn chỉnh HSL: {kq2}")
+                return (f"da {kq['hue_do']:.0f}°/{kq['chroma_do']:.3f} -> Cam Hue "
+                        f"{int(moi['HueAdjustmentOrange'])} / Sat {int(moi['SaturationAdjustmentOrange'])}; "
+                        "da ở đích -> giữ nguyên")
+            finally:
+                shutil.rmtree(tam, ignore_errors=True)
+        b.thu("HSL màu da cưới (đo trên ảnh duyệt)", _hsl_cuoi)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #

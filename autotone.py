@@ -2396,6 +2396,45 @@ DEFAULTS = {
     "hsl_da_hue_max": 40,
     "hsl_da_sat_max": 30,
     "hsl_da_min_anh": 5,          # it hon so anh co mat nay thi khong chinh
+    #[[ HSL MAU DA — ANH CUOI (9/10, user: "them option bat HSL de tu chinh. Can
+    #   WB va Tone xong phai biet duoc da chu the dang o muc nao voi cac thong so
+    #   da chinh roi moi quyet dinh chinh HSL de ra mau dich. Khong duoc keo da qua
+    #   do hay am mau khac nhu ky yeu"). Xem hsl_da_cuoi().
+    #
+    #   KHONG DOAN trang thai da: mo hinh "thong so -> Lightroom ve" (hoc tu 1284
+    #   anh LR that cua preset SAY) lech THEO BUOI 1-5.5 do hue / 10-28% chroma
+    #   (hoc BVDay3, cham 1005 / 1009 / Perfect Prof) — ngang chinh luong can sua
+    #   (da cuoi -5.7 do, x1.22). Nen DO THAT tren anh duyet Lightroom ve (Duyet
+    #   nhanh, <buoi>/_duyet) SAU lan ghi WB + Tone, tai chinh cac mat tool chon.
+    #   Chua co anh duyet hop le thi KHONG cham HSL.
+    #
+    #   Dich: da 1402 anh cuoi user sua (Anhoi2009 + Quyen), do cung cach (mat na da
+    #   tinh tren chinh anh): hue OkLab 37.6 do (IQR 33.3-42.2), chroma 0.051 (p90
+    #   0.066). WB KHONG doi theo da: vung trang / xam anh user sua khop WB tool
+    #   (Tint lech ~0); suy WB tu da ra Tint ~+38 thi vung trang hong them 20e-3.
+    #   Da hong / dam hon la chinh RIENG da -> chi kenh da (Orange).
+    #
+    #   Chot chan: vung "da on" (khong dung); chi sua `phan` phan lech; tran diem;
+    #   san do (hue sau HSL du doan khong duoi); tran dam; theo CANH (trung vi >=
+    #   min_anh anh do duoc), khong ca buoi. Vong kin: ghi HSL -> Duyet lai -> lan
+    #   Ghi sau tinh tiep tu so do moi (vuot do thi tu lui). Phan ung thanh truot:
+    #   hsl_da_k_hue / hsl_da_k_sat (do tren da that). Chi chay voi preset ho SAY
+    #   (dich va phan ung hoc tren no) — preset khac: khong cham. ]]
+    "hsl_da_cuoi": False,
+    "hsl_da_cuoi_dich": [37.6, 0.051],      # hue OkLab (do), chroma
+    "hsl_da_cuoi_on": [3.0, 0.10],          # |lech hue| do, |ln ti le chroma|
+    "hsl_da_cuoi_phan": 0.8,                # chi sua phan nay cua do lech
+    "hsl_da_cuoi_tran": [15, 20],           # tran diem Orange Hue / Sat moi lan
+    #  San do / tran dam xet tren 1/4 so mat DO NHAT (p25 hue) / DAM NHAT (p75 chroma)
+    #  cua canh, khong tren trung vi: trong canh da khong deu, keo theo trung vi thi
+    #  nhung tam von da hong bi day qua. Thu tren 164 canh 2 buoi cuoi (mo hinh thay
+    #  so do): san 35 theo trung vi -> 173 anh do hon anh user sua > 4 do (khong HSL:
+    #  156); san 37 theo p25 -> 160, |lech hue| van 3.8 do (khong HSL: 6.0). Ky yeu bi
+    #  che "do" o hue 34.6 — san 37 cao hon han. Tran 0.057 = p75 chroma da anh sua.
+    "hsl_da_cuoi_san_do": 37.0,             # p25 hue du doan sau HSL khong duoi
+    "hsl_da_cuoi_tran_dam": 0.057,          # p75 chroma du doan sau HSL khong vuot
+    "hsl_da_cuoi_min_anh": 2,               # canh can >= n anh do duoc
+    "hsl_da_cuoi_preset": {"HueAdjustmentOrange": 7, "SaturationAdjustmentOrange": -25},
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -5207,11 +5246,261 @@ def hsl_da_theo_trang_thai(items: list, cfg: dict) -> dict:
     return kq
 
 
+_DA_DUYET: dict = {}
+
+
+def da_tren_anh_duyet(r: dict, anh) -> tuple | None:
+    """Màu da chủ thể ĐO THẬT trên ảnh duyệt Lightroom vẽ (Duyệt nhanh), tại chính
+    các khung mặt tool chọn (meter_boxes): (hue OkLab độ, chroma, L, số điểm ảnh).
+    None = không đo được (thiếu file, ảnh đã crop / khác tỉ lệ, không thấy da).
+
+    Mặt nạ da tính trên chính ảnh duyệt — đo thử 146 ảnh LR: lệch so với mặt nạ
+    lấy từ ảnh máy trung vị +0.7° hue, chroma ×1.06; đích hsl_da_cuoi_dich đo
+    cùng cách. Nhớ theo (file, mtime): refresh_plan gọi lại nhiều lần."""
+    boxes = r.get("meter_boxes") or []
+    W, H = r.get("preview_wh") or (0, 0)
+    if not boxes or not W or not H:
+        return None
+    pa = Path(anh)
+    try:
+        mt = pa.stat().st_mtime_ns
+    except OSError:
+        return None
+    khoa = (str(pa), mt, tuple(tuple(round(float(v), 1) for v in b[:4]) for b in boxes))
+    if khoa in _DA_DUYET:
+        return _DA_DUYET[khoa]
+    kq = None
+    try:
+        with Image.open(pa) as im:
+            im.draft("RGB", (int(W) * 2, int(H) * 2))
+            im = im.convert("RGB")
+            #  anh duyet da crop / khac ti le -> khung mat khong con dung cho
+            if abs((im.size[0] / max(im.size[1], 1)) / (W / H) - 1.0) <= 0.02:
+                arr = np.asarray(im.resize((int(W), int(H)), Image.BILINEAR),
+                                 dtype=np.float32) / 255.0
+                rgbs, ns = [], []
+                for b in boxes:
+                    x, y, bw, bh = (float(v) for v in b[:4])
+                    cx, cy, hw, hh = x + bw / 2, y + bh / 2, bw * 0.275, bh * 0.275
+                    x0, x1 = int(max(0, cx - hw)), int(min(W, cx + hw))
+                    y0, y1 = int(max(0, cy - hh)), int(min(H, cy + hh))
+                    if x1 - x0 < 3 or y1 - y0 < 3:
+                        continue
+                    pc = arr[y0:y1, x0:x1].reshape(-1, 3)
+                    sk = skin_mask(pc)
+                    if sk.sum() < max(9, int(0.15 * sk.size)):
+                        continue
+                    lin = srgb_to_linear(pc[sk])
+                    yy = lin @ _SRGB_XYZ[1]
+                    lo, hi = np.quantile(yy, 0.30), np.quantile(yy, 0.90)
+                    sel = (yy >= lo) & (yy <= hi)
+                    if sel.sum() < 9:
+                        continue
+                    rgbs.append(lin[sel].mean(axis=0))
+                    ns.append(int(sel.sum()))
+                if rgbs:
+                    lab = oklab(np.average(np.asarray(rgbs), axis=0, weights=ns))
+                    kq = (float(math.degrees(math.atan2(lab[2], lab[1]))),
+                          float(math.hypot(lab[1], lab[2])), float(lab[0]), int(sum(ns)))
+    except (OSError, ValueError):
+        kq = None
+    _DA_DUYET[khoa] = kq
+    return kq
+
+
+def thong_so_trong_lr(folder, job_dir: Path | None = None) -> dict:
+    """{khoá ảnh: (dòng job MỚI NHẤT có ảnh đó, mtime file .done)} của buổi — số
+    WB / Tone / HSL tool đã ĐẨY vào Lightroom, để biết ảnh duyệt đang vẽ theo số
+    nào. Bỏ job khôi phục (xem last_applied)."""
+    d = Path(job_dir or LR_JOB_DIR)
+    if not folder or not d.is_dir():
+        return {}
+    ten = ten_job(Path(folder).name)
+    out = {}
+    for jp in sorted(d.glob(f"apply_*_{ten}.done")):          # ten co moc thoi gian
+        if "khoiphuc" in jp.name.lower():
+            continue
+        try:
+            mt = jp.stat().st_mtime
+            with io.open(jp, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    if row.get("path"):
+                        out[khoa_duong_dan(row["path"])] = (row, mt)
+        except (OSError, csv.Error):
+            continue
+    return out
+
+
+def _trung_job(r: dict, row: dict) -> bool:
+    """WB / Tone tool vừa tính TRÙNG số job đã đẩy vào Lightroom — ảnh duyệt vẽ sau
+    job đó mới đúng là "da sau WB + Tone" của chính lần tính này."""
+    def so(v):
+        try:
+            return float(str(v).replace("+", ""))
+        except (TypeError, ValueError):
+            return None
+    for cot, moi, cu, sai in (("Temperature", r.get("new_temp"), r.get("old_temp"), 10.0),
+                              ("Tint", r.get("new_tint"), r.get("old_tint"), 1.0),
+                              ("Exposure2012", r.get("new_exposure"), None, 0.02),
+                              ("Highlights2012", r.get("new_highlights"), None, 1.0),
+                              ("Shadows2012", r.get("new_shadows"), None, 1.0)):
+        a, b = so(row.get(cot)), so(moi)
+        if a is None:
+            #  O job de trong = Lightroom giu so cu: WB chi ghi khi doi (write_lr_job)
+            if cot in ("Highlights2012", "Shadows2012"):
+                continue
+            a = so(cu)
+        if a is None or b is None or abs(a - b) > sai:
+            return False
+    return True
+
+
+def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None) -> dict:
+    """HSL KÊNH DA cho ảnh CƯỚI — quyết định trên da ĐO THẬT sau WB + Tone.
+
+        1. ĐO    : mỗi ảnh màu có mặt -> ảnh duyệt <buổi>/_duyet/<tên>.jpg, chỉ
+                   nhận khi vẽ SAU job mới nhất của ảnh VÀ WB / Tone lần tính này
+                   trùng job đó (_trung_job) -> da_tren_anh_duyet -> r["da_duyet"]
+        2. CẢNH  : trung vị hue / chroma đo được của cảnh (>= hsl_da_cuoi_min_anh)
+        3. HSL   : lệch so với đích; vùng "da ổn" thì giữ; sửa `phan` phần lệch;
+                   trần điểm; sàn đỏ / trần đậm theo da DỰ ĐOÁN sau HSL
+                   (hsl_da_k_hue / hsl_da_k_sat) -> MỘT mức Orange cho cả cảnh,
+                   cộng vào HSL ĐANG CÓ trong Lightroom lúc vẽ ảnh duyệt
+        4. Cảnh không đủ ảnh đo / ảnh chưa có ảnh duyệt hợp lệ: KHÔNG đụng HSL
+                   (ô HSL của job để trống -> Lightroom giữ số đang có)
+
+    Trả về tóm tắt cho giao diện."""
+    for r in items:
+        for key in ("hsl_ghi", "hsl_moi", "hsl_thieu_cot", "da_lech0", "da_lech1", "da_duyet"):
+            r.pop(key, None)
+    dich_h, dich_c = (float(v) for v in (cfg.get("hsl_da_cuoi_dich") or (37.6, 0.051)))
+    on_h, on_c = (float(v) for v in (cfg.get("hsl_da_cuoi_on") or (3.0, 0.10)))
+    phan = float(cfg.get("hsl_da_cuoi_phan") or 0.8)
+    tran_h, tran_s = (float(v) for v in (cfg.get("hsl_da_cuoi_tran") or (15, 20)))
+    san_do = float(cfg.get("hsl_da_cuoi_san_do") or 0.0)
+    tran_dam = float(cfg.get("hsl_da_cuoi_tran_dam") or 0.0)
+    min_anh = max(1, int(cfg.get("hsl_da_cuoi_min_anh") or 1))
+    k_h = float(cfg.get("hsl_da_k_hue") or 0.418)
+    k_s = float(cfg.get("hsl_da_k_sat") or 0.01085)
+    kq = {"bat": True, "cuoi": True, "dai": "Orange", "hue": 0, "sat": 0, "n": 0,
+          "n_do": 0, "canh": 0, "canh_chinh": 0, "canh_on": 0, "canh_chan": 0,
+          "thieu_duyet": 0, "doi_so": 0, "khac_preset": False, "hue_do": 0.0,
+          "chroma_do": 0.0, "dich": (dich_h, dich_c)}
+    for r in items:
+        if r.get("crs") and "HueAdjustmentOrange" not in r["crs"]:
+            r["hsl_thieu_cot"] = True
+    #  Dich va phan ung hoc tren preset SAY — preset khac thi khong doan bua
+    mau = dict(cfg.get("hsl_da_cuoi_preset") or {})
+    goc_vd = next((r["crs"] for r in items if r.get("crs") and not r.get("hsl_thieu_cot")), None)
+    if mau and goc_vd is not None and any(abs(get_f(goc_vd, k, 1e9) - float(v)) > 0.5
+                                         for k, v in mau.items()):
+        kq["khac_preset"] = True
+        return kq
+    jobs = thong_so_trong_lr(folder, job_dir)
+    thu_muc_duyet = Path(folder) / "_duyet" if folder else None
+    theo_canh: dict = {}
+    for r in items:
+        if (r.get("bw") or r.get("hsl_thieu_cot") or not r.get("meter_boxes")
+                or not r.get("new_temp") or thu_muc_duyet is None):
+            continue
+        j = jobs.get(khoa_duong_dan(r["path"]))
+        anh = thu_muc_duyet / (Path(str(r["path"]).replace("\\", "/")).stem + ".jpg")
+        try:
+            moi_hon = j is not None and anh.stat().st_mtime > j[1]
+        except OSError:
+            moi_hon = False
+        if not moi_hon:
+            kq["thieu_duyet"] += 1
+            continue
+        if not _trung_job(r, j[0]):
+            kq["doi_so"] += 1
+            continue
+        d = da_tren_anh_duyet(r, anh)
+        if d is None:
+            kq["thieu_duyet"] += 1
+            continue
+        r["da_duyet"] = d
+        r["da_lech0"] = (round((dich_h - d[0] + 180.0) % 360.0 - 180.0, 1),
+                         round(dich_c / max(d[1], 1e-6), 3))
+        theo_canh.setdefault(r.get("scene"), []).append(r)
+        kq["n_do"] += 1
+
+    def hsl_dang_co(r):
+        """HSL Lightroom đang mang (lúc vẽ ảnh duyệt): job mới nhất có ô HSL, không
+        thì số gốc (mốc)."""
+        goc = _hsl_goc(r)
+        j = jobs.get(khoa_duong_dan(r["path"]))
+        if j is not None:
+            for k in COT_HSL:
+                v = str(j[0].get(k) or "").strip()
+                if v:
+                    try:
+                        goc[k] = float(v.replace("+", ""))
+                    except ValueError:
+                        pass
+        return goc
+
+    us, vs = [], []
+    for canh, ds in theo_canh.items():
+        if len(ds) < min_anh:
+            continue
+        kq["canh"] += 1
+        hs = np.array([r["da_duyet"][0] for r in ds])
+        cs = np.array([r["da_duyet"][1] for r in ds])
+        h, c = float(np.median(hs)), float(np.median(cs))
+        h_do, c_dam = float(np.percentile(hs, 25)), float(np.percentile(cs, 75))
+        dh = (dich_h - h + 180.0) % 360.0 - 180.0
+        dc = math.log(dich_c / max(c, 1e-6))
+        u = 0.0 if abs(dh) <= on_h else float(np.clip(phan * dh / k_h, -tran_h, tran_h))
+        v = 0.0 if abs(dc) <= on_c else float(np.clip(phan * dc / k_s, -tran_s, tran_s))
+        chan = False
+        #[[ CHOT DO: 1/4 so mat DO NHAT cua canh, sau HSL (du doan), khong duoc do
+        #   hon san_do; 1/4 DAM NHAT khong dam hon tran_dam. Tinh tren so DO THAT nen
+        #   chi con sai so phan ung thanh truot — vong Duyet lai se do va lui. ]]
+        if san_do and u < 0 and h_do + k_h * u < san_do:
+            u = min(0.0, (san_do - h_do) / k_h)
+            chan = True
+        if tran_dam and v > 0 and c_dam * math.exp(k_s * v) > tran_dam:
+            v = max(0.0, math.log(tran_dam / max(c_dam, 1e-6)) / k_s)
+            chan = True
+        u, v = int(round(u)), int(round(v))
+        kq["canh_chan"] += int(chan)
+        if not u and not v:
+            kq["canh_on"] += 1
+            continue
+        kq["canh_chinh"] += 1
+        us.append(u)
+        vs.append(v)
+        for r in items:
+            if r.get("scene") != canh or r.get("bw") or r.get("hsl_thieu_cot"):
+                continue
+            goc = hsl_dang_co(r)
+            moi = dict(goc)
+            moi["HueAdjustmentOrange"] = float(np.clip(goc["HueAdjustmentOrange"] + u, -100, 100))
+            moi["SaturationAdjustmentOrange"] = float(np.clip(goc["SaturationAdjustmentOrange"] + v,
+                                                             -100, 100))
+            r["hsl_moi"], r["hsl_ghi"] = moi, True
+            kq["n"] += 1
+            nhan = f"hsl-da-cuoi:Orange{u:+d}/{v:+d}"
+            if nhan not in str(r.get("notes", "")):
+                r["notes"] = (str(r.get("notes", "")) + ";" + nhan).strip(";")
+            if r.get("da_duyet"):
+                r["da_lech1"] = round((dich_h - (r["da_duyet"][0] + k_h * u) + 180.0) % 360.0
+                                      - 180.0, 1)
+    if us:
+        kq["hue"], kq["sat"] = int(np.median(us)), int(np.median(vs))
+    do = [r["da_duyet"] for r in items if r.get("da_duyet")]
+    if do:
+        kq["hue_do"] = float(np.median([d[0] for d in do]))
+        kq["chroma_do"] = float(np.median([d[1] for d in do]))
+    return kq
+
+
 #: Trang thai mau da cua lan plan() gan nhat — giao dien doc. Xem chinh_mau_da().
 MAU_DA: dict = {}
 
 
-def chinh_mau_da(items: list, cfg: dict) -> dict:
+def chinh_mau_da(items: list, cfg: dict, folder=None) -> dict:
     """QUY TRÌNH CHUẨN chỉnh MÀU DA sau WB + Tone (8/10 đêm, user). Chạy SAU
     compute_values (cần WB cuối). Bốn bước, nối tiếp, không bao giờ song song:
 
@@ -5230,7 +5519,14 @@ def chinh_mau_da(items: list, cfg: dict) -> dict:
     #   hon vi mot thay doi nho doi mau ca buc anh". ]]
     Trả về tóm tắt cho giao diện (cũng gán MAU_DA / HSL_DA)."""
     global HSL_DA, MAU_DA
-    HSL_DA = hsl_da_theo_trang_thai(items, cfg)
+    #[[ 9/10: CUOI + o "Tu chinh HSL mau da" -> quyet dinh tren da DO THAT o anh
+    #   duyet (hsl_da_cuoi), khong tren du doan. Tat o -> duong cu: anh tool da ghi
+    #   HSL duoc tra so goc (hsl_da_theo_trang_thai, bat = False). ]]
+    if (cfg.get("loai_buoi") == "cuoi" and cfg.get("hsl_da_cuoi")
+            and cfg.get("source") == "catalog"):
+        HSL_DA = hsl_da_cuoi(items, cfg, folder)
+    else:
+        HSL_DA = hsl_da_theo_trang_thai(items, cfg)
     n_gr = grade_theo_trang_thai(items, cfg)
     l0 = [r["da_lech0"] for r in items if r.get("da_lech0")]
     l1 = [r["da_lech1"] for r in items if r.get("da_lech1") is not None]
@@ -7937,7 +8233,7 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
     #   ghi HSL / grade anh nao (va noi ra), khong duoc lam do ca buoi. ]]
     global HSL_DA, MAU_DA
     try:
-        chinh_mau_da(items, cfg)
+        chinh_mau_da(items, cfg, folder)
     except Exception as ex:                                  # noqa: BLE001
         HSL_DA, MAU_DA = {}, {}
         for r in items:

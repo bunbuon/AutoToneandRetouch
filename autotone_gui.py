@@ -1576,6 +1576,7 @@ class App(ttk.Frame):
         self.v_hl = tk.BooleanVar(value=True)
         self.v_sh = tk.BooleanVar(value=True)
         self.v_grade = tk.BooleanVar(value=False)
+        self.v_hsl_da = tk.BooleanVar(value=False)    # 9/10: HSL mau da anh cuoi
         self.v_curve = tk.BooleanVar(value=True)
         self.v_scenesig = tk.BooleanVar(value=True)
         self.v_level = tk.BooleanVar(value=True)
@@ -1809,6 +1810,23 @@ class App(ttk.Frame):
         ct(g_ghim, self.v_sh, "Tự kéo Shadows khi bết tối",
            "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.\n"
            "Loại buổi Kỷ yếu thì không mở (giữ đen sâu như ảnh kỷ yếu đã duyệt).")
+        #[[ 9/10: HSL mau da anh CUOI — quyet dinh tren da DO THAT o anh duyet
+        #   Lightroom ve sau lan ghi WB + Tone (at.hsl_da_cuoi). Dat TRUOC o Color
+        #   Grading: dung thu tu chuoi WB + Tone -> HSL -> Color Grading. ]]
+        _d = at.DEFAULTS.get("hsl_da_cuoi_dich") or (37.6, 0.051)
+        ct(g_ghim, self.v_hsl_da, "Tự chỉnh HSL màu da (Cưới)",
+           "Kênh Cam (Orange) đưa da chủ thể về màu da ảnh cưới anh đã sửa "
+           f"(hue {float(_d[0]):.1f}°, độ đậm {float(_d[1]):.3f}) — CHỈ khi đã ĐO được "
+           "da thật sau WB + Tone:\n"
+           "1. Ghi (WB + Tone).  2. ⋯ → Duyệt nhanh → Dựng ảnh duyệt.  3. Ghi lại: "
+           "tool đo da trên ảnh duyệt Lightroom vẽ rồi mới quyết HSL.  4. Duyệt lại để "
+           "kiểm — cảnh nào lệch thì lần Ghi sau tự chỉnh tiếp / lùi lại.\n"
+           "· Theo từng cảnh; da đã ổn thì không đụng; chỉ sửa "
+           f"{int(float(at.DEFAULTS.get('hsl_da_cuoi_phan', 0.8)) * 100)}% phần lệch; "
+           f"không kéo da đỏ quá hue {float(at.DEFAULTS.get('hsl_da_cuoi_san_do', 35)):.0f}°, "
+           f"không đậm quá {float(at.DEFAULTS.get('hsl_da_cuoi_tran_dam', 0.062)):.3f}.\n"
+           "· KHÔNG đổi cân trắng (vùng trắng ảnh cưới anh sửa khớp WB tool). Chỉ preset "
+           "SAY (saymedia7v / NoWBExposure); tắt ô thì ảnh tool đã chỉnh HSL trả về số preset.")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
            "Color Grading về da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt — "
            "bước CUỐI của chuỗi màu da: cân WB + Tone → đo màu da dự đoán trong "
@@ -1899,7 +1917,7 @@ class App(ttk.Frame):
         for b in (self.v_mode, self.v_meter, self.v_wb, self.v_target,
                   self.v_blend, self.v_che_do_sang, self.v_maxev, self.v_maxup,
                   self.v_gain, self.v_hl, self.v_sh, self.v_grade, self.v_curve,
-                  self.v_loai_buoi, self.v_bu_sang, self.v_gap_on, self.v_gap,
+                  self.v_hsl_da, self.v_loai_buoi, self.v_bu_sang, self.v_gap_on, self.v_gap,
                   self.v_gap_can_sig, self.v_scenesig, self.v_level,
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
                   self.v_upright):
@@ -1954,6 +1972,7 @@ class App(ttk.Frame):
         tone = [self.NGAN_MODE.get(mode, mode), self.NGAN_METER.get(meter, meter),
                 self.NGAN_WB.get(dict(WBS).get(self.v_wb.get(), "skin"), "")]
         ghim = [t for t, b in (("Highlights", self.v_hl), ("Shadows", self.v_sh),
+                               ("HSL da", self.v_hsl_da),
                                ("da trắng hồng", self.v_grade),
                                ("Curve", self.v_curve)) if b.get()]
         canh = []
@@ -2493,6 +2512,10 @@ class App(ttk.Frame):
         tt = td.get("trang_thai")
         if tt in ("xong", "dung", "loi"):
             self._duyet_dang_soi = False
+            #  9/10: HSL mau da cuoi do tren chinh anh duyet nay -> tinh lai de dong
+            #  trang thai noi ngay da dang o dau, lan Ghi sau ghi dung HSL
+            if tt in ("xong", "dung") and self.v_hsl_da.get() and self.items:
+                self.refresh_plan()
             if tt == "xong":
                 self.status(duyet.mo_ta(td) + " — bấm “Mở lưới soát”.",
                             gd.MAU["xong"])
@@ -3212,6 +3235,7 @@ class App(ttk.Frame):
                    lr_push=self.v_lrpush.get(),
                    curve=self.v_curve.get(),
                    grade=self.v_grade.get(),
+                   hsl_da_cuoi=self.v_hsl_da.get(),
                    burst=self.v_burst.get(),
                    # Hai cờ RIÊNG cho hai bộ lọc khác nhau — xem chú thích ở
                    # chỗ dựng hai ô tick.
@@ -4273,7 +4297,33 @@ class App(ttk.Frame):
         #   Grading (chinh_mau_da) — noi ra tung buoc de nguoi dung thay vi sao
         #   co / khong co HSL va Color Grading. ]]
         md = dict(getattr(at, "MAU_DA", None) or {})
-        if md.get("n"):
+        hc = dict(md.get("hsl") or {})
+        if hc.get("cuoi"):
+            #[[ 9/10: HSL mau da anh cuoi — noi ro DA DO THAT o dau, quyet gi, va
+            #   buoc tiep theo neu chua do duoc (at.hsl_da_cuoi). ]]
+            if hc.get("khac_preset"):
+                msg += " · HSL da: preset không phải SAY — không tự chỉnh"
+            elif not hc.get("n_do"):
+                doi = int(hc.get("doi_so") or 0)
+                msg += (" · HSL da: chưa có ảnh duyệt vẽ SAU lần ghi WB + Tone này"
+                        + (f" ({doi} ảnh đổi số so với lần ghi)" if doi else "")
+                        + " — Ghi, rồi ⋯ → Duyệt nhanh → Dựng ảnh duyệt, rồi bấm Ghi lại")
+            else:
+                d = hc.get("dich") or (37.6, 0.051)
+                msg += (f" · da đo trên {hc['n_do']} ảnh duyệt: hue {hc['hue_do']:.0f}° "
+                        f"(đích {float(d[0]):.0f}°), đậm {hc['chroma_do']:.3f} "
+                        f"(đích {float(d[1]):.3f})")
+                if hc.get("canh_chinh"):
+                    msg += (f" → HSL Cam {hc['canh_chinh']}/{hc['canh']} cảnh (trung vị "
+                            f"Hue {int(hc['hue']):+d} / Sat {int(hc['sat']):+d})")
+                if hc.get("canh_on"):
+                    msg += f", {hc['canh_on']} cảnh da ổn giữ nguyên"
+                if hc.get("canh_chan"):
+                    msg += f", {hc['canh_chan']} cảnh chạm chốt chặn đỏ / đậm"
+                if hc.get("thieu_duyet") or hc.get("doi_so"):
+                    msg += (f" · {int(hc.get('thieu_duyet', 0)) + int(hc.get('doi_so', 0))} "
+                            "ảnh chưa có ảnh duyệt hợp lệ → không đụng HSL")
+        elif md.get("n"):
             msg += (f" · da sau WB+Tone ({md['n']} ảnh): hue lệch {md['hue0']:+.0f}°, "
                     f"đậm cần ×{md['chroma0']:.2f}")
             hsl = dict(md.get("hsl") or {})
@@ -4531,6 +4581,12 @@ class App(ttk.Frame):
         root = self.folder()
         if not root:
             return
+        #[[ 9/10: HSL mau da cuoi quyet tren anh duyet MOI NHAT (at.hsl_da_cuoi) —
+        #   tinh lai ke hoach ngay truoc khi ghi, dung de ghi theo lan tinh cu
+        #   (truoc khi Duyet nhanh xong) ma bo sot HSL / dung so do cu. ]]
+        if (self.v_hsl_da.get() and self.cfg.get("source") == "catalog"
+                and self.cfg.get("loai_buoi") == "cuoi"):
+            self.refresh_plan()
         #[[ 3/10: anh KHONG co trong ban xuat Lightroom thi tool khong biet thong
         #   so hien tai cua no -> write_lr_job bo qua (xem at.attach_catalog_settings).
         #   Ca buoi deu ngoai ban xuat thi dung han o day, noi ro — dung de nguoi
@@ -4565,6 +4621,7 @@ class App(ttk.Frame):
                 + (f", {n_gr} ảnh Color Grading trắng hồng" if n_gr else "")
                 + (f", {n_hsl} ảnh HSL da {hsl.get('dai')} Hue {int(hsl.get('hue') or 0):+d}"
                    f" / Sat {int(hsl.get('sat') or 0):+d}"
+                   + (" (trung vị, theo cảnh — đo trên ảnh duyệt)" if hsl.get("cuoi") else "")
                    if n_hsl and hsl.get("dai") else "") + ").\n\n"
                 "Plugin áp thẳng vào catalog — KHÔNG cần Read Metadata from File. "
                 "Mốc gốc giữ trong _autotone_baseline.tsv: gửi lại bao nhiêu lần "
