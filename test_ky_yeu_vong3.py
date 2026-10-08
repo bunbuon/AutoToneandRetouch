@@ -57,6 +57,7 @@ def bo_anh(thu_muc: Path) -> list:
         tq.anh("TOI", 10800, -1.0, da=tq.DA_TRONG),                    # canh nhieu bong
         tq.anh("WB", 14400, -1.0, da=tq.DA_TRONG),
         tq.anh("CAM", 18000, -1.0, da=CAM_DAC),                        # WB cham tran
+        tq.anh("CAM2", 21600, -2.5, da=CAM_DAC),                       # canh am, tool da keo het
     ]
     logY = np.full(4096, -1.0)
     logY[:820] = -9.5                                                  # 20% bet toi
@@ -165,6 +166,10 @@ def main() -> int:
             loi.append(f"Ky yeu canh am: delta {ky['CAM']['delta_ev']:+.2f} phai = Cuoi {cu['CAM']['delta_ev']:+.2f} + {bu_am:.2f}")
         if co(cu["CAM"], "bu-sang-canh-am") or co(ky["WB"], "bu-sang-canh-am"):
             loi.append("Bu sang canh am chi cho Ky yeu va chi canh am nang")
+        if ky["CAM2"]["delta_ev"] < float(D["bu_sang_canh_am_tran"]) - 1e-6:
+            loi.append(f"Dung bai: CAM2 phai duoc keo >= {D['bu_sang_canh_am_tran']} (delta {ky['CAM2']['delta_ev']:+.2f})")
+        if co(ky["CAM2"], "bu-sang-canh-am"):
+            loi.append("Anh tool da keo het muc (mat qua toi) khong duoc bu sang canh am them")
 
     for m in loi:
         print("  [!]", m)

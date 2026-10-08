@@ -2281,6 +2281,7 @@ DEFAULTS = {
     #[[ Ky yeu, canh am nang: bu sang them (EV) vi Lightroom ve mat o do toi hon
     #   preview may ~0.7 EV — xem _bu_sang_canh_am(). 0 = TAT. ]]
     "bu_sang_canh_am_ky_yeu": 0.5,
+    "bu_sang_canh_am_tran": 1.0,        # anh da keo >= muc nay thi khong bu them
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -5928,7 +5929,10 @@ def _bu_sang_canh_am(items: list, cfg: dict) -> int:
     #     WB keo lanh < 45 mired so voi WB may: ~0 EV (mat anh duyet - LR -0.1..+0.03)
     #     >= 45 mired (WB 4000-4200 K, may dat 5400 K): -0.70 EV; anh duyet sang
     #     hon LR v43: mat +0.55, khung +0.45, p50 +0.65, p90 +0.65 (p10 -0.6).
-    #   Buoc nhay, khong tuyen tinh theo mired — nen chi ap cho canh am nang. ]]
+    #   Buoc nhay, khong tuyen tinh theo mired — nen chi ap cho canh am nang.
+    #   BO QUA anh tool da keo >= bu_sang_canh_am_tran EV: 9 anh mat do -3.7..
+    #   -8.3 EV (bong toi / mat nho) tool da +2.3..+2.8, anh duyet lai TOI hon
+    #   LR 0.5-1.5 EV — keo them la sai chieu. Anh thuong cua canh: delta 0.2-0.6. ]]
     Chay SAU phanh va san phang (nhu _bu_sang_ca_buoi); ton tran max_ev_up.
     Tra ve so anh bi doi."""
     if cfg.get("loai_buoi") != "ky_yeu":
@@ -5940,12 +5944,15 @@ def _bu_sang_canh_am(items: list, cfg: dict) -> int:
     if not am:
         return 0
     len_ = float(cfg.get("max_ev_up") or cfg["max_ev"])
+    tran_ = float(cfg.get("bu_sang_canh_am_tran") or 0.0)
     n = 0
     for r in items:
         if (r.get("scene") not in am or r.get("bw") or r.get("giu_nguyen_exposure")
                 or r.get("delta_ev") is None):
             continue
         cu = float(r["delta_ev"])
+        if tran_ > 0 and cu >= tran_:
+            continue
         moi = float(min(cu + bu, len_))
         if moi - cu < 0.005:
             continue
