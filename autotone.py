@@ -7951,11 +7951,50 @@ def job_state(job: Path | None) -> str:
     p = Path(job)
     if p.with_suffix(".done").exists():
         return "xong"
-    if p.with_suffix(p.suffix + ".running").exists():
+    #[[ 8/10: plugin gianh job bang ten DUY NHAT `<job>.<id>-<gio>-<so>.running`
+    #   (AutoToneCore M.claim) — ban truoc chi do `<job>.running` nen khong bao
+    #   gio thay "dang", job dang ap bi bao la "mat". ]]
+    if p.with_suffix(p.suffix + ".running").exists() or any(p.parent.glob(p.name + ".*.running")):
         return "dang"
     if p.exists():
         return "cho"
+    if p.with_suffix(".huy").exists():
+        return "huy"
     return "mat"
+
+
+def huy_job(job: Path | None) -> str:
+    """Huỷ một job Lightroom CHƯA nhận: đổi `apply_x.tsv` -> `apply_x.huy` (plugin chỉ
+    quét `apply_*.tsv`). Trả về "da-huy", "da-nhan" (plugin đã giành / đang áp / đã áp
+    — không ngắt giữa chừng được), hoặc "khong-co".
+
+    #[[ An toan voi plugin: plugin gianh job bang LrFileUtils.move(.tsv -> .running)
+    #   roi kiem file CUA NO. Ta doi ten truoc thi lenh move cua plugin truot, no bo
+    #   qua; plugin doi truoc thi os.replace cua ta bao FileNotFoundError -> "da-nhan".
+    #   Khong bao gio ca hai cung "thang". ]]"""
+    if job is None:
+        return "khong-co"
+    p = Path(job)
+    st = job_state(p)
+    if st in ("dang", "xong"):
+        return "da-nhan"
+    if st != "cho":
+        return "da-huy" if st == "huy" else "khong-co"
+    try:
+        os.replace(p, p.with_suffix(".huy"))
+        return "da-huy"
+    except FileNotFoundError:
+        return "da-nhan" if job_state(p) in ("dang", "xong") else "khong-co"
+    except OSError:
+        return "da-nhan"
+
+
+def job_dang_cho(thu_muc=None, job_dir: Path | None = None) -> list:
+    """Các job `apply_*.tsv` CHƯA được Lightroom nhận (của buổi `thu_muc`, None = mọi buổi)."""
+    d = Path(job_dir or LR_JOB_DIR)
+    if not d.is_dir():
+        return []
+    return [p for p in sorted(d.glob("apply_*.tsv")) if job_cua_buoi(p, thu_muc)]
 
 
 def job_unverified(job: Path | None) -> list[tuple[str, str]]:

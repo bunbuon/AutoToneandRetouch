@@ -156,6 +156,8 @@ COLS = [("file", "File", 210, "w"),
 # Plugin dò thư mục 5 giây/lần, nên 90 giây là đã lỡ 18 nhịp — chắc chắn có gì
 # đó không ổn chứ không phải chậm. Thư mục vài trăm ảnh áp mất vài chục giây.
 LR_JOB_TIMEOUT = 90
+#: Nhip plugin (plugin_song.txt, ~10 giay mot lan) cu hon so giay nay = plugin khong chay
+LR_NHIP_CHET = 45
 
 
 def _curve_txt(r: dict) -> str:
@@ -233,6 +235,11 @@ class App(ttk.Frame):
         self.export: dict = {}
         self.busy = False
         self.cancel_flag = False
+        #[[ 8/10: job Lightroom da gui ma CHUA ap xong (cho / dang ap). Trong luc
+        #   nay nut Ghi khoa, hien nut "Huy gui" — truoc day ghi xong la nut mo lai
+        #   ngay, bam lan hai sinh job thu hai + vong cho thu hai ("loading 2 lan"). ]]
+        self._dang_cho_lr = False
+        self._job_dang_theo = None
         self.q: queue.Queue = queue.Queue()
         self.last_backup: Path | None = None
 
@@ -543,6 +550,7 @@ class App(ttk.Frame):
             self.cc_phai.grid()
             if not self.lbl_job.winfo_manager():
                 self.lbl_job.pack(side="right", fill="x", expand=True)
+            self._hien_nut_huy()
             self.dau_trang.grid()
         else:
             self.cuon_phai.grid_remove()
@@ -553,6 +561,9 @@ class App(ttk.Frame):
             self.cc_phai.grid_remove()
             (self.cc_phai_rt.grid_remove if khoa_rt else self.cc_phai_rt.grid)()
             self.lbl_job.pack_forget()
+            btn_h = getattr(self, "btn_huy_gui", None)
+            if btn_h is not None:
+                btn_h.pack_forget()
             self.dau_trang.grid_remove()
         self.hoi_md.goi_y.dat(MO_KHAU.get("retouch" if md == "retouch"
                                           else "phan_tich", ""))
@@ -2064,6 +2075,15 @@ class App(ttk.Frame):
         self.lbl_job = gd.NhanGon(self.cc_giua, text="", anchor="e",
                                   background=m["toi"], foreground=m["mo"],
                                   font=gd.CHU_NHO)
+        #[[ 8/10: "Huy gui" — chi hien khi job da gui ma Lightroom CHUA nhan. Dat
+        #   ben phai dong trang thai (pack truoc lbl_job, cung side right). ]]
+        self.btn_huy_gui = gd.NutTron(self.cc_giua, "Huỷ gửi", kieu="chu", nen=m["toi"],
+                                      icon="dung", command=self.huy_gui)
+        self.btn_huy_gui.goi_y = gd.GoiY(
+            self.btn_huy_gui,
+            "Lightroom chưa nhận lần gửi này (chưa mở, hoặc plugin không chạy).\n"
+            "Huỷ để không còn job nằm chờ — lúc nào Lightroom mở lên cũng sẽ\n"
+            "không áp nó nữa. Sau đó bấm Ghi lại khi Lightroom đã sẵn sàng.")
         self.lbl_job.pack(side="right", fill="x", expand=True)
 
     def _mo_menu_them(self):
@@ -2924,8 +2944,16 @@ class App(ttk.Frame):
             #   muc ma khong chot thi moi lan them mot vong after() do cung mot
             #   job. ]]
             if getattr(self, "_job_dang_theo", None) != jobs[-1]:
+                self._dang_cho_lr = True        # mo app len ma con job cho
                 self._watch_job(jobs[-1])
             return
+        #  Doi sang buoi khac khong con job cho: tha khoa nut Ghi
+        if self._dang_cho_lr and self._job_dang_theo is not None \
+                and not at.job_cua_buoi(self._job_dang_theo, f):
+            self._dang_cho_lr = False
+            self._job_dang_theo = None
+            self._hien_nut_huy(False)
+            self._set_busy(self.busy)
 
         done = ([p for p in sorted(at.LR_JOB_DIR.glob("apply_*.done"))
                  if at.job_cua_buoi(p, f)] if at.LR_JOB_DIR.is_dir() else [])
@@ -3056,7 +3084,8 @@ class App(ttk.Frame):
         #   TRUOC khi cac nut do dung xong — thieu no la app khong mo len duoc. ]]
         w = getattr(self, "btn_ghi3", None)
         if w is not None:
-            w.configure(state="normal" if has else "disabled")
+            w.configure(state="normal" if has and not getattr(self, "_dang_cho_lr", False)
+                        else "disabled")
         #[[ NUT VANG = VIEC KE TIEP — nhu Evoto, moi luc dung mot nut chinh.
         #   Chua chon buoi: khong nut nao tren thanh vang (nut vang la "Chon thu
         #   muc buoi chup" giua luoi). Co anh, chua co ket qua: "1 · Phan tich"
@@ -4417,6 +4446,14 @@ class App(ttk.Frame):
             return
         if not self.items:
             return
+        #[[ 8/10: CHAN BAM LAN HAI. Dang ghi (busy) hoac lan gui truoc Lightroom chua
+        #   ap xong thi khong sinh them job — bam lai chi noi ro dang cho gi. ]]
+        if self.busy:
+            return
+        if self._dang_cho_lr:
+            self.status("Lần gửi trước Lightroom chưa áp xong — chờ nó, hoặc bấm "
+                        "“Huỷ gửi” rồi gửi lại.", gd.MAU["canh"])
+            return
         root = self.folder()
         if not root:
             return
@@ -4509,6 +4546,8 @@ class App(ttk.Frame):
     def _ghi_xong(self, backup, giay: float, root, hoi: bool):
         """Chạy trên luồng chính sau khi ghi .xmp xong."""
         self.last_backup = backup
+        #  Co job gui sang Lightroom -> nut Ghi van khoa toi khi Lightroom ap xong
+        self._dang_cho_lr = bool(at.LAST_JOB)
         self._set_busy(False)
         self.pb.configure(value=0)
         #[[ Khong dua thanh khau 3 ve 0: de nguyen "xong N/N" lam bang chung da
@@ -4607,10 +4646,31 @@ class App(ttk.Frame):
     def _watch_job(self, job, tries: int = 0):
         """Theo dõi job tới khi plugin đổi đuôi thành .done.
 
-        Không chặn giao diện: mỗi giây kiểm tra một lần bằng self.after()."""
+        Không chặn giao diện: mỗi giây kiểm tra một lần bằng self.after().
+
+        #[[ 8/10: MOT vong theo doi duy nhat — vong cu (job khac / da huy) tu dung
+        #   khi thay _job_dang_theo da doi. Job con CHO thi khong bao gio bo cuoc
+        #   (truoc day 90 giay la thoi theo doi, nut Ghi mo, bam lai sinh job thu
+        #   hai): sau LR_JOB_TIMEOUT giay chi giam nhip kiem va noi ro. Nut Ghi
+        #   khoa tu luc gui toi khi Lightroom ap xong; "Huy gui" hien khi Lightroom
+        #   CHUA nhan. Lightroom co mo / plugin co chay khong: doc nhip
+        #   plugin_song.txt (plugin ghi ~10 giay mot lan). ]]"""
         if tries == 0:
             self._job_dang_theo = job          # refresh_job_state() hỏi cái này
+        elif getattr(self, "_job_dang_theo", None) != job:
+            return                             # vòng cũ — đã có vòng khác thay
         st = at.job_state(job)
+
+        if st in ("xong", "mat", "huy"):
+            self._dang_cho_lr = False
+            self._job_dang_theo = None
+            self._hien_nut_huy(False)
+            self._set_busy(self.busy)
+        if st == "huy":
+            self.lbl_job.unbind("<Button-1>")
+            self.lbl_job.configure(text=f"Đã huỷ gửi {Path(job).name} — Lightroom chưa nhận gì.",
+                                   foreground=gd.MAU["mo"])
+            return
 
         if st == "xong":
             #[[ Không tin bộ đếm của plugin, đọc kết quả KIỂM CHỨNG.
@@ -4639,24 +4699,80 @@ class App(ttk.Frame):
             self.lbl_job.configure(text="✓ Lightroom đã nhận job.", foreground=gd.MAU["xong"])
             return
 
+        self._dang_cho_lr = True
+        self._hien_nut_huy(st == "cho")
+        self._set_busy(self.busy)
         if st == "dang":
             # Plugin da gianh duoc job (doi ten thanh .running) va dang ap
             self.lbl_job.configure(
-                text=f"⚙ Lightroom đang áp {Path(job).name}... ({tries}s)",
+                text=f"⚙ Lightroom đã nhận, đang áp {Path(job).name}... ({tries}s) — "
+                     f"không ngắt giữa chừng được",
                 foreground=gd.MAU["canh"])
             self.after(1000, lambda: self._watch_job(job, tries + 1))
             return
 
-        if tries >= LR_JOB_TIMEOUT:
+        #  st == "cho": Lightroom CHUA nhan
+        nhip = at.plugin_nhip()
+        if nhip is None or nhip > LR_NHIP_CHET:
+            khi = "chưa có nhịp nào" if nhip is None else f"nhịp cuối {at.mo_ta_khoang(nhip)}"
             self.lbl_job.configure(
-                text=f"⚠ Plugin chưa xử lý sau {LR_JOB_TIMEOUT}s — job vẫn nằm chờ, "
-                     f"không mất đi đâu.", foreground=gd.MAU["loi"])
-            return
+                text=f"⚠ Lightroom CHƯA nhận — plugin không chạy ({khi}). Mở Lightroom "
+                     f"(hoặc Plug-in Manager → Reload), hoặc bấm “Huỷ gửi”.",
+                foreground=gd.MAU["loi"])
+        elif tries >= LR_JOB_TIMEOUT:
+            self.lbl_job.configure(
+                text=f"⚠ Plugin đang chạy nhưng chưa nhận job sau {tries}s — job vẫn chờ. "
+                     f"Bấm “Huỷ gửi” nếu muốn gửi lại.", foreground=gd.MAU["loi"])
+        else:
+            self.lbl_job.configure(
+                text=f"⏳ Đã gửi {Path(job).name} — đang chờ Lightroom nhận... ({tries}s)",
+                foreground=gd.MAU["canh"])
+        buoc = 1 if tries < LR_JOB_TIMEOUT else 3
+        self.after(1000 * buoc, lambda: self._watch_job(job, tries + buoc))
 
+    def _hien_nut_huy(self, hien: bool | None = None):
+        """Hiện / ẩn “Huỷ gửi” — chỉ khi job đã gửi mà Lightroom CHƯA nhận, và đang ở
+        mô-đun Cân tone (dòng trạng thái job đang hiện)."""
+        b = getattr(self, "btn_huy_gui", None)
+        if b is None:
+            return
+        if hien is None:
+            hien = (self._dang_cho_lr and self._job_dang_theo is not None
+                    and at.job_state(self._job_dang_theo) == "cho")
+        try:
+            if hien and self.lbl_job.winfo_manager():
+                if not b.winfo_manager():
+                    b.pack(side="right", padx=(6, 0), before=self.lbl_job)
+            elif b.winfo_manager():
+                b.pack_forget()
+        except tk.TclError:
+            pass
+
+    def huy_gui(self):
+        """Huỷ MỌI job của buổi này mà Lightroom chưa nhận (bấm Ghi hai lần thì có
+        thể có hai). Job Lightroom đã nhận / đang áp thì không ngắt được."""
+        cac = at.job_dang_cho(self.folder())
+        job = self._job_dang_theo
+        if job is not None and job not in cac:
+            cac.append(job)
+        da_huy = da_nhan = 0
+        for j in cac:
+            kq = at.huy_job(j)
+            da_huy += kq == "da-huy"
+            da_nhan += kq == "da-nhan"
+        if da_nhan and job is not None and at.job_state(job) in ("dang", "xong"):
+            self.status("Lightroom vừa nhận job — không huỷ kịp, đang áp.", gd.MAU["canh"])
+            self._watch_job(job)
+            return
+        self._dang_cho_lr = False
+        self._job_dang_theo = None
+        self._hien_nut_huy(False)
+        self._set_busy(self.busy)
+        self.lbl_job.unbind("<Button-1>")
         self.lbl_job.configure(
-            text=f"⏳ Đã gửi {Path(job).name} — đang chờ Lightroom áp... ({tries}s)",
-            foreground=gd.MAU["canh"])
-        self.after(1000, lambda: self._watch_job(job, tries + 1))
+            text=f"Đã huỷ {da_huy} lần gửi — Lightroom chưa nhận gì. Bấm Ghi lại khi "
+                 f"Lightroom đã mở.", foreground=gd.MAU["mo"])
+        self.status(f"Đã huỷ gửi ({da_huy} job chưa được Lightroom nhận).", gd.MAU["mo"])
 
     def _show_unverified(self, bad):
         """Danh sách ảnh plugin đọc lại mà thấy chưa nhận đúng thông số."""
