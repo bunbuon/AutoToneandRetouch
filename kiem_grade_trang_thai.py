@@ -85,7 +85,8 @@ def cfg_(**kw):
 
 
 def chay(items, cfg):
-    """decide -> compute_values -> grade_theo_trang_thai, như plan() đường catalog."""
+    """decide -> compute_values -> chinh_mau_da (đo -> HSL -> đo lại -> grade), như
+    plan() đường catalog."""
     with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
         at.group_scenes(items, cfg["gap_minutes"], float(cfg.get("scene_sig_thresh", 0.0)),
                         int(cfg.get("scene_sig_min_shots", 3)),
@@ -93,7 +94,7 @@ def chay(items, cfg):
         at.decide(items, cfg)
         for r in items:
             at.compute_values(r, cfg, r["crs"], r["atn"])
-        at.grade_theo_trang_thai(items, cfg)
+        at.chinh_mau_da(items, cfg)
     return items
 
 

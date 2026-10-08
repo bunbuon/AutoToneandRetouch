@@ -2263,8 +2263,8 @@ DEFAULTS = {
     #     85mm  da +4.4e-3 db -0.4e-3 | fisheye den thuong da +4.5e-3 db -0.1e-3
     #     fisheye den am (WB dang kep tran 4000K) da +0.1e-3 db -0.6e-3
     #   1 Tint = (+0.51, -0.51)e-3, 100K = (+0.64, +2.56)e-3 -> +130 K, Tint +7.
-    #   Bo qua anh WB dang cham tran wb_temp_max (den mau nang: khong can) va
-    #   khi bat trang hong (grade / da_trang_hong: dich hong da tinh san).
+    #   Bo qua anh WB dang cham tran wb_temp_max (den mau nang: khong can). Tu
+    #   8/10 dem ap ca khi bat Color Grading (WB khong doi theo o do nua).
     #
     #   VONG 4 (v43 ve that): Tint +7 -> +3. User nhin: "tint tang hoi qua tay".
     #   So voi anh duyet: trung tinh / da / ca khung van IT hong hon anh duyet,
@@ -2839,9 +2839,19 @@ DEFAULTS = {
     #   yeu raw 19.4 "mau loan, khong con trang hong"), so tren preview chu khong
     #   tren anh Lightroom, va hai khoa bong ColorGradeShadow* Lightroom khong co.
     #]]
+    #[[ QUY TRINH CHUAN CHINH MAU DA (8/10 dem, user) — xem chinh_mau_da():
+    #     WB + Tone -> DO da (du doan trong LR, ke ca HSL / toning cua preset)
+    #     -> HSL kenh da (chi khi lech vuot da_on_*) -> DO LAI -> Color Grading chi
+    #     khi phan con lech > grade_nguong_hue, tinh tren PHAN VUOT, tran chat hon.
+    #   Khong bao gio tinh HSL va Color Grading tu cung mot trang thai (de mau len
+    #   nhau). Color Grading siet chat nhat: mot banh xe nho doi mau CA KHUNG,
+    #   khong rieng vung da. ]]
     "grade": False,           # MAC DINH TAT — bat khi muon day manh ve trang hong
-    "grade_sat_max": 12,      # tran Sat tool CONG vao moi banh xe (0-100)
-    "grade_gain_hue": 0.45,   # diem Sat cho moi do hue (OkLab) da con lech dich
+    "grade_sat_max": 8,       # tran Sat tool CONG vao moi banh xe (0-100); 12 -> 8 (8/10 dem)
+    "grade_gain_hue": 0.45,   # diem Sat cho moi do hue (OkLab) da con lech dich QUA NGUONG
+    "grade_nguong_hue": 4.0,  # da sau HSL con lech it hon (do OkLab) thi KHONG grade
+    "da_on_hue": 3.0,         # da sau WB + Tone lech hue <= (do) thi HSL khong doi hue
+    "da_on_chroma": 0.10,     # ... chroma lech <= ti le nay thi HSL khong doi Sat
     "da_trang_hong": False,   # dich hong cho ca anh ngoai troi ma khong grade
     #[[ DICH DA "TRANG HONG" (ky yeu / concept) — HOC TU ANH NGUOI DUNG DA DUYET, 8/10.
     #
@@ -4649,11 +4659,32 @@ def mau_dich_lab(ref_rgb) -> np.ndarray:
     return oklab(srgb_to_linear(np.asarray(ref_rgb, dtype=np.float64) / 255.0))
 
 
+def _ap_hsl_lab(c: float, h: float, hsl: dict, cfg: dict) -> tuple[float, float]:
+    """(chroma, góc OkLab) của da SAU HSL Lightroom {HueAdjustmentX, SaturationAdjustmentX}
+    — mô hình: hue dịch k_hue độ (HSV) / điểm, chroma ×(1 + k_sat × Sat), theo trọng số
+    dải tại hue da (trong_so_hsl). Dải không có trong dict coi là 0."""
+    if not hsl:
+        return c, h
+    k_h = float(cfg.get("hsl_k_hue") or 0.30)
+    k_s = float(cfg.get("hsl_k_sat") or 0.01)
+    hl = hue_oklab_sang_lr(h)
+    w = trong_so_hsl(hl)
+    dh = sum(wt * float(hsl.get(f"HueAdjustment{d}", 0.0) or 0.0) for d, wt in w.items()) * k_h
+    ds = sum(wt * float(hsl.get(f"SaturationAdjustment{d}", 0.0) or 0.0) for d, wt in w.items()) * k_s
+    if not dh and not ds:
+        return c, h
+    return c * max(1.0 + ds, 0.0), hue_lr_sang_oklab(hl + dh)
+
+
 def da_trong_lr(r: dict, cfg: dict, crs: dict, temp: float, tint: float,
-                ref_rgb=None) -> np.ndarray | None:
+                ref_rgb=None, hsl: dict | None = None) -> np.ndarray | None:
     """Màu da DỰ ĐOÁN trong Lightroom (OkLab) khi ảnh ở WB (temp, tint) và mang
-    Saturation / Vibrance / Color Grading của `crs`. Đưa về CÙNG độ sáng với màu
-    đích (chỉ so màu, không so sáng tối). None = không có màu da đo được.
+    Saturation / Vibrance / HSL / Color Grading của `crs`. Đưa về CÙNG độ sáng với
+    màu đích (chỉ so màu, không so sáng tối). None = không có màu da đo được.
+
+    `hsl`: sáu ô HSL kênh da muốn mô hình (vd r["hsl_moi"] = số gốc + phần tool
+    chỉnh); None = HSL của preset trong `crs`. Đây là cách "đo lại" trạng thái da
+    SAU bước HSL trước khi quyết định Color Grading — xem chinh_mau_da().
 
     Không biết WB máy thì coi preview đã render ở chính (temp, tint) — tức như
     cách cũ, không đổi gì về WB."""
@@ -4684,6 +4715,10 @@ def da_trong_lr(r: dict, cfg: dict, crs: dict, temp: float, tint: float,
         c *= max(1.0 + vib * low * low * che * 1.2, 0.0)
     if sat:
         c *= max(1.0 + sat, 0.0)
+    #  HSL (Lightroom ap sau Saturation / Vibrance, truoc Color Grading)
+    if hsl is None:
+        hsl = {k: get_f(crs, k, 0.0) for k in COT_HSL}
+    c, h = _ap_hsl_lab(c, h, dict(hsl), cfg)
     ab = np.array([c * math.cos(h), c * math.sin(h)])
     for vung, vec in _wheel_preset(crs).items():
         ab = ab + _VUNG_DA[vung] * vec
@@ -4696,16 +4731,21 @@ def dich_da(cfg: dict) -> tuple:
     Bật "Đẩy tone về da trắng hồng" (grade) hoặc da_trang_hong: đích trắng hồng
     học từ ảnh kỷ yếu người dùng đã duyệt (skin_ref_rgb_hong[_ngoai]). Không bật:
     đích thường (skin_ref_rgb / skin_ref_rgb_ngoai) như trước."""
-    if cfg.get("grade") or cfg.get("da_trang_hong"):
+    #[[ 8/10 dem: KY YEU KHONG DOI WB THEO O "grade" nua. WB la buoc 1 cua chuoi
+    #   (chinh_mau_da): dich thuong + wb_bu_ky_yeu (do tren pixel trung tinh, v43
+    #   -> v44), con phan da lech thi HSL roi Color Grading xu ly noi tiep. Bat
+    #   Color Grading ma WB cung doi dich thi hai buoc lai de len nhau. ]]
+    if (cfg.get("grade") or cfg.get("da_trang_hong")) and cfg.get("loai_buoi") != "ky_yeu":
         trong = cfg.get("skin_ref_rgb_hong") or cfg["skin_ref_rgb"]
         return trong, cfg.get("skin_ref_rgb_hong_ngoai") or trong
     return cfg["skin_ref_rgb"], cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
 
 
 def dich_da_cuoi(cfg: dict) -> tuple:
-    """Màu da CUỐI muốn thấy (trong, ngoài) — Color Grading nhắm vào đây. Bật trắng
-    hồng: màu da ảnh duyệt (skin_dich_hong[_ngoai]); không thì như dich_da."""
-    if cfg.get("grade") or cfg.get("da_trang_hong"):
+    """Màu da CUỐI muốn thấy (trong, ngoài) — HSL kênh da và Color Grading cùng nhắm
+    vào đây (một đích cho cả chuỗi, xem chinh_mau_da). Kỷ yếu / bật trắng hồng:
+    màu da ảnh duyệt (skin_dich_hong[_ngoai]); không thì như dich_da."""
+    if cfg.get("grade") or cfg.get("da_trang_hong") or cfg.get("loai_buoi") == "ky_yeu":
         trong = cfg.get("skin_dich_hong") or dich_da(cfg)[0]
         return trong, cfg.get("skin_dich_hong_ngoai") or trong
     return dich_da(cfg)
@@ -4747,6 +4787,7 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
     """
     gain = float(cfg.get("grade_gain_hue", 0.45))
     sat_max = float(cfg.get("grade_sat_max", 12))
+    nguong = float(cfg.get("grade_nguong_hue", 0.0) or 0.0)
     tran = sat_max / 100.0 * GRADE_OKLAB_100
     #  Cung DICH voi WB cua tung anh (trong / ngoai) — hai dich keo nguoc nhau
     #  thi grade xoay da di mot huong, WB keo ve huong kia
@@ -4755,7 +4796,7 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
     h_ngoai = float(math.atan2(*mau_dich_lab(ref_ngoai)[[2, 1]]))
     catalog = cfg.get("source") == "catalog"
     for r in items:
-        for key in ("gr_ghi", "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot"):
+        for key in ("gr_ghi", "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot", "da_lech1"):
             r.pop(key, None)
         r["gr_hue"] = r["gr_sat"] = 0
         if catalog and r.get("crs") and "SplitToningHighlightSaturation" not in r["crs"]:
@@ -4765,28 +4806,40 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
                 #  bu_cot_mau) -> tra ve. Highlight: tool cu chua dung, de nguyen.
                 r["gr_mid"], r["gr_ghi"] = (0, 0), True
             continue
-        if not cfg.get("grade") or r.get("bw") or not r.get("new_temp"):
+        if r.get("bw") or not r.get("new_temp"):
             continue
         ngoai = _nhan_da_ngoai(r, cfg)
+        #[[ DO LAI trang thai da SAU buoc HSL (r["hsl_moi"] = HSL goc + phan tool
+        #   chinh; chua chinh thi HSL cua preset) — Color Grading chi xu ly PHAN
+        #   CON LECH, khong tinh lai tu cung trang thai voi HSL. Xem chinh_mau_da(). ]]
         lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0),
-                          ref_ngoai if ngoai else ref_trong)
+                          ref_ngoai if ngoai else ref_trong, hsl=r.get("hsl_moi"))
         if lab is None:
             continue
         h_t = h_ngoai if ngoai else h_trong
         ab = lab[1:]
         if float(math.hypot(ab[0], ab[1])) <= 1e-6:
             continue
-        #[[ XOAY hue da ve phia hue dich, giu chroma: vecto theo TIEP TUYEN tai
-        #   mau da, do manh ti le voi so do hue con lech (grade_gain_hue diem Sat
-        #   / do, tran grade_sat_max). Do tren raw 19.4: da du doan trong LR o
-        #   hue OkLab ~45 do, dich trang hong 17 do — mot banh xe Sat 12 chi xoay
-        #   duoc ~5 do, nen lay "dong het khoang cach" thi anh nao cung cham tran
-        #   va thanh mot mau co dinh. Ti le theo do lech thi da lech it grade
-        #   nhe, da da dung hue (lech < ~2 do) khong grade. KHONG bot chroma: bot
-        #   chroma bang grading la nhuom mau doi dien len vung trang. ]]
         h_p = float(math.atan2(ab[1], ab[0]))
         d = (h_t - h_p + math.pi) % (2.0 * math.pi) - math.pi
-        sat = min(gain * abs(math.degrees(d)), sat_max)
+        r["da_lech1"] = round(math.degrees(d), 1)        # hue da con lech dich, sau HSL
+        if not cfg.get("grade"):
+            continue
+        #[[ XOAY hue da ve phia hue dich, giu chroma: vecto theo TIEP TUYEN tai
+        #   mau da, do manh ti le voi so do hue con lech QUA NGUONG grade_nguong_hue
+        #   (grade_gain_hue diem Sat / do, tran grade_sat_max). Do tren raw 19.4:
+        #   da du doan trong LR o hue OkLab ~45 do, dich trang hong 17 do — mot
+        #   banh xe Sat 12 chi xoay duoc ~5 do, nen lay "dong het khoang cach" thi
+        #   anh nao cung cham tran va thanh mot mau co dinh. Ti le theo do lech
+        #   thi da lech it grade nhe. KHONG bot chroma: bot chroma bang grading la
+        #   nhuom mau doi dien len vung trang.
+        #   8/10 dem (user): nguong 4 do + tinh tren PHAN VUOT + tran 8 — Color
+        #   Grading doi mau CA KHUNG nen chi dung khi HSL da lam het phan cua no
+        #   ma da van con lech ro. ]]
+        vuot = abs(math.degrees(d)) - nguong
+        if vuot <= 0:
+            continue
+        sat = min(gain * vuot, sat_max)
         if sat < 1.0:
             continue
         huong = h_p + math.copysign(math.pi / 2.0, d)
@@ -4886,53 +4939,61 @@ def hsl_da_theo_trang_thai(items: list, cfg: dict) -> dict:
     4. Mọi ảnh màu của buổi (kể cả ảnh không mặt) nhận cùng mức, cộng vào số gốc.
        Ảnh tool đã từng ghi HSL (r["da_hsl"]) mà lần này không chỉnh -> trả số gốc.
 
-    Gán r["hsl_ghi"], r["hsl_moi"] {cột: số mới}. Trả về {"dai","hue","sat","n"}."""
+    Gán r["hsl_ghi"], r["hsl_moi"] {cột: số mới}; r["da_lech0"] = (lệch hue độ OkLab,
+    tỉ lệ chroma so đích) của da SAU WB + Tone cho mọi ảnh màu có mặt — kể cả khi
+    HSL tắt (trạng thái để giao diện nói ra). Trả về {"dai","hue","sat","n"}."""
     for r in items:
-        for key in ("hsl_ghi", "hsl_moi", "hsl_thieu_cot"):
+        for key in ("hsl_ghi", "hsl_moi", "hsl_thieu_cot", "da_lech0"):
             r.pop(key, None)
-    kq = {"dai": "", "hue": 0, "sat": 0, "n": 0}
+    kq = {"dai": "", "hue": 0, "sat": 0, "n": 0, "bat": False}
     catalog = cfg.get("source") == "catalog"
     bat = bool(catalog and cfg.get("loai_buoi") == "ky_yeu" and cfg.get("hsl_da_ky_yeu"))
+    kq["bat"] = bat
     for r in items:
         #  Ban xuat cua plugin CU khong co cot HSL: khong biet so goc -> khong ghi
         if catalog and r.get("crs") and "HueAdjustmentOrange" not in r["crs"]:
             r["hsl_thieu_cot"] = True
+    #  1. DO trang thai da sau WB + Tone (cung dich voi Color Grading: dich_da_cuoi)
+    k_c = float(cfg.get("hsl_da_chroma_lr") or 1.0)
+    ref_trong, ref_ngoai = dich_da_cuoi(cfg)
+    mau = []
+    for r in items:
+        if r.get("bw") or not r.get("new_temp") or not r.get("face_rgb"):
+            continue
+        ref = ref_ngoai if _nhan_da_ngoai(r, cfg) else ref_trong
+        lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0), ref)
+        if lab is None:
+            continue
+        t_lab = mau_dich_lab(ref)
+        c_p = float(math.hypot(lab[1], lab[2])) * k_c
+        if c_p <= 1e-6:
+            continue
+        h_p, h_t = math.degrees(math.atan2(lab[2], lab[1])), math.degrees(math.atan2(t_lab[2], t_lab[1]))
+        c_t = float(math.hypot(t_lab[1], t_lab[2]))
+        r["da_lech0"] = (round((h_t - h_p + 180.0) % 360.0 - 180.0, 1), round(c_t / c_p, 3))
+        if not r.get("hsl_thieu_cot"):
+            mau.append((hue_oklab_sang_lr(math.radians(h_p)), hue_oklab_sang_lr(math.radians(h_t)), c_p, c_t))
+    #  2. HSL kenh da — chi khi bat va trung vi lech VUOT vung "da on" (da_on_*)
     dai, hue, sat = "", 0, 0
-    if bat:
-        k_c = float(cfg.get("hsl_da_chroma_lr") or 1.0)
-        #  Mau da HOC TU ANH HOAN THIEN (khong phu thuoc o "trang hong" / grade)
-        ref_trong = cfg.get("skin_dich_hong") or dich_da(cfg)[0]
-        ref_ngoai = cfg.get("skin_dich_hong_ngoai") or ref_trong
-        mau = []
-        for r in items:
-            if r.get("bw") or r.get("hsl_thieu_cot") or not r.get("new_temp") or not r.get("face_rgb"):
-                continue
-            ref = ref_ngoai if _nhan_da_ngoai(r, cfg) else ref_trong
-            lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0), ref)
-            if lab is None:
-                continue
-            t_lab = mau_dich_lab(ref)
-            c_p = float(math.hypot(lab[1], lab[2])) * k_c
-            if c_p <= 1e-6:
-                continue
-            mau.append((hue_oklab_sang_lr(math.atan2(lab[2], lab[1])),
-                        hue_oklab_sang_lr(math.atan2(t_lab[2], t_lab[1])),
-                        c_p, float(math.hypot(t_lab[1], t_lab[2]))))
-        if len(mau) >= int(cfg.get("hsl_da_min_anh") or 1):
-            ts = [trong_so_hsl(m[0]) for m in mau]
-            w_tv = {d: float(np.median([float(dict(w).get(d, 0.0)) for w in ts])) for d in DAI_HSL_DA}
-            dai = max(DAI_HSL_DA, key=lambda d: w_tv[d])
-            us, vs = [], []
-            for (h_p, h_t, c_p, c_t), w in zip(mau, ts):
-                ww = max(float(dict(w).get(dai, 0.0)), 0.3)
-                us.append(((h_t - h_p + 180.0) % 360.0 - 180.0) / ww)
-                vs.append((c_t / c_p - 1.0) / ww)
-            k_h = float(cfg.get("hsl_k_hue") or 0.30)
-            k_s = float(cfg.get("hsl_k_sat") or 0.01)
-            hm_ = float(cfg.get("hsl_da_hue_max") or 50)
-            sm_ = float(cfg.get("hsl_da_sat_max") or 50)
-            hue = int(round(float(np.clip(float(np.median(us)) / k_h, -hm_, hm_))))
-            sat = int(round(float(np.clip(float(np.median(vs)) / k_s, -sm_, sm_))))
+    if bat and len(mau) >= int(cfg.get("hsl_da_min_anh") or 1):
+        ts = [trong_so_hsl(m[0]) for m in mau]
+        w_tv = {d: float(np.median([float(dict(w).get(d, 0.0)) for w in ts])) for d in DAI_HSL_DA}
+        dai = max(DAI_HSL_DA, key=lambda d: w_tv[d])
+        us, vs = [], []
+        for (h_p, h_t, c_p, c_t), w in zip(mau, ts):
+            ww = max(float(dict(w).get(dai, 0.0)), 0.3)
+            us.append(((h_t - h_p + 180.0) % 360.0 - 180.0) / ww)
+            vs.append((c_t / c_p - 1.0) / ww)
+        lech_h = [x[0] for x in (r.get("da_lech0") for r in items) if x]
+        lech_c = [x[1] for x in (r.get("da_lech0") for r in items) if x]
+        on_h = abs(float(np.median(lech_h))) <= float(cfg.get("da_on_hue") or 0.0)
+        on_c = abs(float(np.median(lech_c)) - 1.0) <= float(cfg.get("da_on_chroma") or 0.0)
+        k_h = float(cfg.get("hsl_k_hue") or 0.30)
+        k_s = float(cfg.get("hsl_k_sat") or 0.01)
+        hm_ = float(cfg.get("hsl_da_hue_max") or 50)
+        sm_ = float(cfg.get("hsl_da_sat_max") or 50)
+        hue = 0 if on_h else int(round(float(np.clip(float(np.median(us)) / k_h, -hm_, hm_))))
+        sat = 0 if on_c else int(round(float(np.clip(float(np.median(vs)) / k_s, -sm_, sm_))))
     n = 0
     for r in items:
         if r.get("hsl_thieu_cot"):
@@ -4952,6 +5013,45 @@ def hsl_da_theo_trang_thai(items: list, cfg: dict) -> dict:
             r["hsl_moi"], r["hsl_ghi"] = goc, True
     kq.update(dai=dai, hue=hue, sat=sat, n=n)
     return kq
+
+
+#: Trang thai mau da cua lan plan() gan nhat — giao dien doc. Xem chinh_mau_da().
+MAU_DA: dict = {}
+
+
+def chinh_mau_da(items: list, cfg: dict) -> dict:
+    """QUY TRÌNH CHUẨN chỉnh MÀU DA sau WB + Tone (8/10 đêm, user). Chạy SAU
+    compute_values (cần WB cuối). Bốn bước, nối tiếp, không bao giờ song song:
+
+        1. ĐO    : da dự đoán trong Lightroom ở WB cuối, mang HSL / Saturation /
+                   Vibrance / toning của preset -> r["da_lech0"] (hue, chroma so đích)
+        2. HSL   : kênh da (Kỷ yếu), MỘT mức cả buổi, chỉ khi trung vị lệch vượt
+                   da_on_hue / da_on_chroma — da đã ổn thì không đụng
+        3. ĐO LẠI: da sau HSL (da_trong_lr với r["hsl_moi"]) -> r["da_lech1"]
+        4. CG    : Color Grading (ô "Đẩy tone về da trắng hồng") chỉ cho ảnh còn
+                   lệch > grade_nguong_hue, tính trên phần vượt, trần grade_sat_max
+
+    #[[ VI SAO: truoc 8/10 dem, HSL va Color Grading cung tinh tu trang thai sau
+    #   WB + Tone — cung thay mot do lech va cung sua no -> de mau len nhau. User:
+    #   "sau khi can WB va Tone xong phai biet da dang o mau nao roi moi can thiep
+    #   HSL / Color Grading; da da on thi khong doi; Color Grading phai siet chat
+    #   hon vi mot thay doi nho doi mau ca buc anh". ]]
+    Trả về tóm tắt cho giao diện (cũng gán MAU_DA / HSL_DA)."""
+    global HSL_DA, MAU_DA
+    HSL_DA = hsl_da_theo_trang_thai(items, cfg)
+    n_gr = grade_theo_trang_thai(items, cfg)
+    l0 = [r["da_lech0"] for r in items if r.get("da_lech0")]
+    l1 = [r["da_lech1"] for r in items if r.get("da_lech1") is not None]
+    MAU_DA = {
+        "n": len(l0),
+        "hue0": float(np.median([x[0] for x in l0])) if l0 else 0.0,
+        "chroma0": float(np.median([x[1] for x in l0])) if l0 else 1.0,
+        "hsl": dict(HSL_DA),
+        "hue1": float(np.median(l1)) if l1 else 0.0,
+        "grade_bat": bool(cfg.get("grade")),
+        "grade_n": int(n_gr),
+    }
+    return MAU_DA
 
 
 def decide(items: list, cfg: dict) -> None:
@@ -6146,12 +6246,12 @@ def _wb_ky_yeu(items: list, cfg: dict) -> int:
     """Cong lech WB phong cach ky yeu (wb_bu_ky_yeu: K, Tint) vao temp_adj /
     tint_adj CUOI — sau san phang mau, dong bo loat, As Shot va tint theo may.
 
-    Chi loai_buoi "ky_yeu" va khi KHONG bat trang hong (grade / da_trang_hong:
-    dich da hong da mang san phan am/hong). Bo qua anh B/W, anh WB dang cham
-    tran wb_temp_max va canh am nang (_canh_am_nang) — den mau nang, anh duyet
-    o do LANH hon / it hong hon chu khong am hon. Xem chu thich o DEFAULTS. Tra
-    ve so anh bi doi."""
-    if cfg.get("loai_buoi") != "ky_yeu" or cfg.get("grade") or cfg.get("da_trang_hong"):
+    Chi loai_buoi "ky_yeu" — KHONG phu thuoc o "grade" (8/10 dem: WB la buoc co
+    dinh cua chuoi chinh_mau_da, HSL / Color Grading xu ly phan con lai). Bo qua
+    anh B/W, anh WB dang cham tran wb_temp_max va canh am nang (_canh_am_nang) —
+    den mau nang, anh duyet o do LANH hon / it hong hon chu khong am hon. Xem chu
+    thich o DEFAULTS. Tra ve so anh bi doi."""
+    if cfg.get("loai_buoi") != "ky_yeu":
         return 0
     bu = dict(cfg.get("wb_bu_ky_yeu") or {})
     k_, t_ = float(bu.get("Temperature") or 0.0), float(bu.get("Tint") or 0.0)
@@ -7510,23 +7610,18 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
                 apply_to_sidecar(r, cfg, None, Path("."), dry=True)
         except Exception as ex:
             r["notes"] = (r.get("notes", "") + f";LOI:{ex}").strip(";")
-    #[[ Color Grading can WB CUOI (new_temp / new_tint) -> SAU compute_values.
-    #   Hong thi khong grade anh nao (va noi ra), khong duoc lam do ca buoi. ]]
+    #[[ MAU DA can WB CUOI (new_temp / new_tint) -> SAU compute_values. Chuoi: do
+    #   -> HSL kenh da -> do lai -> Color Grading (chinh_mau_da). Hong thi khong
+    #   ghi HSL / grade anh nao (va noi ra), khong duoc lam do ca buoi. ]]
+    global HSL_DA, MAU_DA
     try:
-        grade_theo_trang_thai(items, cfg)
+        chinh_mau_da(items, cfg)
     except Exception as ex:                                  # noqa: BLE001
+        HSL_DA, MAU_DA = {}, {}
         for r in items:
             r.pop("gr_ghi", None)
-        print(f"[!] Color Grading loi, bo qua: {ex}", file=sys.stderr)
-    #  HSL kenh da (Ky yeu) — cung can WB cuoi. Hong thi khong ghi HSL anh nao.
-    global HSL_DA
-    try:
-        HSL_DA = hsl_da_theo_trang_thai(items, cfg)
-    except Exception as ex:                                  # noqa: BLE001
-        HSL_DA = {}
-        for r in items:
             r.pop("hsl_ghi", None)
-        print(f"[!] HSL kenh da loi, bo qua: {ex}", file=sys.stderr)
+        print(f"[!] Chinh mau da (HSL / Color Grading) loi, bo qua: {ex}", file=sys.stderr)
 
 
 def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None = None,

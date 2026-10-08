@@ -411,8 +411,9 @@ def chay(nhanh: bool = False) -> Bao:
                   {"temp_adj": -tran, "tint_adj": 3.0, "notes": ""},
                   {"temp_adj": 0.0, "tint_adj": 0.0, "notes": "", "bw": True}]
             cfg = dict(at.DEFAULTS, loai_buoi="ky_yeu")
-            if at._wb_ky_yeu([dict(r) for r in ds], dict(cfg, grade=True)) != 0:
-                raise AssertionError("bật trắng hồng mà vẫn cộng WB kỷ yếu")
+            #  8/10 dem: WB ky yeu KHONG doi theo o Color Grading (chuoi chinh_mau_da)
+            if at._wb_ky_yeu([dict(r) for r in ds], dict(cfg, grade=True)) != 1:
+                raise AssertionError("bật Color Grading thì WB kỷ yếu phải y như khi tắt")
             if at._wb_ky_yeu(ds, cfg) != 1:
                 raise AssertionError("phải cộng đúng 1 ảnh (bỏ ảnh chạm trần WB, ảnh B/W)")
             if (abs(ds[0]["temp_adj"] - 100.0 - bu["Temperature"]) > 1e-6

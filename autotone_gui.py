@@ -1797,18 +1797,19 @@ class App(ttk.Frame):
            "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.\n"
            "Loại buổi Kỷ yếu thì không mở (giữ đen sâu như ảnh kỷ yếu đã duyệt).")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
-           "Kỷ yếu, concept: da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt.\n"
+           "Color Grading về da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt — "
+           "bước CUỐI của chuỗi màu da: cân WB + Tone → đo màu da dự đoán trong "
+           "Lightroom → HSL kênh da (Kỷ yếu) → đo lại → Color Grading chỉ cho ảnh "
+           f"da CÒN lệch quá {float(at.DEFAULTS.get('grade_nguong_hue', 4)):.0f}°, "
+           f"tính trên phần vượt, trần Sat {int(at.DEFAULTS.get('grade_sat_max', 8))}.\n"
            "· Lưu ý: Color Grading đổi màu cả các vùng cam / trắng trong khung, "
-           "dễ thấy ám màu — buổi kỷ yếu nên để TẮT (cân trắng kỷ yếu đã lo).\n"
-           "· Cân trắng đưa da về màu học từ ảnh kỷ yếu đã duyệt — riêng trong "
-           "nhà và ngoài trời (tắt thì ảnh ngoài trời kéo về da rám nắng, trong "
-           "nhà về màu ảnh sự kiện).\n"
-           "· Color Grading tính trên màu da DỰ ĐOÁN trong Lightroom (WB preset, "
-           "Saturation / Vibrance / toning của preset): da còn vàng thì xoay về "
-           "hồng, đã đúng thì không đụng; cộng vào bánh xe Midtone + Highlight "
-           "của preset, không ghi đè.\n"
-           "Tắt lại thì ảnh tool đã grade được trả về số của preset. Ảnh không "
-           "thấy mặt thì không grade.")
+           "dễ thấy ám màu — nên để TẮT trừ khi HSL chưa đủ.\n"
+           "· Kỷ yếu: bật / tắt ô này KHÔNG đổi cân trắng và HSL. Cưới / Sự kiện: "
+           "bật thì cân trắng đưa da về màu học từ ảnh kỷ yếu (riêng trong nhà và "
+           "ngoài trời).\n"
+           "· Cộng vào bánh xe Midtone + Highlight của preset, không ghi đè. Tắt "
+           "lại thì ảnh tool đã grade được trả về số của preset. Ảnh không thấy "
+           "mặt thì không grade.")
         ct(g_ghim, self.v_curve, "Tự chỉnh Curve (parametric)",
            "Cộng bốn núi parametric curve (Highlights / Lights / Darks / "
            "Shadows) lên preset; point curve của preset giữ nguyên.")
@@ -4166,10 +4167,22 @@ class App(ttk.Frame):
             msg += " · buổi đã làm lại (mốc cũ đã xoá) → tính từ catalog hiện tại"
         elif dl:
             msg += " · cả buổi đã áp lại preset sau lần ghi trước → tính từ trạng thái mới"
-        #  8/10 vong 5: HSL kenh da (Ky yeu) — noi ra dai nao, bao nhieu
-        hsl = dict(getattr(at, "HSL_DA", None) or {})
-        if hsl.get("dai") and (hsl.get("hue") or hsl.get("sat")):
-            msg += f" · HSL da ({hsl['dai']}): Hue {int(hsl['hue']):+d} / Sat {int(hsl['sat']):+d}"
+        #[[ 8/10 dem: TRANG THAI MAU DA theo chuoi do -> HSL -> do lai -> Color
+        #   Grading (chinh_mau_da) — noi ra tung buoc de nguoi dung thay vi sao
+        #   co / khong co HSL va Color Grading. ]]
+        md = dict(getattr(at, "MAU_DA", None) or {})
+        if md.get("n"):
+            msg += (f" · da sau WB+Tone ({md['n']} ảnh): hue lệch {md['hue0']:+.0f}°, "
+                    f"đậm cần ×{md['chroma0']:.2f}")
+            hsl = dict(md.get("hsl") or {})
+            if hsl.get("dai") and (hsl.get("hue") or hsl.get("sat")):
+                msg += (f" → HSL {hsl['dai']} {int(hsl['hue']):+d}/{int(hsl['sat']):+d}"
+                        f" → còn {md['hue1']:+.0f}°")
+            elif hsl.get("bat"):
+                msg += " → HSL: da đã ổn, không đổi"
+            if md.get("grade_bat"):
+                msg += (f" → Color Grading: {md['grade_n']} ảnh" if md.get("grade_n")
+                        else " → Color Grading: không cần")
         ngoai = sum(1 for r in self.items if r.get("ngoai_xuat"))
         if ngoai:
             msg += f" · {ngoai} ảnh không có trong bản xuất Lightroom → không ghi"
@@ -4317,6 +4330,27 @@ class App(ttk.Frame):
             t_may, n_may = r["wb_trang_thai"]
             lines += ["", f"WB máy (preview): {t_may} / {n_may:+d} → tool cân trên màu da "
                           f"DỰ ĐOÁN trong Lightroom ở WB preset, không phải màu preview"]
+        #  8/10 dem: chuoi mau da — do sau WB + Tone -> HSL -> do lai -> Color Grading
+        if r.get("da_lech0"):
+            h0, c0 = r["da_lech0"]
+            huong = "về đỏ / hồng" if h0 < 0 else "về vàng"
+            lines += ["", "Màu da (dự đoán trong Lightroom, so với màu da đích):",
+                      f"   Sau WB + Tone  : hue lệch {h0:+.1f}° ({huong}), đậm cần ×{c0:.2f}"]
+            hsl = r.get("hsl_moi") if r.get("hsl_ghi") else None
+            goc = {k: float((r.get("crs") or {}).get(k) or 0) for k in at.COT_HSL}
+            doi = {k: v for k, v in dict(hsl or {}).items() if abs(float(v) - goc.get(k, 0.0)) > 1e-9}
+            if doi:
+                lines.append("   HSL kênh da    : " + ", ".join(
+                    f"{k.replace('Adjustment', ' ')} {goc.get(k, 0):+.0f} → {float(v):+.0f}"
+                    for k, v in doi.items()))
+            elif r.get("hsl_ghi"):
+                lines.append("   HSL kênh da    : trả về số gốc của preset")
+            else:
+                lines.append("   HSL kênh da    : không đổi")
+            if r.get("da_lech1") is not None:
+                lines.append(f"   Sau HSL        : còn lệch {r['da_lech1']:+.1f}°"
+                             + ("" if r.get("gr_ghi") and r.get("gr_sat")
+                                else f" → không Color Grading (ngưỡng {float(at.DEFAULTS.get('grade_nguong_hue', 0)):.0f}°)"))
         if r.get("gr_ghi"):
             m_, h_ = r.get("gr_mid"), r.get("gr_hi")
             lines += ["", "Color Grading  (tính theo màu da dự đoán trong Lightroom):"]

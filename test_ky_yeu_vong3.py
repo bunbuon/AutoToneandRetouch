@@ -19,8 +19,8 @@ Mục kiểm
     2. Kỷ yếu không tự mở vùng tối (sh_adj, cv_sh = 0); mo_toi_ky_yeu=True thì mở lại.
     3. Đường S: Cưới Darks -c, Kỷ yếu Darks +c.
     4. Tone nền kỷ yếu (preset bỏ trống Tone): Shadows / Blacks lấy từ nen_tone_ky_yeu.
-    5. WB kỷ yếu: +wb_bu_ky_yeu so với Cưới, cờ wb-ky-yeu…; bỏ qua khi bật trắng hồng
-       (grade) và khi WB đang chạm trần wb_temp_max.
+    5. WB kỷ yếu: +wb_bu_ky_yeu so với Cưới, cờ wb-ky-yeu…; bỏ qua khi WB đang chạm
+       trần wb_temp_max; KHÔNG đổi theo ô Color Grading (8/10 đêm).
     6. Vòng 4 — cảnh ấm nặng (WB kéo lạnh gần trần), CHỈ Kỷ yếu: không cộng Tint
        hồng theo da, bù sáng thêm bu_sang_canh_am_ky_yeu. Cưới giữ nguyên.
 
@@ -146,9 +146,13 @@ def main() -> int:
             loi.append(f"Dung bai: CAM phai cham tran WB (temp_adj {cu['CAM']['temp_adj']:+.0f})")
         if co(ky["CAM"], "wb-ky-yeu") or ky["CAM"]["new_temp"] != cu["CAM"]["new_temp"]:
             loi.append("Anh WB cham tran khong duoc cong WB ky yeu")
+        #  8/10 dem: bat Color Grading thi WB ky yeu VAN Y HET (WB la buoc co dinh
+        #  cua chuoi chinh_mau_da; Color Grading chi xu ly phan da con lech sau HSL)
         gr = chay(items, d, loai_buoi="ky_yeu", grade=True)
-        if any(co(r, "wb-ky-yeu") for r in gr.values()):
-            loi.append("Bat trang hong (grade) thi khong cong WB ky yeu")
+        for k in ("WB", "PHANH", "CAM"):
+            if (gr[k]["new_temp"], gr[k]["new_tint"]) != (ky[k]["new_temp"], ky[k]["new_tint"]):
+                loi.append(f"{k}: bat Color Grading ma WB ky yeu doi: {gr[k]['new_temp']}/{gr[k]['new_tint']}"
+                           f" vs {ky[k]['new_temp']}/{ky[k]['new_tint']}")
 
         # 6. canh am nang (vong 4): khong cong Tint hong theo da; ky yeu bu sang them
         tat_am = chay(items, d, loai_buoi="cuoi", wb_tran_am_ti_le=0.0)
