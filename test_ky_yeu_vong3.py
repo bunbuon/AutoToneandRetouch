@@ -21,6 +21,8 @@ Mục kiểm
     4. Tone nền kỷ yếu (preset bỏ trống Tone): Shadows / Blacks lấy từ nen_tone_ky_yeu.
     5. WB kỷ yếu: +wb_bu_ky_yeu so với Cưới, cờ wb-ky-yeu…; bỏ qua khi bật trắng hồng
        (grade) và khi WB đang chạm trần wb_temp_max.
+    6. Vòng 4 — cảnh ấm nặng (WB kéo lạnh gần trần), CHỈ Kỷ yếu: không cộng Tint
+       hồng theo da, bù sáng thêm bu_sang_canh_am_ky_yeu. Cưới giữ nguyên.
 
 Chạy:  python test_ky_yeu_vong3.py
 """
@@ -146,6 +148,23 @@ def main() -> int:
         gr = chay(items, d, loai_buoi="ky_yeu", grade=True)
         if any(co(r, "wb-ky-yeu") for r in gr.values()):
             loi.append("Bat trang hong (grade) thi khong cong WB ky yeu")
+
+        # 6. canh am nang (vong 4): khong cong Tint hong theo da; ky yeu bu sang them
+        tat_am = chay(items, d, loai_buoi="cuoi", wb_tran_am_ti_le=0.0)
+        if not tat_am["CAM"]["tint_adj"] > 0:
+            loi.append(f"Dung bai: da cam dac phai bi doc thanh tint duong (tint_adj {tat_am['CAM']['tint_adj']:+.1f})")
+        if ky["CAM"]["tint_adj"] > 0 or not co(ky["CAM"], "tint-tran-am"):
+            loi.append(f"Ky yeu: canh am nang khong duoc cong Tint hong (tint_adj {ky['CAM']['tint_adj']:+.1f})")
+        if co(ky["WB"], "tint-tran-am"):
+            loi.append("Ky yeu: anh den thuong bi keo Tint nhu canh am")
+        #  buoi cuoi 2609: user giu Tint hong o canh den vang -> chi ky yeu
+        if co(cu["CAM"], "tint-tran-am") or abs(cu["CAM"]["tint_adj"] - tat_am["CAM"]["tint_adj"]) > 1e-9:
+            loi.append("Cuoi: khong duoc dung Tint canh am nang (chi ky yeu)")
+        bu_am = float(D["bu_sang_canh_am_ky_yeu"])
+        if abs(ky["CAM"]["delta_ev"] - cu["CAM"]["delta_ev"] - bu_am) > 0.011 or not co(ky["CAM"], "bu-sang-canh-am"):
+            loi.append(f"Ky yeu canh am: delta {ky['CAM']['delta_ev']:+.2f} phai = Cuoi {cu['CAM']['delta_ev']:+.2f} + {bu_am:.2f}")
+        if co(cu["CAM"], "bu-sang-canh-am") or co(ky["WB"], "bu-sang-canh-am"):
+            loi.append("Bu sang canh am chi cho Ky yeu va chi canh am nang")
 
     for m in loi:
         print("  [!]", m)

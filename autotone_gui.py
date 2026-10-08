@@ -1674,7 +1674,9 @@ class App(ttk.Frame):
                      "cháy da nhường để mặt lên mức sáng chuẩn (tối đa "
                      f"+{float(at.DEFAULTS.get('phanh_da_san_ky_yeu', 0.6)):.1f} EV); cân trắng ấm/hồng nhẹ "
                      f"(+{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Temperature', 0)):.0f} K, "
-                     f"Tint +{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Tint', 0)):.0f}). "
+                     f"Tint +{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Tint', 0)):.0f}); "
+                     "cảnh đèn vàng nặng (cân trắng kéo lạnh gần hết mức) sáng thêm "
+                     f"+{float(at.DEFAULTS.get('bu_sang_canh_am_ky_yeu', 0.5)):.1f} EV. "
                      "Không tự bật Color Grading (nó ám màu cả khung). Chọn xong vẫn "
                      "sửa được số ở thanh dưới."
             ).pack(side="right", padx=(8, 0))

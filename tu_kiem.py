@@ -421,7 +421,15 @@ def chay(nhanh: bool = False) -> Bao:
                 raise AssertionError(f"cộng sai: {ds[0]}")
             if ds[1]["temp_adj"] != -tran or ds[1]["tint_adj"] != 3.0:
                 raise AssertionError("ảnh chạm trần WB bị đổi")
-            return f"+{bu['Temperature']} K / Tint +{bu['Tint']}"
+            #  vong 4: canh am nang — khong cong Tint hong, ky yeu bu sang them
+            am = [{"scene": 7, "temp_adj": -tran, "tint_adj": 3.0, "delta_ev": 0.2, "notes": ""},
+                  {"scene": 8, "temp_adj": 50.0, "tint_adj": 3.0, "delta_ev": 0.2, "notes": ""}]
+            if at._tint_tran_am(am, dict(cfg, wb="skin")) != 1 or am[0]["tint_adj"] != 0.0 or am[1]["tint_adj"] != 3.0:
+                raise AssertionError(f"Tint cảnh ấm nặng sai: {am}")
+            if at._bu_sang_canh_am(am, cfg) != 1 or am[1]["delta_ev"] != 0.2:
+                raise AssertionError(f"bù sáng cảnh ấm sai: {am}")
+            return (f"+{bu['Temperature']} K / Tint +{bu['Tint']} · cảnh ấm: Tint 0, "
+                    f"Exposure {am[0]['delta_ev']:+.2f}")
         b.thu("WB kỷ yếu", _ky_yeu)
 
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------

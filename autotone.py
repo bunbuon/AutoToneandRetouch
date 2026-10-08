@@ -2264,8 +2264,23 @@ DEFAULTS = {
     #     fisheye den am (WB dang kep tran 4000K) da +0.1e-3 db -0.6e-3
     #   1 Tint = (+0.51, -0.51)e-3, 100K = (+0.64, +2.56)e-3 -> +130 K, Tint +7.
     #   Bo qua anh WB dang cham tran wb_temp_max (den mau nang: khong can) va
-    #   khi bat trang hong (grade / da_trang_hong: dich hong da tinh san). ]]
-    "wb_bu_ky_yeu": {"Temperature": 130, "Tint": 7},
+    #   khi bat trang hong (grade / da_trang_hong: dich hong da tinh san).
+    #
+    #   VONG 4 (v43 ve that): Tint +7 -> +3. User nhin: "tint tang hoi qua tay".
+    #   So voi anh duyet: trung tinh / da / ca khung van IT hong hon anh duyet,
+    #   NHUNG vung xanh duong (dai sash, ao) anh duyet day han sang xanh ngoc
+    #   (OkLab a -39e-3) con LR v42 -31, v43 -26 — Tint +7 keo xanh duong ngả
+    #   TIM, xa anh duyet them. Xanh la cung xa them 1.6 do. Do la HSL / hieu
+    #   chuan cua preset (Blue -> Aqua), WB khong lam duoc ca hai. Chon +3: tim
+    #   bot, giu mot phan hong cho da. ]]
+    "wb_bu_ky_yeu": {"Temperature": 130, "Tint": 3},
+    #[[ Canh WB keo lanh >= ti le nay cua wb_temp_max (trung vi canh) = den vang
+    #   nang. Ky yeu: khong cong Tint duong theo da (_tint_tran_am), khong cong WB
+    #   ky yeu, bu sang them (_bu_sang_canh_am). 0 = TAT. ]]
+    "wb_tran_am_ti_le": 0.85,
+    #[[ Ky yeu, canh am nang: bu sang them (EV) vi Lightroom ve mat o do toi hon
+    #   preview may ~0.7 EV — xem _bu_sang_canh_am(). 0 = TAT. ]]
+    "bu_sang_canh_am_ky_yeu": 0.5,
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -5639,7 +5654,9 @@ def decide(items: list, cfg: dict) -> None:
     if cfg["wb"] in ("asshot", "skin"):
         _wb_theo_asshot(items, cfg)
         _tint_theo_may(items, cfg)
+        _tint_tran_am(items, cfg)
         _wb_ky_yeu(items, cfg)
+        _bu_sang_canh_am(items, cfg)
     _bu_sang_ca_buoi(items, cfg)
 
 
@@ -5861,14 +5878,92 @@ def _tint_theo_may(items: list, cfg: dict) -> int:
     return n
 
 
+def _canh_am_nang(items: list, cfg: dict) -> set:
+    """Cac canh ma WB dang keo LANH gan het tran: trung vi temp_adj cua canh <=
+    -wb_tran_am_ti_le * wb_temp_max (den vang / den san khau, may dat K cao).
+    wb_tran_am_ti_le = 0 -> tap rong (TAT)."""
+    ti = float(cfg.get("wb_tran_am_ti_le") or 0.0)
+    if ti <= 0:
+        return set()
+    nguong = -ti * float(cfg["wb_temp_max"])
+    nhom: dict = {}
+    for r in items:
+        if not r.get("bw"):
+            nhom.setdefault(r.get("scene"), []).append(float(r.get("temp_adj", 0.0)))
+    return {s for s, v in nhom.items() if v and float(np.median(v)) <= nguong}
+
+
+def _tint_tran_am(items: list, cfg: dict) -> int:
+    """Canh am nang (_canh_am_nang): KHONG cong Tint duong (hong) theo mau da.
+
+    #[[ VI SAO (8/10 vong 4, raw 19.4, 69 anh fisheye duoi den vang): phep do
+    #   tint cua da = log2(G / sqrt(R*B)). Den vang lam B rat thap nen da "xanh
+    #   la" theo phep do do; nhiet do chi keo toi tran -1000 K nen phan am con
+    #   du bi doc thanh tint -> tool cong hong (+1.5..+3, Tint 13). Giai WB HAI
+    #   CHIEU (doi_wb) dua da ve dich thi tint phai AM (-3..-7), va pixel trung
+    #   tinh anh duyet noi Tint ~9.4 (tool 13, LR hong + vang hon ro).
+    #   CHI KY YEU: thu cho MOI loai buoi thi buoi cuoi 2609 (kiem_2ban_quay)
+    #   them 16 anh user DA DUYET WB bi xe dich > 4 Tint (6.57% -> 7.49%) —
+    #   buoi cuoi user giu sac hong am o canh den vang. ]]
+    Chi loai_buoi "ky_yeu", che do WB "skin". Tint am (xanh) giu nguyen. Tra ve
+    so anh bi doi."""
+    if cfg.get("wb") != "skin" or cfg.get("loai_buoi") != "ky_yeu":
+        return 0
+    am = _canh_am_nang(items, cfg)
+    n = 0
+    for r in items:
+        if r.get("scene") in am and not r.get("bw") and float(r.get("tint_adj", 0.0)) > 0:
+            r["tint_adj"] = 0.0
+            r["notes"] = ";".join([v for v in [r.get("notes", ""), "tint-tran-am"] if v])
+            n += 1
+    return n
+
+
+def _bu_sang_canh_am(items: list, cfg: dict) -> int:
+    """Ky yeu: cong bu_sang_canh_am_ky_yeu EV vao delta cua anh trong canh am
+    nang (_canh_am_nang) — Lightroom ve mat o do TOI hon preview may nhieu.
+
+    #[[ VI SAO (8/10 vong 4, raw 19.4, hoi truong den vang, 102 anh duyet): mat
+    #   Lightroom (do tren anh LR ve that) - mat preview - Exposure tool:
+    #     WB keo lanh < 45 mired so voi WB may: ~0 EV (mat anh duyet - LR -0.1..+0.03)
+    #     >= 45 mired (WB 4000-4200 K, may dat 5400 K): -0.70 EV; anh duyet sang
+    #     hon LR v43: mat +0.55, khung +0.45, p50 +0.65, p90 +0.65 (p10 -0.6).
+    #   Buoc nhay, khong tuyen tinh theo mired — nen chi ap cho canh am nang. ]]
+    Chay SAU phanh va san phang (nhu _bu_sang_ca_buoi); ton tran max_ev_up.
+    Tra ve so anh bi doi."""
+    if cfg.get("loai_buoi") != "ky_yeu":
+        return 0
+    bu = float(cfg.get("bu_sang_canh_am_ky_yeu") or 0.0)
+    if bu <= 0:
+        return 0
+    am = _canh_am_nang(items, cfg)
+    if not am:
+        return 0
+    len_ = float(cfg.get("max_ev_up") or cfg["max_ev"])
+    n = 0
+    for r in items:
+        if (r.get("scene") not in am or r.get("bw") or r.get("giu_nguyen_exposure")
+                or r.get("delta_ev") is None):
+            continue
+        cu = float(r["delta_ev"])
+        moi = float(min(cu + bu, len_))
+        if moi - cu < 0.005:
+            continue
+        r["delta_ev"] = round(moi, 4)
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), f"bu-sang-canh-am{moi - cu:+.2f}"] if v])
+        n += 1
+    return n
+
+
 def _wb_ky_yeu(items: list, cfg: dict) -> int:
     """Cong lech WB phong cach ky yeu (wb_bu_ky_yeu: K, Tint) vao temp_adj /
     tint_adj CUOI — sau san phang mau, dong bo loat, As Shot va tint theo may.
 
     Chi loai_buoi "ky_yeu" va khi KHONG bat trang hong (grade / da_trang_hong:
-    dich da hong da mang san phan am/hong). Bo qua anh B/W va anh WB dang cham
-    tran wb_temp_max (den mau nang — anh duyet khong lech o do). Xem chu thich o
-    DEFAULTS. Tra ve so anh bi doi."""
+    dich da hong da mang san phan am/hong). Bo qua anh B/W, anh WB dang cham
+    tran wb_temp_max va canh am nang (_canh_am_nang) — den mau nang, anh duyet
+    o do LANH hon / it hong hon chu khong am hon. Xem chu thich o DEFAULTS. Tra
+    ve so anh bi doi."""
     if cfg.get("loai_buoi") != "ky_yeu" or cfg.get("grade") or cfg.get("da_trang_hong"):
         return 0
     bu = dict(cfg.get("wb_bu_ky_yeu") or {})
@@ -5876,9 +5971,11 @@ def _wb_ky_yeu(items: list, cfg: dict) -> int:
     if not (k_ or t_):
         return 0
     tran = float(cfg["wb_temp_max"])
+    am = _canh_am_nang(items, cfg)
     n = 0
     for r in items:
-        if r.get("bw") or abs(float(r.get("temp_adj", 0.0))) >= tran - 1.0:
+        if (r.get("bw") or abs(float(r.get("temp_adj", 0.0))) >= tran - 1.0
+                or r.get("scene") in am):
             continue
         r["temp_adj"] = float(r.get("temp_adj", 0.0)) + k_
         r["tint_adj"] = float(r.get("tint_adj", 0.0)) + t_
