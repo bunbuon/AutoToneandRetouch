@@ -432,6 +432,22 @@ def chay(nhanh: bool = False) -> Bao:
                     f"Exposure {am[0]['delta_ev']:+.2f}")
         b.thu("WB kỷ yếu", _ky_yeu)
 
+        #[[ 8/10 vong 5: HSL kenh da (Orange) chay TRONG GOI ma hoa. ]]
+        def _hsl_da():
+            crs = {"Temperature": "5000", "Tint": "10", "WhiteBalance": "Custom",
+                   "Saturation": "19", "Vibrance": "25", **{k: "0" for k in at.COT_HSL}}
+            ds = [{"path": f"x:/h{i}.arw", "face_rgb": [0.61, 0.42, 0.355], "model": "ILCE-7M4",
+                   "crs": dict(crs), "atn": {}, "new_temp": 5000, "new_tint": 10, "scene": 0,
+                   "bw": False, "notes": ""} for i in range(6)]
+            ds.append(dict(ds[0], path="x:/hbw.arw", bw=True))
+            kq = at.hsl_da_theo_trang_thai(ds, dict(at.DEFAULTS, loai_buoi="ky_yeu", source="catalog"))
+            if kq.get("dai") != "Orange" or not (kq.get("hue", 0) < 0 < kq.get("sat", 0)):
+                raise AssertionError(f"HSL kênh da sai: {kq}")
+            if ds[-1].get("hsl_ghi") or not all(r.get("hsl_ghi") for r in ds[:-1]):
+                raise AssertionError("ảnh màu phải nhận HSL, ảnh B/W không")
+            return f"{kq['dai']} Hue {kq['hue']:+d} / Sat {kq['sat']:+d}"
+        b.thu("HSL kênh da", _hsl_da)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #

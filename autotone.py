@@ -2282,6 +2282,32 @@ DEFAULTS = {
     #   preview may ~0.7 EV — xem _bu_sang_canh_am(). 0 = TAT. ]]
     "bu_sang_canh_am_ky_yeu": 0.5,
     "bu_sang_canh_am_tran": 1.0,        # anh da keo >= muc nay thi khong bu them
+    #[[ HSL KENH DA (vong 5, user: "chi can thiep vao kenh mau sac to cua da do
+    #   duoc — thuong la Orange"). Xem hsl_da_theo_trang_thai().
+    #
+    #   VI SAO HSL (8/10 toi): anh hoan thien CUNG KHUNG voi preview LR (562/564 cap,
+    #   tuong quan do sang 0.991) nen so duoc TUNG DIEM ANH (3.9 trieu diem). Anh
+    #   hoan thien doi THEO DAI MAU — cam xoay ve do 5-9 do va dam x1.15-1.25, vang
+    #   giu, xanh duong sang xanh ngoc — con trung tinh gan nhu dung yen: dau van tay
+    #   cua HSL, khong phai WB. Khop Orange (hue + sat) hang so tren WB v44: lech mau
+    #   da trung binh moi anh 15.3 -> 5.3 (OkLab x1000), vat cam / do khac khong xau
+    #   di (do 7.7 -> 5.5). WB keo theo da (+437 K / +16) cung dat ~4.6 nhung trang
+    #   am hong ~9e-3. Theo TUNG anh (dich hue - hue du doan) KHONG tot hon hang so
+    #   (5.6 vs 5.3, mo hinh hue +-2 do) -> MOT muc cho ca buoi, tinh tu trung vi.
+    #
+    #   QUY DOI THANH TRUOT LA GIA DINH, CHUA DO TREN LIGHTROOM: Hue +-100 ~ +-30 do
+    #   (hue HSV) o tam dai, Saturation +100 ~ chroma x2. Vong test sau do lai.
+    #   Chroma du doan (da_trong_lr) DAM hon LR that: ti so LR / du doan 0.56,
+    #   tuong quan 0.85 (raw 19.4, Sony A7 IV + Adobe Standard). Dat 0.60: voi 0.56
+    #   buoi raw 19.4 tinh ra Sat +40, ma quet tren diem anh khop thi +30 tot nhat
+    #   (lech da p90 20.5 vs 24.6) — hieu chinh tren CHINH buoi duy nhat co so. ]]
+    "hsl_da_ky_yeu": True,
+    "hsl_k_hue": 0.30,            # do hue (HSV) o tam dai cho moi diem thanh Hue
+    "hsl_k_sat": 0.01,            # ti le chroma cho moi diem thanh Saturation
+    "hsl_da_chroma_lr": 0.60,     # chroma da LR that / du doan cua da_trong_lr
+    "hsl_da_hue_max": 50,
+    "hsl_da_sat_max": 50,
+    "hsl_da_min_anh": 5,          # it hon so anh co mat nay thi khong chinh
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -3982,6 +4008,53 @@ COT_MAU = ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
            "ColorGradeGlobalHue", "ColorGradeGlobalSat", "Saturation", "Vibrance")
 
 
+#[[ 8/10 vong 5: HSL KENH DA (Loai buoi Ky yeu) — ba dai HSL co the chua sac to da.
+#   Tool chi chinh DAI DA DO DUOC (thuong la Orange), hai dai con lai giu so goc.
+#   Cung luu vao moc nhu COT_MAU: lan ghi dau doi Orange, lan sau catalog khong con
+#   so goc. Xem hsl_da_theo_trang_thai(). ]]
+DAI_HSL_DA = ("Red", "Orange", "Yellow")
+COT_HSL = tuple(f"{k}Adjustment{d}" for d in DAI_HSL_DA for k in ("Hue", "Saturation"))
+
+
+def anh_da_hsl(folder: Path, job_dir: Path | None = None) -> set:
+    """Khoá ảnh mà một job bất kỳ của buổi này từng gửi HSL kênh da — catalog của
+    chúng đang mang số TOOL ghi, không phải số preset."""
+    d = Path(job_dir or LR_JOB_DIR)
+    if not d.is_dir():
+        return set()
+    ten = ten_job(Path(folder).name)
+    out = set()
+    for jp in sorted(d.glob(f"apply_*_{ten}.done")) + sorted(d.glob(f"apply_*_{ten}.tsv")):
+        if "khoiphuc" in jp.name.lower():
+            continue
+        try:
+            with io.open(jp, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="	"):
+                    if row.get("path") and any(str(row.get(k) or "").strip() for k in COT_HSL):
+                        out.add(khoa_duong_dan(row["path"]))
+        except (OSError, csv.Error):
+            continue
+    return out
+
+
+def bu_cot_hsl(moc: dict, moi: dict, da_hsl: bool) -> dict:
+    """Cột COT_HSL mà mốc để TRỐNG (chốt trước vòng 5) lấy từ bản xuất mới; ảnh tool
+    đã từng ghi HSL thì số gốc không còn ở đâu — coi là 0 (preset không chỉnh HSL
+    da). -> {cột: giá trị} cần bù."""
+    def rong(v) -> bool:
+        return str(v if v is not None else "").strip() == ""
+
+    bu = {}
+    for k in COT_HSL:
+        if not rong(moc.get(k)):
+            continue
+        if da_hsl:
+            bu[k] = "0"
+        elif not rong(moi.get(k)):
+            bu[k] = moi[k]
+    return bu
+
+
 def anh_da_grade(folder: Path, job_dir: Path | None = None) -> set:
     """Khoá ảnh (khoa_duong_dan) mà một job bất kỳ của buổi này từng gửi Color
     Grading — catalog của chúng đang mang số TOOL ghi ở midtone, không phải số
@@ -4772,6 +4845,113 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
                           int(goc["SplitToningHighlightSaturation"]))
             r["gr_ghi"] = True
     return n
+
+
+#: Tam cac dai HSL cua Lightroom (hue kieu HSV, do).
+TAM_HSL = (("Red", 0.0), ("Orange", 30.0), ("Yellow", 60.0), ("Green", 120.0),
+           ("Aqua", 180.0), ("Blue", 240.0), ("Purple", 270.0), ("Magenta", 300.0))
+#: Ket qua HSL kenh da cua lan plan() gan nhat — giao dien doc de noi ra.
+HSL_DA: dict = {}
+
+
+def trong_so_hsl(hue: float) -> dict:
+    """Trọng số các dải HSL Lightroom tại một hue (HSV, độ): nội suy tuyến tính
+    giữa hai tâm dải kề nhau (vòng tròn)."""
+    h = float(hue) % 360.0
+    for i in range(len(TAM_HSL)):
+        ten0, t0 = TAM_HSL[i]
+        ten1, t1 = TAM_HSL[(i + 1) % len(TAM_HSL)]
+        t1 = t1 if t1 > t0 else 360.0
+        if t0 <= h < t1:
+            x = (h - t0) / (t1 - t0)
+            return {ten0: 1.0 - x, ten1: x}
+    return {TAM_HSL[0][0]: 1.0}
+
+
+def _hsl_goc(r: dict) -> dict:
+    """Số GỐC (mốc, trước khi tool chạm tới) của sáu ô HSL kênh da."""
+    crs = r.get("crs") or {}
+    return {k: get_f(crs, k, 0.0) for k in COT_HSL}
+
+
+def hsl_da_theo_trang_thai(items: list, cfg: dict) -> dict:
+    """HSL KÊNH DA (Loại buổi Kỷ yếu). Chạy SAU compute_values (cần WB cuối).
+
+    1. Màu da DỰ ĐOÁN trong Lightroom ở WB cuối (da_trong_lr) của từng ảnh có mặt,
+       so với màu da đích học từ ảnh hoàn thiện (skin_dich_hong[_ngoai]).
+    2. KÊNH DA = dải (Red / Orange / Yellow) có trọng số trung vị lớn nhất tại hue
+       da đo được — thường là Orange. Chỉ ghi dải đó; hai dải kia giữ số gốc.
+    3. Lệch hue / tỉ lệ chroma cần ở TÂM dải = lệch tại hue da / trọng số dải ở đó.
+       Trung vị cả buổi -> MỘT mức (xem DEFAULTS: theo từng ảnh không tốt hơn).
+    4. Mọi ảnh màu của buổi (kể cả ảnh không mặt) nhận cùng mức, cộng vào số gốc.
+       Ảnh tool đã từng ghi HSL (r["da_hsl"]) mà lần này không chỉnh -> trả số gốc.
+
+    Gán r["hsl_ghi"], r["hsl_moi"] {cột: số mới}. Trả về {"dai","hue","sat","n"}."""
+    for r in items:
+        for key in ("hsl_ghi", "hsl_moi", "hsl_thieu_cot"):
+            r.pop(key, None)
+    kq = {"dai": "", "hue": 0, "sat": 0, "n": 0}
+    catalog = cfg.get("source") == "catalog"
+    bat = bool(catalog and cfg.get("loai_buoi") == "ky_yeu" and cfg.get("hsl_da_ky_yeu"))
+    for r in items:
+        #  Ban xuat cua plugin CU khong co cot HSL: khong biet so goc -> khong ghi
+        if catalog and r.get("crs") and "HueAdjustmentOrange" not in r["crs"]:
+            r["hsl_thieu_cot"] = True
+    dai, hue, sat = "", 0, 0
+    if bat:
+        k_c = float(cfg.get("hsl_da_chroma_lr") or 1.0)
+        #  Mau da HOC TU ANH HOAN THIEN (khong phu thuoc o "trang hong" / grade)
+        ref_trong = cfg.get("skin_dich_hong") or dich_da(cfg)[0]
+        ref_ngoai = cfg.get("skin_dich_hong_ngoai") or ref_trong
+        mau = []
+        for r in items:
+            if r.get("bw") or r.get("hsl_thieu_cot") or not r.get("new_temp") or not r.get("face_rgb"):
+                continue
+            ref = ref_ngoai if _nhan_da_ngoai(r, cfg) else ref_trong
+            lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0), ref)
+            if lab is None:
+                continue
+            t_lab = mau_dich_lab(ref)
+            c_p = float(math.hypot(lab[1], lab[2])) * k_c
+            if c_p <= 1e-6:
+                continue
+            mau.append((hue_oklab_sang_lr(math.atan2(lab[2], lab[1])),
+                        hue_oklab_sang_lr(math.atan2(t_lab[2], t_lab[1])),
+                        c_p, float(math.hypot(t_lab[1], t_lab[2]))))
+        if len(mau) >= int(cfg.get("hsl_da_min_anh") or 1):
+            ts = [trong_so_hsl(m[0]) for m in mau]
+            w_tv = {d: float(np.median([float(dict(w).get(d, 0.0)) for w in ts])) for d in DAI_HSL_DA}
+            dai = max(DAI_HSL_DA, key=lambda d: w_tv[d])
+            us, vs = [], []
+            for (h_p, h_t, c_p, c_t), w in zip(mau, ts):
+                ww = max(float(dict(w).get(dai, 0.0)), 0.3)
+                us.append(((h_t - h_p + 180.0) % 360.0 - 180.0) / ww)
+                vs.append((c_t / c_p - 1.0) / ww)
+            k_h = float(cfg.get("hsl_k_hue") or 0.30)
+            k_s = float(cfg.get("hsl_k_sat") or 0.01)
+            hm_ = float(cfg.get("hsl_da_hue_max") or 50)
+            sm_ = float(cfg.get("hsl_da_sat_max") or 50)
+            hue = int(round(float(np.clip(float(np.median(us)) / k_h, -hm_, hm_))))
+            sat = int(round(float(np.clip(float(np.median(vs)) / k_s, -sm_, sm_))))
+    n = 0
+    for r in items:
+        if r.get("hsl_thieu_cot"):
+            continue
+        goc = _hsl_goc(r)
+        if dai and (hue or sat) and not r.get("bw"):
+            moi = dict(goc)
+            moi[f"HueAdjustment{dai}"] = float(np.clip(goc[f"HueAdjustment{dai}"] + hue, -100, 100))
+            moi[f"SaturationAdjustment{dai}"] = float(np.clip(goc[f"SaturationAdjustment{dai}"] + sat,
+                                                              -100, 100))
+            r["hsl_moi"], r["hsl_ghi"] = moi, True
+            n += 1
+            nhan = f"hsl-da:{dai}{hue:+d}/{sat:+d}"
+            if nhan not in str(r.get("notes", "")):
+                r["notes"] = (str(r.get("notes", "")) + ";" + nhan).strip(";")
+        elif r.get("da_hsl"):
+            r["hsl_moi"], r["hsl_ghi"] = goc, True
+    kq.update(dai=dai, hue=hue, sat=sat, n=n)
+    return kq
 
 
 def decide(items: list, cfg: dict) -> None:
@@ -6183,7 +6363,9 @@ EXPORT_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012",
                  # WhiteBalance la CHU ("As Shot", "Custom"...), khong phai so.
                  "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
                  # 8/10: B/W + Color Grading / Saturation / Vibrance (COT_MAU)
-                 "ConvertToGrayscale", *COT_MAU]
+                 "ConvertToGrayscale", *COT_MAU,
+                 # 8/10 vong 5: HSL Red / Orange / Yellow (COT_HSL)
+                 *COT_HSL]
 BASELINE_NAME = "_autotone_baseline.tsv"
 
 # So anh bi bo qua vi nguoi dung da sua tay o lan chay gan nhat — giao dien doc
@@ -6224,6 +6406,13 @@ def canh_bao_plugin_cu(export: dict, cfg: dict | None = None) -> str:
                 "biết số gốc nên KHÔNG grade ảnh nào (WB, Exposure vẫn ghi bình thường). "
                 "Vào Lightroom: File > Plug-in Manager > AutoTone > Reload Plug-in, rồi "
                 "bấm “Nạp lại catalog”.")
+    c_ = dict(cfg or {})
+    if (recs and c_.get("loai_buoi") == "ky_yeu" and c_.get("hsl_da_ky_yeu")
+            and not any("HueAdjustmentOrange" in v for v in recs)):
+        return ("Loại buổi Kỷ yếu có chỉnh HSL kênh da nhưng plugin trong Lightroom là bản "
+                "CŨ, chưa xuất HSL của preset — tool KHÔNG chỉnh HSL ảnh nào (WB, Exposure "
+                "vẫn ghi bình thường). Vào Lightroom: File > Plug-in Manager > AutoTone > "
+                "Reload Plug-in, rồi bấm “Nạp lại catalog”.")
     if not recs or any("WhiteBalance" in v for v in recs):
         return ""
     khong = sum(1 for v in recs if get_f(v, "Highlights2012", 16.0) == 0
@@ -6714,7 +6903,7 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
                         rec = dict(rec, **bu)
                     #  Cot mau (8/10) moc cu de trong: attach_catalog_settings da
                     #  quyet so goc (bu_cot_mau) va dat vao ban ghi moi -> lay theo
-                    bu = {k: m[k] for k in COT_MAU
+                    bu = {k: m[k] for k in (*COT_MAU, *COT_HSL)
                           if str(rec.get(k) if rec.get(k) is not None else "").strip() == ""
                           and str(m.get(k) if m.get(k) is not None else "").strip() != ""}
                     if bu:
@@ -6728,7 +6917,7 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
     cols = ["Exposure2012", "Highlights2012", "Shadows2012",
             "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
             "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
-            *COT_MAU]
+            *COT_MAU, *COT_HSL]
     # Cot path ghi ban Lightroom neu co, khong thi ghi khoa normcase. Ghi de
     # bang khoa normcase se lam mat cach viet hoa/thuong that va lan chay sau
     # gui job voi duong dan Lightroom khong nhan ra.
@@ -6943,6 +7132,7 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
     """
     base = load_baseline(folder)
     da_grade = anh_da_grade(folder) if not bo_moc else set()
+    da_hsl = anh_da_hsl(folder) if not bo_moc else set()
     matched = missing = 0
     for r in items:
         #[[ khoa_duong_dan, KHONG phai normcase: ban xuat va moc deu doc qua
@@ -6975,7 +7165,12 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
             if bu:
                 old = dict(old, **bu)
                 base[key] = old
+            bu = bu_cot_hsl(old, cur, key in da_hsl)
+            if bu:
+                old = dict(old, **bu)
+                base[key] = old
         r["da_grade"] = key in da_grade
+        r["da_hsl"] = key in da_hsl
         if old is not None:
             #[[ Moc cu la preset DAY DU, catalog lai dang o trang thai preset bo
             #   trong WB/Tone (As Shot, Tone 0) -> anh da duoc import / dat lai
@@ -7323,6 +7518,15 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         for r in items:
             r.pop("gr_ghi", None)
         print(f"[!] Color Grading loi, bo qua: {ex}", file=sys.stderr)
+    #  HSL kenh da (Ky yeu) — cung can WB cuoi. Hong thi khong ghi HSL anh nao.
+    global HSL_DA
+    try:
+        HSL_DA = hsl_da_theo_trang_thai(items, cfg)
+    except Exception as ex:                                  # noqa: BLE001
+        HSL_DA = {}
+        for r in items:
+            r.pop("hsl_ghi", None)
+        print(f"[!] HSL kenh da loi, bo qua: {ex}", file=sys.stderr)
 
 
 def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None = None,
@@ -7585,7 +7789,10 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  #   doc theo ten cot. ]]
                  "ConvertToGrayscale",
                  # 8/10: banh xe highlight (grade_theo_trang_thai cong vecto vao)
-                 "SplitToningHighlightHue", "SplitToningHighlightSaturation"]
+                 "SplitToningHighlightHue", "SplitToningHighlightSaturation",
+                 # 8/10 vong 5: HSL kenh da (hsl_da_theo_trang_thai) — o trong =
+                 # khong dung toi; plugin doc theo TEN cot nen khong sua Lua
+                 *COT_HSL]
 
 # File job vừa ghi gần nhất — giao diện theo dõi nó tới khi plugin đổi đuôi .done
 LAST_JOB: Path | None = None
@@ -7861,6 +8068,9 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             "1" if r.get("bw") else "",
             *([str(int(r["gr_hi"][0])), str(int(r["gr_hi"][1]))]
               if gr_hi else ["", ""]),
+            # HSL kenh da: ca sau o (so goc + phan tool chinh o dai da) hoac trong het
+            *([str(int(dict(r["hsl_moi"]).get(k, 0))) for k in COT_HSL]
+              if r.get("hsl_ghi") and r.get("hsl_moi") else [""] * len(COT_HSL)),
         ])
     if not rows:
         return None

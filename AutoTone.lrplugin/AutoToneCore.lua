@@ -599,7 +599,13 @@ local EXPORT_FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
                         "SplitToningHighlightHue", "SplitToningHighlightSaturation",
                         "SplitToningBalance", "ColorGradeBlending",
                         "ColorGradeGlobalHue", "ColorGradeGlobalSat",
-                        "Saturation", "Vibrance" }
+                        "Saturation", "Vibrance",
+                        --[[ 8/10 vong 5: HSL Red / Orange / Yellow cua preset.
+                             autotone chinh DAI DA (thuong la Orange) bang cach
+                             CONG vao so goc nay. Dat CUOI: app doc theo ten cot. ]]
+                        "HueAdjustmentRed", "SaturationAdjustmentRed",
+                        "HueAdjustmentOrange", "SaturationAdjustmentOrange",
+                        "HueAdjustmentYellow", "SaturationAdjustmentYellow" }
 -- Rating KHONG phai develop setting nen phai lay rieng bang getRawMetadata,
 -- xem cho ghi tung dong ben duoi. Can de doi chieu voi nhan loc anh cua nguoi dung.
 M.EXPORT_FIELDS = EXPORT_FIELDS

@@ -1676,9 +1676,11 @@ class App(ttk.Frame):
                      f"(+{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Temperature', 0)):.0f} K, "
                      f"Tint +{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Tint', 0)):.0f}); "
                      "cảnh đèn vàng nặng (cân trắng kéo lạnh gần hết mức) sáng thêm "
-                     f"+{float(at.DEFAULTS.get('bu_sang_canh_am_ky_yeu', 0.5)):.1f} EV. "
-                     "Không tự bật Color Grading (nó ám màu cả khung). Chọn xong vẫn "
-                     "sửa được số ở thanh dưới."
+                     f"+{float(at.DEFAULTS.get('bu_sang_canh_am_ky_yeu', 0.5)):.1f} EV; "
+                     "màu da chỉnh bằng HSL ở ĐÚNG dải màu chứa da đo được (thường là "
+                     "Orange), một mức chung cả buổi, cộng vào HSL của preset — các dải "
+                     "khác không đụng. Không tự bật Color Grading (nó ám màu cả khung). "
+                     "Chọn xong vẫn sửa được số ở thanh dưới."
             ).pack(side="right", padx=(8, 0))
         NGAN_LB = {"cuoi": "Cưới", "su_kien": "Sự kiện", "ky_yeu": "Kỷ yếu"}
         self.cb_loai_buoi = gd.PhanDoan(
@@ -4164,6 +4166,10 @@ class App(ttk.Frame):
             msg += " · buổi đã làm lại (mốc cũ đã xoá) → tính từ catalog hiện tại"
         elif dl:
             msg += " · cả buổi đã áp lại preset sau lần ghi trước → tính từ trạng thái mới"
+        #  8/10 vong 5: HSL kenh da (Ky yeu) — noi ra dai nao, bao nhieu
+        hsl = dict(getattr(at, "HSL_DA", None) or {})
+        if hsl.get("dai") and (hsl.get("hue") or hsl.get("sat")):
+            msg += f" · HSL da ({hsl['dai']}): Hue {int(hsl['hue']):+d} / Sat {int(hsl['sat']):+d}"
         ngoai = sum(1 for r in self.items if r.get("ngoai_xuat"))
         if ngoai:
             msg += f" · {ngoai} ảnh không có trong bản xuất Lightroom → không ghi"
@@ -4407,10 +4413,15 @@ class App(ttk.Frame):
             gui = sum(1 for r in self.items
                       if "new_exposure" in r and not r.get("ngoai_xuat"))
             n_gr = sum(1 for r in self.items if r.get("gr_ghi") and r.get("gr_sat"))
+            hsl = dict(getattr(at, "HSL_DA", None) or {})
+            n_hsl = sum(1 for r in self.items if r.get("hsl_ghi"))
             ok = True if not hoi else messagebox.askokcancel(
                 "Gửi vào Lightroom",
                 f"Gửi {gui} ảnh vào Lightroom ({n} ảnh đổi sáng"
-                + (f", {n_gr} ảnh Color Grading trắng hồng" if n_gr else "") + ").\n\n"
+                + (f", {n_gr} ảnh Color Grading trắng hồng" if n_gr else "")
+                + (f", {n_hsl} ảnh HSL da {hsl.get('dai')} Hue {int(hsl.get('hue') or 0):+d}"
+                   f" / Sat {int(hsl.get('sat') or 0):+d}"
+                   if n_hsl and hsl.get("dai") else "") + ").\n\n"
                 "Plugin áp thẳng vào catalog — KHÔNG cần Read Metadata from File. "
                 "Mốc gốc giữ trong _autotone_baseline.tsv: gửi lại bao nhiêu lần "
                 "cũng tính từ preset gốc, không cộng dồn."
