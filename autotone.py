@@ -2008,8 +2008,13 @@ ATN_FIELDS = {"Exposure2012": "BaseExposure", "Highlights2012": "BaseHighlights"
               "ParametricLights": "BaseLights_P",
               "ParametricDarks": "BaseDarks_P",
               "ParametricShadows": "BaseShadows_P",
-              # Color Grading: chi Sat can moc (Hue la goc, ghi de nen khong can)
-              "ColorGradeMidtoneSat": "BaseGradeMidSat"}
+              #[[ Color Grading: 8/10 tool CONG VECTO vao banh xe preset (xem
+              #   grade_theo_trang_thai) nen can moc ca Hue — truoc chi moc Sat
+              #   vi Hue bi ghi de thang 350. Them banh xe highlight. ]]
+              "ColorGradeMidtoneSat": "BaseGradeMidSat",
+              "ColorGradeMidtoneHue": "BaseGradeMidHue",
+              "SplitToningHighlightHue": "BaseGradeHiHue",
+              "SplitToningHighlightSaturation": "BaseGradeHiSat"}
 
 
 def sidecar_for(raw: Path) -> Path | None:
@@ -2707,28 +2712,32 @@ DEFAULTS = {
     # Chan tren noi long theo p90: anh su kien chay 25-30% van con dep khi them
     # mot cham tuong phan; chi bo qua nhung anh chay du doi.
     "curve_contrast_max_clip": 30.0,
-    #[[ Color Grading — dua tone anh ve huong DA TRANG HONG.
+    #[[ "DAY TONE VE DA TRANG HONG" (grade) — ky yeu, concept. Bat thi:
+    #     1. WB dung dich da trang hong (skin_ref_rgb) cho MOI anh, ke ca ngoai
+    #        troi (tat: anh ngoai troi keo ve da ram skin_ref_rgb_ngoai).
+    #     2. Color Grading tinh theo TRANG THAI — xem grade_theo_trang_thai():
+    #        mau da du doan trong Lightroom (WB cuoi, Saturation / Vibrance /
+    #        toning cua preset) con lech hue bao nhieu so voi dich thi xoay bay
+    #        nhieu; CONG vecto vao banh xe Midtone + Highlight cua preset.
     #
-    #   Khac WB o cho: WB keo nhiet do CA ANH, con Color Grading chinh rieng
-    #   tung vung sang (shadow / midtone / highlight). Da nguoi nam chu yeu o
-    #   MIDTONE, nen chinh midtone la nham dung da ma khong lam nen bi am mau.
-    #
-    #   Do that tren anh su kien: ty le da do duoc ~[1.55, 0.87, 0.59] trong khi
-    #   da trang hong dich la [1.26, 0.92, 0.82] -> da dang THUA DO, THIEU XANH
-    #   LAM (den san khau am vang). Color Grading midtone keo lai phan con lai
-    #   sau khi WB da lam phan tho.
-    #
-    #   Preset saymedia da co ColorGradeMidtoneHue=47 (vang cam) + Sat=10, va
-    #   SplitToning shadow/highlight nga xanh lam. autotone CONG THEM chu khong
-    #   de — nen chat anh giu nguyen.
+    #   8/10 BO cach cu (hue 350 midtone + hue 220 bong theo do "thieu xanh lam"
+    #   cua preview): sai huong (350 la DO, them vao da cam la da do hon — buoi ky
+    #   yeu raw 19.4 "mau loan, khong con trang hong"), so tren preview chu khong
+    #   tren anh Lightroom, va hai khoa bong ColorGradeShadow* Lightroom khong co.
     #]]
     "grade": False,           # MAC DINH TAT — bat khi muon day manh ve trang hong
-    "grade_hue": 350,         # huong mau dich cho midtone (350 = hong nhat)
-    "grade_sat_max": 12,      # tran do bao hoa them vao midtone (0-100)
-    "grade_gain": 18.0,       # do lech da -> bao nhieu diem sat
-    "grade_shadow_hue": 220,  # bong do nga xanh lam nhe cho da bat len
-    "grade_shadow_sat_max": 6,
-    "grade_lum": 0,           # chinh do sang rieng midtone (-100..100), 0 = khong
+    "grade_sat_max": 12,      # tran Sat tool CONG vao moi banh xe (0-100)
+    "grade_gain_hue": 0.45,   # diem Sat cho moi do hue (OkLab) da con lech dich
+    "da_trang_hong": False,   # dich hong cho ca anh ngoai troi ma khong grade
+    #[[ WB THEO TRANG THAI — xem dau decide(): can tren mau da DU DOAN trong
+    #   Lightroom o WB preset, khong tren preview cua may. Chi anh preset DAT WB;
+    #   quy trinh preset bo trong WB (nen_wb) khong doi. False = nhu truoc 8/10. ]]
+    "wb_theo_trang_thai": True,
+    #[[ Tint As Shot THANG ADOBE theo may — MakerNote co K, khong co tint. So
+    #   that tu ban xuat catalog 6/10 (Lightroom da render As Shot): A7M4 K may
+    #   5000 -> 5100 / +14, 5600 -> 5550 / +10 (123 anh); A7M5 4900 -> 4750 / +16,
+    #   5400 -> 5150 / +16 (44 anh). "" = may chua co cap nao. ]]
+    "wb_asshot_tint": {"ILCE-7M4": 12.0, "ILCE-7M5": 16.0, "": 12.0},
     "wb": "skin",             # skin | off | asshot | grey | scene
     # "skin": lay nhiet do may do duoc cho canh do (nhu asshot) roi cong them do
     # nga am + nga hong, de da len "trang hong". Hai so duoi la khau vi, chinh duoc.
@@ -3785,6 +3794,63 @@ TONE_NHOM = ("Contrast2012", "Highlights2012", "Shadows2012", "Whites2012", "Bla
 COT_PLUGIN_MOI = ("WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012")
 
 
+#[[ Cot plugin xuat tu 8/10: Color Grading / Saturation / Vibrance cua preset —
+#   de grade_theo_trang_thai() du doan da trong Lightroom va cong vecto vao so
+#   GOC. Luu ca vao moc (save_baseline): lan ghi dau tool doi midtone /
+#   highlight, lan sau catalog khong con so goc nua. ]]
+COT_MAU = ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
+           "SplitToningShadowHue", "SplitToningShadowSaturation",
+           "SplitToningHighlightHue", "SplitToningHighlightSaturation",
+           "SplitToningBalance", "ColorGradeBlending",
+           "ColorGradeGlobalHue", "ColorGradeGlobalSat", "Saturation", "Vibrance")
+
+
+def anh_da_grade(folder: Path, job_dir: Path | None = None) -> set:
+    """Khoá ảnh (khoa_duong_dan) mà một job bất kỳ của buổi này từng gửi Color
+    Grading — catalog của chúng đang mang số TOOL ghi ở midtone, không phải số
+    preset."""
+    d = Path(job_dir or LR_JOB_DIR)
+    if not d.is_dir():
+        return set()
+    ten = ten_job(Path(folder).name)
+    out = set()
+    for jp in sorted(d.glob(f"apply_*_{ten}.done")) + sorted(d.glob(f"apply_*_{ten}.tsv")):
+        if "khoiphuc" in jp.name.lower():
+            continue
+        try:
+            with io.open(jp, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="	"):
+                    if str(row.get("ColorGradeMidtoneSat") or "").strip() and row.get("path"):
+                        out.add(khoa_duong_dan(row["path"]))
+        except (OSError, csv.Error):
+            continue
+    return out
+
+
+def bu_cot_mau(moc: dict, moi: dict, da_grade: bool) -> dict:
+    """Cột COT_MAU mà mốc để TRỐNG (chốt từ plugin trước 8/10) lấy từ bản xuất
+    mới. -> {cột: giá trị} cần bù.
+
+    #[[ Tool CHUA BAO GIO ghi Saturation / Vibrance / banh xe bong, highlight,
+    #   global — so trong catalog chinh la so preset. RIENG midtone: anh ma job cu
+    #   da gui Color Grading (da_grade) thi catalog dang mang hue 350 / sat cua
+    #   tool -> so goc khong con o dau ca; coi la 0 / 0 (preset khong grade
+    #   midtone — dung voi Bong22 va preset SAY doi moi). ]]
+    """
+    def rong(v) -> bool:
+        return str(v if v is not None else "").strip() == ""
+
+    bu = {}
+    for k in COT_MAU:
+        if not rong(moc.get(k)):
+            continue
+        if k in ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat") and da_grade:
+            bu[k] = "0"
+        elif not rong(moi.get(k)):
+            bu[k] = moi[k]
+    return bu
+
+
 def bu_cot_plugin_moi(moc: dict, moi: dict) -> dict:
     """Cột COT_PLUGIN_MOI mà mốc để TRỐNG (chốt từ plugin cũ) lấy được từ bản
     ghi mới. -> {cột: giá trị} cần bù, {} nếu không bù.
@@ -4109,12 +4175,443 @@ def _skin_wb(cfg: dict, temp_adj: float, tint_adj: float,
             float(np.clip(tint_adj, -cfg["wb_tint_max"], cfg["wb_tint_max"])))
 
 
+# ======================================================================
+# MÔ HÌNH MÀU LIGHTROOM — Color Grading tính theo TRẠNG THÁI từng ảnh
+# ======================================================================
+#[[ 8/10, buoi ky yeu "raw 19.4" (preset Bong22: Custom 5950 / +19, Saturation
+#   +19, Vibrance +25, Highlights toning 36/10). Nguoi dung: "bat Color Grading
+#   thi mau loan, khong con trang hong" — va: "can thiep Color Grading phai tinh
+#   xem anh dang o muc nao, can can thiep ra sao de co ket qua dung yeu cau".
+#
+#   CACH CU SAI HAI CHO:
+#     1. So SAI CHO: mau da do tren preview JPEG cua MAY — render o WB may
+#        (K MakerNote 5000-5900). Lightroom render o WB preset (5950 / +19) roi
+#        cong Saturation / Vibrance / toning cua preset: da trong LR am hon
+#        preview ~0.5 stop va dam hon. Tool khong biet, cu the grade.
+#     2. Grade SAI HUONG: hue 350 la DO-hong. Them vao da cam la them R -> da
+#        DO va dam hon, khong "trang hong" hon. Da cam -> trang hong la BOT VANG
+#        (OkLab b giam), tuc huong tim-hong — ma cung chi khi da con vang.
+#
+#   CACH MOI, tung anh (grade_theo_trang_thai):
+#     1. Da trong LR = da do duoc, doi tu WB may sang WB CUOI (WB preset + phan
+#        tool chinh) bang thuat toan nhiet do / tint cua Adobe DNG SDK — dung
+#        thang so Lightroom hien — va thich nghi Bradford.
+#     2. Cong Saturation / Vibrance va Color Grading SAN CO cua preset (OkLab;
+#        banh xe mau Sat 100 = lech 0.09 OkLab, cung mo hinh lightcraft).
+#     3. So voi mau dich o CUNG do sang -> chi XOAY hue ve phia mau dich (va bu
+#        chroma neu da nhat hon dich), KHONG bot chroma: bot chroma bang grading
+#        la nhuom mau doi dien len vung trang.
+#     4. Vecto cua tool CONG vao banh xe preset (khong ghi de hue), ca midtone
+#        lan highlight: da sang nam giua hai vung, Lightroom chia bao nhieu cho
+#        moi vung thi da van nhan du mot vecto.
+#]]
+
+#: Bang Robertson (1968) trong Adobe DNG SDK (dng_temperature.cpp, kTempTable):
+#: (r = 1e6/K, u, v, do doc t). Thanh Temperature / Tint cua Lightroom la thang nay.
+_ROBERTSON = (
+    (0, 0.18006, 0.26352, -0.24341), (10, 0.18066, 0.26589, -0.25479),
+    (20, 0.18133, 0.26846, -0.26876), (30, 0.18208, 0.27119, -0.28539),
+    (40, 0.18293, 0.27407, -0.30470), (50, 0.18388, 0.27709, -0.32675),
+    (60, 0.18494, 0.28021, -0.35156), (70, 0.18611, 0.28342, -0.37915),
+    (80, 0.18740, 0.28668, -0.40955), (90, 0.18880, 0.28997, -0.44278),
+    (100, 0.19032, 0.29326, -0.47888), (125, 0.19462, 0.30141, -0.58204),
+    (150, 0.19962, 0.30921, -0.70471), (175, 0.20525, 0.31647, -0.84901),
+    (200, 0.21142, 0.32312, -1.0182), (225, 0.21807, 0.32909, -1.2168),
+    (250, 0.22511, 0.33439, -1.4512), (275, 0.23247, 0.33904, -1.7298),
+    (300, 0.24010, 0.34308, -2.0637), (325, 0.24702, 0.34655, -2.4681),
+    (350, 0.25591, 0.34951, -2.9641), (375, 0.26400, 0.35200, -3.5814),
+    (400, 0.27218, 0.35407, -4.3633), (425, 0.28039, 0.35577, -5.3762),
+    (450, 0.28863, 0.35714, -6.7262), (475, 0.29685, 0.35823, -8.5955),
+    (500, 0.30505, 0.35907, -11.324), (525, 0.31320, 0.35968, -15.628),
+    (550, 0.32129, 0.36011, -23.325), (575, 0.32931, 0.36038, -40.770),
+    (600, 0.33724, 0.36051, -116.45))
+_TINT_SCALE = -3000.0                    # dng_temperature: kTintScale
+
+_SRGB_XYZ = np.array([[0.4124564, 0.3575761, 0.1804375],
+                      [0.2126729, 0.7151522, 0.0721750],
+                      [0.0193339, 0.1191920, 0.9503041]])
+_XYZ_SRGB = np.linalg.inv(_SRGB_XYZ)
+_BRADFORD = np.array([[0.8951, 0.2664, -0.1614],
+                      [-0.7502, 1.7135, 0.0367],
+                      [0.0389, -0.0685, 1.0296]])
+_BRADFORD_INV = np.linalg.inv(_BRADFORD)
+#: Do lech OkLab cua mot banh xe Color Grading o Sat 100 (mo hinh lightcraft —
+#: Adobe khong cong bo). Chi quyet dinh ghi bao nhieu diem Sat cho mot do lech
+#: can co; tran grade_sat_max chan hai dau.
+GRADE_OKLAB_100 = 0.09
+
+
+def xy_adobe(temp: float, tint: float = 0.0) -> tuple[float, float]:
+    """Nhiệt độ / tint THANG LIGHTROOM -> toạ độ xy (dng_temperature::Get_xy_coord).
+
+    Kiểm: 2856 K tint 0 -> (0.4475, 0.4074), đúng nguồn sáng chuẩn A."""
+    r = 1e6 / max(float(temp), 1000.0)
+    off = float(tint) * (1.0 / _TINT_SCALE)
+    B = _ROBERTSON
+    for i in range(30):
+        if r < B[i + 1][0] or i == 29:
+            f = (B[i + 1][0] - r) / (B[i + 1][0] - B[i][0])
+            u = B[i][1] * f + B[i + 1][1] * (1.0 - f)
+            v = B[i][2] * f + B[i + 1][2] * (1.0 - f)
+            n1, n2 = math.hypot(1.0, B[i][3]), math.hypot(1.0, B[i + 1][3])
+            uu = (1.0 / n1) * f + (1.0 / n2) * (1.0 - f)
+            vv = (B[i][3] / n1) * f + (B[i + 1][3] / n2) * (1.0 - f)
+            n3 = math.hypot(uu, vv)
+            u += uu / n3 * off
+            v += vv / n3 * off
+            d = u - 4.0 * v + 2.0
+            return 1.5 * u / d, v / d
+    return 0.3457, 0.3585                                    # khong toi duoc
+
+
+def _non_trang(temp: float, tint: float) -> np.ndarray:
+    """Đáp ứng nón (Bradford) của điểm trắng (temp, tint), Y = 1."""
+    x, y = xy_adobe(temp, tint)
+    return _BRADFORD @ np.array([x / y, 1.0, (1.0 - x - y) / y])
+
+
+def doi_wb(rgb_lin, tu: tuple, sang: tuple) -> np.ndarray:
+    """Màu (RGB tuyến tính sRGB) render ở WB `tu` -> cùng vật đó render ở WB `sang`.
+
+    Đổi WB trong Lightroom = đổi điểm trắng được thích nghi về D65; hai lần render
+    chênh nhau đúng một phép thích nghi Bradford nón(tu) / nón(sang). Tăng
+    Temperature -> ảnh ẤM hơn, đúng chiều thanh trượt."""
+    k = _non_trang(*tu) / _non_trang(*sang)
+    xyz = _SRGB_XYZ @ np.asarray(rgb_lin, dtype=np.float64)
+    return _XYZ_SRGB @ (_BRADFORD_INV @ (k * (_BRADFORD @ xyz)))
+
+
+def oklab(rgb_lin) -> np.ndarray:
+    """RGB tuyến tính sRGB -> OkLab (L, a, b)."""
+    r, g, b = (max(float(v), 0.0) for v in rgb_lin)
+    l_ = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1.0 / 3.0)
+    m_ = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1.0 / 3.0)
+    s_ = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1.0 / 3.0)
+    return np.array([0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+                     1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+                     0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_])
+
+
+_BANG_HUE = None                         # (hue Lightroom, goc OkLab da mo vong)
+
+
+def _bang_hue():
+    """Hue của bánh xe Color Grading (0-359, như HSV) -> góc OkLab của màu gốc
+    (H, S=1, V=1). Một bảng tính một lần.
+
+    Vùng xanh lam (hue 231-240) góc OkLab gần như đứng yên và lùi ~0.03° — đặc
+    điểm đã biết của OkLab. Ép đơn điệu (cộng một dốc rất nhỏ) để tra ngược
+    được; sai khác chỉ trong vùng màu nhìn như nhau."""
+    global _BANG_HUE
+    if _BANG_HUE is None:
+        import colorsys
+        hs = np.arange(0.0, 360.0, 0.25)
+        goc = [math.atan2(lab[2], lab[1]) for lab in
+               (oklab(srgb_to_linear(np.array(colorsys.hsv_to_rgb(h / 360.0, 1.0, 1.0))))
+                for h in hs)]
+        g = np.maximum.accumulate(np.unwrap(np.asarray(goc)))
+        _BANG_HUE = (hs, g + np.arange(len(g)) * 1e-9)
+    return _BANG_HUE
+
+
+def hue_lr_sang_oklab(hue: float) -> float:
+    hs, goc = _bang_hue()
+    return float(np.interp(float(hue) % 360.0, np.append(hs, 360.0),
+                           np.append(goc, goc[0] + 2.0 * math.pi)))
+
+
+def hue_oklab_sang_lr(goc: float) -> float:
+    hs, g = _bang_hue()
+    t = g[0] + (float(goc) - g[0]) % (2.0 * math.pi)
+    return float(np.interp(t, np.append(g, g[0] + 2.0 * math.pi),
+                           np.append(hs, 360.0))) % 360.0
+
+
+def banh_xe(hue: float, sat: float) -> np.ndarray:
+    """Bánh xe Color Grading (hue, sat) -> độ lệch OkLab (a, b) nó cộng vào."""
+    s = max(float(sat), 0.0) / 100.0 * GRADE_OKLAB_100
+    t = hue_lr_sang_oklab(hue)
+    return np.array([s * math.cos(t), s * math.sin(t)])
+
+
+def banh_xe_nguoc(v) -> tuple[int, int]:
+    """Độ lệch OkLab (a, b) -> (hue, sat) nguyên của bánh xe. Quá nhỏ -> (0, 0)."""
+    s = float(np.hypot(v[0], v[1])) / GRADE_OKLAB_100 * 100.0
+    if s < 0.5:
+        return 0, 0
+    return int(round(hue_oklab_sang_lr(math.atan2(v[1], v[0])))) % 360, int(round(s))
+
+
+def _theo_may(bang: dict | None, model: str, mac_dinh: float) -> float:
+    """Tra bảng {tên máy: số} theo tên máy khớp DÀI nhất; khoá "" là số chung."""
+    b = {str(k).upper(): float(v) for k, v in (bang or {}).items()}
+    m = str(model or "").upper()
+    khop = [k for k in b if k and k in m]
+    if khop:
+        return b[max(khop, key=len)]
+    return b.get("", mac_dinh)
+
+
+def wb_may_adobe(r: dict, cfg: dict) -> tuple[float, float] | None:
+    """WB MÁY đã dùng để render preview, THANG LIGHTROOM: (temp, tint); None nếu
+    không biết.
+
+    temp: As Shot thật trong catalog (ảnh đang As Shot Lightroom đã render), không
+    thì K trong MakerNote quy sang thang Adobe (wb_asshot_lech_mired, như
+    uoc_asshot). tint: số catalog nếu ảnh đang As Shot, không thì số mặc định theo
+    máy (wb_asshot_tint — MakerNote không có tint)."""
+    crs = r.get("crs") or {}
+    t = float(r.get("asshot_K") or 0.0) or _asshot_catalog(crs)
+    if t <= 0:
+        k = _so(r.get("wb_may_K"))
+        if not k or k <= 0:
+            return None
+        lech = _theo_may(cfg.get("wb_asshot_lech_mired"), str(r.get("model") or ""), 0.0)
+        t = 1e6 / max(1e6 / float(k) + lech, 20.0)
+    if _asshot_catalog(crs) > 0 and str(crs.get("Tint", "")).strip() != "":
+        ti = get_f(crs, "Tint", 0.0)
+    else:
+        ti = _theo_may(cfg.get("wb_asshot_tint"), str(r.get("model") or ""), 10.0)
+    return float(t), float(ti)
+
+
+def _wheel_preset(crs: dict) -> dict:
+    """Bốn bánh xe Color Grading của preset -> {vùng: vecto OkLab}."""
+    def v(kh, ks):
+        return banh_xe(get_f(crs, kh, 0.0), get_f(crs, ks, 0.0))
+    return {"bong": v("SplitToningShadowHue", "SplitToningShadowSaturation"),
+            "giua": v("ColorGradeMidtoneHue", "ColorGradeMidtoneSat"),
+            "sang": v("SplitToningHighlightHue", "SplitToningHighlightSaturation"),
+            "chung": v("ColorGradeGlobalHue", "ColorGradeGlobalSat")}
+
+
+#: Phan cua moi vung Color Grading roi len DA khi du doan tac dong cua preset.
+#: Da sang (trang hong) nam giua midtone va highlight; Adobe khong cong bo mat na
+#: vung — chia doi la gia dinh trung dung, ghi ro o day de con chinh.
+_VUNG_DA = {"bong": 0.0, "giua": 0.5, "sang": 0.5, "chung": 1.0}
+
+
+def mau_dich_lab(ref_rgb) -> np.ndarray:
+    """Màu đích (sRGB 0-255) -> OkLab."""
+    return oklab(srgb_to_linear(np.asarray(ref_rgb, dtype=np.float64) / 255.0))
+
+
+def da_trong_lr(r: dict, cfg: dict, crs: dict, temp: float, tint: float,
+                ref_rgb=None) -> np.ndarray | None:
+    """Màu da DỰ ĐOÁN trong Lightroom (OkLab) khi ảnh ở WB (temp, tint) và mang
+    Saturation / Vibrance / Color Grading của `crs`. Đưa về CÙNG độ sáng với màu
+    đích (chỉ so màu, không so sáng tối). None = không có màu da đo được.
+
+    Không biết WB máy thì coi preview đã render ở chính (temp, tint) — tức như
+    cách cũ, không đổi gì về WB."""
+    f = r.get("face_rgb")
+    if not f:
+        return None
+    rgb = np.asarray(f, dtype=np.float64)
+    may = wb_may_adobe(r, cfg)
+    if may is not None and temp > 0:
+        rgb = doi_wb(rgb, may, (float(temp), float(tint)))
+    rgb = np.maximum(rgb, 1e-6)
+    ref = srgb_to_linear(np.asarray(ref_rgb if ref_rgb is not None else cfg["skin_ref_rgb"],
+                                    dtype=np.float64) / 255.0)
+    y_ref = float(_SRGB_XYZ[1] @ ref)
+    y = float(_SRGB_XYZ[1] @ rgb)
+    if y > 0:
+        rgb = rgb * (y_ref / y)
+    lab = oklab(rgb)
+    c, h = float(math.hypot(lab[1], lab[2])), float(math.atan2(lab[2], lab[1]))
+    vib = get_f(crs, "Vibrance", 0.0) / 100.0
+    sat = get_f(crs, "Saturation", 0.0) / 100.0
+    if vib:
+        #  Vibrance day mau NHAT manh hon, va CHE da (nhu lightcraft / Lightroom)
+        low = 1.0 - min(c / 0.22, 1.0)
+        da = hue_lr_sang_oklab(25.0)
+        lech = (h - da + math.pi) % (2.0 * math.pi) - math.pi
+        che = 1.0 - 0.6 * math.exp(-(lech / 0.35) ** 2) if vib > 0 else 1.0
+        c *= max(1.0 + vib * low * low * che * 1.2, 0.0)
+    if sat:
+        c *= max(1.0 + sat, 0.0)
+    ab = np.array([c * math.cos(h), c * math.sin(h)])
+    for vung, vec in _wheel_preset(crs).items():
+        ab = ab + _VUNG_DA[vung] * vec
+    return np.array([lab[0], ab[0], ab[1]])
+
+
+#: Bon o Color Grading tool ghi (cong vecto vao so goc cua preset).
+COT_GRADE = ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
+             "SplitToningHighlightHue", "SplitToningHighlightSaturation")
+
+
+def _grade_goc(r: dict) -> dict:
+    """Số GỐC (trước khi tool chạm tới) của bốn ô Color Grading tool ghi."""
+    crs, atn = r.get("crs") or {}, r.get("atn") or {}
+    out = {}
+    for k in COT_GRADE:
+        mk = ATN_FIELDS.get(k)
+        out[k] = get_f(atn, mk, 0.0) if mk and mk in atn else get_f(crs, k, 0.0)
+    return out
+
+
+def grade_theo_trang_thai(items: list, cfg: dict) -> int:
+    """Color Grading theo TRẠNG THÁI từng ảnh — xem chú thích đầu mục. Chạy SAU
+    compute_values (cần WB cuối new_temp / new_tint). Gán:
+
+        r["gr_ghi"]           True = ghi Color Grading cho ảnh này
+        r["gr_mid"], r["gr_hi"]  (hue, sat) MỚI của bánh xe midtone / highlight
+        r["gr_hue"], r["gr_sat"] vecto CỦA TOOL (bảng, CSV, Chi tiết)
+
+    Trả về số ảnh có grade.
+
+    #[[ TRA VE SO GOC: anh lan truoc da bi tool grade (r["da_grade"], xem
+    #   attach_catalog_settings) ma lan nay khong grade — tat Color Grading, anh
+    #   B/W, da da dung mau — thi GHI LAI so goc. Truoc day tat Color Grading la
+    #   khong ghi o nao, nen hue 350 cua lan bat truoc nam lai trong catalog mai.
+    #
+    #   KHONG BIET SO GOC thi KHONG GHI: ban xuat tu plugin cu khong co cac cot
+    #   Color Grading -> coi la 0 thi xoa mat toning cua preset (Bong22:
+    #   Highlights 36/10). r["gr_thieu_cot"] de giao dien nhac Reload plugin. ]]
+    """
+    gain = float(cfg.get("grade_gain_hue", 0.45))
+    sat_max = float(cfg.get("grade_sat_max", 12))
+    tran = sat_max / 100.0 * GRADE_OKLAB_100
+    dich = mau_dich_lab(cfg["skin_ref_rgb"])
+    h_t = float(math.atan2(dich[2], dich[1]))
+    catalog = cfg.get("source") == "catalog"
+    for r in items:
+        for key in ("gr_ghi", "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot"):
+            r.pop(key, None)
+        r["gr_hue"] = r["gr_sat"] = 0
+        if catalog and r.get("crs") and "SplitToningHighlightSaturation" not in r["crs"]:
+            r["gr_thieu_cot"] = True
+            if r.get("da_grade"):
+                #  Midtone dang mang hue 350 cua tool cu, so goc coi la 0 / 0 (xem
+                #  bu_cot_mau) -> tra ve. Highlight: tool cu chua dung, de nguyen.
+                r["gr_mid"], r["gr_ghi"] = (0, 0), True
+            continue
+        if not cfg.get("grade") or r.get("bw") or not r.get("new_temp"):
+            continue
+        lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0))
+        if lab is None:
+            continue
+        ab = lab[1:]
+        if float(math.hypot(ab[0], ab[1])) <= 1e-6:
+            continue
+        #[[ XOAY hue da ve phia hue dich, giu chroma: vecto theo TIEP TUYEN tai
+        #   mau da, do manh ti le voi so do hue con lech (grade_gain_hue diem Sat
+        #   / do, tran grade_sat_max). Do tren raw 19.4: da du doan trong LR o
+        #   hue OkLab ~45 do, dich trang hong 17 do — mot banh xe Sat 12 chi xoay
+        #   duoc ~5 do, nen lay "dong het khoang cach" thi anh nao cung cham tran
+        #   va thanh mot mau co dinh. Ti le theo do lech thi da lech it grade
+        #   nhe, da da dung hue (lech < ~2 do) khong grade. KHONG bot chroma: bot
+        #   chroma bang grading la nhuom mau doi dien len vung trang. ]]
+        h_p = float(math.atan2(ab[1], ab[0]))
+        d = (h_t - h_p + math.pi) % (2.0 * math.pi) - math.pi
+        sat = min(gain * abs(math.degrees(d)), sat_max)
+        if sat < 1.0:
+            continue
+        huong = h_p + math.copysign(math.pi / 2.0, d)
+        r["_gr_v"] = sat / 100.0 * GRADE_OKLAB_100 * np.array([math.cos(huong),
+                                                                math.sin(huong)])
+
+    #  San phang trong canh nhu WB / Exposure: cung cho chup thi cung mot vecto
+    lvl = float(cfg.get("scene_level", 0.0))
+    if lvl > 0:
+        by_scene: dict = {}
+        for r in items:
+            if "_gr_v" in r:
+                by_scene.setdefault(r.get("scene"), []).append(r)
+        for g in by_scene.values():
+            if len(g) < int(cfg.get("scene_level_min", 4)):
+                continue
+            med = np.median(np.asarray([r["_gr_v"] for r in g]), axis=0)
+            for r in g:
+                r["_gr_v"] = r["_gr_v"] + (med - r["_gr_v"]) * lvl
+    #  Cung LOAT (chup lien, cung bo cuc / anh sang) -> cung MOT vecto, ke ca tam
+    #  khong thay mat — nhu dong_bo_loat lam voi Exposure / WB
+    if cfg.get("dong_bo_loat") and cfg.get("grade"):
+        for g in chia_loat(items, cfg):
+            vs = [r["_gr_v"] for r in g if "_gr_v" in r]
+            if not vs:
+                continue
+            med = np.median(np.asarray(vs), axis=0)
+            for r in g:
+                if not r.get("bw") and not r.get("gr_thieu_cot") and r.get("new_temp"):
+                    r["_gr_v"] = med
+
+    n = 0
+    for r in items:
+        v = r.pop("_gr_v", None)
+        if r.get("gr_thieu_cot"):
+            continue
+        goc = _grade_goc(r)
+        if v is not None:
+            dai = float(math.hypot(v[0], v[1]))
+            if dai > tran:
+                v = v * (tran / dai)
+            r["gr_hue"], r["gr_sat"] = banh_xe_nguoc(v)
+        if v is not None and r["gr_sat"] >= 1:
+            r["gr_mid"] = banh_xe_nguoc(banh_xe(goc["ColorGradeMidtoneHue"],
+                                                goc["ColorGradeMidtoneSat"]) + v)
+            r["gr_hi"] = banh_xe_nguoc(banh_xe(goc["SplitToningHighlightHue"],
+                                               goc["SplitToningHighlightSaturation"]) + v)
+            r["gr_ghi"] = True
+            n += 1
+            if "grade-trang-hong" not in str(r.get("notes", "")):
+                r["notes"] = (str(r.get("notes", "")) + f";grade-trang-hong:"
+                              f"{r['gr_hue']}/{r['gr_sat']}").strip(";")
+        elif r.get("da_grade"):
+            r["gr_mid"] = (int(goc["ColorGradeMidtoneHue"]), int(goc["ColorGradeMidtoneSat"]))
+            r["gr_hi"] = (int(goc["SplitToningHighlightHue"]),
+                          int(goc["SplitToningHighlightSaturation"]))
+            r["gr_ghi"] = True
+    return n
+
+
 def decide(items: list, cfg: dict) -> None:
     """Tính delta cho từng ảnh; ghi kết quả vào chính dict của ảnh."""
     mode = cfg["mode"]
     # Preset KHONG ap WB / Tone thi tinh tren nen SAY — xem nen_cho_anh()
     for r in items:
         r["crs_nen"] = nen_cho_anh(r.get("crs") or {}, cfg)
+
+    #[[ WB THEO TRANG THAI (8/10, buoi ky yeu raw 19.4, preset Custom 5950 / +19).
+    #
+    #   Mau da do tren preview cua MAY — render o WB may (Auto: 5000-5900 K).
+    #   Lightroom render o WB PRESET: 5950 / +19 am hon preview ~0.46 stop o anh
+    #   may dat 5000 K, gan nhu bang o anh may dat 5900 K. Tool khong biet nen
+    #   thay da "con lanh" va CONG them K (trung vi +95 K, nguoi dung: "WB tang K
+    #   qua nhieu"), va hai anh cung mot cho chup ma may chon WB khac nhau thi
+    #   lech nhau trong Lightroom ma tool khong thay.
+    #
+    #   Nay: da dung de can = da DU DOAN trong Lightroom o WB preset (doi_wb, mo
+    #   hinh Adobe DNG SDK). Chi khi preset DAT WB (Custom / Daylight...): quy
+    #   trinh preset bo trong WB (nen_wb, anh dang As Shot) da co _wb_theo_asshot
+    #   keo ve As Shot — cong them o day la tinh hai lan. Preset 5250 ma may dat
+    #   ~5250 (cac buoi da hieu chinh) thi phep doi ~0: khong doi gi.
+    #
+    #   Do manh tuong duong nhanh As Shot: skin_gain 0.6 x 900 K/stop tren phan
+    #   doi WB may -> preset (~2000 K/stop quanh 5500 K) ~ keo 27% ve WB may, nhanh
+    #   As Shot keo 35% (wb_asshot_pull) — cung mot y, hai quy trinh gan nhau.
+    #
+    #   CHI NGUON CATALOG: moc _autotone_baseline.tsv giu WhiteBalance GOC nen lan
+    #   chay lai biet anh von As Shot hay Custom. Duong sidecar ghi xong thi .xmp
+    #   mang WB Custom cua tool, moc atn khong giu WhiteBalance -> lan chay lai
+    #   tuong preset dat WB, tinh khac lan dau (test_preset_khong_wb_tone). ]]
+    for r in items:
+        r.pop("_da_lr", None)
+        r.pop("wb_trang_thai", None)
+        f = r.get("face_rgb")
+        if (not f or not cfg.get("wb_theo_trang_thai", True)
+                or cfg.get("source") != "catalog"):
+            continue
+        crs_n = r["crs_nen"]
+        if crs_n.get("__nen_wb"):
+            continue
+        t, ti = preset_val(r, "Temperature"), preset_val(r, "Tint")
+        may = wb_may_adobe(r, cfg)
+        if t > 0 and may is not None:
+            r["_da_lr"] = [float(x) for x in np.maximum(doi_wb(f, may, (t, ti)), 1e-6)]
+            r["wb_trang_thai"] = round(float(may[0])), round(float(may[1]))
 
     #[[ Quy hai thang đo về một.
     #
@@ -4199,12 +4696,24 @@ def decide(items: list, cfg: dict) -> None:
                 rt, ri = wb_cast(ref)
                 return mt - rt, mi - ri
 
-            ref_ngoai = cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
+            #[[ 8/10 KY YEU / CONCEPT TRANG HONG: dich da ngoai troi la da RAM
+            #   ([166,123,105], hoc tu anh PUBGday2 nguoi dung duyet) — dung cho
+            #   anh su kien. Buoi ky yeu concept muon da TRANG HONG ca ngoai nang:
+            #   che do "Ca buoi anh sang ngay" xep MOI anh vao nhom ngoai troi nen
+            #   ca buoi bi keo ve da ram, cong K (raw 19.4: trung vi +95 K, anh
+            #   ngoai troi +200..+340 K). Bat "Day tone ve da trang hong" (grade)
+            #   hoac da_trang_hong -> mot dich hong cho moi anh. Chi doi DICH o
+            #   day; phan loai ngoai troi (_nhan_da_ngoai) giu nguyen. ]]
+            if cfg.get("grade") or cfg.get("da_trang_hong"):
+                ref_ngoai = cfg["skin_ref_rgb"]
+            else:
+                ref_ngoai = cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
 
             def _hai_nhom(ds):
-                m_trong = [r["face_rgb"] for r in ds
+                #  _da_lr: da du doan trong Lightroom o WB preset (dau decide)
+                m_trong = [r.get("_da_lr") or r["face_rgb"] for r in ds
                            if r.get("face_rgb") and not _nhan_da_ngoai(r, cfg)]
-                m_ngoai = [r["face_rgb"] for r in ds
+                m_ngoai = [r.get("_da_lr") or r["face_rgb"] for r in ds
                            if r.get("face_rgb") and _nhan_da_ngoai(r, cfg)]
                 lt = _lech(m_trong, cfg["skin_ref_rgb"])
                 ln = _lech(m_ngoai, ref_ngoai)
@@ -4648,38 +5157,12 @@ def decide(items: list, cfg: dict) -> None:
             r["cv_hl"], r["cv_lt"] = cv_hl, cv_lt
             r["cv_dk"], r["cv_sh"] = cv_dk, cv_sh
 
-            #[[ Color Grading — day tone ve huong da trang hong.
-            #
-            #   Chi bat khi cfg["grade"]. Luong do bao hoa tinh theo do lech
-            #   THAT cua da so voi mau dich: da cang am vang thi cang keo manh,
-            #   da da dung roi thi gan nhu khong dung toi.
-            #
-            #   UU TIEN DA CHU THE: khong thay mat thi KHONG grade — grade mu
-            #   quang ca anh phong canh/toan canh se lam am mau vo co.
-            #]]
-            gr_hue = gr_sat = gr_shue = gr_ssat = gr_lum = 0
-            if cfg.get("grade") and r.get("face_rgb"):
-                f = np.asarray(r["face_rgb"], dtype=np.float64)
-                if f.mean() > 0:
-                    fr = f / f.mean()
-                    ref = srgb_to_linear(np.asarray(cfg["skin_ref_rgb"],
-                                                    dtype=np.float64) / 255.0)
-                    rr = ref / ref.mean()
-                    # thieu xanh lam bao nhieu -> keo bay nhieu ve phia hong/lam
-                    lack_b = float(rr[2] - fr[2])
-                    amount = float(np.clip(cfg["grade_gain"] * max(0.0, lack_b),
-                                           0.0, cfg["grade_sat_max"]))
-                    if amount >= 1.0:
-                        gr_hue = int(cfg["grade_hue"])
-                        gr_sat = int(round(amount))
-                        gr_shue = int(cfg["grade_shadow_hue"])
-                        gr_ssat = int(round(min(cfg["grade_shadow_sat_max"],
-                                                amount * 0.5)))
-                        gr_lum = int(cfg.get("grade_lum", 0))
-                        notes.append("grade-trang-hong")
-            r["gr_hue"], r["gr_sat"] = gr_hue, gr_sat
-            r["gr_shue"], r["gr_ssat"] = gr_shue, gr_ssat
-            r["gr_lum"] = gr_lum
+            #[[ Color Grading KHONG tinh o day nua (8/10): can WB CUOI cua anh
+            #   (preset + phan tool chinh, chi co sau compute_values) moi biet da
+            #   trong Lightroom dang o dau. Xem grade_theo_trang_thai(), plan()
+            #   goi sau compute_values. Cach cu (hue 350 theo do thieu xanh lam
+            #   cua preview) day da DO hon thay vi trang hong. ]]
+            r["gr_hue"], r["gr_sat"] = 0, 0
 
             #[[ Auto Transform (Upright) — chỉ cho ảnh nền kiến trúc/backdrop.
             #
@@ -4930,8 +5413,9 @@ def decide(items: list, cfg: dict) -> None:
                     for r in g_:
                         r[key] = r.get(key, 0.0) + (med - r.get(key, 0.0)) * lvl
 
-            for key in ("hl_adj", "sh_adj", "cv_hl", "cv_lt", "cv_dk", "cv_sh",
-                        "gr_sat", "gr_ssat"):
+            #  Color Grading san phang rieng, tren VECTO (a, b) chu khong tren
+            #  hue / sat — xem grade_theo_trang_thai()
+            for key in ("hl_adj", "sh_adj", "cv_hl", "cv_lt", "cv_dk", "cv_sh"):
                 vals = [r.get(key, 0) for r in group]
                 if not any(vals):
                     continue
@@ -4939,19 +5423,6 @@ def decide(items: list, cfg: dict) -> None:
                 for r in group:
                     cur = float(r.get(key, 0))
                     r[key] = int(round(cur + (med - cur) * lvl))
-
-            #[[ Hue phai GIONG HET, khong lam trung binh.
-            #
-            #   Hue la goc mau: trung binh 350 va 47 ra mot mau khong lien quan
-            #   toi ca hai. Lay gia tri xuat hien nhieu nhat trong canh.
-            #]]
-            for key in ("gr_hue", "gr_shue"):
-                vals = [r.get(key, 0) for r in group if r.get(key)]
-                if vals:
-                    common = max(set(vals), key=vals.count)
-                    for r in group:
-                        if r.get(key):
-                            r[key] = common
 
     dong_bo_loat(items, cfg)
     if cfg["wb"] in ("asshot", "skin"):
@@ -5040,7 +5511,7 @@ def dong_bo_loat(items: list, cfg: dict) -> int:
     if not cfg.get("dong_bo_loat"):
         return 0
     KHOA_F = ("delta_ev", "temp_adj", "tint_adj")
-    KHOA_I = ("hl_adj", "sh_adj", "cv_hl", "cv_lt", "cv_dk", "cv_sh", "gr_sat", "gr_ssat")
+    KHOA_I = ("hl_adj", "sh_adj", "cv_hl", "cv_lt", "cv_dk", "cv_sh")
     n = 0
     for i, g in enumerate(chia_loat(items, cfg)):
         co_mat = [r for r in g if not r.get("giu_nguyen_exposure")]
@@ -5205,7 +5676,6 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
     r["bw"] = bw
     if bw:
         r["gr_sat"] = 0
-        r["gr_ssat"] = 0
         r["temp_adj"] = 0.0
         r["tint_adj"] = 0.0
         if "den-trang" not in str(r.get("notes", "")):
@@ -5264,26 +5734,16 @@ def compute_values(r: dict, cfg: dict, crs: dict, atn: dict) -> dict:
             r["new_" + key] = val
             r["old_" + key] = int(base_v)
 
-    #[[ Color Grading: Sat CONG DON len preset, Hue thi GHI DE.
-    #
-    #   Hue la GOC mau (0-360), cong hai goc lai voi nhau la vo nghia — 47 + 350
-    #   khong ra mau nao ca. Nen huong thi dat thang, con do bao hoa moi cong
-    #   them vao phan preset da co.
-    #]]
-    if cfg.get("grade") and r.get("gr_sat"):
-        base_sat = get_f(atn, ATN_FIELDS["ColorGradeMidtoneSat"],
-                         get_f(crs, "ColorGradeMidtoneSat", 0.0))             if ATN_FIELDS["ColorGradeMidtoneSat"] in atn             else get_f(crs, "ColorGradeMidtoneSat", 0.0)
-        changes["ColorGradeMidtoneHue"] = str(int(r["gr_hue"]))
-        changes["ColorGradeMidtoneSat"] = fmt_i(int(np.clip(base_sat + r["gr_sat"],
-                                                            0, 100)))
-        if r.get("gr_ssat"):
-            base_ss = get_f(crs, "ColorGradeShadowSat", 0.0)
-            changes["ColorGradeShadowHue"] = str(int(r["gr_shue"]))
-            changes["ColorGradeShadowSat"] = fmt_i(int(np.clip(base_ss + r["gr_ssat"],
-                                                               0, 100)))
-        if r.get("gr_lum"):
-            changes["ColorGradeMidtoneLum"] = fmt_i(int(np.clip(r["gr_lum"], -100, 100)))
-        r["new_grade_sat"] = int(np.clip(base_sat + r["gr_sat"], 0, 100))
+    #[[ Color Grading: so MOI cua banh xe midtone / highlight da tinh san o
+    #   grade_theo_trang_thai() (plan goi sau compute_values, can WB cuoi).
+    #   Duong sidecar: write_sidecars goi lai compute_values SAU plan nen doc
+    #   duoc ngay. Ke ca truong hop TRA VE SO GOC (r["da_grade"]). ]]
+    if r.get("gr_ghi") and r.get("gr_mid"):
+        changes["ColorGradeMidtoneHue"] = str(int(r["gr_mid"][0]))
+        changes["ColorGradeMidtoneSat"] = fmt_i(int(np.clip(r["gr_mid"][1], 0, 100)))
+    if r.get("gr_ghi") and r.get("gr_hi"):
+        changes["SplitToningHighlightHue"] = str(int(r["gr_hi"][0]))
+        changes["SplitToningHighlightSaturation"] = fmt_i(int(np.clip(r["gr_hi"][1], 0, 100)))
 
     new_temp, new_tint = old_temp, old_tint
     if cfg["wb"] != "off" and old_temp <= 0:
@@ -5377,7 +5837,9 @@ EXPORT_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012",
                  "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
                  # 3/10: de nhan ra preset bo trong WB / Tone (preset_chua_ap).
                  # WhiteBalance la CHU ("As Shot", "Custom"...), khong phai so.
-                 "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012"]
+                 "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
+                 # 8/10: B/W + Color Grading / Saturation / Vibrance (COT_MAU)
+                 "ConvertToGrayscale", *COT_MAU]
 BASELINE_NAME = "_autotone_baseline.tsv"
 
 # So anh bi bo qua vi nguoi dung da sua tay o lan chay gan nhat — giao dien doc
@@ -5391,9 +5853,11 @@ CANH_BAO_XUAT = ""
 CANH_BAO_PLUGIN = ""
 
 
-def canh_bao_plugin_cu(export: dict) -> str:
+def canh_bao_plugin_cu(export: dict, cfg: dict | None = None) -> str:
     """"" neu on; khac "" khi ban xuat la cua plugin CU (khong co cot WhiteBalance)
     ma phan lon anh dang Highlights = Shadows = 0 — dau hieu preset bo trong Tone.
+    Hoac (8/10) bat "Day tone ve da trang hong" ma ban xuat chua co cot Color
+    Grading: tool khong biet toning / Saturation cua preset nen khong grade.
 
     #[[ VI SAO PHAI NOI: preset_chua_ap() can cot WhiteBalance / Contrast2012 de
     #   nhan ra quy trinh moi. Plugin cu khong xuat chung -> tool tinh nhu preset
@@ -5404,6 +5868,13 @@ def canh_bao_plugin_cu(export: dict) -> str:
     #]]
     """
     recs = [v for v in (export or {}).values() if isinstance(v, dict)]
+    if (recs and (cfg or {}).get("grade")
+            and not any("SplitToningHighlightSaturation" in v for v in recs)):
+        return ("Đang bật “Đẩy tone về da trắng hồng” nhưng plugin trong Lightroom là "
+                "bản CŨ, chưa xuất Color Grading / Saturation của preset — tool không "
+                "biết số gốc nên KHÔNG grade ảnh nào (WB, Exposure vẫn ghi bình thường). "
+                "Vào Lightroom: File > Plug-in Manager > AutoTone > Reload Plug-in, rồi "
+                "bấm “Nạp lại catalog”.")
     if not recs or any("WhiteBalance" in v for v in recs):
         return ""
     khong = sum(1 for v in recs if get_f(v, "Highlights2012", 16.0) == 0
@@ -5886,6 +6357,13 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path
                     bu = bu_cot_plugin_moi(rec, m)
                     if bu:
                         rec = dict(rec, **bu)
+                    #  Cot mau (8/10) moc cu de trong: attach_catalog_settings da
+                    #  quyet so goc (bu_cot_mau) va dat vao ban ghi moi -> lay theo
+                    bu = {k: m[k] for k in COT_MAU
+                          if str(rec.get(k) if rec.get(k) is not None else "").strip() == ""
+                          and str(m.get(k) if m.get(k) is not None else "").strip() != ""}
+                    if bu:
+                        rec = dict(rec, **bu)
                 moi[p] = rec
             base = moi
     #[[ Bon cot cuoi cho quy trinh preset bo trong WB / Tone (3/10): thieu chung
@@ -5894,7 +6372,8 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True) -> Path
     #   cot nay -> doc ra la quy trinh cu, dung nhu thuc te. ]]
     cols = ["Exposure2012", "Highlights2012", "Shadows2012",
             "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
-            "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012"]
+            "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
+            *COT_MAU]
     # Cot path ghi ban Lightroom neu co, khong thi ghi khoa normcase. Ghi de
     # bang khoa normcase se lam mat cach viet hoa/thuong that va lan chay sau
     # gui job voi duong dan Lightroom khong nhan ra.
@@ -5929,7 +6408,10 @@ def last_applied(folder: Path, job_dir: Path | None = None) -> dict:
     d = Path(job_dir or LR_JOB_DIR)
     if not d.is_dir():
         return {}
-    ten = Path(folder).name
+    #[[ 8/10: TEN DA CHUAN HOA nhu luc ghi job (ten_job): "raw 19.4" ->
+    #   "raw_19.4". Lay ten tho thi buoi co dau cach / dau tieng Viet khong bao
+    #   gio thay job nao -> khong nhan ra anh sua tay, ghi de len lang le. ]]
+    ten = ten_job(Path(folder).name)
     #[[ Bo qua job KHOI PHUC — day la cai bay lam mat cong sua tay lan thu hai.
     #
     #   khoi_phuc.py tra lai nhung anh nguoi dung sua tay bi ghi de. Job do BUOC
@@ -5994,7 +6476,7 @@ def ban_xuat_cu_hon_lan_ghi(folder: Path, job_dir: Path | None = None,
     d = Path(job_dir or LR_JOB_DIR)
     if not d.is_dir():
         return False, None, None
-    ten = Path(folder).name
+    ten = ten_job(Path(folder).name)          # nhu last_applied: ten da chuan hoa
     ghis = [q for q in sorted(d.glob(f"apply_*_{ten}.done"))
             if "khoiphuc" not in q.name.lower()]
     if not ghis:
@@ -6049,6 +6531,7 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
     Ảnh nào đã có mốc thì dùng mốc; chưa có thì lấy giá trị catalog hiện tại làm mốc.
     """
     base = load_baseline(folder)
+    da_grade = anh_da_grade(folder)
     matched = missing = 0
     for r in items:
         #[[ khoa_duong_dan, KHONG phai normcase: ban xuat va moc deu doc qua
@@ -6073,6 +6556,11 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
             if bu:
                 old = dict(old, **bu)
                 base[key] = old
+            bu = bu_cot_mau(old, cur, key in da_grade)
+            if bu:
+                old = dict(old, **bu)
+                base[key] = old
+        r["da_grade"] = key in da_grade
         if old is not None:
             #[[ Moc cu la preset DAY DU, catalog lai dang o trang thai preset bo
             #   trong WB/Tone (As Shot, Tone 0) -> anh da duoc import / dat lai
@@ -6351,7 +6839,7 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         #]]
         global SO_ANH_NGUOI_SUA, CANH_BAO_XUAT, CANH_BAO_PLUGIN
         CANH_BAO_XUAT = ""
-        CANH_BAO_PLUGIN = canh_bao_plugin_cu(export or {})
+        CANH_BAO_PLUGIN = canh_bao_plugin_cu(export or {}, cfg)
         if CANH_BAO_PLUGIN:
             print("[!] " + CANH_BAO_PLUGIN, file=sys.stderr)
         cu, t_xuat, t_ghi = ban_xuat_cu_hon_lan_ghi(Path(folder or "."),
@@ -6384,6 +6872,11 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
             except (OSError, TypeError, UnicodeDecodeError) as ex:
                 r["crs"], r["atn"] = {}, {}
                 r["notes"] = f"khong-doc-duoc-sidecar:{ex}"
+            #  Tool da tung ghi Color Grading: so trong .xmp khac moc goc atn:
+            r["da_grade"] = any(
+                ATN_FIELDS[k] in r["atn"]
+                and get_f(r["atn"], ATN_FIELDS[k], 0.0) != get_f(r["crs"], k, 0.0)
+                for k in COT_GRADE)
         #[[ KHONG uoc_asshot o duong sidecar: ghi xong thi .xmp mang WB Custom
         #   cua tool, moc atn chi giu nen 5250 — lan chay lai mat As Shot, ra so
         #   khac lan dau (4716 -> 5250). Duong catalog giu As Shot trong moc. ]]
@@ -6397,6 +6890,14 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
                 apply_to_sidecar(r, cfg, None, Path("."), dry=True)
         except Exception as ex:
             r["notes"] = (r.get("notes", "") + f";LOI:{ex}").strip(";")
+    #[[ Color Grading can WB CUOI (new_temp / new_tint) -> SAU compute_values.
+    #   Hong thi khong grade anh nao (va noi ra), khong duoc lam do ca buoi. ]]
+    try:
+        grade_theo_trang_thai(items, cfg)
+    except Exception as ex:                                  # noqa: BLE001
+        for r in items:
+            r.pop("gr_ghi", None)
+        print(f"[!] Color Grading loi, bo qua: {ex}", file=sys.stderr)
 
 
 def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None = None,
@@ -6636,10 +7137,13 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  # SO — khong phai sua mot dong Lua nao.
                  "ParametricHighlights", "ParametricLights",
                  "ParametricDarks", "ParametricShadows",
-                 # Color Grading — cung la so nguyen, plugin ghi duoc ngay
+                 #[[ Color Grading — so nguyen, plugin ghi bang s[key] = val.
+                 #   8/10: BO "ColorGradeShadowHue/Sat" — Lightroom KHONG CO hai
+                 #   khoa do (bong la SplitToningShadowHue / Saturation): ghi vao
+                 #   khong an, va buoc kiem chung bao 1083/1089 anh "CHUA nhan"
+                 #   (buoi raw 19.4). Bo ca ColorGradeMidtoneLum (tool khong chinh).
+                 #   Banh xe highlight nam CUOI danh sach. ]]
                  "ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
-                 "ColorGradeShadowHue", "ColorGradeShadowSat",
-                 "ColorGradeMidtoneLum",
                  # Rating di duong rieng trong plugin (setRawMetadata), khong
                  # phai develop setting — xem AutoToneCore.lua
                  "Rating",
@@ -6653,7 +7157,9 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  #[[ 8/10: anh den trang — "1" = giu Black & White (plugin doc
                  #   thanh true), o trong = khong dung toi. Dat CUOI: plugin cu
                  #   doc theo ten cot. ]]
-                 "ConvertToGrayscale"]
+                 "ConvertToGrayscale",
+                 # 8/10: banh xe highlight (grade_theo_trang_thai cong vecto vao)
+                 "SplitToningHighlightHue", "SplitToningHighlightSaturation"]
 
 # File job vừa ghi gần nhất — giao diện theo dõi nó tới khi plugin đổi đuôi .done
 LAST_JOB: Path | None = None
@@ -6899,6 +7405,10 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
                                            or r.get("new_tint") != r.get("old_tint")
                                            or bool(r.get("wb_ep_ghi")))
                       ) or bool(r.get("bw_tra_wb"))
+        # Color Grading: grade_theo_trang_thai() da tinh so MOI cua hai banh xe
+        # (moi banh xe ghi rieng — anh thieu cot mau chi tra midtone ve 0)
+        gr = bool(r.get("gr_ghi") and r.get("gr_mid"))
+        gr_hi = bool(r.get("gr_ghi") and r.get("gr_hi"))
         rows.append([
             # Ưu tiên đường dẫn Lightroom tự đọc ra (xem LR_PATH_KEY). Gửi đường
             # dẫn quét từ đĩa thì lệch hoa/thường là plugin không tìm thấy ảnh.
@@ -6913,11 +7423,9 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             *[str(int(r[k])) if k in r else ""
               for k in ("new_ParametricHighlights", "new_ParametricLights",
                         "new_ParametricDarks", "new_ParametricShadows")],
-            # Color Grading — ô trống nếu lần chạy này không grade
-            *([str(int(r["gr_hue"])), str(int(r.get("new_grade_sat", 0))),
-               str(int(r["gr_shue"])), str(int(r["gr_ssat"])),
-               str(int(r["gr_lum"]))]
-              if r.get("gr_sat") else ["", "", "", "", ""]),
+            # Color Grading midtone — ô trống nếu lần chạy này không ghi grade
+            *([str(int(r["gr_mid"][0])), str(int(r["gr_mid"][1]))]
+              if gr else ["", ""]),
             # ô trống = không đụng tới
             str(int(r["rating"])) if r.get("rating") else "",
             str(int(r["upright"])) if r.get("upright") else "",
@@ -6925,6 +7433,8 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             *[str(int(r["new_" + k])) if r.get("new_" + k) is not None else ""
               for k in ("Contrast2012", "Whites2012", "Blacks2012")],
             "1" if r.get("bw") else "",
+            *([str(int(r["gr_hi"][0])), str(int(r["gr_hi"][1]))]
+              if gr_hi else ["", ""]),
         ])
     if not rows:
         return None
@@ -6941,6 +7451,13 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
     tmp = dest.with_suffix(".part")
     tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.replace(tmp, dest)
+    #[[ 8/10: TRUOC DAY KHONG AI GAN LAST_JOB — giao dien (_ghi_xong) hoi no de
+    #   theo doi job vua gui, luon thay None nen bao "(khong gui job nao sang
+    #   Lightroom...)" ngay sau khi VUA gui. Buoi ky yeu raw 19.4: ghi lan 1 gui
+    #   1089 anh that ma dong trang thai noi khong gui gi -> nguoi dung tuong nut
+    #   Ghi hong. ]]
+    global LAST_JOB
+    LAST_JOB = dest
     return dest
 
 

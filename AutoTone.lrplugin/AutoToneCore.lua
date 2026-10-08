@@ -589,7 +589,17 @@ local EXPORT_FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
                         "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
                         "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
                         -- 8/10: anh dang Black & White trong catalog (1 / 0)
-                        "ConvertToGrayscale" }
+                        "ConvertToGrayscale",
+                        --[[ 8/10: Color Grading / Saturation / Vibrance cua preset.
+                             autotone du doan mau da trong Lightroom tu chung va
+                             CONG vecto grade vao so goc (khong ghi de). Dat CUOI:
+                             app cu doc theo ten cot. ]]
+                        "ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
+                        "SplitToningShadowHue", "SplitToningShadowSaturation",
+                        "SplitToningHighlightHue", "SplitToningHighlightSaturation",
+                        "SplitToningBalance", "ColorGradeBlending",
+                        "ColorGradeGlobalHue", "ColorGradeGlobalSat",
+                        "Saturation", "Vibrance" }
 -- Rating KHONG phai develop setting nen phai lay rieng bang getRawMetadata,
 -- xem cho ghi tung dong ben duoi. Can de doi chieu voi nhan loc anh cua nguoi dung.
 M.EXPORT_FIELDS = EXPORT_FIELDS

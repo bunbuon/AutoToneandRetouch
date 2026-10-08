@@ -1780,8 +1780,14 @@ class App(ttk.Frame):
         ct(g_ghim, self.v_sh, "Tự kéo Shadows khi bết tối",
            "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
-           "Color Grading vùng trung tính — da càng ngả vàng thì đẩy càng mạnh "
-           "về phía hồng; da đã đúng màu thì gần như không đụng. Ảnh không "
+           "Kỷ yếu, concept: da trắng hồng cả ảnh ngoài trời.\n"
+           "· Cân trắng dùng đích da trắng hồng cho MỌI ảnh (tắt thì ảnh ngoài "
+           "trời kéo về da rám nắng).\n"
+           "· Color Grading tính trên màu da DỰ ĐOÁN trong Lightroom (WB preset, "
+           "Saturation / Vibrance / toning của preset): da còn vàng thì xoay về "
+           "hồng, đã đúng thì không đụng; cộng vào bánh xe Midtone + Highlight "
+           "của preset, không ghi đè.\n"
+           "Tắt lại thì ảnh tool đã grade được trả về số của preset. Ảnh không "
            "thấy mặt thì không grade.")
         ct(g_ghim, self.v_curve, "Tự chỉnh Curve (parametric)",
            "Cộng bốn núi parametric curve (Highlights / Lights / Darks / "
@@ -4204,7 +4210,9 @@ class App(ttk.Frame):
                 f"{r['new_shadows']:+d}",
                 r["new_temp"] or "—",
                 _curve_txt(r),
-                f"+{r['gr_sat']}" if r.get("gr_sat") else "",
+                #  8/10: hue/sat tool cong vao banh xe preset; "gốc" = tra ve so preset
+                (f"{r['gr_hue']}/{r['gr_sat']}" if r.get("gr_ghi") and r.get("gr_sat")
+                 else "gốc" if r.get("gr_ghi") else ""),
                 f"{r['clip_after_pct']:.2f}",
                 f"{r['shadow_after_pct']:.2f}",
                 (f"{r.get('faces_n',0)}*" if r.get('subject_by')=='af'
@@ -4271,13 +4279,22 @@ class App(ttk.Frame):
                 f"   Darks      : {r.get('cv_dk', 0):+d}",
                 f"   Shadows    : {r.get('cv_sh', 0):+d}",
             ]
-        if r.get("gr_sat"):
-            lines += [
-                "",
-                "Color Grading  (đẩy về da trắng hồng, cộng lên preset):",
-                f"   Midtone : hue {r['gr_hue']}  sat +{r['gr_sat']}",
-                f"   Shadow  : hue {r['gr_shue']}  sat +{r['gr_ssat']}",
-            ]
+        if r.get("wb_trang_thai"):
+            t_may, n_may = r["wb_trang_thai"]
+            lines += ["", f"WB máy (preview): {t_may} / {n_may:+d} → tool cân trên màu da "
+                          f"DỰ ĐOÁN trong Lightroom ở WB preset, không phải màu preview"]
+        if r.get("gr_ghi"):
+            m_, h_ = r.get("gr_mid"), r.get("gr_hi")
+            lines += ["", "Color Grading  (tính theo màu da dự đoán trong Lightroom):"]
+            if r.get("gr_sat"):
+                lines.append(f"   Tool cộng thêm : hue {r['gr_hue']}  sat {r['gr_sat']}"
+                             "  (vào cả Midtone lẫn Highlight của preset)")
+            else:
+                lines.append("   Trả về số gốc của preset (lần trước tool đã grade ảnh này)")
+            if m_:
+                lines.append(f"   Midtone        : hue {m_[0]}  sat {m_[1]}")
+            if h_:
+                lines.append(f"   Highlight      : hue {h_[0]}  sat {h_[1]}")
         lines += [
             "",
             f"Cháy sáng    : {r['clip_before_pct']:.2f}%  →  {r['clip_after_pct']:.2f}% (ước lượng)",
@@ -4350,20 +4367,42 @@ class App(ttk.Frame):
                 "(thư mục chưa import vào Lightroom, Lightroom chưa mở...), sửa xong "
                 "thì bấm “Đọc từ Lightroom” rồi phân tích lại.")
             return
-        n = sum(1 for r in self.items if r["delta_ev"] or r["hl_adj"] or r["sh_adj"])
-        ok = True if not hoi else messagebox.askokcancel(
-            "Ghi vào sidecar .xmp",
-            f"Sẽ ghi {len(self.items)} file .xmp ({n} ảnh có thay đổi).\n\n"
-            "Bản gốc được backup tự động, hoàn tác được bằng nút “Hoàn tác...”.\n\n"
-            "LƯU Ý: bước tiếp theo trong Lightroom là\n"
-            "Metadata → Read Metadata from File, và thao tác đó GHI ĐÈ\n"
-            "mọi chỉnh sửa đang có trong catalog của những ảnh này.\n"
-            "Hãy chạy trước khi retouch tay."
-            + (f"\n\n{ngoai} ảnh không có trong bản xuất từ Lightroom → KHÔNG ghi."
-               if ngoai else "")
-            + "\n\nTiếp tục?",
-            icon="warning")
+        n = sum(1 for r in self.items
+                if r.get("delta_ev") or r.get("hl_adj") or r.get("sh_adj"))
+        #[[ 8/10 (buoi ky yeu raw 19.4, "ghi vao Lightroom lan 2 khong hoat dong"):
+        #   nguon catalog van hien hop thoai CUA SIDECAR — "Se ghi 1089 file .xmp
+        #   ... Read Metadata from File ... GHI DE moi chinh sua ... Tiep tuc?" —
+        #   sai viec (khong ghi .xmp nao, khong can Read Metadata) va de doa dung
+        #   cho nguoi dung bam Huy o lan hai. Lai khong co parent: hop co the nam
+        #   sau cua so chinh, bam nut Ghi nhu khong co gi xay ra. ]]
+        if self.cfg.get("source") == "catalog":
+            gui = sum(1 for r in self.items
+                      if "new_exposure" in r and not r.get("ngoai_xuat"))
+            n_gr = sum(1 for r in self.items if r.get("gr_ghi") and r.get("gr_sat"))
+            ok = True if not hoi else messagebox.askokcancel(
+                "Gửi vào Lightroom",
+                f"Gửi {gui} ảnh vào Lightroom ({n} ảnh đổi sáng"
+                + (f", {n_gr} ảnh Color Grading trắng hồng" if n_gr else "") + ").\n\n"
+                "Plugin áp thẳng vào catalog — KHÔNG cần Read Metadata from File. "
+                "Mốc gốc giữ trong _autotone_baseline.tsv: gửi lại bao nhiêu lần "
+                "cũng tính từ preset gốc, không cộng dồn."
+                + (f"\n\n{ngoai} ảnh không có trong bản xuất từ Lightroom → KHÔNG gửi."
+                   if ngoai else "")
+                + "\n\nGửi?",
+                icon="question", parent=self)
+        else:
+            ok = True if not hoi else messagebox.askokcancel(
+                "Ghi vào sidecar .xmp",
+                f"Sẽ ghi {len(self.items)} file .xmp ({n} ảnh có thay đổi).\n\n"
+                "Bản gốc được backup tự động, hoàn tác được bằng nút “Hoàn tác...”.\n\n"
+                "LƯU Ý: bước tiếp theo trong Lightroom là\n"
+                "Metadata → Read Metadata from File, và thao tác đó GHI ĐÈ\n"
+                "mọi chỉnh sửa đang có trong catalog của những ảnh này.\n"
+                "Hãy chạy trước khi retouch tay."
+                + "\n\nTiếp tục?",
+                icon="warning", parent=self)
         if not ok:
+            self.status("Đã huỷ — chưa gửi gì.", gd.MAU["mo"])
             return
         #[[ GHI O LUONG NEN.
         #
@@ -4377,7 +4416,8 @@ class App(ttk.Frame):
         at.LAST_JOB = None
         self._set_busy(True)
         self.pb.configure(value=0, maximum=max(len(self.items), 1))
-        self.status(f"Đang ghi 0/{len(self.items)} file .xmp...", gd.MAU["canh"])
+        self.status("Đang gửi vào Lightroom..." if self.cfg.get("source") == "catalog"
+                    else f"Đang ghi 0/{len(self.items)} file .xmp...", gd.MAU["canh"])
         self.lbl_job.configure(text="", foreground=gd.MAU["mo"])
 
         items, cfg = self.items, self.cfg
@@ -4414,14 +4454,24 @@ class App(ttk.Frame):
         except Exception:                                    # noqa: BLE001
             pass
         self._fill_table()
-        if at.LAST_JOB:
-            self._watch_job(at.LAST_JOB)
+        catalog = self.cfg.get("source") == "catalog"
+        job = at.LAST_JOB
+        if job:
+            self._watch_job(job)
         else:
             self.lbl_job.configure(
-                text="(không gửi job nào sang Lightroom — xem ô “Đẩy thẳng vào Lightroom”)",
-                foreground=gd.MAU["mo"])
-        self.status(f"Đã ghi {len(self.items)} sidecar · backup: {self.last_backup.name}",
-                    gd.MAU["xong"])
+                text=("⚠ Không có ảnh nào để gửi — xem cột ghi chú trong bảng." if catalog
+                      else "(không gửi job nào sang Lightroom — xem ô “Đẩy thẳng vào Lightroom”)"),
+                foreground=gd.MAU["loi"] if catalog else gd.MAU["mo"])
+        if catalog:
+            #[[ 8/10: nguon catalog khong ghi .xmp nao — "Da ghi 1089 sidecar ·
+            #   backup: _autotone_baseline.tsv" la noi sai viec vua lam. ]]
+            self.status(f"Đã gửi {Path(job).name} vào Lightroom — chờ plugin áp."
+                        if job else "Không gửi gì — không ảnh nào có thông số để ghi.",
+                        gd.MAU["xong"] if job else gd.MAU["loi"])
+        else:
+            self.status(f"Đã ghi {len(self.items)} sidecar · backup: {self.last_backup.name}",
+                        gd.MAU["xong"])
         #[[ NOI RO PHAI LAM GI, VA NHAT LA CAI BAY "DOC CHUA XONG".
         #
         #   Nguoi dung bao: sang Develop scroll thi co anh khong nhan thong so
@@ -4465,14 +4515,20 @@ class App(ttk.Frame):
                 dong.append(f"{loat} ảnh trùng khung → 1 sao")
             if mat:
                 dong.append(f"{mat} ảnh mắt không dùng được → 1 sao")
-            dong.append(f"\nBackup .xmp: {self.last_backup.name}")
+            if not catalog:
+                dong.append(f"\nBackup .xmp: {self.last_backup.name}")
             dong.append(f"\n{nxt}")
-            messagebox.showinfo("Chạy hết — xong", "\n".join(dong))
+            messagebox.showinfo("Chạy hết — xong", "\n".join(dong), parent=self)
+            return
+        if catalog:
+            #[[ Nguon catalog: khong co backup .xmp de mo. Dong trang thai canh nut
+            #   Ghi tu bao "da ap xong, kiem chung du" — khong can them hop nao. ]]
             return
         if messagebox.askyesno(
                 "Xong",
                 f"Đã ghi {len(self.items)} file .xmp.\n"
-                f"Backup: {self.last_backup}\n\n{nxt}\n\nMở thư mục backup?"):
+                f"Backup: {self.last_backup}\n\n{nxt}\n\nMở thư mục backup?",
+                parent=self):
             open_in_explorer(self.last_backup)
 
     # ------------------------------------------------- theo dõi job Lightroom
@@ -5152,6 +5208,26 @@ def main():
             pass
 
     root = tk.Tk()
+
+    #[[ LOI TRONG CALLBACK KHONG DUOC IM LANG (8/10). Ban .exe khong co console:
+    #   Tk in traceback ra stderr = khong ai thay, nguoi dung chi thay "bam nut
+    #   khong an" (bao cao "ghi vao Lightroom lan 2 khong hoat dong"). Ghi ra
+    #   <du lieu>/loi_giao_dien.log va hien mot hop ngan. ]]
+    def _bao_loi_callback(exc, val, tb):
+        chu = "".join(traceback.format_exception(exc, val, tb))
+        try:
+            import duong_dan as _dd2
+            with open(_dd2.goc_du_lieu() / "loi_giao_dien.log", "a", encoding="utf-8") as fh:
+                fh.write(f"\n=== {datetime.now():%Y-%m-%d %H:%M:%S}\n{chu}")
+        except Exception:                                # noqa: BLE001
+            pass
+        try:
+            messagebox.showerror("Lỗi", f"{exc.__name__}: {val}\n\nĐã ghi chi tiết vào "
+                                 "loi_giao_dien.log trong thư mục dữ liệu của app.",
+                                 parent=root)
+        except Exception:                                # noqa: BLE001
+            pass
+    root.report_callback_exception = _bao_loi_callback
     #[[ Hien phien ban dang chay ngay tren tieu de: voi OTA, nguoi dung can biet
     #   minh dang o ban nao (goi hay ban va). Boc try/except — thieu cap_nhat
     #   (ban cu) thi chi la khong co so, khong phai loi. ]]

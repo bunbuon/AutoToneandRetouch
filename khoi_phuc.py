@@ -52,6 +52,7 @@ import csv
 import io
 import ntpath
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -88,6 +89,9 @@ def tim_bo_ba(job_dir: Path, folder: Path):
     #   ra doi trong autotone.py.
     #]]
     thu_muc = ntpath.basename(str(folder).rstrip("\\/")) or str(folder)
+    #[[ 8/10: ten trong ten file job da CHUAN HOA (autotone.ten_job): "raw 19.4"
+    #   -> "raw_19.4". Ten tho thi buoi co dau cach khong bao gio khop. ]]
+    thu_muc = re.sub(r"[^A-Za-z0-9._-]", "_", thu_muc or "autotone")[:60]
     applies = sorted(job_dir.glob(f"apply_*_{thu_muc}.done"),
                      key=lambda p: p.stat().st_mtime)
     applies = [p for p in applies if "khoiphuc" not in p.name.lower()]

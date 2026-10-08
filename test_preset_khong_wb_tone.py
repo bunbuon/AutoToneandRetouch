@@ -86,7 +86,11 @@ def chay(items, ban_xuat, thu_muc: Path, **kw) -> dict:
     """plan() that, nguon catalog; ban_xuat(i) -> dict thong so catalog anh i."""
     items = copy.deepcopy(items)
     exp = {khoa(r): dict(ban_xuat(i)) for i, r in enumerate(items)}
-    cfg = dict(at.DEFAULTS, source="catalog", bo_qua_nguoi_sua=False, wb_theo_asshot=False)
+    #  BUOC 1 thuan: tat buoc 2 (wb_theo_asshot) VA WB theo trang thai (8/10,
+    #  kiem rieng o kiem_grade_trang_thai.py) — ca hai co y lam preset day du va
+    #  preset bo trong WB tinh khac nhau
+    cfg = dict(at.DEFAULTS, source="catalog", bo_qua_nguoi_sua=False, wb_theo_asshot=False,
+               wb_theo_trang_thai=False)
     cfg.update(kw)
     with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
         at.plan(items, cfg, thu_muc, exp)

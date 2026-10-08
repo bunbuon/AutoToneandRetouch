@@ -86,9 +86,12 @@ def main() -> int:
            "Temperature": "5500", "Tint": "0", "WhiteBalance": "As Shot"}
 
     def r0(bw):
+        #  8/10: Color Grading do grade_theo_trang_thai() tinh (bo qua anh B/W)
+        #  roi compute_values chi ghi lai gr_mid / gr_hi
         return {"path": "x.ARW", "bw": bw, "delta_ev": 0.4, "hl_adj": -20, "sh_adj": 10,
-                "temp_adj": 300.0, "tint_adj": 8.0, "gr_hue": 40, "gr_sat": 12,
-                "gr_shue": 220, "gr_ssat": 5, "gr_lum": 0,
+                "temp_adj": 300.0, "tint_adj": 8.0,
+                **({} if bw else {"gr_ghi": True, "gr_hue": 288, "gr_sat": 12,
+                                  "gr_mid": (288, 12), "gr_hi": (331, 13)}),
                 "cv_hl": -5, "cv_lt": 3, "cv_dk": 2, "cv_sh": 0}
     r_bw, r_mau = r0(True), r0(False)
     c_bw = at.compute_values(r_bw, cfg, dict(crs), {})
