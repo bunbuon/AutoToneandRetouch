@@ -148,7 +148,8 @@ def main() -> int:
          f"hi {r['gr_hi']} ~ {kv}")
     ktra("cùng cảnh -> cùng một grade", len({(x["gr_mid"], x["gr_hi"]) for x in ds}) == 1)
     #  da dung hue dich (sau WB preset va Saturation/Vibrance cua preset) -> khong grade
-    dich = at.srgb_to_linear(np.asarray(at.DEFAULTS["skin_ref_rgb"]) / 255.0)
+    #  8/10: grade nham MAU DA ANH DUYET (dich_da_cuoi) — che do "den" = trong nha
+    dich = at.srgb_to_linear(np.asarray(at.dich_da_cuoi(cfg_(grade=True))[0]) / 255.0)
     trung = chay([anh(i, face=list(dich), may_k=5950, crs=dict(PRESET, Saturation="0", Vibrance="0",
                                                                  SplitToningHighlightSaturation="0",
                                                                  Tint="12"))

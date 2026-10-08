@@ -1780,9 +1780,10 @@ class App(ttk.Frame):
         ct(g_ghim, self.v_sh, "Tự kéo Shadows khi bết tối",
            "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
-           "Kỷ yếu, concept: da trắng hồng cả ảnh ngoài trời.\n"
-           "· Cân trắng dùng đích da trắng hồng cho MỌI ảnh (tắt thì ảnh ngoài "
-           "trời kéo về da rám nắng).\n"
+           "Kỷ yếu, concept: da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt.\n"
+           "· Cân trắng đưa da về màu học từ ảnh kỷ yếu đã duyệt — riêng trong "
+           "nhà và ngoài trời (tắt thì ảnh ngoài trời kéo về da rám nắng, trong "
+           "nhà về màu ảnh sự kiện).\n"
            "· Color Grading tính trên màu da DỰ ĐOÁN trong Lightroom (WB preset, "
            "Saturation / Vibrance / toning của preset): da còn vàng thì xoay về "
            "hồng, đã đúng thì không đụng; cộng vào bánh xe Midtone + Highlight "

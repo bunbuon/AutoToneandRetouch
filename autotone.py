@@ -1322,6 +1322,18 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 afpt, vung = None, None
             else:
                 afpt = tags.get("af_point")
+            #[[ LENS CO (8/10): EXIF khong co khau (fisheye 10mm khong tiep diem)
+            #   = lens lay net TAY. Diem AF may ghi chi la vi tri o AF dang dat,
+            #   khong phai cho may khoa net -> bo, khong dung chon chu the. Va
+            #   do NET khong noi may net vao ai (fisheye sau truong anh het, nen
+            #   ban nhieu canh sac lam mat hau canh ti hon "net" hon mat chinh
+            #   to, da min) — xem nhanh chon chu the ben duoi. Buoi raw 19.4:
+            #   HUY04802/04830/04789... mat chinh 108x164 diem 0.93 bi bo vi
+            #   "kem net" (0.58), do sang lay tu mat hau canh 12x15 (-3.2..-5.3
+            #   EV) -> tool keo sang +0.7..+1.75 EV. ]]
+            lens_co = not (_rat(tags.get("fnumber")) or 0)
+            if lens_co:
+                afpt, vung = None, None
             af_hop = None
             if afpt is not None:
                 huong = tags.get("orientation") if af_xoay_theo_anh else 1
@@ -1644,7 +1656,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 #   bước này không loại ai — đúng ý.
                 #]]
                 bmax = max(fp[3] for fp in face_patches)
-                if bmax >= 0.45:
+                if bmax >= 0.45 and not lens_co:
                     #[[ Ngưỡng TUYỆT ĐỐI theo khoảng cách tới mặt nét nhất, chứ
                     #   không phải theo tỉ lệ.
                     #
@@ -2401,6 +2413,23 @@ DEFAULTS = {
     #     python kiem_gu.py G:\1308 --de-xuat de_xuat_mat_lech_khung.json --nhom do-nham-mat
     #]]
     "mat_lech_khung_ev": 0.0,
+    #[[ RIENG ANH LENS CO (khong co khau trong EXIF — fisheye 10mm 8/10) — BAT.
+    #
+    #   Buoi ky yeu raw 19.4: 748/1089 anh chup fisheye 10mm khong tiep diem,
+    #   EXIF khau = 0. Khoa "cung khau/toc/ISO" cua ham nay (va cua chia_loat)
+    #   bo qua MOI anh do nen ca hai buoc chua chay. Ma fisheye la cho bo nhan
+    #   mat hay bat nham nhat (mat meo, nho o ria khung): HUY04802-04804 do
+    #   "mat" -3.25 / -2.70 / -2.82 EV trong khi tam ngay truoc / sau -0.54 /
+    #   -0.87, khung y het (-3.27..-3.65), cung 1/200 ISO 500 -> tool day
+    #   +0.70..+0.92 EV, hai ben -0.13..-0.46: nguoi dung thay "cung thong so
+    #   ma sang toi khac nhau". Anh da duyet cua chinh nguoi dung: "mat" do
+    #   duoc o cung cho van -3.55 / -2.77 / -3.13, tuc do nham mot vung toi,
+    #   khong phai mat that.
+    #
+    #   Nguong 1.0 EV (gap 2.5 lan nguong hay gap o cac ca da xet): chi bat do
+    #   nham THO. Anh lens thuong giu mat_lech_khung_ev (0 = tat) cho toi khi
+    #   qua cong rieng. 0 = tat ca nhanh nay. ]]
+    "mat_lech_khung_ev_lens_co": 1.0,
     "mat_lech_khung_khung_ev": 0.25,
     "mat_lech_khung_ke": 3,
     "mat_lech_khung_bo_cuc": 0.10,
@@ -2729,6 +2758,42 @@ DEFAULTS = {
     "grade_sat_max": 12,      # tran Sat tool CONG vao moi banh xe (0-100)
     "grade_gain_hue": 0.45,   # diem Sat cho moi do hue (OkLab) da con lech dich
     "da_trang_hong": False,   # dich hong cho ca anh ngoai troi ma khong grade
+    #[[ DICH DA "TRANG HONG" (ky yeu / concept) — HOC TU ANH NGUOI DUNG DA DUYET, 8/10.
+    #
+    #   564 anh nguoi dung tu sua cho buoi ky yeu raw 19.4 (F:\San Pham Final    #   AnhKyTest), do bang chinh measure(), tach trong / ngoai bang chinh
+    #   _nhan_da_ngoai (che do Tron), rut nhu hoc_mau_da.py:
+    #       trong nha 389 anh -> [246, 194, 181]  log2(B/R) -1.00  G -0.27  hue 34
+    #       ngoai troi 175 anh -> [194, 150, 137]  log2(B/R) -1.11  G -0.27  hue 37
+    #   Dich hong cu [227, 184, 185] (B/R -0.66, G -0.35, hue 17 — tu anh SU KIEN
+    #   PUBGDay1) HONG TIM hon han: bat "Day tone ve da trang hong" la keo ca buoi
+    #   lanh + tim. "Trang hong" cua nguoi dung la da DAO: am hon dich cu 0.35-0.45
+    #   stop, it tim hon; lanh hon dich da ram ngoai troi [166,123,105] 0.3 stop.
+    #   Chi dung khi bat grade / da_trang_hong; quy trinh thuong (su kien, cuoi)
+    #   van skin_ref_rgb / skin_ref_rgb_ngoai nhu cu. ]]
+    "skin_dich_hong": [246, 194, 181],
+    "skin_dich_hong_ngoai": [194, 150, 137],
+    #[[ DIEM DIEU KHIEN WB khi bat trang hong — KHAC mau da dich o tren.
+    #
+    #   Vong WB cua tool chi keo ~30% quang duong toi dich (skin_gain 0.6 giu lai
+    #   mau rieng tung anh; 900 K/stop yeu hon vat ly ~2 lan quanh 5000 K). Lay
+    #   thang mau da anh duyet lam dich thi da trong LR dung lai giua duong: do
+    #   tren raw 19.4 (mo hinh WB Adobe, sat LR that +-2 do hue) hue lech +6 do,
+    #   con dich hong cu "vuot" nen lai trung. Nen WB nham mot DIEM DIEU KHIEN
+    #   hieu chinh VONG KIN (hieu_chinh_dich.py: chon tren anh chan, cham anh le)
+    #   de da SAU WB roi dung mau anh duyet; Color Grading thi nham thang mau da
+    #   dich (skin_dich_hong) cho phan con thieu.
+    #
+    #   So: mau da hoc + 0.2 stop tren log2(B/R) (lanh hon), -0.35 tren log2(G)
+    #   (hong hon — vong tint chi keo ~15%, tran wb_tint_max 12). Luoi 7x? thu:
+    #   b -0.45 tot hon chut nhung 22 anh cham tran tint -> lay -0.35 (0 anh).
+    #   Cham tren 267 anh LE chua dung de chon (che do Tron):
+    #                         hue sau WB   hue sau grade (|lech|)   WB tv
+    #       v40 dich hong cu     +5.1           -5.9 (6.0)          4792/+14
+    #       mau da hoc lam dich  +8.4           +3.9 (4.5)          4981/+13
+    #       diem dieu khien nay  +2.5           -0.4 (3.0)          4877/+19
+    #   (che do Ngay: +2.9 / +1.4 (3.4)). ]]
+    "skin_ref_rgb_hong": [218, 159, 170],
+    "skin_ref_rgb_hong_ngoai": [218, 156, 164],
     #[[ WB THEO TRANG THAI — xem dau decide(): can tren mau da DU DOAN trong
     #   Lightroom o WB preset, khong tren preview cua may. Chi anh preset DAT WB;
     #   quy trinh preset bo trong WB (nen_wb) khong doi. False = nhu truoc 8/10. ]]
@@ -3388,16 +3453,19 @@ def sua_mat_lech_khung(items: list, cfg: dict) -> int:
     phep do mat lan phep do khung.
     """
     nguong = float(cfg.get("mat_lech_khung_ev", 0.0) or 0.0)
-    if nguong <= 0:
+    nguong_co = float(cfg.get("mat_lech_khung_ev_lens_co", 0.0) or 0.0)
+    if nguong <= 0 and nguong_co <= 0:
         return 0
     ke = max(1, int(cfg.get("mat_lech_khung_ke", 3)))
 
     def khoa(r):
         f, t, iso = _so(r.get("fnumber")), _so(r.get("exposure_time")), _so(r.get("iso"))
-        if not f or not t or not iso:
+        if not t or not iso:
             return None
+        #  Lens co: khong biet khau -> "?" (khau vong co hiem khi doi giua hai
+        #  tam chup lien; con dieu kien bo cuc + do sang khung chan phia sau)
         return (r.get("scene"), str(r.get("model") or ""),
-                round(f, 1), round(math.log2(t), 2), round(iso))
+                round(f, 1) if f else "?", round(math.log2(t), 2), round(iso))
 
     loat: dict = {}
     for r in sorted(items, key=lambda r: r["dt_obj"]):
@@ -3420,9 +3488,51 @@ def sua_mat_lech_khung(items: list, cfg: dict) -> int:
     #[[ Tinh het truoc roi moi sua: sua tai cho thi tam sau lay tam vua sua
     #   lam hang xom, va mot tam hong keo lan sang tam ke. ]]
     sua = []
-    for ds in loat.values():
+    for k_, ds in loat.items():
+        ng = nguong_co if k_[2] == "?" and nguong_co > 0 else nguong
+        if ng <= 0:
+            continue
         v = [hai(r) for r in ds]
         sg = [sig(r) for r in ds]
+        if k_[2] == "?":
+            #[[ LENS CO: so KHOANG CACH mat - khung voi trung vi MOI tam cung bo
+            #   cuc trong +-ke_rong tam, khong chi +-3 tam ke ben. Do nham o
+            #   fisheye hay DON CUM: HUY04802-04804 ba tam lien nham -> trung vi
+            #   +-3 tam cua chinh tam DUNG (HUY04805) nghieng ve so nham, lan dau
+            #   thu da "sua" nham hai tam dung va keo ca loat len +0.70. Lay ca
+            #   cum cung bo cuc rong hon thi so dong tam dung at di. Can >= 3 tam
+            #   lanh de so; do nham lan hon nua cum thi khong ket luan. ]]
+            ke_rong = max(ke, int(cfg.get("mat_lech_khung_ke_lens_co", 10)))
+            #  Bo cuc RONG hon (0.20): fisheye nguoi di trong khung la chu ky doi
+            #  nhieu — HUY04801 / 04807-04810 cung canh cach cum 04802-04806
+            #  0.11-0.15; bo cuc khac han (04799/04800) cach 0.30-0.38 van bi loai
+            bo_cuc_co = max(bo_cuc, float(cfg.get("mat_lech_khung_bo_cuc_lens_co", 0.20)))
+            gap = [None if x is None else x[0] - x[1] for x in v]
+
+            def lang_gieng(i, tol):
+                return [j for j in range(max(0, i - ke_rong), min(len(ds), i + ke_rong + 1))
+                        if j != i and gap[j] is not None and sg[j] is not None
+                        and sg[j].shape == sg[i].shape
+                        and float(np.abs(sg[j] - sg[i]).mean()) <= tol]
+            #  Buoc 1: PHAT HIEN tren nhom rong
+            nham = set()
+            for i in range(len(ds)):
+                if gap[i] is None or sg[i] is None:
+                    continue
+                rong = lang_gieng(i, bo_cuc_co)
+                if len(rong) >= max(3, n_min) and \
+                        abs(gap[i] - float(np.median([gap[j] for j in rong]))) > ng:
+                    nham.add(i)
+            #  Buoc 2: SO SUA lay tu cac tam DUNG gan bo cuc nhat (<= bo_cuc), khong
+            #  co moi lay nhom rong — cum 04802-04806 khoang cach that 2.8, vung
+            #  rong 2.45: lay rong thi ca loat lech 0.3 EV so voi tam dung
+            for i in nham:
+                hep = [gap[j] for j in lang_gieng(i, bo_cuc) if j not in nham]
+                rong = [gap[j] for j in lang_gieng(i, bo_cuc_co) if j not in nham]
+                g_ = hep or rong
+                if g_:
+                    sua.append((ds[i], v[i][1] + float(np.median(g_))))
+            continue
         for i, r in enumerate(ds):
             if v[i] is None or sg[i] is None:
                 continue
@@ -3435,7 +3545,7 @@ def sua_mat_lech_khung(items: list, cfg: dict) -> int:
             mat_hx = float(np.median([x[0] for x in hx]))
             khung_hx = float(np.median([x[1] for x in hx]))
             if (abs(v[i][1] - khung_hx) <= khung_tol
-                    and abs(v[i][0] - mat_hx) > nguong):
+                    and abs(v[i][0] - mat_hx) > ng):
                 gap_hx = float(np.median([x[0] - x[1] for x in hx]))
                 sua.append((r, v[i][1] + gap_hx))
     for r, moi in sua:
@@ -4439,6 +4549,27 @@ def da_trong_lr(r: dict, cfg: dict, crs: dict, temp: float, tint: float,
     return np.array([lab[0], ab[0], ab[1]])
 
 
+def dich_da(cfg: dict) -> tuple:
+    """(đích da TRONG NHÀ, đích da NGOÀI TRỜI) — sRGB 0-255.
+
+    Bật "Đẩy tone về da trắng hồng" (grade) hoặc da_trang_hong: đích trắng hồng
+    học từ ảnh kỷ yếu người dùng đã duyệt (skin_ref_rgb_hong[_ngoai]). Không bật:
+    đích thường (skin_ref_rgb / skin_ref_rgb_ngoai) như trước."""
+    if cfg.get("grade") or cfg.get("da_trang_hong"):
+        trong = cfg.get("skin_ref_rgb_hong") or cfg["skin_ref_rgb"]
+        return trong, cfg.get("skin_ref_rgb_hong_ngoai") or trong
+    return cfg["skin_ref_rgb"], cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
+
+
+def dich_da_cuoi(cfg: dict) -> tuple:
+    """Màu da CUỐI muốn thấy (trong, ngoài) — Color Grading nhắm vào đây. Bật trắng
+    hồng: màu da ảnh duyệt (skin_dich_hong[_ngoai]); không thì như dich_da."""
+    if cfg.get("grade") or cfg.get("da_trang_hong"):
+        trong = cfg.get("skin_dich_hong") or dich_da(cfg)[0]
+        return trong, cfg.get("skin_dich_hong_ngoai") or trong
+    return dich_da(cfg)
+
+
 #: Bon o Color Grading tool ghi (cong vecto vao so goc cua preset).
 COT_GRADE = ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
              "SplitToningHighlightHue", "SplitToningHighlightSaturation")
@@ -4476,8 +4607,11 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
     gain = float(cfg.get("grade_gain_hue", 0.45))
     sat_max = float(cfg.get("grade_sat_max", 12))
     tran = sat_max / 100.0 * GRADE_OKLAB_100
-    dich = mau_dich_lab(cfg["skin_ref_rgb"])
-    h_t = float(math.atan2(dich[2], dich[1]))
+    #  Cung DICH voi WB cua tung anh (trong / ngoai) — hai dich keo nguoc nhau
+    #  thi grade xoay da di mot huong, WB keo ve huong kia
+    ref_trong, ref_ngoai = dich_da_cuoi(cfg)
+    h_trong = float(math.atan2(*mau_dich_lab(ref_trong)[[2, 1]]))
+    h_ngoai = float(math.atan2(*mau_dich_lab(ref_ngoai)[[2, 1]]))
     catalog = cfg.get("source") == "catalog"
     for r in items:
         for key in ("gr_ghi", "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot"):
@@ -4492,9 +4626,12 @@ def grade_theo_trang_thai(items: list, cfg: dict) -> int:
             continue
         if not cfg.get("grade") or r.get("bw") or not r.get("new_temp"):
             continue
-        lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0))
+        ngoai = _nhan_da_ngoai(r, cfg)
+        lab = da_trong_lr(r, cfg, r.get("crs") or {}, r["new_temp"], r.get("new_tint", 0),
+                          ref_ngoai if ngoai else ref_trong)
         if lab is None:
             continue
+        h_t = h_ngoai if ngoai else h_trong
         ab = lab[1:]
         if float(math.hypot(ab[0], ab[1])) <= 1e-6:
             continue
@@ -4706,10 +4843,7 @@ def decide(items: list, cfg: dict) -> None:
             #   ngoai troi +200..+340 K). Bat "Day tone ve da trang hong" (grade)
             #   hoac da_trang_hong -> mot dich hong cho moi anh. Chi doi DICH o
             #   day; phan loai ngoai troi (_nhan_da_ngoai) giu nguyen. ]]
-            if cfg.get("grade") or cfg.get("da_trang_hong"):
-                ref_ngoai = cfg["skin_ref_rgb"]
-            else:
-                ref_ngoai = cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
+            ref_trong, ref_ngoai = dich_da(cfg)
 
             def _hai_nhom(ds):
                 #  _da_lr: da du doan trong Lightroom o WB preset (dau decide)
@@ -4717,7 +4851,7 @@ def decide(items: list, cfg: dict) -> None:
                            if r.get("face_rgb") and not _nhan_da_ngoai(r, cfg)]
                 m_ngoai = [r.get("_da_lr") or r["face_rgb"] for r in ds
                            if r.get("face_rgb") and _nhan_da_ngoai(r, cfg)]
-                lt = _lech(m_trong, cfg["skin_ref_rgb"])
+                lt = _lech(m_trong, ref_trong)
                 ln = _lech(m_ngoai, ref_ngoai)
                 #[[ Nhom nao trong thi muon so cua nhom kia — mot canh chi co anh
                 #   ngoai troi van phai can duoc. Khong co ca hai thi ve None, va
@@ -5448,9 +5582,11 @@ def chia_loat(items: list, cfg: dict) -> list:
 
     def thong_so(r):
         f, t, iso = _so(r.get("fnumber")), _so(r.get("exposure_time")), _so(r.get("iso"))
-        if not f or not t or not iso or t <= 0:
+        if not t or not iso or t <= 0:
             return None
-        return (round(f, 1), round(math.log2(t), 2), round(iso))
+        #  8/10: lens co (fisheye 10mm) EXIF khau = 0 -> "?" thay vi bo ca anh
+        #  khoi moi loat (xem mat_lech_khung_ev_lens_co)
+        return (round(f, 1) if f else "?", round(math.log2(t), 2), round(iso))
 
     def sig(r):
         v = r.get("scene_sig")
