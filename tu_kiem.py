@@ -403,6 +403,27 @@ def chay(nhanh: bool = False) -> Bao:
             return "mất mốc / áp lại preset cả buổi nhận ra; sửa tay lẻ tẻ vẫn giữ"
         b.thu("Nhận ra buổi làm lại", _dat_lai)
 
+        #[[ 8/10 vong 3: WB phong cach ky yeu (+K / +Tint) chay TRONG GOI ma hoa. ]]
+        def _ky_yeu():
+            bu = dict(at.DEFAULTS["wb_bu_ky_yeu"])
+            tran = float(at.DEFAULTS["wb_temp_max"])
+            ds = [{"temp_adj": 100.0, "tint_adj": 2.0, "notes": ""},
+                  {"temp_adj": -tran, "tint_adj": 3.0, "notes": ""},
+                  {"temp_adj": 0.0, "tint_adj": 0.0, "notes": "", "bw": True}]
+            cfg = dict(at.DEFAULTS, loai_buoi="ky_yeu")
+            if at._wb_ky_yeu([dict(r) for r in ds], dict(cfg, grade=True)) != 0:
+                raise AssertionError("bật trắng hồng mà vẫn cộng WB kỷ yếu")
+            if at._wb_ky_yeu(ds, cfg) != 1:
+                raise AssertionError("phải cộng đúng 1 ảnh (bỏ ảnh chạm trần WB, ảnh B/W)")
+            if (abs(ds[0]["temp_adj"] - 100.0 - bu["Temperature"]) > 1e-6
+                    or abs(ds[0]["tint_adj"] - 2.0 - bu["Tint"]) > 1e-6
+                    or "wb-ky-yeu" not in ds[0]["notes"]):
+                raise AssertionError(f"cộng sai: {ds[0]}")
+            if ds[1]["temp_adj"] != -tran or ds[1]["tint_adj"] != 3.0:
+                raise AssertionError("ảnh chạm trần WB bị đổi")
+            return f"+{bu['Temperature']} K / Tint +{bu['Tint']}"
+        b.thu("WB kỷ yếu", _ky_yeu)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #

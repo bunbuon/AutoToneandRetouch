@@ -20,7 +20,8 @@ Mục kiểm
     5. bu âm -> giảm, sàn −max_ev.
     6. Bù chỉ đụng Exposure: Highlights / Shadows / Temp / Tint đứng yên.
     7. Giao diện (khi có tkinter + màn hình): chọn "Sự kiện" -> ô bù =
-       DEFAULTS["bu_sang_su_kien"] và read_cfg() mang số đó; "Cưới" -> 0.
+       DEFAULTS["bu_sang_su_kien"] và read_cfg() mang số đó; "Cưới" -> 0;
+       "Kỷ yếu" -> bù kỷ yếu và KHÔNG tự bật "Đẩy tone về da trắng hồng".
 
 Chạy:  python test_bu_sang.py      (phần giao diện: xvfb-run -a trên Linux)
 """
@@ -147,6 +148,15 @@ def kiem_giao_dien() -> list:
         app._doi_loai_buoi()
         if abs(app.read_cfg()["bu_sang_ca_buoi"]) > 1e-9:
             loi.append("Chon lai 'Cuoi' phai tra bu sang ve 0")
+        #  8/10 vong 3: Ky yeu KHONG tu bat Color Grading trang hong nua
+        app.v_grade.set(False)
+        app.v_loai_buoi.set(nhan["ky_yeu"])
+        app._doi_loai_buoi()
+        cfg = app.read_cfg()
+        if cfg.get("loai_buoi") != "ky_yeu" or abs(cfg["bu_sang_ca_buoi"] - float(at.DEFAULTS["bu_sang_ky_yeu"])) > 1e-9:
+            loi.append(f"Chon 'Ky yeu': loai {cfg.get('loai_buoi')}, bu {cfg.get('bu_sang_ca_buoi')}")
+        if app.v_grade.get() or cfg.get("grade"):
+            loi.append("Chon 'Ky yeu' khong duoc tu bat 'Day tone ve da trang hong'")
     finally:
         root.destroy()
     return loi

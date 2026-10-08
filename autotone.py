@@ -2236,9 +2236,36 @@ DEFAULTS = {
     #   nen 1 (SAY 16, tuc -15), va KHONG ep Darks (duong S chi con Lights).
     #   Tone nen chi ap khi preset bo trong Basic Tone (nen_cho_anh) — preset
     #   co tone rieng thi ton trong preset. ]]
+    #[[ VONG 3 (8/10 chieu, v42 tat Color Grading, 1087 anh LR ve that so 564
+    #   anh duyet). Mat khop (trung vi 0.00) TRU 193 anh fisheye duoi den am
+    #   (xem phanh_da_san_ky_yeu). Nhom 440 anh Shadows nen 16 (khong bi mo toi):
+    #     p1 -0.30  p10 +0.22  p25 +0.30  p50 +0.22  p90 +0.04
+    #   -> Shadows nen 16 -> 28, Darks duong S +c (cung Lights), Blacks -30 ->
+    #   -40 (v41 -> v42 Blacks -12 ha p1 ~0.3 EV sau khi tru phan +0.25 EV).
+    #   Buoc CHUA kiem tren LR ve that — vong 4 kiem. ]]
     "bu_sang_ky_yeu": 0.25,
-    "nen_tone_ky_yeu": {"Contrast2012": 5, "Highlights2012": 1, "Shadows2012": 16,
-                        "Whites2012": -25, "Blacks2012": -30},
+    "nen_tone_ky_yeu": {"Contrast2012": 5, "Highlights2012": 1, "Shadows2012": 28,
+                        "Whites2012": -25, "Blacks2012": -40},
+    #[[ Ky yeu: phanh da (skin_hard_p95) khong giu mat TOI DUOI DICH qua muc nay
+    #   (EV). Phanh van chan phan VUOT dich. Chi loai_buoi "ky_yeu"; 0 = nhu cu.
+    #   Xem cho dung trong decide() (PHANH RIENG CHO DA). ]]
+    "phanh_da_san_ky_yeu": 0.6,
+    #[[ Ky yeu "den sau": KHONG tu mo vung toi (Shadows sh_adj, Parametric
+    #   Shadows cv_sh). 122 anh fisheye canh toi (raw 19.4) tool mo Shadows
+    #   +47 / ParametricShadows +35; anh duyet TOI HON LR o p10 0.5-0.8 EV du
+    #   mat sang hon +0.56 EV — user giu den sau, dua mat len bang Exposure.
+    #   True = mo toi nhu buoi thuong. ]]
+    "mo_toi_ky_yeu": False,
+    #[[ Ky yeu: lech WB phong cach cong SAU cung (K, Tint). Do tren pixel TRUNG
+    #   TINH (OkLab C < 0.025) — khong do tren da, vi da con lech rieng (hue
+    #   -6 do, chroma x1.34: HSL/profile cua preset, WB keo theo se am ca khung
+    #   — dung loi user vua bo Color Grading vi no). Anh duyet - LR v42:
+    #     85mm  da +4.4e-3 db -0.4e-3 | fisheye den thuong da +4.5e-3 db -0.1e-3
+    #     fisheye den am (WB dang kep tran 4000K) da +0.1e-3 db -0.6e-3
+    #   1 Tint = (+0.51, -0.51)e-3, 100K = (+0.64, +2.56)e-3 -> +130 K, Tint +7.
+    #   Bo qua anh WB dang cham tran wb_temp_max (den mau nang: khong can) va
+    #   khi bat trang hong (grade / da_trang_hong: dich hong da tinh san). ]]
+    "wb_bu_ky_yeu": {"Temperature": 130, "Tint": 7},
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
     #
     #   Phanh hl_hard_pct san co nhin CA KHUNG. No khong cuu duoc truong hop
@@ -5084,8 +5111,25 @@ def decide(items: list, cfg: dict) -> None:
                             tran_lin = _srgb_to_lin_1(tran / 255.0)
                             con = math.log2(max(tran_lin, 1e-6) / lin)
                         if delta > con:
-                            delta = round(max(0.0, con), 4)
-                            notes.append("ha-vi-da-sap-chay")
+                            #[[ KY YEU: phanh da KHONG giu mat toi duoi dich qua
+                            #   phanh_da_san_ky_yeu EV (8/10, v42 tat CG, raw 19.4).
+                            #   193 anh fisheye duoi den am (may dat tay 5400K): da
+                            #   preview cam dac (R/G 3.3) nen kenh R cham 251-252
+                            #   tren MOI mat du mat chi -1.46 EV (dich -1.00) ->
+                            #   phanh ghim delta 0. Lightroom ve cung anh do (WB
+                            #   4000K, Adobe Standard nhat hon JPEG Sony) da p95 chi
+                            #   218; user dua mat len dung muc dich (anh duyet sang
+                            #   hon LR +0.43 EV, da p95 247). Nhom 85mm / fisheye
+                            #   den thuong mat da o dich nen khong doi. ]]
+                            san_ = 0.0
+                            if cfg.get("loai_buoi") == "ky_yeu":
+                                san_ = min(delta, float(cfg.get("phanh_da_san_ky_yeu") or 0.0))
+                            moi_ = round(max(0.0, con, san_), 4)
+                            if moi_ < delta - 1e-9:
+                                delta = moi_
+                                notes.append("ha-vi-da-sap-chay")
+                            if san_ > max(0.0, con) + 1e-9:
+                                notes.append("phanh-da-nhuong-ky-yeu")
 
                 #[[ PHANH THEO VUNG CHU THE — mat VA quan ao.
                 #
@@ -5277,8 +5321,10 @@ def decide(items: list, cfg: dict) -> None:
                         if (ao_trang and -b_adj > float(cfg["hl_bright_max"])
                                 and "keo-HL-ao-trang" not in notes):
                             notes.append("keo-HL-ao-trang")
+            # Ky yeu "den sau": khong tu mo vung toi — xem mo_toi_ky_yeu
+            mo_toi = cfg.get("loai_buoi") != "ky_yeu" or bool(cfg.get("mo_toi_ky_yeu"))
             sh_adj = 0
-            if cfg["shadows"]:
+            if cfg["shadows"] and mo_toi:
                 deficit = max(0.0, shadow_after - cfg["sh_trigger_pct"])
                 sh_adj = int(round(min(cfg["sh_max"], cfg["sh_gain"] * deficit)))
             r["hl_adj"], r["sh_adj"] = hl_adj, sh_adj
@@ -5301,15 +5347,17 @@ def decide(items: list, cfg: dict) -> None:
 
                 # 2. chủ thể bết tối -> mở vùng tối
                 df = max(0.0, shadow_after - cfg["curve_sh_trigger_pct"])
-                cv_sh = int(round(min(cfg["curve_sh_max"], cfg["curve_sh_gain"] * df)))
+                if mo_toi:
+                    cv_sh = int(round(min(cfg["curve_sh_max"], cfg["curve_sh_gain"] * df)))
 
                 # 3. tương phản chữ S nhẹ — bỏ qua khi ảnh đang cháy nhiều,
                 #    thêm tương phản lúc đó chỉ làm cháy thêm.
                 c = int(cfg.get("curve_contrast", 0))
                 if c and clip_after <= cfg["curve_contrast_max_clip"]:
-                    #  Ky yeu: anh duyet SANG hon o duoi trung tinh (p25 +0.38) —
-                    #  khong ep Darks xuong, chi giu Lights (xem bu_sang_ky_yeu)
-                    cv_lt, cv_dk = c, (0 if cfg.get("loai_buoi") == "ky_yeu" else -c)
+                    #  Ky yeu: anh duyet SANG hon o duoi trung tinh (v41 p25
+                    #  +0.38; v42 da bo ep Darks van con p25 +0.30, p50 +0.22)
+                    #  -> NANG ca Darks cung Lights (xem nen_tone_ky_yeu)
+                    cv_lt, cv_dk = c, (c if cfg.get("loai_buoi") == "ky_yeu" else -c)
 
                 # Đã mở vùng tối thì đừng ép Darks xuống nữa — hai cái ngược nhau
                 if cv_sh > 0:
@@ -5591,6 +5639,7 @@ def decide(items: list, cfg: dict) -> None:
     if cfg["wb"] in ("asshot", "skin"):
         _wb_theo_asshot(items, cfg)
         _tint_theo_may(items, cfg)
+        _wb_ky_yeu(items, cfg)
     _bu_sang_ca_buoi(items, cfg)
 
 
@@ -5809,6 +5858,32 @@ def _tint_theo_may(items: list, cfg: dict) -> int:
                 r["notes"] = ";".join([v for v in [r.get("notes", ""), "tint-theo-may"] if v])
                 n += 1
                 break
+    return n
+
+
+def _wb_ky_yeu(items: list, cfg: dict) -> int:
+    """Cong lech WB phong cach ky yeu (wb_bu_ky_yeu: K, Tint) vao temp_adj /
+    tint_adj CUOI — sau san phang mau, dong bo loat, As Shot va tint theo may.
+
+    Chi loai_buoi "ky_yeu" va khi KHONG bat trang hong (grade / da_trang_hong:
+    dich da hong da mang san phan am/hong). Bo qua anh B/W va anh WB dang cham
+    tran wb_temp_max (den mau nang — anh duyet khong lech o do). Xem chu thich o
+    DEFAULTS. Tra ve so anh bi doi."""
+    if cfg.get("loai_buoi") != "ky_yeu" or cfg.get("grade") or cfg.get("da_trang_hong"):
+        return 0
+    bu = dict(cfg.get("wb_bu_ky_yeu") or {})
+    k_, t_ = float(bu.get("Temperature") or 0.0), float(bu.get("Tint") or 0.0)
+    if not (k_ or t_):
+        return 0
+    tran = float(cfg["wb_temp_max"])
+    n = 0
+    for r in items:
+        if r.get("bw") or abs(float(r.get("temp_adj", 0.0))) >= tran - 1.0:
+            continue
+        r["temp_adj"] = float(r.get("temp_adj", 0.0)) + k_
+        r["tint_adj"] = float(r.get("tint_adj", 0.0)) + t_
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), f"wb-ky-yeu{k_:+.0f}K{t_:+.0f}"] if v])
+        n += 1
     return n
 
 

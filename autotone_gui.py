@@ -1669,9 +1669,13 @@ class App(ttk.Frame):
                      f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f} EV "
                      "cho cả buổi. Kỷ yếu: bù sáng "
                      f"{float(at.DEFAULTS.get('bu_sang_ky_yeu', 0.25)):+.2f} EV, tone nền "
-                     "sáng trong — đen sâu hơn, vùng sáng nén lại (khi preset để trống "
-                     "Tone), và bật “Đẩy tone về da trắng hồng”. Chọn xong vẫn sửa được "
-                     "số ở thanh dưới."
+                     "sáng trong — trung tính sáng hơn, đen sâu hơn, vùng sáng nén lại "
+                     "(khi preset để trống Tone); không tự mở vùng tối; mặt luôn được "
+                     "đưa tới mức sáng chuẩn; cân trắng ấm/hồng nhẹ "
+                     f"(+{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Temperature', 0)):.0f} K, "
+                     f"Tint +{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Tint', 0)):.0f}). "
+                     "Không tự bật Color Grading (nó ám màu cả khung). Chọn xong vẫn "
+                     "sửa được số ở thanh dưới."
             ).pack(side="right", padx=(8, 0))
         NGAN_LB = {"cuoi": "Cưới", "su_kien": "Sự kiện", "ky_yeu": "Kỷ yếu"}
         self.cb_loai_buoi = gd.PhanDoan(
@@ -1785,9 +1789,12 @@ class App(ttk.Frame):
         ct(g_ghim, self.v_hl, "Tự kéo Highlights khi cháy sáng",
            "Ngăn làm cháy thêm — không gỡ được chỗ đã cháy sẵn")
         ct(g_ghim, self.v_sh, "Tự kéo Shadows khi bết tối",
-           "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.")
+           "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.\n"
+           "Loại buổi Kỷ yếu thì không mở (giữ đen sâu như ảnh kỷ yếu đã duyệt).")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
            "Kỷ yếu, concept: da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt.\n"
+           "· Lưu ý: Color Grading đổi màu cả các vùng cam / trắng trong khung, "
+           "dễ thấy ám màu — buổi kỷ yếu nên để TẮT (cân trắng kỷ yếu đã lo).\n"
            "· Cân trắng đưa da về màu học từ ảnh kỷ yếu đã duyệt — riêng trong "
            "nhà và ngoài trời (tắt thì ảnh ngoài trời kéo về da rám nắng, trong "
            "nhà về màu ảnh sự kiện).\n"
@@ -3195,10 +3202,9 @@ class App(ttk.Frame):
         bu = {"su_kien": float(at.DEFAULTS.get("bu_sang_su_kien", 0.30)),
               "ky_yeu": float(at.DEFAULTS.get("bu_sang_ky_yeu", 0.25))}.get(ma, 0.0)
         self.v_bu_sang.set(f"{bu:.2f}")
-        #  Ky yeu = concept da trang hong: bat san (tat tay duoc; doi loai khac
-        #  thi KHONG tu tat — nguoi dung co the da chu y bat)
-        if ma == "ky_yeu" and not self.v_grade.get():
-            self.v_grade.set(True)
+        #  8/10 vong 3: KHONG tu bat "Day tone ve da trang hong" cho ky yeu nua —
+        #  user tat Color Grading vi no am mau ca khung; mau da ky yeu nay lo
+        #  bang WB (wb_bu_ky_yeu). Ai can thi van tu tick.
         self.refresh_plan()
 
     def _doi_che_do_sang(self):
