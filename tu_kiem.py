@@ -524,7 +524,8 @@ def chay(nhanh: bool = False) -> Bao:
 
         #[[ 9/10: HSL mau da anh cuoi — quyet dinh tren da DO THAT o anh duyet
         #   (at.hsl_da_cuoi). Chay TRONG GOI ma hoa: anh duyet tong hop (da vang,
-        #   nhat) -> Orange Hue am / Sat duong; da o dich -> khong dung. ]]
+        #   nhat) -> Hue GIU (khong xoay ve do), Sat duong; da trong khoang on ->
+        #   khong dung. ]]
         def _hsl_cuoi():
             import csv as _csv
             import math as _m
@@ -575,11 +576,12 @@ def chay(nhanh: bool = False) -> Bao:
                     duyet(f"A{i}", 45.0, 0.040)
                 kq = at.hsl_da_cuoi(items, cfg, buoi, jobs)
                 moi = items[0].get("hsl_moi") or {}
-                if not (items[0].get("hsl_ghi") and moi.get("HueAdjustmentOrange", 7) < 7
+                #  vong 2 (9/10): KHONG xoay da ve do — da vang chi duoc tang do dam
+                if not (items[0].get("hsl_ghi") and moi.get("HueAdjustmentOrange") == 7
                         and moi.get("SaturationAdjustmentOrange", -25) > -25):
                     raise AssertionError(f"da vàng/nhạt mà HSL sai: {moi} · {kq}")
                 for i in range(2):
-                    duyet(f"A{i}", 37.6, 0.051)
+                    duyet(f"A{i}", 38.0, 0.050)
                 kq2 = at.hsl_da_cuoi(items, cfg, buoi, jobs)
                 if any(r.get("hsl_ghi") for r in items):
                     raise AssertionError(f"da ở đích mà vẫn chỉnh HSL: {kq2}")

@@ -1813,20 +1813,19 @@ class App(ttk.Frame):
         #[[ 9/10: HSL mau da anh CUOI — quyet dinh tren da DO THAT o anh duyet
         #   Lightroom ve sau lan ghi WB + Tone (at.hsl_da_cuoi). Dat TRUOC o Color
         #   Grading: dung thu tu chuoi WB + Tone -> HSL -> Color Grading. ]]
-        _d = at.DEFAULTS.get("hsl_da_cuoi_dich") or (37.6, 0.051)
+        _k = at.DEFAULTS.get("hsl_da_cuoi_dam") or (0.045, 0.057)
         ct(g_ghim, self.v_hsl_da, "Tự chỉnh HSL màu da (Cưới)",
-           "Kênh Cam (Orange) đưa da chủ thể về màu da ảnh cưới anh đã sửa "
-           f"(hue {float(_d[0]):.1f}°, độ đậm {float(_d[1]):.3f}) — CHỈ khi đã ĐO được "
-           "da thật sau WB + Tone:\n"
+           "Kênh Cam (Orange) cho da chủ thể — CHỈ khi đã ĐO được da thật sau WB + Tone:\n"
            "1. Ghi (WB + Tone).  2. ⋯ → Duyệt nhanh → Dựng ảnh duyệt.  3. Ghi lại: "
            "tool đo da trên ảnh duyệt Lightroom vẽ rồi mới quyết HSL.  4. Duyệt lại để "
-           "kiểm — cảnh nào lệch thì lần Ghi sau tự chỉnh tiếp / lùi lại.\n"
-           "· Theo từng cảnh; da đã ổn thì không đụng; chỉ sửa "
-           f"{int(float(at.DEFAULTS.get('hsl_da_cuoi_phan', 0.8)) * 100)}% phần lệch; "
-           f"không kéo da đỏ quá hue {float(at.DEFAULTS.get('hsl_da_cuoi_san_do', 35)):.0f}°, "
-           f"không đậm quá {float(at.DEFAULTS.get('hsl_da_cuoi_tran_dam', 0.062)):.3f}.\n"
-           "· KHÔNG đổi cân trắng (vùng trắng ảnh cưới anh sửa khớp WB tool). Chỉ preset "
-           "SAY (saymedia7v / NoWBExposure); tắt ô thì ảnh tool đã chỉnh HSL trả về số preset.")
+           "kiểm — cảnh nào còn lệch thì lần Ghi sau chỉnh tiếp / lùi lại.\n"
+           "· KHÔNG BAO GIỜ xoay da về đỏ: chỉ lùi về vàng khi da đỏ hơn hue "
+           f"{float(at.DEFAULTS.get('hsl_da_cuoi_hue_min', 34)):.0f}°.\n"
+           f"· Độ đậm chỉ chỉnh khi ra ngoài khoảng {float(_k[0]):.3f}–{float(_k[1]):.3f} "
+           "(khoảng da ảnh cưới anh đã sửa), kéo tới mép khoảng; da trong khoảng thì "
+           "không đụng. Theo từng cảnh.\n"
+           "· KHÔNG đổi cân trắng. Chỉ preset SAY (saymedia7v / NoWBExposure); tắt ô "
+           "thì ảnh tool đã chỉnh HSL trả về số preset.")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
            "Color Grading về da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt — "
            "bước CUỐI của chuỗi màu da: cân WB + Tone → đo màu da dự đoán trong "
@@ -4309,17 +4308,17 @@ class App(ttk.Frame):
                         + (f" ({doi} ảnh đổi số so với lần ghi)" if doi else "")
                         + " — Ghi, rồi ⋯ → Duyệt nhanh → Dựng ảnh duyệt, rồi bấm Ghi lại")
             else:
-                d = hc.get("dich") or (37.6, 0.051)
+                kh = hc.get("khoang") or (34.0, 0.045, 0.057)
                 msg += (f" · da đo trên {hc['n_do']} ảnh duyệt: hue {hc['hue_do']:.0f}° "
-                        f"(đích {float(d[0]):.0f}°), đậm {hc['chroma_do']:.3f} "
-                        f"(đích {float(d[1]):.3f})")
+                        f"(đỏ nhất {float(kh[0]):.0f}°), đậm {hc['chroma_do']:.3f} "
+                        f"(khoảng ổn {float(kh[1]):.3f}–{float(kh[2]):.3f})")
                 if hc.get("canh_chinh"):
                     msg += (f" → HSL Cam {hc['canh_chinh']}/{hc['canh']} cảnh (trung vị "
                             f"Hue {int(hc['hue']):+d} / Sat {int(hc['sat']):+d})")
                 if hc.get("canh_on"):
                     msg += f", {hc['canh_on']} cảnh da ổn giữ nguyên"
                 if hc.get("canh_chan"):
-                    msg += f", {hc['canh_chan']} cảnh chạm chốt chặn đỏ / đậm"
+                    msg += f", {hc['canh_chan']} cảnh chạm trần độ đậm"
                 if hc.get("thieu_duyet") or hc.get("doi_so"):
                     msg += (f" · {int(hc.get('thieu_duyet', 0)) + int(hc.get('doi_so', 0))} "
                             "ảnh chưa có ảnh duyệt hợp lệ → không đụng HSL")

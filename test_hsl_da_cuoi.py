@@ -12,11 +12,11 @@ CHUYỆN ĐANG LÀM
 chỗ khung mặt tool chọn, đặt trong <buổi>/_duyet — như ảnh Lightroom vẽ khi Duyệt
 nhanh. Job .done giả mang đúng WB / Tone đã đẩy vào Lightroom.
 
-Mục kiểm
-    1. Da vàng + nhạt so với đích -> Orange Hue âm, Sat dương, đúng độ lớn (sửa 80%).
-    2. Da đã ở đích -> cảnh giữ nguyên (không ghi HSL).
-    3. Da QUÁ ĐỎ -> lùi về vàng (Hue dương), Sat giảm — không bao giờ đỏ thêm.
-    4. Chốt sàn đỏ / trần đậm cắt đúng.
+Mục kiểm (vòng 2, 9/10 — đo thật Ănhoi2009: KHÔNG BAO GIỜ xoay da về đỏ)
+    1. Da vàng + nhạt -> Hue GIỮ (không xoay về đỏ), Sat dương tới mép khoảng (80%).
+    2. Da trong khoảng ổn -> cảnh giữ nguyên (không ghi HSL).
+    3. Da QUÁ ĐỎ -> lùi về vàng (Hue dương), quá đậm -> Sat giảm.
+    4. Trần đậm (1/4 mặt đậm nhất) cắt đúng.
     5. Thiếu ảnh duyệt / ảnh duyệt cũ hơn job / WB-Tone đổi so với job -> không đụng.
     6. Preset không phải SAY -> không đụng. Cảnh chỉ 1 ảnh đo -> không quyết.
     7. Vòng kín: HSL cộng vào số JOB đã ghi; ảnh duyệt mới cho thấy đỏ quá -> lùi.
@@ -120,7 +120,9 @@ def main() -> int:
     jobs = tam / "jobs"
     jobs.mkdir()
     k_h, k_s = float(at.DEFAULTS["hsl_da_k_hue"]), float(at.DEFAULTS["hsl_da_k_sat"])
-    dh, dc = (float(v) for v in at.DEFAULTS["hsl_da_cuoi_dich"])
+    hue_min = float(at.DEFAULTS["hsl_da_cuoi_hue_min"])
+    c_lo, c_hi = (float(v) for v in at.DEFAULTS["hsl_da_cuoi_dam"])
+    dh, dc = 38.0, 0.050                     # mau da TRONG khoang on
 
     # canh 1: da vang + nhat | canh 2: da o dich | canh 3: da qua do | canh 4: khong anh duyet
     # canh 5: chi 1 anh | canh 6: anh duyet CU hon job | canh 7: WB doi so voi job
@@ -154,13 +156,13 @@ def main() -> int:
          f"hue {np.median([x[0] for x in d]):.1f} chroma {np.median([x[1] for x in d]):.4f}" if d else "")
     h1 = float(np.median([x[0] for x in d])); c1 = float(np.median([x[1] for x in d]))
     h1q = float(np.percentile([x[0] for x in d], 25)); c1q = float(np.percentile([x[1] for x in d], 75))
-    u_mong = int(round(np.clip(0.8 * (dh - h1) / k_h, -15, 15)))
-    v_mong = int(round(np.clip(0.8 * math.log(dc / c1) / k_s, -20, 20)))
+    u_mong = 0                                        # da vang: KHONG xoay ve do
+    v_mong = int(round(np.clip(0.8 * math.log(c_lo / c1) / k_s, -20, 20)))
     r1 = theo[1][0]
     ok1 = r1.get("hsl_ghi") and r1["hsl_moi"]["HueAdjustmentOrange"] == 7 + u_mong \
         and r1["hsl_moi"]["SaturationAdjustmentOrange"] == -25 + v_mong
-    ktra("canh vang + nhat -> Orange Hue am, Sat duong, dung do lon (80%)",
-         bool(ok1) and u_mong < 0 < v_mong,
+    ktra("canh vang + nhat -> Hue GIU (khong xoay ve do), Sat duong toi mep khoang (80%)",
+         bool(ok1) and v_mong > 0,
          f"Hue {r1.get('hsl_moi', {}).get('HueAdjustmentOrange')} (mong {7 + u_mong}) Sat "
          f"{r1.get('hsl_moi', {}).get('SaturationAdjustmentOrange')} (mong {-25 + v_mong})")
     ktra("anh khong mat cung canh nhan cung muc HSL",
@@ -168,7 +170,7 @@ def main() -> int:
     ktra("Red / Yellow giu nguyen so preset",
          r1["hsl_moi"]["SaturationAdjustmentRed"] == 4 and r1["hsl_moi"]["SaturationAdjustmentYellow"] == -4)
     # ---- 2
-    ktra("canh da o dich -> giu nguyen (khong ghi HSL)", not any(r.get("hsl_ghi") for r in theo[2]))
+    ktra("canh da trong khoang on -> giu nguyen (khong ghi HSL)", not any(r.get("hsl_ghi") for r in theo[2]))
     # ---- 3
     r3 = theo[3][0]
     ktra("canh da QUA DO -> lui ve vang (Hue duong), Sat giam",
@@ -184,18 +186,19 @@ def main() -> int:
     ktra("tom tat: dem dung so canh chinh / on", kq["canh_chinh"] == 2 and kq["canh_on"] == 1,
          f"chinh {kq['canh_chinh']} on {kq['canh_on']} canh {kq['canh']} thieu_duyet {kq['thieu_duyet']}")
 
-    # ---- 4. chot san do / tran dam
-    kq4 = chay(items, buoi, jobs, hsl_da_cuoi_phan=1.0, hsl_da_cuoi_san_do=42.0, hsl_da_cuoi_tran_dam=0.044)
+    # ---- 4. tran dam: khoang [0.060, 0.045] -> keo len du nhung 1/4 mat dam nhat cham 0.045
+    kq4 = chay(items, buoi, jobs, hsl_da_cuoi_dam=[0.060, 0.045])
     r1 = theo[1][0]
-    #  phan 1.0 -> tran -15 cat truoc; san 42 van cat tiep: hue sau HSL = 42
-    #  san / tran xet tren 1/4 mat DO NHAT (p25 hue) / DAM NHAT (p75 chroma)
-    u_san = int(round(max(-15.0, min(0.0, (42.0 - h1q) / k_h))))
-    v_tran = int(round(max(0.0, math.log(0.044 / c1q) / k_s)))
-    ktra("san do: hue sau HSL khong duoi 42 (cat dung)", r1["hsl_moi"]["HueAdjustmentOrange"] == 7 + u_san,
-         f"Hue {r1['hsl_moi']['HueAdjustmentOrange']} (mong {7 + u_san})")
-    ktra("tran dam: chroma sau HSL khong vuot 0.044", r1["hsl_moi"]["SaturationAdjustmentOrange"] == -25 + v_tran,
+    v_tran = int(round(max(0.0, math.log(0.045 / c1q) / k_s)))
+    ktra("tran dam: 1/4 mat dam nhat sau HSL khong vuot mep tren",
+         r1["hsl_moi"]["SaturationAdjustmentOrange"] == -25 + v_tran,
          f"Sat {r1['hsl_moi']['SaturationAdjustmentOrange']} (mong {-25 + v_tran})")
     ktra("tom tat ghi canh cham chot chan", kq4["canh_chan"] >= 1)
+    # ---- 4b. KHONG BAO GIO xoay ve do: ca khi da vang dam (50 do) trong moi cau hinh
+    kq4b = chay(items, buoi, jobs, hsl_da_cuoi_phan=1.0, hsl_da_cuoi_hue_min=60.0)
+    ktra("da vang van KHONG bi xoay ve do (Hue chi tang hoac giu)",
+         all((r.get("hsl_moi") or {}).get("HueAdjustmentOrange", 7) >= 7 for r in items),
+         str(sorted({(r.get('hsl_moi') or {}).get('HueAdjustmentOrange') for r in items if r.get('hsl_moi')})))
 
     # ---- 6. preset khong phai SAY
     khac = [dict(r, crs=dict(r["crs"], SaturationAdjustmentOrange="-35")) for r in items]
@@ -225,7 +228,7 @@ def main() -> int:
     ktra("vong kin: da qua do sau HSL -> Hue LUI (duong) tinh tu so job -7",
          r1.get("hsl_ghi") and r1["hsl_moi"]["HueAdjustmentOrange"] > -7,
          f"Hue {r1.get('hsl_moi', {}).get('HueAdjustmentOrange')}")
-    ktra("vong kin: canh da o dich -> khong ghi (Lightroom giu HSL dang co)", not r2.get("hsl_ghi"))
+    ktra("vong kin: canh da trong khoang on -> khong ghi (Lightroom giu HSL dang co)", not r2.get("hsl_ghi"))
     ktra("anh duyet cu hon job MOI -> khong dung (canh 3 chua duyet lai)", not any(r.get("hsl_ghi") for r in theo[3]))
 
     # ---- 8. tat o -> duong cu tra so preset cho anh tool tung ghi HSL

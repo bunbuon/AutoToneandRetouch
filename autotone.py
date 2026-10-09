@@ -2408,31 +2408,38 @@ DEFAULTS = {
     #   nhanh, <buoi>/_duyet) SAU lan ghi WB + Tone, tai chinh cac mat tool chon.
     #   Chua co anh duyet hop le thi KHONG cham HSL.
     #
-    #   Dich: da 1402 anh cuoi user sua (Anhoi2009 + Quyen), do cung cach (mat na da
-    #   tinh tren chinh anh): hue OkLab 37.6 do (IQR 33.3-42.2), chroma 0.051 (p90
-    #   0.066). WB KHONG doi theo da: vung trang / xam anh user sua khop WB tool
+    #   Da 1402 anh cuoi user sua (Anhoi2009 + Quyen), do cung cach (mat na da tinh
+    #   tren chinh anh): hue OkLab 37.6 do (IQR 33.3-42.2), chroma 0.051 (IQR
+    #   0.045-0.057, p90 0.066). WB KHONG doi theo da: vung trang / xam anh user sua khop WB tool
     #   (Tint lech ~0); suy WB tu da ra Tint ~+38 thi vung trang hong them 20e-3.
     #   Da hong / dam hon la chinh RIENG da -> chi kenh da (Orange).
     #
-    #   Chot chan: vung "da on" (khong dung); chi sua `phan` phan lech; tran diem;
-    #   san do (hue sau HSL du doan khong duoi); tran dam; theo CANH (trung vi >=
-    #   min_anh anh do duoc), khong ca buoi. Vong kin: ghi HSL -> Duyet lai -> lan
-    #   Ghi sau tinh tiep tu so do moi (vuot do thi tu lui). Phan ung thanh truot:
+    #   Luat quyet dinh: xem VONG 2 ngay duoi (khong xoay ve do, khoang da on). Theo
+    #   CANH (trung vi >= min_anh anh do duoc), khong ca buoi. Vong kin: ghi HSL ->
+    #   Duyet lai -> lan Ghi sau tinh tiep tu so do moi. Phan ung thanh truot:
     #   hsl_da_k_hue / hsl_da_k_sat (do tren da that). Chi chay voi preset ho SAY
-    #   (dich va phan ung hoc tren no) — preset khac: khong cham. ]]
+    #   (khoang va phan ung hoc tren no) — preset khac: khong cham. ]]
     "hsl_da_cuoi": False,
-    "hsl_da_cuoi_dich": [37.6, 0.051],      # hue OkLab (do), chroma
-    "hsl_da_cuoi_on": [3.0, 0.10],          # |lech hue| do, |ln ti le chroma|
-    "hsl_da_cuoi_phan": 0.8,                # chi sua phan nay cua do lech
+    #[[ VONG 2 (9/10, DO THAT buoi Anhoi2009 sau v52 — 698 anh duyet Lightroom ve SAU
+    #   HSL, so voi anh user sua):
+    #     - WB + Tone XONG da da KHOP anh user (hue 40.9 vs 39.7, chroma x0.99) —
+    #       buoi nay user de da vang am hon dich chung 37.6.
+    #     - Luat "ve DIEM 37.6 / 0.051" keo 149 anh canh den am (user CO Y giu da
+    #       ~43 do) ve 39 -> 204 anh do hon anh user > 4 do (truoc HSL ~115), chroma
+    #       x1.065. Da anh user sua la mot KHOANG theo canh, khong mot diem.
+    #   LUAT MOI (user: "khong duoc keo da qua do hay am mau khac"):
+    #     - KHONG BAO GIO xoay hue ve do. Chi lui ve VANG khi canh do hon
+    #       hsl_da_cuoi_hue_min.
+    #     - Do dam chi chinh khi ra NGOAI khoang hsl_da_cuoi_dam (IQR chroma da anh
+    #       user sua), keo toi MEP khoang, khong vao giua.
+    #   Cham lai tren so do THAT Anhoi: do hon > 4 do 114 (khong HSL 115, v52 180),
+    #   chroma x1.00. Quyen (mo hinh): chroma 0.80 -> 0.84, hue giu (khong tu keo do).
+    #   Trong cung anh duyet do: vung trang / xam va vung cam-do KHONG phai da khong
+    #   am (lech ~0 / hue -0.3 do). ]]
+    "hsl_da_cuoi_hue_min": 34.0,            # hue OkLab: do hon muc nay -> lui ve vang
+    "hsl_da_cuoi_dam": [0.045, 0.057],      # khoang chroma da on — ngoai moi chinh Sat
+    "hsl_da_cuoi_phan": 0.8,                # chi sua phan nay cua quang can toi mep khoang
     "hsl_da_cuoi_tran": [15, 20],           # tran diem Orange Hue / Sat moi lan
-    #  San do / tran dam xet tren 1/4 so mat DO NHAT (p25 hue) / DAM NHAT (p75 chroma)
-    #  cua canh, khong tren trung vi: trong canh da khong deu, keo theo trung vi thi
-    #  nhung tam von da hong bi day qua. Thu tren 164 canh 2 buoi cuoi (mo hinh thay
-    #  so do): san 35 theo trung vi -> 173 anh do hon anh user sua > 4 do (khong HSL:
-    #  156); san 37 theo p25 -> 160, |lech hue| van 3.8 do (khong HSL: 6.0). Ky yeu bi
-    #  che "do" o hue 34.6 — san 37 cao hon han. Tran 0.057 = p75 chroma da anh sua.
-    "hsl_da_cuoi_san_do": 37.0,             # p25 hue du doan sau HSL khong duoi
-    "hsl_da_cuoi_tran_dam": 0.057,          # p75 chroma du doan sau HSL khong vuot
     "hsl_da_cuoi_min_anh": 2,               # canh can >= n anh do duoc
     "hsl_da_cuoi_preset": {"HueAdjustmentOrange": 7, "SaturationAdjustmentOrange": -25},
     #[[ PHANH RIENG CHO DA: tran do sang vung sang cua khuon mat (sRGB 0-255).
@@ -5362,10 +5369,12 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
                    nhận khi vẽ SAU job mới nhất của ảnh VÀ WB / Tone lần tính này
                    trùng job đó (_trung_job) -> da_tren_anh_duyet -> r["da_duyet"]
         2. CẢNH  : trung vị hue / chroma đo được của cảnh (>= hsl_da_cuoi_min_anh)
-        3. HSL   : lệch so với đích; vùng "da ổn" thì giữ; sửa `phan` phần lệch;
-                   trần điểm; sàn đỏ / trần đậm theo da DỰ ĐOÁN sau HSL
-                   (hsl_da_k_hue / hsl_da_k_sat) -> MỘT mức Orange cho cả cảnh,
-                   cộng vào HSL ĐANG CÓ trong Lightroom lúc vẽ ảnh duyệt
+        3. HSL   : da trong KHOẢNG ổn thì giữ. KHÔNG BAO GIỜ xoay hue về đỏ — chỉ lùi
+                   về vàng khi cảnh đỏ hơn hsl_da_cuoi_hue_min; độ đậm ngoài khoảng
+                   hsl_da_cuoi_dam thì kéo `phan` quãng tới MÉP khoảng; trần điểm;
+                   1/4 mặt đậm nhất không vượt mép trên (phản ứng hsl_da_k_hue /
+                   hsl_da_k_sat) -> MỘT mức Orange cho cả cảnh, cộng vào HSL ĐANG CÓ
+                   trong Lightroom lúc vẽ ảnh duyệt
         4. Cảnh không đủ ảnh đo / ảnh chưa có ảnh duyệt hợp lệ: KHÔNG đụng HSL
                    (ô HSL của job để trống -> Lightroom giữ số đang có)
 
@@ -5373,19 +5382,17 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
     for r in items:
         for key in ("hsl_ghi", "hsl_moi", "hsl_thieu_cot", "da_lech0", "da_lech1", "da_duyet"):
             r.pop(key, None)
-    dich_h, dich_c = (float(v) for v in (cfg.get("hsl_da_cuoi_dich") or (37.6, 0.051)))
-    on_h, on_c = (float(v) for v in (cfg.get("hsl_da_cuoi_on") or (3.0, 0.10)))
+    hue_min = float(cfg.get("hsl_da_cuoi_hue_min") or 34.0)
+    c_lo, c_hi = (float(v) for v in (cfg.get("hsl_da_cuoi_dam") or (0.045, 0.057)))
     phan = float(cfg.get("hsl_da_cuoi_phan") or 0.8)
     tran_h, tran_s = (float(v) for v in (cfg.get("hsl_da_cuoi_tran") or (15, 20)))
-    san_do = float(cfg.get("hsl_da_cuoi_san_do") or 0.0)
-    tran_dam = float(cfg.get("hsl_da_cuoi_tran_dam") or 0.0)
     min_anh = max(1, int(cfg.get("hsl_da_cuoi_min_anh") or 1))
     k_h = float(cfg.get("hsl_da_k_hue") or 0.418)
     k_s = float(cfg.get("hsl_da_k_sat") or 0.01085)
     kq = {"bat": True, "cuoi": True, "dai": "Orange", "hue": 0, "sat": 0, "n": 0,
           "n_do": 0, "canh": 0, "canh_chinh": 0, "canh_on": 0, "canh_chan": 0,
           "thieu_duyet": 0, "doi_so": 0, "khac_preset": False, "hue_do": 0.0,
-          "chroma_do": 0.0, "dich": (dich_h, dich_c)}
+          "chroma_do": 0.0, "khoang": (hue_min, c_lo, c_hi)}
     for r in items:
         if r.get("crs") and "HueAdjustmentOrange" not in r["crs"]:
             r["hsl_thieu_cot"] = True
@@ -5420,8 +5427,9 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
             kq["thieu_duyet"] += 1
             continue
         r["da_duyet"] = d
-        r["da_lech0"] = (round((dich_h - d[0] + 180.0) % 360.0 - 180.0, 1),
-                         round(dich_c / max(d[1], 1e-6), 3))
+        #  (do can lui ve vang toi mep, ti le chroma can toi mep khoang) — 0 / 1 = on
+        r["da_lech0"] = (round(max(0.0, hue_min - d[0]), 1),
+                         round(c_lo / d[1] if d[1] < c_lo else (c_hi / d[1] if d[1] > c_hi else 1.0), 3))
         theo_canh.setdefault(r.get("scene"), []).append(r)
         kq["n_do"] += 1
 
@@ -5448,20 +5456,22 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
         hs = np.array([r["da_duyet"][0] for r in ds])
         cs = np.array([r["da_duyet"][1] for r in ds])
         h, c = float(np.median(hs)), float(np.median(cs))
-        h_do, c_dam = float(np.percentile(hs, 25)), float(np.percentile(cs, 75))
-        dh = (dich_h - h + 180.0) % 360.0 - 180.0
-        dc = math.log(dich_c / max(c, 1e-6))
-        u = 0.0 if abs(dh) <= on_h else float(np.clip(phan * dh / k_h, -tran_h, tran_h))
-        v = 0.0 if abs(dc) <= on_c else float(np.clip(phan * dc / k_s, -tran_s, tran_s))
+        c_dam = float(np.percentile(cs, 75))
+        #  Hue: CHI lui ve vang (u >= 0) — khong bao gio xoay ve do
+        u = float(np.clip(phan * (hue_min - h) / k_h, 0.0, tran_h)) if h < hue_min else 0.0
+        if c < c_lo:
+            dc = math.log(c_lo / max(c, 1e-6))
+        elif c > c_hi:
+            dc = math.log(c_hi / c)
+        else:
+            dc = 0.0
+        v = float(np.clip(phan * dc / k_s, -tran_s, tran_s))
         chan = False
-        #[[ CHOT DO: 1/4 so mat DO NHAT cua canh, sau HSL (du doan), khong duoc do
-        #   hon san_do; 1/4 DAM NHAT khong dam hon tran_dam. Tinh tren so DO THAT nen
-        #   chi con sai so phan ung thanh truot — vong Duyet lai se do va lui. ]]
-        if san_do and u < 0 and h_do + k_h * u < san_do:
-            u = min(0.0, (san_do - h_do) / k_h)
-            chan = True
-        if tran_dam and v > 0 and c_dam * math.exp(k_s * v) > tran_dam:
-            v = max(0.0, math.log(tran_dam / max(c_dam, 1e-6)) / k_s)
+        #[[ CHOT DAM: 1/4 so mat DAM NHAT cua canh, sau HSL (du doan), khong duoc dam
+        #   hon mep tren khoang. Tinh tren so DO THAT nen chi con sai so phan ung
+        #   thanh truot — vong Duyet lai se do va lui. ]]
+        if v > 0 and c_dam * math.exp(k_s * v) > c_hi:
+            v = max(0.0, math.log(c_hi / max(c_dam, 1e-6)) / k_s)
             chan = True
         #  BIEN RIENG cho so nguyen: Cython suy u / v la double (moi phep gan tren
         #  deu la so thuc) -> int(round(u)) gan lai van la double, va f"{u:+d}"
@@ -5488,8 +5498,7 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
             if nhan not in str(r.get("notes", "")):
                 r["notes"] = (str(r.get("notes", "")) + ";" + nhan).strip(";")
             if r.get("da_duyet"):
-                r["da_lech1"] = round((dich_h - (r["da_duyet"][0] + k_h * ui) + 180.0) % 360.0
-                                      - 180.0, 1)
+                r["da_lech1"] = round(max(0.0, hue_min - (r["da_duyet"][0] + k_h * ui)), 1)
     if us:
         kq["hue"], kq["sat"] = int(np.median(us)), int(np.median(vs))
     do = [r["da_duyet"] for r in items if r.get("da_duyet")]
