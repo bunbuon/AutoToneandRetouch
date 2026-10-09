@@ -156,6 +156,38 @@ ktra("applyJob ghi nhip moi buoc", len(nhip) >= 4 and all("vong=66" in x for x i
 ktra("buoc dau = 'bắt đầu 1 ảnh', co 'ghi 1/1'",
      "buoc=bắt đầu 1 ảnh" in nhip[0] and any("buoc=ghi 1/1" in x for x in nhip))
 
+# ---- 4b. DuyetCore.locSao (9/10): -1 = chi giu anh CHUA gan sao (anh co sao = da loc)
+L.execute('''
+local cat = { withReadAccessDo = function(self, fn) fn() end,
+              withWriteAccessDo = function(self, n, fn) fn() end,
+              findPhotoByPath = function() return nil end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat end
+''')
+Dc = L.eval('require("DuyetCore")')
+anh_sao = L.eval('''(function()
+  local ds = {}
+  local sao = { false, 0, 1, 3, 5, 1 }
+  for i = 1, #sao do
+    local s = sao[i]
+    ds[i] = { ten = "A" .. i, getRawMetadata = function(self, k) if k == "rating" and s then return s end return nil end }
+  end
+  return ds end)()''')
+
+
+def loc(bo):
+    out, n_bo = Dc.locSao(anh_sao, bo)
+    return [out[i]["ten"] for i in range(1, len(out) + 1)], n_bo
+
+
+g1, b1 = loc(-1)
+ktra("locSao(-1): chi giu anh chua gan sao (nil / 0), bo moi anh 1-5 sao", g1 == ["A1", "A2"] and b1 == 4, f"{g1} bo {b1}")
+g2, b2 = loc(1)
+ktra("locSao(1): bo dung anh 1 sao nhu cu", g2 == ["A1", "A2", "A4", "A5"] and b2 == 2, f"{g2} bo {b2}")
+g3, b3 = loc(0)
+ktra("locSao(0): xuat het", len(g3) == 6 and b3 == 0)
+ktra("locSao('-1' dang chu tu file yeu cau) = -1", loc("-1") == (g1, b1))
+
 # ---- 5. XuatCore (9/10 Xuat mot thao tac): bang path->jpg + ten file khop xuat_lr
 X = L.eval('require("XuatCore")')
 import xuat_lr

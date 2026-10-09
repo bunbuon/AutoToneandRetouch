@@ -99,6 +99,9 @@ của Retouch). Bấm là hiện hộp thoại, mọi lựa chọn được nh�
 1. **Chất lượng JPEG** 1–100 (mặc định lấy số Lightroom đang dùng). Kích thước,
    không gian màu, metadata, quy tắc đặt tên vẫn theo thông số Export của Lightroom.
 2. **Thư mục xuất** + Lightroom gặp file trùng tên: ghi đè / bỏ qua / đổi tên; bỏ ảnh 1 sao.
+   **Chỉ xuất ảnh chưa gắn sao** (9/10): ảnh có sao (1–5) là ảnh đã lọc — lọc trùng
+   khung / nhắm mắt của tool gắn sao, hoặc anh tự gắn — nên không xuất. Buổi đã lọc
+   thì công tắc này tự bật và nói số ảnh sẽ bỏ; bật thì ô "bỏ ảnh 1 sao" thừa nên khoá.
 3. **Ảnh retouch ghi ở đâu**: thư mục riêng `<xuất>_retouch` (mặc định) hay ghi đè
    lên chính ảnh Lightroom vừa xuất (hỏi lại, không lùi được).
 4. **Cache xem trước**: dung lượng (mặc định 2 GB), xem đang dùng bao nhiêu, nút xoá.

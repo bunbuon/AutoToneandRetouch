@@ -43,6 +43,8 @@ MAC_DINH = {
     "chat": 80,                 # chất lượng JPEG 1..100 (Lightroom 0..1)
     "va_cham": "overwrite",     # Lightroom gặp trùng tên: overwrite / skip / rename
     "bo_sao1": True,            # không xuất ảnh 1 sao
+    #  chỉ xuất ảnh CHƯA gắn sao (ảnh có sao = đã lọc); None = tự bật khi buổi đã lọc
+    "chi_chua_sao": None,
     "retouch_ra": "rieng",      # rieng = <xuất>_retouch · ghi_de = đè lên ảnh xuất
     "cache_mb": 2048,           # cache xem trước (cache_xem)
     "tu_retouch": True,         # retouch ngay trong lúc xuất
@@ -87,6 +89,8 @@ def doc_cai_dat() -> dict:
     d["thu_muc"] = str(d.get("thu_muc") or "")
     if d.get("an_toan_cpu") not in (True, False, None):
         d["an_toan_cpu"] = None
+    if d.get("chi_chua_sao") not in (True, False, None):
+        d["chi_chua_sao"] = None
     return d
 
 
@@ -331,7 +335,8 @@ class XuatDialog(tk.Toplevel):
 
     def __init__(self, cha, buoi: str = "", thu_muc_goi_y: str = "",
                  thong_so_lr: dict | None = None, luc_lr=None,
-                 ds_preset: list | None = None, muc_dang: dict | None = None):
+                 ds_preset: list | None = None, muc_dang: dict | None = None,
+                 so_da_loc: int = 0):
         super().__init__(cha)
         self.title("Xuất ảnh từ Lightroom")
         self.transient(cha)
@@ -349,6 +354,11 @@ class XuatDialog(tk.Toplevel):
         self.v_thu_muc = tk.StringVar(value=str(thu_muc_goi_y or ""))
         self.v_va_cham = tk.StringVar(value=cd["va_cham"])
         self.v_bo_sao1 = tk.BooleanVar(value=bool(cd["bo_sao1"]))
+        #[[ 9/10: buoi DA LOC (tool gan sao cho anh loai) ma anh chua tung chon thi
+        #   mac dinh BAT "chi xuat anh chua gan sao". ]]
+        self._so_da_loc = int(so_da_loc or 0)
+        ccs = cd.get("chi_chua_sao")
+        self.v_chi_chua_sao = tk.BooleanVar(value=(self._so_da_loc > 0) if ccs is None else bool(ccs))
         self.v_retouch_ra = tk.StringVar(value=cd["retouch_ra"])
         self.v_cache_gb = tk.StringVar(value=f"{cd['cache_mb'] / 1024.0:.1f}".rstrip("0").rstrip("."))
         self.v_tu_retouch = tk.BooleanVar(value=bool(cd["tu_retouch"]))
@@ -413,10 +423,19 @@ class XuatDialog(tk.Toplevel):
         ttk.Label(o2, text="Lightroom gặp file trùng tên:").pack(side="left")
         gd.PhanDoan(o2, self.v_va_cham, [("overwrite", "Ghi đè"), ("skip", "Bỏ qua"),
                                          ("rename", "Đổi tên")]).pack(side="left", padx=(8, 0))
+        o3b = ttk.Frame(frm)
+        o3b.pack(fill="x", pady=(6, 0))
+        gd.CongTac(o3b, self.v_chi_chua_sao, command=self._doi_chi_chua_sao).pack(side="right")
+        ttk.Label(o3b, text="Chỉ xuất ảnh chưa gắn sao (ảnh có sao = ảnh đã lọc)").pack(side="left")
+        self.lbl_da_loc = ttk.Label(frm, text="", style="Mo.TLabel", wraplength=WRAP,
+                                    justify="left")
+        self.lbl_da_loc.pack(anchor="w")
         o3 = ttk.Frame(frm)
         o3.pack(fill="x", pady=(6, 0))
-        gd.CongTac(o3, self.v_bo_sao1).pack(side="right")
+        self.ct_bo_sao1 = gd.CongTac(o3, self.v_bo_sao1)
+        self.ct_bo_sao1.pack(side="right")
         ttk.Label(o3, text="Bỏ ảnh 1 sao (ảnh đã loại khi lọc)").pack(side="left")
+        self._doi_chi_chua_sao()
 
         # ---- 3. ảnh retouch
         tieu_de("3 · Ảnh retouch ghi ở đâu")
@@ -478,7 +497,7 @@ class XuatDialog(tk.Toplevel):
                "xanh) khi nhân P chạy nặng — máy này đã sập như vậy. Xuất xong app trả "
                "lại như cũ. Sửa tận gốc: cập nhật BIOS mainboard.")
         else:
-            ct_at.state(["disabled"]) if hasattr(ct_at, "state") else None
+            ct_at.configure(state="disabled")
             self.v_an_toan.set(False)
             mo("CPU này không có nhân E — không áp dụng.")
 
@@ -521,6 +540,24 @@ class XuatDialog(tk.Toplevel):
                      "muốn giữ bản chưa retouch thì chọn thư mục riêng).")
         else:
             self.lbl_ra.configure(text=f"Ảnh retouch ghi vào: {thu_muc_retouch_cua(tm) or '(chọn thư mục xuất trước)'}")
+
+    def _doi_chi_chua_sao(self):
+        """Bật “chỉ ảnh chưa gắn sao” thì ô “bỏ ảnh 1 sao” thừa (đã gồm) -> khoá lại."""
+        bat = bool(self.v_chi_chua_sao.get())
+        try:
+            self.ct_bo_sao1.configure(state="disabled" if bat else "normal")
+        except (AttributeError, tk.TclError):
+            pass
+        if self._so_da_loc:
+            chu = (f"Buổi này đã lọc: {self._so_da_loc} ảnh gắn sao — "
+                   + ("sẽ KHÔNG xuất các ảnh đó." if bat else "vẫn sẽ xuất các ảnh đó."))
+        else:
+            chu = ("Ảnh có sao (1–5) trong Lightroom đều bị bỏ, kể cả sao anh tự gắn."
+                   if bat else "")
+        try:
+            self.lbl_da_loc.configure(text=chu)
+        except (AttributeError, tk.TclError):
+            pass
 
     def _lam_moi_cache(self):
         try:
@@ -667,7 +704,8 @@ class XuatDialog(tk.Toplevel):
             return
         preset = self._ten_preset()
         an_toan = bool(self.v_an_toan.get()) and bool(self._nhan_e)
-        ghi_cai_dat({"chat": chat, "va_cham": self.v_va_cham.get(),
+        chi_chua = bool(self.v_chi_chua_sao.get())
+        ghi_cai_dat({"chi_chua_sao": chi_chua, "chat": chat, "va_cham": self.v_va_cham.get(),
                      "bo_sao1": bool(self.v_bo_sao1.get()),
                      "retouch_ra": self.v_retouch_ra.get(), "cache_mb": cache_mb,
                      "tu_retouch": tu, "preset": preset, "ep_song_song": bool(self.v_ep.get()),
@@ -681,6 +719,9 @@ class XuatDialog(tk.Toplevel):
         self.ket_qua = {
             "chat": chat, "thu_muc": tm, "va_cham": self.v_va_cham.get(),
             "bo_sao1": bool(self.v_bo_sao1.get()), "retouch_ra": self.v_retouch_ra.get(),
+            "chi_chua_sao": chi_chua,
+            #  số gửi plugin: -1 = chỉ ảnh chưa gắn sao · 1 = bỏ ảnh 1 sao · 0 = xuất hết
+            "bo_sao": -1 if chi_chua else (1 if self.v_bo_sao1.get() else 0),
             "thu_muc_retouch": "" if ghi_de else thu_muc_retouch_cua(tm),
             "cache_mb": cache_mb, "tu_retouch": tu, "song_song": song_song,
             "preset": preset, "tai_nguyen": dict(self._tn),

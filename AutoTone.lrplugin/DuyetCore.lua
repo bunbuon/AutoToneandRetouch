@@ -352,11 +352,16 @@ end
 
 --[[ Bỏ ảnh đã bị loại (thường 1 sao). Cùng quy ước với writeExport và với
      burst_reject_rating của autotone: ảnh 1 sao không xuất, không retouch. ]]
+--[[ boSao: 0 / nil = không lọc · N > 0 = bỏ ảnh đúng N sao · ÂM (-1) = bỏ MỌI ảnh
+     có sao, chỉ giữ ảnh chưa gắn sao (9/10 — user: "chỉ xuất các ảnh không Rate.
+     Ảnh Rate là ảnh đã lọc": tool gắn sao cho ảnh loại khi lọc trùng khung /
+     nhắm mắt, và anh tự gắn sao khi chọn tay). ]]
 function M.locSao(photos, boSao)
     boSao = tonumber(boSao)
     -- 0 nghĩa là KHÔNG lọc. Phải quy về nil: trong Lua số 0 vẫn là giá trị đúng,
     -- để nguyên thì mọi ảnh chưa gán sao đều khớp và bảng ra gần như rỗng.
     if not boSao or boSao == 0 then return photos, 0 end
+    local moiSao = boSao < 0
     local out, bo = {}, 0
     local catalog = LrApplication.activeCatalog()
     local i = 1
@@ -364,8 +369,10 @@ function M.locSao(photos, boSao)
         local last = math.min(i + 199, #photos)
         catalog:withReadAccessDo(function()
             for k = i, last do
-                local r = photos[k]:getRawMetadata("rating")
-                if tonumber(r) == boSao then bo = bo + 1
+                local r = tonumber(photos[k]:getRawMetadata("rating"))
+                local bo1
+                if moiSao then bo1 = (r or 0) >= 1 else bo1 = (r == boSao) end
+                if bo1 then bo = bo + 1
                 else out[#out + 1] = photos[k] end
             end
         end)

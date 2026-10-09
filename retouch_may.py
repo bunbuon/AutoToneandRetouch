@@ -1383,11 +1383,13 @@ class MayMixin:
         doi = tt != x.get("trang_thai")
         x.update({"trang_thai": tt, "tong": int(td.get("tong") or x.get("tong") or 0),
                   "xong_lr": int(td.get("xong") or 0), "loi_lr": int(td.get("loi") or 0),
-                  "thong_bao": str(td.get("thong_bao") or "")})
+                  "thong_bao": str(td.get("thong_bao") or ""),
+                  "bo_sao": int(td.get("bo_sao") or x.get("bo_sao") or 0)})
         if doi and tt in ("xong", "dung", "loi"):
             self._append(f"… Lightroom {'xuất xong' if tt == 'xong' else ('đã dừng' if tt == 'dung' else 'LỖI')}:"
                          f" {x['xong_lr']}/{x['tong']} ảnh"
                          + (f" ({x['loi_lr']} không ra file)" if x['loi_lr'] else "")
+                         + (f" · bỏ {x['bo_sao']} ảnh đã lọc (có sao)" if x.get('bo_sao') else "")
                          + (f" · {x['thong_bao']}" if x['thong_bao'] else "")
                          + ("" if x.get("song_song") else " — bắt đầu retouch"))
             if self._theo_doi is not None and not (self.worker and self.worker.is_alive()):

@@ -201,6 +201,11 @@ def phan_lr():
          and not (job / xuat_lr.TEN_CO_DUNG_XUAT).exists() and "lo=10" in dong
          and "ts\tn\tLR_jpeg_quality\t0.92" in dong, str(dong[:4]))
     ktra("yêu cầu đang chờ", xuat_lr.dang_cho_xuat(job))
+    p_cs = xuat_lr.yeu_cau_xuat("G:\\Buoi", "F:\\Giao", e, bo_sao=-1, job_dir=job)
+    ktra("chỉ xuất ảnh chưa gắn sao -> dòng bo_sao=-1 gửi plugin",
+         "bo_sao=-1" in p_cs.read_text(encoding="utf-8").splitlines())
+    p_cs.unlink()
+    p = xuat_lr.yeu_cau_xuat("G:\\Buoi", "F:\\Giao", e, bo_sao=1, lo=10, job_dir=job)
     p.rename(job / (xuat_lr.TEN_YEU_CAU_XUAT + ".tableABC-1791000000-3.running"))
     ktra("plugin đã nhận (.<id>.running) vẫn tính là đang chờ", xuat_lr.dang_cho_xuat(job))
     for f in job.glob("*.running"):
@@ -328,6 +333,32 @@ def phan_giao_dien():
              kq and kq["song_song"] is False and kq["tu_retouch"] is True and kq["ly_do_tuan_tu"],
              str(kq and kq["ly_do_tuan_tu"]))
         ktra("cài đặt được nhớ (chat 88 -> ghi ở lần đầu, lần hai giữ)", xuat_ui.doc_cai_dat()["chat"] == 88)
+        # ---- 9/10: chỉ xuất ảnh chưa gắn sao (ảnh có sao = đã lọc)
+        xuat_ui.ghi_cai_dat({"chi_chua_sao": None})
+        d = xuat_ui.XuatDialog(root, buoi="Test", thu_muc_goi_y=str(TAM / "giao"), thong_so_lr=st,
+                               so_da_loc=41)
+        d.update()
+        d._nhan_tn({"ram_trong_gb": 20, "vram_trong_gb": 6, "card": "RTX", "cpu": 8, "dia_trong_gb": 50})
+        mac_dinh_bat = bool(d.v_chi_chua_sao.get())
+        khoa_1sao = str(d.ct_bo_sao1.cget("state")) == "disabled"
+        noi = d.lbl_da_loc.cget("text")
+        d._bat_dau()
+        kq = d.ket_qua
+        ktra("buổi đã lọc 41 ảnh -> mặc định BẬT “chỉ ảnh chưa gắn sao”, khoá ô “bỏ 1 sao”, gửi bo_sao=-1",
+             mac_dinh_bat and khoa_1sao and "41" in noi and kq and kq["bo_sao"] == -1
+             and kq["chi_chua_sao"] is True, f"{noi} · {kq and kq.get('bo_sao')}")
+        d = xuat_ui.XuatDialog(root, buoi="Test", thu_muc_goi_y=str(TAM / "giao"), thong_so_lr=st,
+                               so_da_loc=0)
+        d.update()
+        nho = bool(d.v_chi_chua_sao.get())
+        d.v_chi_chua_sao.set(False)
+        d._doi_chi_chua_sao()
+        d.v_bo_sao1.set(True)
+        d._nhan_tn({"ram_trong_gb": 20, "vram_trong_gb": 6, "card": "RTX", "cpu": 8, "dia_trong_gb": 50})
+        d._bat_dau()
+        kq = d.ket_qua
+        ktra("lựa chọn được nhớ; tắt đi thì về “bỏ 1 sao” (bo_sao=1)",
+             nho and kq and kq["bo_sao"] == 1 and xuat_ui.doc_cai_dat()["chi_chua_sao"] is False)
         # ---- 9/10: chọn thư mục xuất ở hộp thoại -> Retouch mặc định mở nó
         md = TAM / "xuat_md"
         md.mkdir(exist_ok=True)

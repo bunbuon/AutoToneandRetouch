@@ -2922,8 +2922,11 @@ class App(ttk.Frame):
         except Exception:                                    # noqa: BLE001
             ds_preset = []
         import xuat_ui
+        #  ảnh tool đã gắn sao khi lọc (trùng khung / nhắm mắt) trong lần phân tích này
+        so_da_loc = sum(1 for r in (self.items or []) if r.get("rating"))
         d = xuat_ui.XuatDialog(self, buoi=f.name, thu_muc_goi_y=goi_y, thong_so_lr=st,
-                               luc_lr=luc, ds_preset=ds_preset, muc_dang=muc_dang)
+                               luc_lr=luc, ds_preset=ds_preset, muc_dang=muc_dang,
+                               so_da_loc=so_da_loc)
         self.wait_window(d)
         if d.ket_qua:
             self.bat_dau_xuat(d.ket_qua)
@@ -2959,7 +2962,8 @@ class App(ttk.Frame):
                                 "Đợi lượt retouch đang chạy xong (hoặc bấm Dừng) rồi mới Xuất.")
             return False
         if not self._gui_yeu_cau_xuat(f, dest, kq.get("va_cham") or "overwrite",
-                                      bo_sao=1 if kq.get("bo_sao1", True) else 0,
+                                      bo_sao=int(kq["bo_sao"]) if "bo_sao" in kq
+                                      else (1 if kq.get("bo_sao1", True) else 0),
                                       chat=float(kq.get("chat") or 80) / 100.0,
                                       lo=10 if kq.get("song_song") else None):
             return False
@@ -3041,7 +3045,7 @@ class App(ttk.Frame):
         if tt == "dang_chay":
             bo = td.get("bo_sao") or 0
             noi(f"Đang xuất {xong}/{tong} ảnh vào {td.get('thu_muc', '')}"
-                + (f" · đã bỏ {bo} ảnh 1 sao" if bo else ""))
+                + (f" · đã bỏ {bo} ảnh đã lọc (có sao)" if bo else ""))
         elif tt in ("xong", "dung", "loi"):
             self._xuat_dang_soi = False
             loi = td.get("loi") or 0

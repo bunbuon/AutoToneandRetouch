@@ -143,7 +143,10 @@ def _dong_thongso(thong_so: dict) -> list[str]:
 
 def yeu_cau_xuat(folder, dest, thong_so: dict, bo_sao: int | None = 1,
                  lo: int | None = None, job_dir: Path | None = None) -> Path:
-    """Đặt yêu cầu để plugin chạy một lượt Export. Trả về đường dẫn file yêu cầu."""
+    """Đặt yêu cầu để plugin chạy một lượt Export. Trả về đường dẫn file yêu cầu.
+
+    bo_sao: 0 / None = xuất hết · N > 0 = bỏ ảnh đúng N sao · -1 = chỉ xuất ảnh
+    CHƯA gắn sao (ảnh có sao là ảnh đã lọc) — xem DuyetCore.locSao."""
     if not thong_so.get("LR_format"):
         raise ValueError("thiếu thông số export — không tự bịa")
     d = thu_muc_job(job_dir)
