@@ -2421,9 +2421,10 @@ class App(ttk.Frame):
                  "duyet": "Ảnh duyệt Lightroom",
                  "nhung": "Preview trong RAW (màu máy ảnh, chưa qua preset)",
                  "anh": ""}.get(nguon, "")
-        if p and nguon != "preset" and nguon_xem.la_raw(path):
-            mo_ta += " · Lightroom đang dựng tấm này theo preset…"
-            self.dp_preset().uu_tien(path)
+        if p and nguon_xem.la_raw(path):
+            if nguon != "preset":
+                mo_ta += " · Lightroom đang dựng tấm này theo preset…"
+            self.dp_preset().uu_tien(path)      # tấm này + trước / sau (tấm nào còn thiếu)
         try:
             i = self.luoi._vi_tri.get(path)
             vt = f"{i + 1}/{len(self.luoi.ds)}  ·  " if i is not None else ""
@@ -2469,6 +2470,19 @@ class App(ttk.Frame):
             import preset_ui
             dp = self._dp_preset = preset_ui.DieuPhoiPreset(self)
         return dp
+
+    def thu_tu_preset(self):
+        """(thứ tự ảnh của lưới đang hiện, ảnh đang xem) — để dựng preset cho ảnh
+        đang xem + tấm trước / sau (10/10)."""
+        rt = getattr(self, "_retouch_win", None)
+        if getattr(self, "khau_dang", "") == "retouch" and rt is not None \
+                and rt._la_raw_mode():
+            return [o["path"] for o in (rt.luoi.ds or [])], rt._anh_dang
+        luoi = getattr(self, "luoi", None)
+        thu_tu = [o["path"] for o in (luoi.ds or [])] if luoi is not None else []
+        if getattr(self, "_che_do_ct", "luoi") == "mot" and getattr(self, "_anh_ct", None):
+            return thu_tu, self._anh_ct
+        return thu_tu, (luoi.dang_chon if luoi is not None else None)
 
     def ds_cho_preset(self):
         """(ảnh của buổi đang xem, ảnh ưu tiên) cho lượt Lightroom dựng theo preset:

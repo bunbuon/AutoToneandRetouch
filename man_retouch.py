@@ -1527,8 +1527,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             self.xem.mo(src, truoc=truoc, tam=self.luoi._anh_pil.get(path),
                         giu_khung=giu_khung)
             dp = self.app.dp_preset() if hasattr(self.app, "dp_preset") else None
-            if dp is not None and dp.p and nguon != "preset":
-                dp.uu_tien(path)                # chưa có bản preset: Lightroom làm tấm này trước
+            if dp is not None and dp.p:
+                dp.uu_tien(path)                # tấm này + trước / sau (tấm nào còn thiếu)
             if nguon == "preset":
                 p = dp.p if dp is not None else None
                 self._dat_chip("chua", f"Preset Lightroom “{(p or {}).get('ten', '')}”")

@@ -78,8 +78,12 @@ class DieuPhoiPreset:
 
     # ------------------------------------------------------------ nguồn ảnh
     def _dat_nguon(self) -> None:
+        #[[ 10/10 (user): o nho cua luoi GIU MAU GOC — chi anh dang xem (+ truoc /
+        #   sau) duoc dung theo preset; luoi lan o theo preset voi o chua theo thi
+        #   khong con so sanh duoc ca bo. Anh lon / engine van lay ban preset qua
+        #   nguon_xem.anh_xem. ]]
         import luoi_anh
-        luoi_anh.dat_nguon(self._nguon if self.p else None)
+        luoi_anh.dat_nguon(None)
 
     def _nguon(self, path):
         p = self.p
@@ -126,15 +130,58 @@ class DieuPhoiPreset:
         self._dat_nguon()
         self.loi = ""
         if doi:
-            self._lam_moi_luoi(None)
-            self._bao(None)
+            self._bao(None)                # ảnh lớn đổi nguồn (lưới giữ màu gốc)
         if p is None:
             preset_lr.dung()
             self.id, self.td, self.hang_doi = None, None, []
             self._dung_hen()
             self._cap_nhat_nut()
             return
-        self.gui()
+        self.gui_quanh()
+
+    # ------------------------------------------------------------ ảnh đang xem ± 1 (10/10)
+    def _quanh(self, path=None) -> list:
+        """[ảnh đang xem, tấm trước, tấm sau] (theo thứ tự lưới đang hiện) còn
+        thiếu bản theo preset."""
+        try:
+            thu_tu, dang = self.app.thu_tu_preset()
+        except Exception:                                    # noqa: BLE001
+            traceback.print_exc()
+            return []
+        path = str(path or dang or "")
+        if not path:
+            return []
+        import nguon_xem
+        vt = {_nc(x): i for i, x in enumerate(thu_tu)}
+        i = vt.get(_nc(path))
+        ds = [path]
+        if i is not None:
+            if i > 0:
+                ds.append(str(thu_tu[i - 1]))
+            if i + 1 < len(thu_tu):
+                ds.append(str(thu_tu[i + 1]))
+        return [x for x in ds if nguon_xem.la_raw(x) and preset_lr.anh_preset(x, self.p) is None]
+
+    def gui_quanh(self, path=None) -> None:
+        """Lightroom dựng theo preset ĐÚNG ảnh đang xem + tấm trước / sau (tấm nào
+        chưa có). Lật ←/→ thì gọi lại — tấm kế đã sẵn nên lật là thấy ngay."""
+        if not self.p:
+            return
+        thieu = self._quanh(path)
+        if not thieu:
+            self._cap_nhat_nut()
+            return
+        #  các tấm cần đã nằm trong lượt đang dựng -> khỏi gửi lại (không làm lại từ đầu)
+        if self.loai == "xem" and self.td and self.td.get("trang_thai") in ("cho", "dang_chay") \
+                and {_nc(x) for x in thieu} <= {_nc(x) for x in getattr(self, "_bo_gui", [])}:
+            return
+        self.loai = "xem"
+        self._ca_buoi = False
+        self.tong, self.co_san = len(thieu), 0
+        self._bo_gui = list(thieu)
+        self._dau_gui = thieu[0]
+        self.hang_doi = [(str(Path(thieu[0]).parent), list(thieu))]
+        self._gui_tiep()
 
     def dung(self) -> None:
         preset_lr.dung()
@@ -153,10 +200,11 @@ class DieuPhoiPreset:
             return [], []
 
     def gui(self, dau=None) -> None:
-        """Gửi các tấm CÒN THIẾU của buổi đang xem (ảnh ưu tiên đi trước; `dau`:
-        ảnh vừa mở to — đứng đầu hết)."""
+        """DỰNG CẢ BUỔI (chỉ khi người dùng bấm "Dựng cả buổi"): gửi mọi tấm CÒN
+        THIẾU của buổi đang xem (ảnh ưu tiên đi trước)."""
         if not self.p:
             return
+        self._ca_buoi = True
         ds, uu = self._ngu_canh()
         uu = list(dau or []) + list(uu)
         import nguon_xem
@@ -253,7 +301,6 @@ class DieuPhoiPreset:
                 preset_lr.sau_hoan_tac(self.thu_muc)
         except Exception:                                    # noqa: BLE001
             traceback.print_exc()
-        self._lam_moi_luoi(None)
         self._bao(None)
         if self.loai == "ap":
             self.bao_xong = (f"Đã áp “{(self.p or {}).get('ten', '')}” vào Lightroom: {n} ảnh"
@@ -289,13 +336,13 @@ class DieuPhoiPreset:
         self._hen_soi()
 
     def uu_tien(self, path) -> None:
-        """Mở to một ảnh chưa có bản theo preset -> đẩy nó lên ĐẦU (gửi lại danh sách
-        còn thiếu, ảnh này trước). Hẹn 0,3 s: lướt ←/→ nhanh chỉ gửi tấm dừng lại."""
+        """Mở to / chọn một ảnh -> Lightroom dựng ảnh đó + tấm trước / sau (tấm nào
+        còn thiếu). Hẹn 0,3 s: lướt ←/→ nhanh chỉ gửi tấm dừng lại."""
         if not self.p or not path:
             return
         try:
             import nguon_xem
-            if not nguon_xem.la_raw(path) or preset_lr.anh_preset(path, self.p) is not None:
+            if not nguon_xem.la_raw(path):
                 return
         except Exception:                                    # noqa: BLE001
             return
@@ -313,18 +360,19 @@ class DieuPhoiPreset:
     def _gui_uu(self) -> None:
         self._hen_uu = None
         p = getattr(self, "_uu", None)
-        if not p or not self.p or preset_lr.anh_preset(p, self.p) is not None:
+        if not p or not self.p:
             return
-        #  lượt đang chạy đã xếp đúng tấm này đầu (vừa chọn preset) -> khỏi gửi lại
-        if self._dau_gui and _nc(self._dau_gui) == _nc(p) and self.td \
-                and self.td.get("trang_thai") in ("cho", "dang_chay"):
+        #  đang dựng cả buổi (người dùng bấm) hay áp / hoàn tác -> không chen ngang
+        if self.loai != "xem" or (getattr(self, "_ca_buoi", False) and self.td
+                                  and self.td.get("trang_thai") in ("cho", "dang_chay")):
             return
-        self.gui(dau=[p])
+        self.gui_quanh(p)
 
     def doi_buoi(self) -> None:
-        """App vừa mở buổi khác / lưới đổi danh sách: còn tấm thiếu thì gửi."""
+        """App vừa mở buổi khác / đổi mô-đun: dựng quanh ảnh đang xem của màn mới
+        (KHÔNG dựng cả buổi — user 10/10: 554 ảnh quá lâu)."""
         if self.p and (self.td is None or self.td.get("trang_thai") in ("xong", "dung", "loi")):
-            self.gui()
+            self.gui_quanh()
 
     # ------------------------------------------------------------ theo dõi
     def _dung_hen(self) -> None:
@@ -353,7 +401,6 @@ class DieuPhoiPreset:
             moi = {k for k in b if k not in self.da_thay}
             if moi:
                 self.da_thay |= moi
-                self._lam_moi_luoi(moi)
                 self._bao(moi)
         tt = (self.td or {}).get("trang_thai")
         if td is None and time.time() - self.t_gui > CHO_LR_GIAY:
@@ -379,10 +426,10 @@ class DieuPhoiPreset:
                 if self.loai == "ap" and tt == "xong" and self.hang_doi:
                     self._gui_tiep()
                     return
-                #  xong việc ghi -> lưới dựng tiếp theo preset đang chọn
+                #  xong việc ghi -> dựng lại ảnh đang xem (+ trước / sau) theo preset
                 self.loai = "xem"
                 self.td = None
-                self.gui()
+                self.gui_quanh()
                 self._cap_nhat_nut()
                 return
             if tt == "xong" and self.hang_doi:
@@ -405,9 +452,12 @@ class DieuPhoiPreset:
                     f"{int(td.get('tong') or 0) or self.tong}", "chay")
         if td and td.get("trang_thai") in ("cho", "dang_chay"):
             xong = self.co_san + int(td.get("xong") or 0)
-            phu = f"Lightroom đang dựng {xong}/{self.tong}"
+            if getattr(self, "_ca_buoi", False):
+                phu = f"Lightroom đang dựng cả buổi {xong}/{self.tong}"
+            else:
+                phu = f"Lightroom đang dựng ảnh đang xem (+ trước / sau) {xong}/{self.tong}"
             if td.get("trang_thai") == "cho":
-                phu = f"chờ Lightroom nhận… ({self.co_san}/{self.tong} có sẵn)"
+                phu = "chờ Lightroom nhận…"
             return f"Preset LR: {ten}", phu, "chay"
         if td and int(td.get("lech") or 0):
             return (f"Preset LR: {ten}", f"⚠ {td['lech']} ảnh trả lại thông số chưa khớp — "
@@ -415,10 +465,9 @@ class DieuPhoiPreset:
         if self.bao_xong and td is None:
             return f"Preset LR: {ten}", self.bao_xong, ""
         thieu = int((td or {}).get("thieu") or 0)
-        if not self.tong and td is None:
-            return f"Preset LR: {ten}", "buổi đang xem không có ảnh RAW", ""
-        return (f"Preset LR: {ten}", (f"{thieu} ảnh không có trong catalog Lightroom"
-                                      if thieu else ""), "")
+        if thieu:
+            return f"Preset LR: {ten}", f"{thieu} ảnh không có trong catalog Lightroom", ""
+        return f"Preset LR: {ten}", "bấm một ảnh để xem theo preset (Lightroom dựng tấm đó + trước / sau)", ""
 
 
 # ====================================================================== nút
@@ -548,8 +597,11 @@ class BangPresetLR(tk.Toplevel):
         self.btn_dung = gd.NutTron(hang, "Dừng dựng", kieu="toi", nen=m["nen"], font=gd.CHU,
                                    command=self._dung)
         self.btn_dung.pack(side="left")
-        self.btn_lai = gd.NutTron(hang, "Dựng lại ảnh thiếu", kieu="toi", nen=m["nen"],
+        self.btn_lai = gd.NutTron(hang, "Dựng cả buổi", kieu="toi", nen=m["nen"],
                                   font=gd.CHU, command=self._gui_lai)
+        self.btn_lai.goi_y = gd.GoiY(self.btn_lai, "Lightroom dựng theo preset MỌI ảnh của buổi "
+                                     "(~0,5–1 giây / ảnh). Bình thường chỉ ảnh đang xem + "
+                                     "trước / sau được dựng.")
         self.btn_lai.pack(side="left", padx=(6, 0))
         #  10/10 (user: "nếu thao tác đúng như trong Lightroom chọn Sync All thì làm")
         hang2 = tk.Frame(trong, background=m["nen"])
@@ -756,9 +808,9 @@ class BangPresetLR(tk.Toplevel):
             self.lbl_chon.configure(text="Đã chọn: không áp preset — lưới hiện ảnh như "
                                          "hiện tại", foreground=gd.MAU["mo"])
         _c, phu, loai = self.dp.mo_ta()
-        self.lbl_td.configure(text=phu or ("Mọi ảnh của buổi đã có bản theo preset." if p else
-                                           "Chọn một preset: Lightroom render cả lưới theo "
-                                           "preset đó (ảnh đang xem làm trước)."),
+        self.lbl_td.configure(text=phu or ("" if p else
+                                           "Chọn một preset rồi bấm một ảnh: Lightroom dựng "
+                                           "ảnh đó (+ trước / sau) theo preset."),
                               foreground=(gd.MAU["canh"] if loai == "loi" else gd.MAU["mo"]))
         chay = loai == "chay"
         self.btn_dung.configure(state="normal" if (chay and self.dp.loai == "xem") else "disabled")

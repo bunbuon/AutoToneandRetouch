@@ -194,8 +194,8 @@ if root is not None:
     dp.chon(dict(P))
     yc = (JOBS / "request_xempreset.txt").read_text(encoding="utf-8").splitlines()
     gui = yc[yc.index("---") + 1:]
-    ktra("chọn preset: gửi Lightroom 5 ảnh còn thiếu, tấm đang mở to đi đầu",
-         len(gui) == 5 and gui[0] == raws[2] and raws[5] not in gui, str([Path(x).name for x in gui]))
+    ktra("chọn preset: CHỈ ảnh đang xem + tấm trước / sau (user 10/10: dựng cả buổi quá lâu)",
+         gui == [raws[2], raws[1], raws[3]], str([Path(x).name for x in gui]))
     ktra("nút trên thanh lưới đổi theo preset", "cưới trắng hồng 1" in app.nut_preset_ct.btn.cget("text"),
          app.nut_preset_ct.btn.cget("text"))
 
@@ -217,8 +217,10 @@ if root is not None:
          dp.id == id_truoc)
     app._nap_mot_ct(raws[4])
     cho(0.6)
-    ktra("mở to tấm chưa có bản preset -> đẩy tấm đó lên đầu hàng Lightroom",
-         dp.id != id_truoc and dau_yeu_cau() == raws[4], Path(dau_yeu_cau()).name)
+    yc4 = (JOBS / "request_xempreset.txt").read_text(encoding="utf-8").splitlines()
+    ktra("mở to tấm khác -> Lightroom dựng tấm đó + trước (tấm sau đã có thì bỏ)",
+         dp.id != id_truoc and yc4[yc4.index("---") + 1:] == [raws[4], raws[3]],
+         str([Path(x).name for x in yc4[yc4.index("---") + 1:]]))
     app._nap_mot_ct(raws[2])
     cho(0.6)
     # plugin "render" tấm đang mở + ghi tiến độ / bảng
@@ -237,11 +239,10 @@ if root is not None:
     src, ng = nguon_xem.anh_xem(raws[2])
     ktra("ảnh lớn lấy nguồn “preset” (Lightroom render theo preset)", ng == "preset" and src == r3,
          f"{ng} {src}")
-    ktra("nút báo tiến độ Lightroom", "2/6" in app.nut_preset_ct.lbl.cget("text"),
-         app.nut_preset_ct.lbl.cget("text"))
+    ktra("nút báo tiến độ Lightroom (ảnh đang xem)", "1/3" in app.nut_preset_ct.lbl.cget("text")
+         and "đang xem" in app.nut_preset_ct.lbl.cget("text"), app.nut_preset_ct.lbl.cget("text"))
     import luoi_anh
-    ktra("lưới đọc ảnh nhỏ theo preset (nguồn chung các lưới)",
-         luoi_anh.NGUON is not None and str(luoi_anh.NGUON(raws[2])) == str(r3))
+    ktra("ô nhỏ của lưới GIỮ màu gốc (chỉ ảnh lớn theo preset)", luoi_anh.NGUON is None)
     app._ve_luoi_ct()
     chay(3)
     ktra("bấm đúp ảnh lớn (về lưới) -> lưới hiện, cuộn tới tấm đang xem",
