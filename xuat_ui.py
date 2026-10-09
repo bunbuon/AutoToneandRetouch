@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +48,8 @@ MAC_DINH = {
     "tu_retouch": True,         # retouch ngay trong lúc xuất
     "preset": "",               # preset retouch dùng cho lượt này ("" = mức đang đặt)
     "ep_song_song": False,      # máy yếu vẫn ép chạy song song
+    "thu_muc": "",              # thư mục xuất lần trước — Retouch mặc định mở nó (9/10)
+    "an_toan_cpu": None,        # chỉ dùng nhân E khi xuất; None = tự quyết theo CPU
 }
 #[[ NGUONG MAY DU SUC VUA XUAT VUA RETOUCH. Lightroom export cỡ gốc ăn hết CPU
 #   và vài GB RAM; retouch cần card (mô hình ~2–3 GB VRAM) + 2–4 GB RAM. Đo trên
@@ -80,16 +84,16 @@ def doc_cai_dat() -> dict:
         d["cache_mb"] = int(max(64, int(d.get("cache_mb") or 2048)))
     except (TypeError, ValueError):
         d["cache_mb"] = 2048
+    d["thu_muc"] = str(d.get("thu_muc") or "")
+    if d.get("an_toan_cpu") not in (True, False, None):
+        d["an_toan_cpu"] = None
     return d
 
 
 def ghi_cai_dat(d: dict) -> None:
     cu = doc_cai_dat()
     cu.update({k: v for k, v in (d or {}).items() if k in MAC_DINH})
-    f = _tep()
-    tmp = f.with_suffix(".part")
-    tmp.write_text(json.dumps(cu, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, f)
+    dd.ghi_ben(_tep(), json.dumps(cu, ensure_ascii=False, indent=2))
 
 
 def thu_muc_retouch_cua(thu_muc_xuat: str) -> str:
@@ -155,6 +159,132 @@ def tai_nguyen_may(thu_muc_xuat: str = "") -> dict:
             "vram_trong_gb": vram_trong, "vram_tong_gb": vram_tong, "card": card,
             "cpu": int(os.cpu_count() or 0),
             "dia_trong_gb": _dia_gb(thu_muc_xuat) if thu_muc_xuat else 0.0}
+
+
+# ================================================================ an toàn CPU
+
+#[[ CHE DO AN TOAN CPU (9/10). Lan Xuat dau tien may user SAP MAN HINH XANH
+#   (0x101 CLOCK_WATCHDOG_TIMEOUT, 19:51, ~10 s sau khi Lightroom bat dau xuat
+#   1.586 anh co goc). Nguyen nhan GOC la phan cung: i9-13900KS, BIOS 0904
+#   (03/2023), microcode 0x113 — chua co ban va 0x12B+ cua Intel cho loi dien
+#   ap dong 13/14; WHEA bao loi tren nhan P (APIC 0, 16) tu 25/9; 3 lan sap
+#   trong 24 gio (2 lan TRUOC khi co tinh nang Xuat). Ban build cua chinh du an
+#   phai ghim nhan E (/AFFINITY FFFF0000) moi chay on tu 6/10.
+#
+#   Ung dung khong sua duoc BIOS, nhung lam duoc dung dieu da cuu ban build:
+#   TRONG LUC XUAT ghim Lightroom + app + engine retouch vao NHAN E, xuat xong
+#   tra lai. Cham hon (16 nhan E thay vi 32 luong) nhung khong dung nhan P loi.
+#   Nhan E doc THANG tu Windows (GetSystemCpuSetInformation.EfficiencyClass),
+#   khong doan theo so nhan. Mac dinh BAT cho Intel the he 13/14 co nhan E. ]]
+def _hieu_nang_luong() -> dict:
+    """{chỉ số luồng (nhóm 0): lớp hiệu năng} theo Windows — {} nếu không hỏi được.
+    Lớp cao = nhân P, lớp thấp = nhân E (CPU không lai: mọi luồng cùng lớp)."""
+    if not sys.platform.startswith("win"):
+        return {}
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        n = ctypes.c_ulong(0)
+        k32.GetSystemCpuSetInformation(None, 0, ctypes.byref(n), None, 0)
+        if not n.value:
+            return {}
+        buf = ctypes.create_string_buffer(n.value)
+        if not k32.GetSystemCpuSetInformation(buf, n, ctypes.byref(n), None, 0):
+            return {}
+        raw, i, ra = buf.raw[:n.value], 0, {}
+        while i + 19 <= len(raw):
+            co, loai = struct.unpack_from("<II", raw, i)
+            if co < 19:
+                break
+            if loai == 0:                                   # CpuSetInformation
+                nhom = struct.unpack_from("<H", raw, i + 12)[0]
+                if nhom == 0:
+                    ra[raw[i + 14]] = raw[i + 18]           # LogicalProcessorIndex -> EfficiencyClass
+            i += co
+        return ra
+    except Exception:                                        # noqa: BLE001
+        return {}
+
+
+def nhan_e() -> list:
+    """Chỉ số các luồng nhân E (CPU lai Intel 12+). [] khi CPU không lai / không rõ."""
+    lop = _hieu_nang_luong()
+    if lop and len(set(lop.values())) > 1:
+        thap = min(lop.values())
+        return sorted(k for k, v in lop.items() if v == thap)
+    return []
+
+
+def ten_cpu() -> str:
+    if sys.platform.startswith("win"):
+        try:
+            import winreg
+            k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                               r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+            return str(winreg.QueryValueEx(k, "ProcessorNameString")[0]).strip()
+        except OSError:
+            pass
+    import platform
+    return platform.processor() or ""
+
+
+def de_xuat_an_toan(cpu: str | None = None, e: list | None = None) -> bool:
+    """Mặc định bật chế độ an toàn? Intel thế hệ 13/14 (dòng có lỗi điện áp) VÀ có nhân E."""
+    cpu = ten_cpu() if cpu is None else cpu
+    e = nhan_e() if e is None else e
+    return bool(e) and bool(re.search(r"\b1[34]th Gen Intel", cpu))
+
+
+def ghim_cpu(pids, cpus: list) -> list:
+    """Ghim các tiến trình (kèm tiến trình con) vào `cpus`. -> [(pid, affinity cũ)]
+    để tra_cpu() trả lại. Tiến trình không ghim được thì bỏ qua (không ném)."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    da, ra = set(), []
+    for pid in pids:
+        try:
+            p = psutil.Process(int(pid))
+            ds = [p] + p.children(recursive=True)
+        except (psutil.Error, ValueError, TypeError):
+            continue
+        for q in ds:
+            if q.pid in da:
+                continue
+            da.add(q.pid)
+            try:
+                cu = q.cpu_affinity()
+                q.cpu_affinity(list(cpus))
+                ra.append((q.pid, cu))
+            except (psutil.Error, OSError, ValueError):
+                continue
+    return ra
+
+
+def tra_cpu(da_ghim: list) -> int:
+    """Trả affinity cũ. -> số tiến trình đã trả (tiến trình đã thoát thì thôi)."""
+    try:
+        import psutil
+    except ImportError:
+        return 0
+    n = 0
+    for pid, cu in da_ghim or []:
+        try:
+            psutil.Process(int(pid)).cpu_affinity(list(cu))
+            n += 1
+        except (psutil.Error, OSError, ValueError):
+            continue
+    return n
+
+
+def pid_lightroom() -> list:
+    try:
+        import psutil
+        return [p.pid for p in psutil.process_iter(["name"])
+                if str(p.info.get("name") or "").lower() == "lightroom.exe"]
+    except Exception:                                        # noqa: BLE001
+        return []
 
 
 def danh_gia_song_song(tn: dict, nguong: dict | None = None) -> tuple[bool, list]:
@@ -224,6 +354,10 @@ class XuatDialog(tk.Toplevel):
         self.v_tu_retouch = tk.BooleanVar(value=bool(cd["tu_retouch"]))
         self.v_preset = tk.StringVar(value=cd.get("preset") or "")
         self.v_ep = tk.BooleanVar(value=bool(cd["ep_song_song"]))
+        self._nhan_e = nhan_e()
+        at_md = cd.get("an_toan_cpu")
+        self.v_an_toan = tk.BooleanVar(value=bool(self._nhan_e) and (
+            de_xuat_an_toan(e=self._nhan_e) if at_md is None else bool(at_md)))
         self._tn: dict = {}
         self._du_suc = True
 
@@ -329,6 +463,24 @@ class XuatDialog(tk.Toplevel):
         gd.CongTac(o7, self.v_ep).pack(side="right")
         ttk.Label(o7, text="Vẫn chạy song song dù máy không đủ sức (tự chịu chậm / treo)").pack(side="left")
         self.o_ep = o7
+
+        # ---- 6. an toàn CPU
+        tieu_de("6 · An toàn máy")
+        o8 = ttk.Frame(frm)
+        o8.pack(fill="x")
+        ct_at = gd.CongTac(o8, self.v_an_toan)
+        ct_at.pack(side="right")
+        ttk.Label(o8, text="Chỉ dùng nhân E khi xuất (Lightroom + retouch)").pack(side="left")
+        if self._nhan_e:
+            mo(f"Máy có {len(self._nhan_e)} luồng nhân E ({ten_cpu() or 'CPU lai'}). Bật: trong lúc "
+               "xuất, Lightroom và retouch chỉ chạy trên nhân E — chậm hơn nhưng không "
+               "dùng nhân P. Intel thế hệ 13/14 chưa cập nhật BIOS dễ SẬP MÁY (màn hình "
+               "xanh) khi nhân P chạy nặng — máy này đã sập như vậy. Xuất xong app trả "
+               "lại như cũ. Sửa tận gốc: cập nhật BIOS mainboard.")
+        else:
+            ct_at.state(["disabled"]) if hasattr(ct_at, "state") else None
+            self.v_an_toan.set(False)
+            mo("CPU này không có nhân E — không áp dụng.")
 
         # ---- nút
         nut_ = ttk.Frame(frm)
@@ -514,10 +666,13 @@ class XuatDialog(tk.Toplevel):
                 + ".\n\nVẫn chạy song song? Có thể rất chậm hoặc hết bộ nhớ.", parent=self):
             return
         preset = self._ten_preset()
+        an_toan = bool(self.v_an_toan.get()) and bool(self._nhan_e)
         ghi_cai_dat({"chat": chat, "va_cham": self.v_va_cham.get(),
                      "bo_sao1": bool(self.v_bo_sao1.get()),
                      "retouch_ra": self.v_retouch_ra.get(), "cache_mb": cache_mb,
-                     "tu_retouch": tu, "preset": preset, "ep_song_song": bool(self.v_ep.get())})
+                     "tu_retouch": tu, "preset": preset, "ep_song_song": bool(self.v_ep.get()),
+                     "thu_muc": tm,
+                     "an_toan_cpu": an_toan if self._nhan_e else None})
         try:
             import cache_xem
             cache_xem.lay_chung().dat_gioi_han_mb(cache_mb)
@@ -529,6 +684,7 @@ class XuatDialog(tk.Toplevel):
             "thu_muc_retouch": "" if ghi_de else thu_muc_retouch_cua(tm),
             "cache_mb": cache_mb, "tu_retouch": tu, "song_song": song_song,
             "preset": preset, "tai_nguyen": dict(self._tn),
+            "an_toan_cpu": an_toan, "nhan_e": list(self._nhan_e) if an_toan else [],
             "ly_do_tuan_tu": list(getattr(self, "_ly_do", [])) if (tu and not song_song) else [],
         }
         self.destroy()

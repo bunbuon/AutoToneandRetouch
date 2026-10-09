@@ -7135,6 +7135,10 @@ def _write_tsv(path: Path, cols: list[str], rows: list[list[str]]) -> None:
     # dinh mot ky tu \r o cuoi, tuy da trim nhung dung de sinh ra van hon.
     with io.open(tmp, "w", encoding="utf-8", newline="") as fh:
         fh.write("\n".join(body) + "\n")
+        #  9/10 ghi BỀN: mốc buổi (_autotone_baseline.tsv) mà thành file toàn 0
+        #  sau một lần sập máy là mất số gốc của cả buổi — xem duong_dan.ghi_ben.
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
 
 

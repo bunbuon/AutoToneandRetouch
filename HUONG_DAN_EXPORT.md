@@ -117,6 +117,18 @@ Bấm **Bắt đầu xuất**: app chuyển sang màn Retouch, thanh đáy hiệ
 *"Lightroom xuất 120/760 · Retouch 85/760 · 12 phút"*. **Dừng** = xin Lightroom dừng
 sau lô đang chạy và thôi retouch ảnh mới. Xong có câu tổng kết ở thanh đáy và Nhật ký.
 
+**6 · An toàn máy** (9/10): bật thì trong lúc xuất, Lightroom và retouch chỉ chạy
+trên **nhân E** của CPU; xuất xong trả lại như cũ. Mặc định BẬT trên Intel thế hệ
+13/14 có nhân E. Lý do: lần Xuất đầu tiên máy i9-13900KS (BIOS 0904 03/2023,
+microcode 0x113) **sập màn hình xanh** (0x101 CLOCK_WATCHDOG_TIMEOUT) ngay khi
+Lightroom bắt đầu xuất cỡ gốc — dòng CPU này có lỗi điện áp trên nhân P mà Intel
+đã vá bằng microcode 0x12B trở lên. Ghim nhân E chậm hơn nhưng tránh nhân P lỗi.
+**Sửa tận gốc: cập nhật BIOS mainboard** (ASUS ROG STRIX Z790-F: bản mới nhất,
+chọn cấu hình "Intel Default Settings").
+
+Thư mục xuất chọn ở hộp thoại được nhớ, và Retouch mặc định mở thư mục đó (mở app
+lần sau là thấy ảnh ngay, không phải chọn lại).
+
 **Preset retouch** (nhóm "Mức áp dụng"): chọn preset = áp cho ảnh đang xem (chưa có
 ảnh thì làm mức chung); **Lưu** = ghi bảng đang hiện thành preset (gồm cả mức riêng
 theo nhóm mặt); bảng khác preset thì hộp chọn ghi "(đã sửa)".

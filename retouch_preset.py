@@ -85,11 +85,9 @@ def ghi(ten: str, muc: dict) -> str:
             continue
     f = _tep(ten)
     f.parent.mkdir(parents=True, exist_ok=True)
-    tmp = f.with_suffix(".part")
-    tmp.write_text(json.dumps({"ten": ten, "muc": m,
-                               "luc": datetime.now().isoformat(timespec="seconds")},
-                              ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, f)
+    dd.ghi_ben(f, json.dumps({"ten": ten, "muc": m,
+                              "luc": datetime.now().isoformat(timespec="seconds")},
+                             ensure_ascii=False, indent=1))
     return ten
 
 

@@ -151,8 +151,25 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                 vao_buoi = tt.doc(tt.ten_buoi(app.folder())).get("thu_muc_export") or ""
         except Exception:                                    # noqa: BLE001
             vao_buoi = ""
-        vao_md = (vao_buoi or self.cf.get("vao")
-                  or (str(app.folder()) if app.folder() else ""))
+        #[[ 9/10 (user: mo app lan dau Retouch phai chon thu muc moi load anh;
+        #   chon duong dan xuat o hop thoai Xuat thi Retouch mac dinh mo no):
+        #   thu muc Export cua buoi -> thu muc Retouch dung lan truoc (hop thoai
+        #   Xuat ghi vao day) -> thu muc xuat lan truoc (xuat.json) -> thu muc
+        #   buoi chup (RAW — thuong khong co anh JPEG, nen xep cuoi). ]]
+        try:
+            import xuat_ui as _xu
+            xuat_md = _xu.doc_cai_dat().get("thu_muc") or ""
+        except Exception:                                    # noqa: BLE001
+            xuat_md = ""
+
+        def _co_thu_muc(x):
+            try:
+                return bool(x) and Path(str(x)).is_dir()
+            except OSError:
+                return False
+        vao_md = next((x for x in (vao_buoi, self.cf.get("vao"), xuat_md) if _co_thu_muc(x)),
+                      None) or vao_buoi or self.cf.get("vao") or xuat_md or (
+                          str(app.folder()) if app.folder() else "")
         self.v_vao = tk.StringVar(value=vao_md)
         self.v_ra = tk.StringVar(value=self.cf.get("ra", ""))
         #[[ GHI DE LEN ANH GOC — chi can MOT duong dan. saytool tu choi neu nhan

@@ -220,14 +220,33 @@ def _ky(d: dict) -> str:
                     hashlib.sha256).hexdigest()[:32]
 
 
+def _file_bak() -> Path:
+    return thu_muc_trang_thai() / "khoa.json.bak"
+
+
+def _doc_json(p: Path):
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def doc_trang_thai() -> dict:
     p = _file()
     if not p.is_file():
+        #  File KHÔNG CÓ (xoá tay / máy mới) = chưa có trạng thái — như trước. Bản
+        #  sao lưu chỉ cứu file CÓ MÀ HỎNG: sập máy để lại file toàn 0, không xoá.
         return {}
-    try:
-        d = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    d = _doc_json(p)
+    if not isinstance(d, dict):
+        #[[ 9/10: SAP MAY luc dang ghi lam khoa.json thanh toan byte 0 (may user,
+        #   man hinh xanh 19:51) -> app coi la "chua kich hoat", mat ban quyen.
+        #   Doc BAN SAO LUU (ghi ben cung luc). Ban sao luu van qua kiem chu ky
+        #   ben duoi: khong mo duong cho file sua tay / chep tu may khac. ]]
+        bak = _file_bak()
+        d = _doc_json(bak) if bak.is_file() else None
+        if not isinstance(d, dict):
+            return {}
     if not isinstance(d, dict) or d.get("ky") != _ky(d):
         #[[ Chu ky sai = file bi sua tay HOAC bi chep tu may khac sang.
         #   Tra ve co rieng chu khong im lang bo qua: bo qua thi sua file la
@@ -247,9 +266,15 @@ def ghi_trang_thai(**kw) -> dict:
     p = _file()
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".part")
-        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
-        os.replace(tmp, p)
+        van = json.dumps(d, ensure_ascii=False, indent=1)
+        try:
+            import duong_dan as dd
+            dd.ghi_ben(p, van)
+            dd.ghi_ben(_file_bak(), van)          # 9/10: bản sao lưu — xem doc_trang_thai
+        except ImportError:
+            tmp = p.with_suffix(".part")
+            tmp.write_text(van, encoding="utf-8")
+            os.replace(tmp, p)
     except OSError:
         pass                      # không ghi được thì thôi, đừng làm sập app
     return d

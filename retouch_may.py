@@ -1204,6 +1204,13 @@ class MayMixin:
         td = self._theo_doi
         self._dung_hen_quet()
         self._theo_doi = None
+        if td is not None and td.get("xuat"):
+            #  9/10: thôi theo lượt xuất (xong / Dừng) -> trả nhân CPU đã ghim
+            self._xuat = None
+            try:
+                getattr(self.app, "tra_cpu_xuat", lambda: None)()
+            except Exception:                                # noqa: BLE001
+                pass
         if td is not None:
             self._append("=== thôi theo dõi thư mục" + (f" ({ly_do})" if ly_do else "")
                          + f" — đã tự retouch {td['so']} ảnh mới ===")

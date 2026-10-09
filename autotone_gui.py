@@ -2800,6 +2800,69 @@ class App(ttk.Frame):
             return False
         return True
 
+    def _chot_thu_muc_retouch(self, dest: str, kq: dict | None = None):
+        """Thư mục xuất -> thư mục Vào mặc định của Retouch (nhớ qua các lần mở)."""
+        kq = kq or {}
+        try:
+            import retouch as _rt
+            them = {"vao": dest, "theo_export": dest}
+            if kq.get("thu_muc_retouch"):
+                them["ra"] = kq["thu_muc_retouch"]
+            _rt.ghi_cau_hinh(them)
+        except Exception:                                    # noqa: BLE001
+            pass
+        f = self.folder()
+        if f:
+            try:
+                import trang_thai as tt
+                tt.ghi(tt.ten_buoi(f), thu_muc_export=dest)
+            except Exception:                                # noqa: BLE001
+                pass
+        rt_win = getattr(self, "_retouch_win", None)
+        if rt_win is not None:
+            try:
+                rt_win.theo_thu_muc_export(dest, tu_dong=False)
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
+
+    # ---- an toàn CPU khi xuất (9/10 — xem xuat_ui: ghim nhân E)
+    def _ghim_cpu_xuat(self, kq: dict):
+        self.tra_cpu_xuat()
+        e = list(kq.get("nhan_e") or [])
+        if not kq.get("an_toan_cpu") or not e:
+            return
+        try:
+            import xuat_ui as _xu
+        except Exception:                                    # noqa: BLE001
+            return
+        pids = [os.getpid()] + _xu.pid_lightroom()
+        rt_win = getattr(self, "_retouch_win", None)
+        m = getattr(rt_win, "_may_xem", None) if rt_win is not None else None
+        p = getattr(m, "proc", None)
+        if p is not None and p.poll() is None:
+            pids.append(p.pid)
+        self._ghim_xuat = _xu.ghim_cpu(pids, e)
+        n_lr = len(_xu.pid_lightroom())
+        if rt_win is not None:
+            try:
+                rt_win._append(f"… an toàn CPU: ghim {len(self._ghim_xuat)} tiến trình "
+                               f"({'Lightroom + ' if n_lr else 'KHÔNG thấy Lightroom · '}app + "
+                               f"retouch) vào {len(e)} luồng nhân E trong lúc xuất")
+            except Exception:                                # noqa: BLE001
+                pass
+
+    def tra_cpu_xuat(self):
+        """Trả affinity cũ cho mọi tiến trình đã ghim (gọi khi xuất xong / dừng)."""
+        da = getattr(self, "_ghim_xuat", None)
+        self._ghim_xuat = None
+        if not da:
+            return
+        try:
+            import xuat_ui as _xu
+            _xu.tra_cpu(da)
+        except Exception:                                    # noqa: BLE001
+            pass
+
     def _bat_dau_soi_xuat(self):
         if not getattr(self, "_xuat_dang_soi", False):
             self._xuat_dang_soi = True
@@ -2836,7 +2899,11 @@ class App(ttk.Frame):
         goi_y = ""
         try:
             import trang_thai as tt
-            goi_y = tt.doc(tt.ten_buoi(f)).get("thu_muc_export") or ""
+            import xuat_ui as _xu
+            #  buổi này đã xuất đâu → thư mục xuất lần trước (hộp thoại) → nơi
+            #  Lightroom Export tay gần nhất (BatDuongDan)
+            goi_y = (tt.doc(tt.ten_buoi(f)).get("thu_muc_export")
+                     or _xu.doc_cai_dat().get("thu_muc") or "")
             if not goi_y:
                 import xuat_lr
                 goi_y = xuat_lr.doc().get("thu_muc") or ""
@@ -2869,6 +2936,11 @@ class App(ttk.Frame):
         dest = os.path.normpath(str(kq.get("thu_muc") or "").strip())
         if not dest:
             return False
+        #[[ 9/10 (user: "khi trong Setting chon duong dan xuat anh thi ben Retouch
+        #   se mac dinh chon duong dan do va load preview"): chot thu muc cho
+        #   Retouch NGAY khi bam Bat dau — ke ca khi Lightroom chua nhan / lan
+        #   xuat that bai, mo lai app Retouch van mo dung thu muc nay. ]]
+        self._chot_thu_muc_retouch(dest, kq)
         nhip = at.plugin_nhip()
         if nhip is None or nhip > 60:
             khi = "chưa bao giờ báo nhịp" if nhip is None else f"im {nhip:.0f} giây"
@@ -2910,6 +2982,8 @@ class App(ttk.Frame):
                     ly_do_tuan_tu=kq.get("ly_do_tuan_tu") or [])
             except Exception:                                # noqa: BLE001
                 traceback.print_exc()
+        #  ghim SAU bat_dau_theo_xuat: nó dừng lượt theo dõi cũ = trả CPU về như cũ
+        self._ghim_cpu_xuat(kq)
         self.status("Đã gửi yêu cầu xuất sang Lightroom — chờ plugin nhận…", gd.MAU["nhan"])
         self._bat_dau_soi_xuat()
         return True

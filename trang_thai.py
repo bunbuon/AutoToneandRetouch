@@ -80,9 +80,7 @@ def ghi(buoi: str, **kw) -> dict:
     d.update(kw)
     d["cap_nhat"] = datetime.now().isoformat(timespec="seconds")
     THU_MUC.mkdir(parents=True, exist_ok=True)
-    tmp = duong_dan(buoi).with_suffix(".part")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, duong_dan(buoi))
+    dd.ghi_ben(duong_dan(buoi), json.dumps(d, ensure_ascii=False, indent=2))
     return d
 
 

@@ -214,6 +214,67 @@ def phan_lr():
          b == {"G:\\Buoi\\DSC01.ARW": "F:\\Giao\\SAY-01.jpg", "G:\\Buoi\\DSC02.ARW": "F:\\Giao\\SAY-02.jpg"}, str(b))
 
 
+# ================================================================ 5b. sập máy: ghi bền + an toàn CPU
+def phan_sap_may():
+    """9/10: lần Xuất đầu tiên máy user sập màn hình xanh (0x101, i9-13900KS chưa vá
+    microcode) — xuat.json + khoa.json thành toàn byte 0."""
+    import subprocess
+    import duong_dan as dd
+    import khoa
+    import xuat_ui
+    f = TAM / "ben" / "a.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    dd.ghi_ben(f, '{"x": 1}')
+    ktra("ghi_ben: ghi đủ, không để lại .part", f.read_text(encoding="utf-8") == '{"x": 1}'
+         and not list(f.parent.glob("*.part")))
+    khoa.ghi_trang_thai(thu=1)
+    kf = khoa.thu_muc_trang_thai() / "khoa.json"
+    ktra("khoa: ghi kèm bản sao lưu", kf.is_file() and kf.with_name("khoa.json.bak").is_file())
+    kf.write_bytes(b"\x00" * 357)                      # đúng cảnh sau lần sập
+    d = khoa.doc_trang_thai()
+    ktra("khoa.json toàn byte 0 -> đọc bản sao lưu, giữ dữ liệu, không coi là hỏng",
+         d.get("thu") == 1 and not d.get("hong"), str(d)[:80])
+    bak = kf.with_name("khoa.json.bak")
+    sua = bak.read_text(encoding="utf-8").replace('"thu": 1', '"thu": 2')
+    bak.write_text(sua, encoding="utf-8")
+    ktra("bản sao lưu bị sửa tay -> vẫn bắt chữ ký sai (hong)", khoa.doc_trang_thai().get("hong") is True)
+    kf.unlink()
+    bak.unlink()
+    xuat_ui.ghi_cai_dat({"thu_muc": "F:/Giao"})
+    (dd.goc_du_lieu() / "xuat.json").write_bytes(b"\x00" * 189)
+    ktra("xuat.json toàn byte 0 -> về mặc định, không ném", xuat_ui.doc_cai_dat()["chat"] == 80)
+    # ---- an toàn CPU
+    ktra("đề xuất an toàn: Intel 13/14 + có nhân E -> bật; 12th / AMD / không nhân E -> tắt",
+         xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", list(range(16, 32)))
+         and xuat_ui.de_xuat_an_toan("14th Gen Intel(R) Core(TM) i7-14700K", [20, 21])
+         and not xuat_ui.de_xuat_an_toan("12th Gen Intel(R) Core(TM) i9-12900K", [16, 17])
+         and not xuat_ui.de_xuat_an_toan("AMD Ryzen 9 7950X", [])
+         and not xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", []))
+    e = xuat_ui.nhan_e()
+    n = os.cpu_count() or 1
+    ktra("nhân E đọc từ Windows là tập con hợp lệ các luồng", all(0 <= x < n for x in e),
+         f"{len(e)} luồng nhân E / {n} · {xuat_ui.ten_cpu()}")
+    try:
+        import psutil
+    except ImportError:
+        print("  (bỏ qua ghim CPU: thiếu psutil)")
+        return
+    cpus = e or list(range(max(0, n - 2), n))
+    gia = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                           creationflags=0x08000000 if sys.platform.startswith("win") else 0)
+    try:
+        cu = psutil.Process(gia.pid).cpu_affinity()
+        da = xuat_ui.ghim_cpu([gia.pid, 999999999], cpus)
+        ghim = psutil.Process(gia.pid).cpu_affinity()
+        n_tra = xuat_ui.tra_cpu(da)
+        sau = psutil.Process(gia.pid).cpu_affinity()
+        ktra("ghim tiến trình vào nhân E rồi trả lại đúng như cũ (pid không có thì bỏ qua)",
+             sorted(ghim) == sorted(cpus) and sorted(sau) == sorted(cu) and n_tra >= 1,
+             f"ghim {len(ghim)} luồng, trả {len(sau)}")
+    finally:
+        gia.kill()
+
+
 # ================================================================ 6. giao diện thật
 def phan_giao_dien():
     try:
@@ -267,10 +328,25 @@ def phan_giao_dien():
              kq and kq["song_song"] is False and kq["tu_retouch"] is True and kq["ly_do_tuan_tu"],
              str(kq and kq["ly_do_tuan_tu"]))
         ktra("cài đặt được nhớ (chat 88 -> ghi ở lần đầu, lần hai giữ)", xuat_ui.doc_cai_dat()["chat"] == 88)
+        # ---- 9/10: chọn thư mục xuất ở hộp thoại -> Retouch mặc định mở nó
+        md = TAM / "xuat_md"
+        md.mkdir(exist_ok=True)
+        anh_nhieu(md / "A_1.jpg", seed=9)
+        app._chot_thu_muc_retouch(str(md))
+        import retouch as _rt
+        ktra("chốt thư mục xuất -> retouch.json “vao” = thư mục đó",
+             _rt.doc_cau_hinh().get("vao") == str(md))
         # ---- Retouch nhận lượt xuất (tuần tự, mức 0 -> chép nguyên bản)
         app._chon_khau("retouch")
         app.update()
         rt_win = getattr(app, "_retouch_win", None)
+        if rt_win is not None:
+            for _ in range(10):
+                app.update()
+                time.sleep(0.05)
+            ktra("mở Retouch lần đầu: Vào = thư mục xuất, dải ảnh có ảnh ngay (không phải chọn)",
+                 os.path.normcase(rt_win.v_vao.get()) == os.path.normcase(str(md))
+                 and len(rt_win._ds_luoi) == 1, f"{rt_win.v_vao.get()} · {len(rt_win._ds_luoi)} ảnh")
         if rt_win is None:
             ktra("có màn Retouch để nhận lượt xuất", False, "bản không kèm retouch")
             return
@@ -329,6 +405,7 @@ def main() -> int:
     phan_preset()
     phan_cai_dat()
     phan_lr()
+    phan_sap_may()
     phan_giao_dien()
     print("TAT CA DAT" if not LOI else f"{len(LOI)} LOI")
     return 1 if LOI else 0

@@ -978,9 +978,7 @@ def doc_cau_hinh() -> dict:
 def ghi_cau_hinh(d: dict) -> None:
     cu = doc_cau_hinh()
     cu.update(d)
-    tmp = CAU_HINH.with_suffix(".part")
-    tmp.write_text(json.dumps(cu, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, CAU_HINH)
+    dd.ghi_ben(CAU_HINH, json.dumps(cu, ensure_ascii=False, indent=2))
 
 
 def tim_tool() -> Path | None:
@@ -1305,9 +1303,7 @@ def ghi_muc_anh(vao, muc_anh: dict, muc_chung: dict | None = None) -> None:
     ps = doc_preset_thu_muc(vao)
     if ps:
         d["preset"] = ps
-    tam = f.with_suffix(".part")
-    tam.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tam, f)
+    dd.ghi_ben(f, json.dumps(d, ensure_ascii=False, indent=1))
 
 
 #[[ PRESET CUA THU MUC (9/10 — user: "tao preset thong so da chon de dung cho cac
@@ -1345,9 +1341,7 @@ def ghi_preset_thu_muc(vao, ten: str) -> None:
         d["preset"] = str(ten)
     else:
         d.pop("preset", None)
-    tam = f.with_suffix(".part")
-    tam.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tam, f)
+    dd.ghi_ben(f, json.dumps(d, ensure_ascii=False, indent=1))
 
 
 def thu_muc_tam_nhom(vao) -> Path:

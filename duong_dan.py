@@ -70,6 +70,24 @@ def goc_du_lieu() -> Path:
     return Path(goc) / TEN_UD
 
 
+#[[ GHI BEN (9/10). May user sap man hinh xanh 19:51 (CPU i9-13900KS chua va
+#   microcode) ngay luc dang ghi: xuat.json va khoa.json (BAN QUYEN) thanh toan
+#   byte 0. Ghi ".part roi os.replace" chi chong ghi DO DANG khi app sap; khi CA
+#   MAY sap, NTFS co the da ghi phan doi ten ma du lieu con trong bo dem -> file
+#   dung ten, dung co, toan 0. Phai flush + fsync TRUOC khi doi ten. ]]
+def ghi_ben(p, du_lieu, encoding: str = "utf-8") -> None:
+    """Ghi cả file: .part → flush → fsync → đổi tên. Mất điện / sập máy thì
+    file cũ còn nguyên hoặc file mới đủ — không bao giờ thành file rỗng / toàn 0."""
+    p = Path(p)
+    tam = p.with_name(p.name + ".part")
+    b = du_lieu.encode(encoding) if isinstance(du_lieu, str) else bytes(du_lieu)
+    with open(tam, "wb") as fh:
+        fh.write(b)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tam, p)
+
+
 def tao(p: Path) -> Path:
     try:
         p.mkdir(parents=True, exist_ok=True)
@@ -209,11 +227,9 @@ def cai_vao_modules(nguon: Path, jobs: Path, modules: Path | None = None) -> dic
         kq["doi"] = _cap_nhat_plugin(Path(nguon), dich)
         tro = dich / TEN_TRO_JOBS
         noi = str(Path(jobs)) + "\n"
-        cu = tro.read_text(encoding="utf-8") if tro.is_file() else None
+        cu = tro.read_text(encoding="utf-8", errors="replace") if tro.is_file() else None
         if cu != noi:
-            tam = tro.with_suffix(".part")
-            tam.write_text(noi, encoding="utf-8")
-            os.replace(tam, tro)
+            ghi_ben(tro, noi)
             if not kq["moi"]:
                 kq["doi"].append(TEN_TRO_JOBS)
         if not (dich / "Info.lua").is_file():
