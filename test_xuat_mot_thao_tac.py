@@ -169,6 +169,17 @@ def phan_cai_dat():
     ktra("RAM trống < 6 GB -> không", not ok and any("RAM" in x for x in ly), str(ly))
     ok, ly = xuat_ui.danh_gia_song_song(dict(tot, vram_trong_gb=1.2, vram_tong_gb=8))
     ktra("VRAM trống ít (Windows dồn được) nhưng card 8 GB -> vẫn song song", ok, str(ly))
+    tm_la = TAM / "xuat_lan"
+    tm_la.mkdir(exist_ok=True)
+    for ten in ("DSC0001.jpg", "DSC0002.jpg", "SAY0900.jpg", "SAY0901.jpg", "ghi_chu.txt"):
+        (tm_la / ten).write_bytes(b"x")
+    ktra("thư mục xuất có ảnh của buổi khác -> đếm đúng số ảnh lạ (bỏ file không phải ảnh)",
+         xuat_ui.anh_la_trong(str(tm_la), {"dsc0001", "dsc0002", "dsc0003"}) == (2, 4),
+         str(xuat_ui.anh_la_trong(str(tm_la), {"dsc0001", "dsc0002", "dsc0003"})))
+    import xuat_lr as _xl
+    ktra("huỷ bằng nút ✕ trên thanh tiến độ Lightroom -> câu có dấu cho người dùng",
+         _xl.chu_thong_bao("da huy tren thanh tien do Lightroom, 12 giay, 1.50 giay/anh")
+         == "đã huỷ bằng nút ✕ trong Lightroom · 12 giây, 1.50 giây/ảnh")
     ok, ly = xuat_ui.danh_gia_song_song(dict(tot, vram_tong_gb=2))
     ktra("card < 4 GB VRAM -> không", not ok and any("VRAM" in x for x in ly), str(ly))
     ok, ly = xuat_ui.danh_gia_song_song(dict(tot, card=""))
@@ -335,6 +346,22 @@ def phan_giao_dien():
              kq and kq["song_song"] is False and kq["tu_retouch"] is True and kq["ly_do_tuan_tu"],
              str(kq and kq["ly_do_tuan_tu"]))
         ktra("cài đặt được nhớ (chat 88 -> ghi ở lần đầu, lần hai giữ)", xuat_ui.doc_cai_dat()["chat"] == 88)
+        #  10/10: thư mục xuất đã có ảnh của buổi khác -> cảnh báo + thư mục con theo buổi
+        lan = TAM / "xuat_lan_hop"
+        lan.mkdir(exist_ok=True)
+        for ten in ("SAY0900.jpg", "SAY0901.jpg", "DSC0001.jpg"):
+            (lan / ten).write_bytes(b"x")
+        d = xuat_ui.XuatDialog(root, buoi="TestTool", thu_muc_goi_y=str(lan), thong_so_lr=st,
+                               ten_anh_buoi={"DSC0001", "DSC0002"})
+        d.update()
+        canh = d.lbl_la.cget("text")
+        hien = bool(d.o_la.winfo_manager())
+        d._dung_thu_muc_con()
+        d.update()
+        ktra("thư mục đã có ảnh buổi khác -> cảnh báo 2/3 ảnh lạ; nút đổi sang thư mục con theo buổi",
+             hien and "2/3" in canh and d.v_thu_muc.get() == os.path.normpath(str(lan / "TestTool"))
+             and not d.o_la.winfo_manager(), canh[:80])
+        d.destroy()
         # ---- 9/10: chỉ xuất ảnh chưa gắn sao (ảnh có sao = đã lọc)
         xuat_ui.ghi_cai_dat({"chi_chua_sao": None})
         d = xuat_ui.XuatDialog(root, buoi="Test", thu_muc_goi_y=str(TAM / "giao"), thong_so_lr=st,

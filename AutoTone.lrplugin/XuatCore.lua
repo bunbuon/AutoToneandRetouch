@@ -38,6 +38,7 @@ local LrApplication   = import "LrApplication"
 local LrExportSession = import "LrExportSession"
 local LrFileUtils     = import "LrFileUtils"
 local LrPathUtils     = import "LrPathUtils"
+local LrProgressScope = import "LrProgressScope"
 local LrTasks         = import "LrTasks"
 
 local Core = require "AutoToneCore"
@@ -214,6 +215,44 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
     local ra, daLam, cap, dung, lanGhi, soLoi = 0, 0, {}, false, -1000, 0
     M.moHangDoi()
 
+    --[[ 10/10 (user: "khi bấm xuất trên tool thì trong Lightroom cũng cần hiển thị tiến
+         trình xuất, và có thể cancel trong Lightroom"): thanh tiến độ KHÔNG chặn ở góc
+         trên trái Lightroom (LrProgressScope — không phải hộp thoại modal như Duyệt
+         nhanh: người dùng vẫn làm việc trong Lightroom được). Bấm ✕ trên thanh = dừng
+         như nút Dừng của app: ảnh còn lại skipRender, ảnh đã ra vẫn được retouch. ]]
+    local thanhLR = nil
+    local tenDich = LrPathUtils.leafName(dest) or dest
+    Core.try("moThanhTienDo", function()
+        thanhLR = LrProgressScope({ title = "AutoTone: xuất ảnh" })
+        thanhLR:setCancelable(true)
+        thanhLR:setCaption(string.format("Chuẩn bị xuất %d ảnh → %s", tong, tenDich))
+        return true
+    end)
+    local huyLR = false
+    local function capNhatThanh()
+        if not thanhLR then return end
+        Core.try("thanhTienDo", function()
+            thanhLR:setPortionComplete(daLam, tong)
+            thanhLR:setCaption(string.format("Xuất ảnh %d/%d → %s", daLam, tong, tenDich))
+            return true
+        end)
+    end
+    local function lrBamHuy()
+        if not thanhLR then return false end
+        local huy = Core.try("thanhHuy", function() return thanhLR:isCanceled() end)
+        return huy == true
+    end
+    --[[ DỪNG THẬT (10/10): skipRender KHÔNG chặn được Lightroom render nền nốt cả
+         phiên — đo thật: dừng ở 195/554 lúc 02:05:14 mà thư mục xuất vẫn nhận 359
+         ảnh cỡ gốc tới 02:13. Phiên gắn vào thanh tiến độ (renditions{progressScope,
+         stopIfCanceled}); dừng từ app thì HUỶ thanh — như bấm ✕ của Lightroom —
+         Lightroom bỏ phần render còn lại. ]]
+    local function huyThanh()
+        if thanhLR then Core.try("huyThanh", function() thanhLR:cancel() return true end) end
+    end
+    local thamSo = thanhLR and { progressScope = thanhLR, renderProgressPortion = 1,
+                                 stopIfCanceled = true } or nil
+
     local function ghi(cuoi)
         local bay = os.time()
         if not cuoi and bay - lanGhi < M.GHI_MOI_GIAY then return end
@@ -234,12 +273,18 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
 
     local _, err = Core.try("xuatMotPhien", function()
         local i = 0
-        for _, r in session:renditions() do
+        for _, r in session:renditions(thamSo) do
             i = i + 1
             if not dung and M.xinDung() then
                 dung = true
                 M.xoaCoDung()
+                huyThanh()
                 Core.log(string.format("xuatanh: nguoi dung xin dung o anh %d/%d", daLam, tong))
+            end
+            if not dung and lrBamHuy() then
+                dung, huyLR = true, true
+                Core.log(string.format("xuatanh: huy tren thanh tien do Lightroom o anh %d/%d",
+                                       daLam, tong))
             end
             if dung then
                 Core.try("boQuaAnhGiao", function() r:skipRender(); return true end)
@@ -265,6 +310,7 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
                     end
                 end
                 ghi(false)
+                capNhatThanh()
                 LrTasks.yield()
             end
         end
@@ -273,12 +319,20 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
     if err then
         Core.log("xuatanh: LOI phien xuat -> " .. tostring(err))
     end
+    --  bấm ✕ trên thanh Lightroom: vòng lặp tự dừng (stopIfCanceled) trước khi kịp hỏi
+    if not dung and daLam < tong and lrBamHuy() then
+        dung, huyLR = true, true
+        Core.log(string.format("xuatanh: huy tren thanh tien do Lightroom o anh %d/%d", daLam, tong))
+    end
     --  "#het" TRƯỚC tiến độ "xong": app thấy Lightroom xong là hàng đợi đã đủ
     M.hetHangDoi(ra)
     ghi(true)
+    if thanhLR then
+        Core.try("dongThanhTienDo", function() thanhLR:done() return true end)
+    end
     --[[ 'loi' tinh tren SO DA LAM, khong tren tong: anh chua toi luot (dung giua
          chung) khong phai la loi — cung ly do da ghi o DuyetCore.xuatDuyet. ]]
-    return { ra = ra, loi = daLam - ra, da_dung = dung, da_lam = daLam }
+    return { ra = ra, loi = daLam - ra, da_dung = dung, da_lam = daLam, huy_lr = huyLR }
 end
 
 -- ------------------------------------------------------- yêu cầu từ phía app
@@ -359,8 +413,9 @@ function M.runRequest()
     M.ghiTienDo({ trang_thai = res.da_dung and "dung" or "xong",
                   xong = res.ra, tong = res.da_lam, loi = res.loi,
                   thu_muc = dest, bo_sao = boSao,
-                  thong_bao = string.format("%d giay, %.2f giay/anh", giay,
-                                            (res.ra > 0) and (giay / res.ra) or 0) })
+                  thong_bao = (res.huy_lr and "da huy tren thanh tien do Lightroom, " or "")
+                      .. string.format("%d giay, %.2f giay/anh", giay,
+                                       (res.ra > 0) and (giay / res.ra) or 0) })
     Core.log(string.format("xuatanh: ra %d/%d anh vao %s (%d giay)",
                            res.ra, res.da_lam, dest, giay))
     return res.ra

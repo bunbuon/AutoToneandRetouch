@@ -32,6 +32,14 @@ from retouch_chung import _RE_TIEN_DO, chon_anh_moi, hoi_nut
 
 
 
+def xuat_lr_chu(tb) -> str:
+    try:
+        import xuat_lr
+        return xuat_lr.chu_thong_bao(tb)
+    except Exception:                                        # noqa: BLE001
+        return str(tb or "")
+
+
 class MayMixin:
     """Máy xem trước + mẻ chạy + theo dõi thư mục (xem đầu tệp).
     """
@@ -1581,7 +1589,9 @@ class MayMixin:
         return True
 
     def cap_nhat_xuat(self, td: dict):
-        """App gọi mỗi ~1,2 s với tiến độ Lightroom (xuat_lr.tien_do_xuat)."""
+        """App gọi mỗi ~1,2 s với tiến độ Lightroom (xuat_lr.tien_do_xuat). Huỷ bằng
+        nút ✕ trên thanh tiến độ trong Lightroom (10/10) về đây là trạng thái "dung"
+        như bấm Dừng: ảnh đã xuất vẫn được retouch rồi kết thúc lượt."""
         x = getattr(self, "_xuat", None)
         if x is None:
             return
@@ -1596,7 +1606,7 @@ class MayMixin:
                          f" {x['xong_lr']}/{x['tong']} ảnh"
                          + (f" ({x['loi_lr']} không ra file)" if x['loi_lr'] else "")
                          + (f" · bỏ {x['bo_sao']} ảnh đã lọc (có sao)" if x.get('bo_sao') else "")
-                         + (f" · {x['thong_bao']}" if x['thong_bao'] else "")
+                         + (f" · {xuat_lr_chu(x['thong_bao'])}" if x['thong_bao'] else "")
                          + ("" if x.get("song_song") else " — bắt đầu retouch"))
             if self._theo_doi is not None and not (self.worker and self.worker.is_alive()):
                 #  không chờ hết nhịp 5 s: quét ngay

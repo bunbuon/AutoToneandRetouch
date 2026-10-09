@@ -315,6 +315,24 @@ def danh_gia_song_song(tn: dict, nguong: dict | None = None) -> tuple[bool, list
     return (not ly_do), ly_do
 
 
+DUOI_ANH_XUAT = {".jpg", ".jpeg", ".tif", ".tiff", ".png", ".heic", ".avif", ".dng", ".psd"}
+
+
+def anh_la_trong(thu_muc: str, ten_buoi: set | None) -> tuple:
+    """(số ảnh KHÔNG trùng tên ảnh của buổi, tổng số ảnh) trong thư mục xuất (không đệ
+    quy). 10/10: user thấy thư mục KN "554 ảnh mà xuất ra hơn 600" — 101 ảnh là của
+    buổi KN2009 xuất vào cùng thư mục hôm trước."""
+    try:
+        ds = [p for p in Path(str(thu_muc or "").strip().strip('"')).iterdir()
+              if p.is_file() and p.suffix.lower() in DUOI_ANH_XUAT]
+    except OSError:
+        return 0, 0
+    if not ten_buoi:
+        return 0, len(ds)
+    la = sum(1 for p in ds if p.stem.lower() not in ten_buoi)
+    return la, len(ds)
+
+
 def mo_ta_tai_nguyen(tn: dict) -> str:
     phan = [f"RAM trống {tn.get('ram_trong_gb', 0):.1f}/{tn.get('ram_tong_gb', 0):.0f} GB"]
     if tn.get("card"):
@@ -341,8 +359,11 @@ class XuatDialog(tk.Toplevel):
     def __init__(self, cha, buoi: str = "", thu_muc_goi_y: str = "",
                  thong_so_lr: dict | None = None, luc_lr=None,
                  ds_preset: list | None = None, muc_dang: dict | None = None,
-                 so_da_loc: int = 0, preset_md: str | None = None):
+                 so_da_loc: int = 0, preset_md: str | None = None,
+                 ten_anh_buoi: set | None = None):
         super().__init__(cha)
+        self._ten_buoi = buoi
+        self._ten_anh_buoi = {str(x).lower() for x in (ten_anh_buoi or ())}
         self.title("Xuất ảnh từ Lightroom")
         self.transient(cha)
         self.resizable(False, False)
@@ -421,10 +442,19 @@ class XuatDialog(tk.Toplevel):
         tieu_de("2 · Thư mục xuất")
         o = ttk.Frame(frm)
         o.pack(fill="x")
+        self.v_thu_muc_o = o
         nut = gd.NutTron(o, "", kieu="phu", font=gd.CHU, icon="thu_muc", command=self._chon_thu_muc)
         nut.goi_y = gd.GoiY(nut, "Chọn thư mục ảnh sẽ xuất ra…")
         nut.pack(side="right", padx=(6, 0))
         ttk.Entry(o, textvariable=self.v_thu_muc).pack(side="left", fill="x", expand=True)
+        #  10/10: thư mục đã có ảnh của buổi khác -> cảnh báo + thư mục con theo buổi
+        self.o_la = ttk.Frame(frm)
+        self.lbl_la = ttk.Label(self.o_la, text="", style="Mo.TLabel", wraplength=WRAP - 160,
+                                justify="left")
+        self.lbl_la.pack(side="left", fill="x", expand=True)
+        self.btn_con = gd.NutTron(self.o_la, "Dùng thư mục con", kieu="phu", font=gd.CHU,
+                                  command=self._dung_thu_muc_con)
+        self.btn_con.pack(side="right", padx=(8, 0))
         o2 = ttk.Frame(frm)
         o2.pack(fill="x", pady=(6, 0))
         ttk.Label(o2, text="Lightroom gặp file trùng tên:").pack(side="left")
@@ -540,7 +570,31 @@ class XuatDialog(tk.Toplevel):
         if d:
             self.v_thu_muc.set(os.path.normpath(d))
 
+    def _dung_thu_muc_con(self):
+        tm = self.v_thu_muc.get().strip().strip('"')
+        if tm and self._ten_buoi:
+            self.v_thu_muc.set(os.path.normpath(os.path.join(tm, self._ten_buoi)))
+
+    def _lam_moi_la(self):
+        tm = self.v_thu_muc.get().strip().strip('"')
+        la, tong = anh_la_trong(tm, self._ten_anh_buoi) if tm else (0, 0)
+        o = getattr(self, "o_la", None)
+        if o is None:
+            return
+        if la:
+            self.lbl_la.configure(
+                text=f"⚠ Thư mục đã có {la}/{tong} ảnh KHÔNG trùng tên ảnh của buổi này (lượt "
+                     "xuất buổi khác?) — đếm ảnh và Retouch sẽ lẫn hai buổi. Nên xuất vào thư "
+                     "mục riêng của buổi.")
+            self.btn_con.configure(text=f"Dùng thư mục con “{self._ten_buoi}”"
+                                   if self._ten_buoi else "Dùng thư mục con")
+            if not o.winfo_manager():
+                o.pack(fill="x", pady=(4, 0), after=self.v_thu_muc_o)
+        elif o.winfo_manager():
+            o.pack_forget()
+
     def _lam_moi_ra(self):
+        self._lam_moi_la()
         tm = self.v_thu_muc.get().strip().strip('"')
         if self.v_retouch_ra.get() == "ghi_de":
             self.lbl_ra.configure(

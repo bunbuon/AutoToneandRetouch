@@ -3175,9 +3175,13 @@ class App(ttk.Frame):
                 preset_md = rt_win.v_preset.get()
             except Exception:                                # noqa: BLE001
                 preset_md = None
+        #  10/10: tên ảnh của buổi — hộp Xuất cảnh báo thư mục đã có ảnh của buổi khác
+        ten_anh = {Path(r["path"]).stem.lower() for r in (self.items or [])} or \
+            {Path(str(p)).stem.lower() for p, _sc in (self.pairs or [])}
         d = xuat_ui.XuatDialog(self, buoi=f.name, thu_muc_goi_y=goi_y, thong_so_lr=st,
                                luc_lr=luc, ds_preset=ds_preset, muc_dang=muc_dang,
-                               so_da_loc=so_da_loc, preset_md=preset_md)
+                               so_da_loc=so_da_loc, preset_md=preset_md,
+                               ten_anh_buoi=ten_anh)
         self.wait_window(d)
         if d.ket_qua:
             self.bat_dau_xuat(d.ket_qua)
@@ -3314,9 +3318,11 @@ class App(ttk.Frame):
                 self.status("Export không chạy được: "
                             + str(td.get("thong_bao", "")), gd.MAU["loi"])
             else:
-                cau = (f"Xong {xong}/{td.get('tong', xong)} ảnh"
+                import xuat_lr as _xl
+                cau = ((f"Xong {xong}/{td.get('tong', xong)} ảnh" if tt == "xong" else
+                        f"Đã dừng ở {xong}/{td.get('tong', xong)} ảnh")
                        + (f", {loi} ảnh không ra file" if loi else "")
-                       + " · " + str(td.get("thong_bao", "")))
+                       + " · " + _xl.chu_thong_bao(td.get("thong_bao", "")))
                 noi(cau)
                 if rt_win is None or getattr(rt_win, "_xuat", None) is None:
                     self.status(cau, gd.MAU["canh"] if (loi or tt == "dung")

@@ -236,7 +236,21 @@ def _dem_hang_doi():
 g2.py_dem_hang_doi = _dem_hang_doi
 L2.execute(r'''
 _PLUGIN = { path = [[%s]] }
-KICH = { phien = 0, soAnh = {}, boQua = {}, datCoSau = nil, skip = 0, render = 0, hd = {} }
+KICH = { phien = 0, soAnh = {}, boQua = {}, datCoSau = nil, skip = 0, render = 0, hd = {},
+         thanh = {}, huySau = nil }
+local LrProgressScope = function(params)
+  local t = { title = params.title, phan = {}, chu = {}, xong = false, huyDuoc = false }
+  function t:setCancelable(b) self.huyDuoc = b end
+  function t:setCaption(c) self.chu[#self.chu + 1] = c end
+  function t:setPortionComplete(a, b) self.phan[#self.phan + 1] = a .. "/" .. b end
+  function t:isCanceled()
+    return self.daHuy or (KICH.huySau ~= nil and KICH.render >= KICH.huySau)
+  end
+  function t:cancel() self.daHuy = true end
+  function t:done() self.xong = true end
+  KICH.thanh[#KICH.thanh + 1] = t
+  return t
+end
 local LrExportSession = function(params)
   KICH.phien = KICH.phien + 1
   KICH.soAnh[#KICH.soAnh + 1] = #params.photosToExport
@@ -257,9 +271,19 @@ local LrExportSession = function(params)
       end,
       skipRender = function(self) KICH.skip = KICH.skip + 1 end }
   end
-  return { renditions = function(self)
+  return { renditions = function(self, ts)
              local i = 0
-             return function() i = i + 1; if ds[i] then return i, ds[i] end end
+             local sc = ts and ts.progressScope
+             KICH.coThanh = sc ~= nil and ts.stopIfCanceled == true
+             return function()
+               --[[ Lightroom that: phien da bat dau thi render NEN ca phan con lai;
+                    chi huy thanh tien do (stopIfCanceled) moi dung duoc. ]]
+               if sc and ts.stopIfCanceled and sc:isCanceled() then
+                 return nil
+               end
+               i = i + 1
+               if ds[i] then return i, ds[i] end
+             end
            end,
            doExportOnCurrentTask = function() error("phien mot lan khong duoc goi doExportOnCurrentTask") end }
 end
@@ -275,6 +299,7 @@ local fake = {
   LrDate = { currentTime = function() return os.time() end },
   LrApplication = {},
   LrExportSession = LrExportSession,
+  LrProgressScope = LrProgressScope,
 }
 function import(name) return fake[name] or {} end
 package.path = [[%s/?.lua;]] .. package.path
@@ -321,10 +346,31 @@ ktra("xuat: 4 anh khong ra file -> ra 6, loi 4", kq["ra"] == 6 and kq["loi"] == 
 L2.execute("KICH.phien = 0; KICH.soAnh = {}; KICH.render = 0; KICH.boQua = {}; KICH.skip = 0; KICH.datCoSau = 5")
 kq = X2.xuat(L2.eval("anhGia(50)"), dest + "3", L2.eval("{ LR_format = 'JPEG' }"))
 K = L2.globals().KICH
-ktra("xuat: xin dung sau anh thu 5 -> ra 5, 45 anh skipRender, loi 0, co dung bi xoa",
-     kq["ra"] == 5 and kq["da_dung"] and K.skip == 45 and kq["loi"] == 0
-     and not (tam2 / "jobs" / "request_xuatanh_dung.txt").exists(),
-     f"ra {kq['ra']} · skip {K.skip} · loi {kq['loi']}")
+ktra("xuat: xin dung sau anh thu 5 -> ra 5, HUY thanh -> Lightroom ngung han (khong render nen), co dung bi xoa",
+     kq["ra"] == 5 and kq["da_dung"] and K.thanh[len(K.thanh)].daHuy and K.render == 5
+     and kq["loi"] == 0 and not (tam2 / "jobs" / "request_xuatanh_dung.txt").exists(),
+     f"ra {kq['ra']} · render {K.render} · huy thanh {K.thanh[len(K.thanh)].daHuy}")
+ktra("phien xuat gan vao thanh tien do (progressScope + stopIfCanceled)", bool(K.coThanh))
+# ---- 10/10: thanh tien do TRONG Lightroom + huy tu Lightroom
+L2.execute("KICH.phien = 0; KICH.soAnh = {}; KICH.render = 0; KICH.boQua = {}; KICH.skip = 0; "
+           "KICH.datCoSau = nil; KICH.thanh = {}; KICH.huySau = nil")
+kq = X2.xuat(L2.eval("anhGia(8)"), dest + "4", L2.eval("{ LR_format = 'JPEG' }"))
+th = L2.globals().KICH.thanh[1]
+ktra("Lightroom: co thanh tien do 'AutoTone: xuat anh', huy duoc, cap nhat tung anh, dong khi xong",
+     th is not None and "xuất ảnh" in th.title and th.huyDuoc and th.phan[8] == "8/8"
+     and th.xong and "Xuất ảnh 8/8" in th.chu[len(th.chu)], str(th and list(th.phan.values())))
+L2.execute("KICH.render = 0; KICH.skip = 0; KICH.thanh = {}; KICH.huySau = 3")
+kq = X2.xuat(L2.eval("anhGia(10)"), dest + "5", L2.eval("{ LR_format = 'JPEG' }"))
+K = L2.globals().KICH
+ktra("bam huy tren thanh Lightroom sau anh 3 -> dung: ra 3, Lightroom ngung, thanh dong",
+     kq["ra"] == 3 and kq["da_dung"] and kq["huy_lr"] and K.render == 3 and K.thanh[1].xong,
+     f"ra {kq['ra']} · render {K.render} · huy_lr {kq['huy_lr']}")
+co, hd, het, _off = xuat_lr.doc_hang_doi(0, tam2 / "jobs")
+ktra("huy giua chung: hang doi van du anh da ra + '#het 3' (app retouch anh da xuat)",
+     len(hd) == 3 and het == 3, f"{len(hd)} · het={het}")
+src_x3 = (GOC / "XuatCore.lua").read_text(encoding="utf-8")
+ktra("runRequest bao app 'da huy tren thanh tien do Lightroom'",
+     "da huy tren thanh tien do Lightroom" in src_x3 and "res.huy_lr" in src_x3)
 shutil.rmtree(tam2, ignore_errors=True)
 
 shutil.rmtree(tam, ignore_errors=True)

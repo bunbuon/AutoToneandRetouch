@@ -218,6 +218,15 @@ def tien_do_xuat(job_dir: Path | None = None) -> dict:
     return out
 
 
+def chu_thong_bao(tb: str) -> str:
+    """Câu plugin gửi (không dấu) -> câu cho người dùng."""
+    tb = str(tb or "")
+    if "da huy tren thanh tien do Lightroom" in tb:
+        tb = tb.replace("da huy tren thanh tien do Lightroom, ",
+                        "đã huỷ bằng nút ✕ trong Lightroom · ")
+    return tb.replace(" giay/anh", " giây/ảnh").replace(" giay", " giây")
+
+
 def doc_hang_doi(tu: int = 0, job_dir: Path | None = None):
     """Đọc tiếp hàng đợi plugin từ byte `tu`. -> (có file?, [(gốc, jpg)…], số ảnh
     khi gặp dòng "#het" (None nếu chưa), byte đọc tới). Chỉ lấy dòng đã đủ "\n" —
