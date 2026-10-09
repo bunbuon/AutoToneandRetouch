@@ -47,6 +47,11 @@ local M = {}
 M.YEU_CAU  = "request_xuatanh.txt"
 M.TIEN_DO  = "xuatanh_tiendo.txt"
 M.CO_DUNG  = "request_xuatanh_dung.txt"
+--[[ 9/10 (Xuất một thao tác — app vừa xuất vừa retouch): bảng ẢNH GỐC -> FILE
+     RA, ghi lại sau MỖI LÔ như DuyetCore.ghiBang. App cần nó vì tên file ra có
+     thể khác tên gốc (quy tắc đặt tên trong thông số Export của người dùng):
+     không có bảng thì vòng theo dõi thư mục chỉ đoán được theo tên gốc. ]]
+M.BANG     = "xuatanh_anh.tsv"
 
 --[[ Ảnh giao khách nặng hơn ảnh duyệt nhiều nên lô nhỏ hơn: người dùng thấy
      tiến trình nhúc nhích thường xuyên hơn, và xin dừng thì dừng nhanh hơn.
@@ -72,7 +77,7 @@ function M.ghiTienDo(bang)
     local fh = io.open(tmp, "w")
     if not fh then return nil end
     for _, k in ipairs({ "trang_thai", "xong", "tong", "loi", "thu_muc",
-                         "bo_sao", "thong_bao" }) do
+                         "bo_sao", "thong_bao", "tsv" }) do
         if bang[k] ~= nil then fh:write(k .. "=" .. tostring(bang[k]) .. "\n") end
     end
     fh:close()
@@ -126,6 +131,15 @@ end
      theo số ảnh đưa vào. Đếm theo số đưa vào thì lượt nào cũng "thành công
      100%" kể cả khi ổ đầy. ]]
 local function xuatMotLo(photos, thongSo)
+    --[[ Đường dẫn gốc lấy TRƯỚC khi export (lúc còn chắc chắn đọc được) — để
+         ghép với file ra thành bảng M.BANG. ]]
+    local goc = {}
+    Core.try("docDuongDanGiao", function()
+        for i = 1, #photos do
+            goc[i] = photos[i]:getRawMetadata("path")
+        end
+        return true
+    end)
     local session = LrExportSession({
         photosToExport = photos,
         exportSettings = thongSo,
@@ -137,15 +151,64 @@ local function xuatMotLo(photos, thongSo)
     if err then
         Core.log("xuatanh: LOI mot lo -> " .. tostring(err))
     end
-    local ra = 0
+    local ra, cap = 0, {}
     Core.try("docRenditionsGiao", function()
-        for _, r in session:renditions() do
+        for i, r in session:renditions() do
             local p = r.destinationPath
-            if p and p ~= "" and LrFileUtils.exists(p) then ra = ra + 1 end
+            if p and p ~= "" and LrFileUtils.exists(p) then
+                ra = ra + 1
+                --[[ Ảnh gốc của rendition: hỏi thẳng (r.photo), không có thì
+                     khớp theo tên không đuôi, cuối cùng mới theo thứ tự — tên
+                     ra có thể đã đổi theo quy tắc đặt tên của người dùng. ]]
+                local src = nil
+                if r.photo and type(r.photo.getRawMetadata) == "function" then
+                    local okP, v = pcall(r.photo.getRawMetadata, r.photo, "path")
+                    if okP then src = v end
+                end
+                if not src then
+                    local base = LrPathUtils.removeExtension(LrPathUtils.leafName(p))
+                    for j = 1, #goc do
+                        if goc[j] and LrPathUtils.removeExtension(LrPathUtils.leafName(goc[j])) == base then
+                            src = goc[j]
+                            break
+                        end
+                    end
+                end
+                if not src then src = goc[i] end
+                if src then cap[#cap + 1] = { src = src, jpg = p } end
+            end
         end
         return true
     end)
-    return ra
+    return ra, cap
+end
+
+--[[ Bảng ảnh gốc -> file ra, ghi đè cả bảng sau mỗi lô (.part rồi đổi tên). ]]
+function M.ghiBang(cap)
+    local d = Core.jobDir()
+    if not LrFileUtils.exists(d) then LrFileUtils.createAllDirectories(d) end
+    local path = LrPathUtils.child(d, M.BANG)
+    local tmp = path .. ".part"
+    local fh = io.open(tmp, "w")
+    if not fh then return nil end
+    fh:write("path\tjpg\n")
+    for _, c in ipairs(cap) do
+        fh:write(tostring(c.src) .. "\t" .. tostring(c.jpg) .. "\n")
+    end
+    fh:close()
+    Core.try("ghiBangXuat", function()
+        LrFileUtils.delete(path)
+        LrFileUtils.move(tmp, path)
+        return true
+    end)
+    return path
+end
+
+function M.xoaBang()
+    Core.try("xoaBangXuat", function()
+        LrFileUtils.delete(LrPathUtils.child(Core.jobDir(), M.BANG))
+        return true
+    end)
 end
 
 function M.xuat(photos, dest, thongSo, lo, tienDo)
@@ -155,16 +218,28 @@ function M.xuat(photos, dest, thongSo, lo, tienDo)
         LrFileUtils.createAllDirectories(dest)
     end
 
-    local ra, idx = 0, 1
+    local ra, idx, capTatCa = 0, 1, {}
     while idx <= #photos do
         local last = math.min(idx + lo - 1, #photos)
         local nhom = {}
         for i = idx, last do nhom[#nhom + 1] = photos[i] end
 
-        ra = ra + xuatMotLo(nhom, thongSo)
+        local n, cap = xuatMotLo(nhom, thongSo)
+        ra = ra + n
+        for _, c in ipairs(cap) do capTatCa[#capTatCa + 1] = c end
+        local tsv = M.ghiBang(capTatCa)
         if tienDo then tienDo(last, #photos, ra) end
         M.ghiTienDo({ trang_thai = "dang_chay", xong = last, tong = #photos,
-                      loi = last - ra, thu_muc = dest })
+                      loi = last - ra, thu_muc = dest, tsv = tsv })
+        --[[ NHỊP SỐNG kèm bước (9/10): lượt xuất cả nghìn ảnh cỡ gốc chặn
+             vòng lặp plugin hàng chục phút; không ghi nhịp thì app thấy
+             plugin_song.txt cũ 45 s là báo "plugin chết". cachGiay 0 = ghi
+             ngay. Bản Core cũ không có hàm thì bỏ qua. ]]
+        if type(Core.ghiNhip) == "function" then
+            Core.try("nhipXuat", function()
+                return Core.ghiNhip(nil, 0, string.format("xuất ảnh %d/%d", last, #photos))
+            end)
+        end
         LrTasks.yield()
         idx = last + 1
 
@@ -241,6 +316,7 @@ function M.runRequest()
     end
 
     M.xoaCoDung()          -- cờ sót của lần trước làm lượt mới dừng ngay lô đầu
+    M.xoaBang()            -- bảng của lượt trước: app đọc nhầm là ảnh lượt này
     local t0 = os.time()
     M.ghiTienDo({ trang_thai = "dang_chay", xong = 0, tong = #photos,
                   thu_muc = dest, bo_sao = boSao })

@@ -1297,10 +1297,53 @@ def ghi_muc_anh(vao, muc_anh: dict, muc_chung: dict | None = None) -> None:
     f = tep_muc_anh(vao)
     if muc_chung is None:
         muc_chung = doc_muc_chung(vao)
+    #  9/10: giữ tên preset của thư mục (ghi riêng bằng ghi_preset_thu_muc)
+    d = {"vao": str(vao), "muc_anh": muc_anh, "muc_chung": dict(muc_chung or {})}
+    ps = doc_preset_thu_muc(vao)
+    if ps:
+        d["preset"] = ps
     tam = f.with_suffix(".part")
-    tam.write_text(json.dumps({"vao": str(vao), "muc_anh": muc_anh,
-                               "muc_chung": dict(muc_chung or {})},
-                              ensure_ascii=False, indent=1), encoding="utf-8")
+    tam.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tam, f)
+
+
+#[[ PRESET CUA THU MUC (9/10 — user: "tao preset thong so da chon de dung cho cac
+#   lan sau"). Ten preset dang ap cho thu muc vao nam CUNG file voi muc rieng /
+#   muc chung cua thu muc do: mo lai la hop chon preset hien dung ten. Bo muc
+#   that su nam o muc_chung (da chep tu preset luc ap) — preset chi la NHAN;
+#   xoa preset khong lam thu muc mat muc. ]]
+def doc_preset_thu_muc(vao) -> str:
+    if not vao:
+        return ""
+    f = tep_muc_anh(vao)
+    if not f.is_file():
+        return ""
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str(d.get("preset") or "") if isinstance(d, dict) else ""
+
+
+def ghi_preset_thu_muc(vao, ten: str) -> None:
+    if not vao:
+        return
+    f = tep_muc_anh(vao)
+    try:
+        d = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    except (OSError, ValueError):
+        d = {}
+    if not isinstance(d, dict):
+        d = {}
+    d.setdefault("vao", str(vao))
+    d.setdefault("muc_anh", {})
+    d.setdefault("muc_chung", {})
+    if ten:
+        d["preset"] = str(ten)
+    else:
+        d.pop("preset", None)
+    tam = f.with_suffix(".part")
+    tam.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tam, f)
 
 

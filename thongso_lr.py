@@ -179,8 +179,15 @@ def preset_nguoi_dung(goc: Path | None = None) -> list[tuple[str, Path]]:
 #   Day khong phai "app biet hon anh". Day la ba thu chi dung trong hop thoai
 #   co nguoi ngoi truoc man hinh, ma vong lap nen thi khong co ai bam.
 #]]
-def ep(thong_so: dict, dest: str, va_cham: str = "overwrite") -> dict:
+def ep(thong_so: dict, dest: str, va_cham: str = "overwrite",
+       chat: float | None = None) -> dict:
+    """chat (9/10): chất lượng JPEG 0..1 người dùng chọn ở hộp thoại Xuất —
+    None = giữ nguyên số Lightroom đang dùng. Chỉ có nghĩa khi LR_format là
+    JPEG; định dạng khác thì để yên, không đổi định dạng của người dùng."""
     st = dict(thong_so)
+    if chat is not None and str(st.get("LR_format", "JPEG")).upper() == "JPEG":
+        st["LR_jpeg_quality"] = round(min(1.0, max(0.01, float(chat))), 2)
+        st["LR_format"] = "JPEG"
     st.update({
         # Ghi ra o cung, dung thu muc app chon — khong phai thu muc lan truoc.
         "LR_exportServiceProvider": "com.adobe.ag.export.file",

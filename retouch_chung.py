@@ -47,6 +47,45 @@ def _so_muc(v, md) -> float:
         return 0.0
 
 
+#[[ CHON ANH MOI DE TU RETOUCH (9/10, tach thanh ham thuan de kiem duoc).
+#
+#   ds_stat = [(duong dan, da co ket qua?, co file, mtime_ns, mtime)]; td = ban ghi
+#   theo doi cua retouch_may (biet / cho / tu_luc / ban_do / xuat). Luat:
+#     * da nam trong "biet" -> bo (da chay hoac da loai).
+#     * CHE DO XUAT (td["xuat"]): chi nhan anh THUOC LUOT NAY — mtime >= tu_luc
+#       (Lightroom vua ghi) hoac nam trong bang path->jpg plugin ghi (ban_do).
+#       Anh cu trong thu muc (lan xuat truoc, Lightroom chua dong toi) KHONG lay:
+#       lay roi Lightroom ghi de len sau thi ket qua retouch la cua ban cu.
+#       Da co ket qua ma Lightroom vua ghi lai -> VAN chay lai (lam_lai).
+#     * Che do thuong: anh da co ket qua -> biet, bo qua.
+#     * On dinh: (co, mtime_ns) KHONG DOI qua hai lan quet moi "san" — dang chep
+#       / dang ghi thi cho. Tra (san, co_moi): co_moi = vua thay tam moi (de ve
+#       lai dai anh). ]]
+def chon_anh_moi(ds_stat, td: dict):
+    san, co_moi = [], False
+    biet, cho = td.setdefault("biet", set()), td.setdefault("cho", {})
+    xuat = bool(td.get("xuat"))
+    tu_luc = float(td.get("tu_luc") or 0.0)
+    ban_do = td.get("ban_do") or set()
+    import os as _os
+    for k, xong, co, mtns, mt in ds_stat:
+        if k in biet:
+            continue
+        if xuat:
+            if not (mt >= tu_luc or _os.path.normcase(k) in ban_do):
+                continue
+        elif xong:
+            biet.add(k)
+            continue
+        dau = (int(co), int(mtns))
+        if co > 0 and cho.get(k) == dau:
+            san.append(k)
+        else:
+            co_moi = co_moi or k not in cho
+            cho[k] = dau
+    return san, co_moi
+
+
 def hoi_nut(cha, tieu_de: str, noi_dung: str, nut: list):
     """Hộp hỏi có nút MANG TÊN RIÊNG (messagebox chỉ có Yes / No / Cancel —
     "Yes = mức chung" là bắt người dùng nhớ quy ước). nut = [(mã, nhãn), ...]

@@ -612,6 +612,59 @@ def chay(nhanh: bool = False) -> Bao:
                 shutil.rmtree(tam, ignore_errors=True)
         b.thu("HSL màu da cưới (đo trên ảnh duyệt)", _hsl_cuoi)
 
+        #[[ 9/10: XUAT MOT THAO TAC — ba mieng thuan chay duoc trong goi: cai dat
+        #   hop thoai Xuat (xuat_ui), cache xem truoc LRU (cache_xem), preset
+        #   retouch (retouch_preset) + chon anh luot xuat (retouch_chung). ]]
+        def _xuat_mot_thao_tac():
+            import tempfile
+            import numpy as _np
+            from PIL import Image as _Im
+            import xuat_ui
+            import cache_xem
+            import retouch_preset as rp
+            from retouch_chung import chon_anh_moi
+            tam = Path(tempfile.mkdtemp(prefix="tk_xuat_"))
+            try:
+                cu = os.environ.get("AUTOTONE_DATA")
+                os.environ["AUTOTONE_DATA"] = str(tam)
+                try:
+                    xuat_ui.ghi_cai_dat({"chat": 500, "va_cham": "ask", "retouch_ra": "ghi_de"})
+                    cd = xuat_ui.doc_cai_dat()
+                    if not (cd["chat"] == 100 and cd["va_cham"] == "overwrite"
+                            and cd["retouch_ra"] == "ghi_de"):
+                        raise AssertionError(f"cài đặt Xuất đọc sai: {cd}")
+                    ok, ly = xuat_ui.danh_gia_song_song(
+                        {"ram_trong_gb": 3, "vram_trong_gb": 6, "card": "RTX", "dia_trong_gb": 50})
+                    if ok or not ly:
+                        raise AssertionError("máy yếu mà vẫn cho song song")
+                    c = cache_xem.CacheXem(tam / "cache", gioi_han_mb=1)
+                    im = _Im.fromarray(_np.random.default_rng(1).integers(
+                        0, 255, (900, 1400, 3), dtype=_np.uint8))
+                    ks = [cache_xem.khoa(f"D:/x{i}.jpg", {"vet": 50}, "b") for i in range(6)]
+                    for k in ks:
+                        c.cat(k, im)
+                    if not (c.co(ks[-1]) and not c.co(ks[0]) and c.dung_luong() <= 1024 * 1024):
+                        raise AssertionError(f"cache LRU sai: {c.so_tam()} tấm, {c.dung_luong()} byte")
+                    rp.ghi("Thử", {"vet": 60, "nam:vet": 30})
+                    if rp.doc("Thử") != {"vet": 60.0, "nam:vet": 30.0} or rp.danh_sach() != ["Thử"]:
+                        raise AssertionError("preset ghi/đọc sai")
+                    td = {"biet": set(), "cho": {}, "xuat": True, "tu_luc": 100.0, "ban_do": set()}
+                    ds = [("D:/cu.jpg", False, 10, 1, 50.0), ("D:/moi.jpg", True, 10, 1, 120.0)]
+                    chon_anh_moi(ds, td)
+                    san, _m = chon_anh_moi(ds, td)
+                    if san != ["D:/moi.jpg"]:
+                        raise AssertionError(f"chọn ảnh lượt xuất sai: {san}")
+                finally:
+                    if cu is None:
+                        os.environ.pop("AUTOTONE_DATA", None)
+                    else:
+                        os.environ["AUTOTONE_DATA"] = cu
+                return ("cài đặt kẹp đúng · máy yếu → tuần tự · cache LRU 1 MB giữ tấm mới · "
+                        "preset ghi/đọc · chọn ảnh lượt xuất theo mtime")
+            finally:
+                shutil.rmtree(tam, ignore_errors=True)
+        b.thu("Xuất một thao tác (cài đặt / cache / preset)", _xuat_mot_thao_tac)
+
     # --- 5b. Chạy thật trên ẢNH RAW THẬT của người dùng ---------------------
     #[[ VI SAO PHAI CO PHAN NAY, DU DA CO PHAN TREN.
     #

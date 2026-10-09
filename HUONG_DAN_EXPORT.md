@@ -91,6 +91,36 @@ dở trên đĩa. Số ảnh đã ra vẫn dùng được bình thường.
 
 ---
 
+## Đường 3 · Nút **3 · Xuất** — một thao tác: Lightroom xuất, app retouch (9/10)
+
+Trên thanh công cụ Cân tone, cạnh "2 · Ghi": **3 · Xuất** (cũng có trong menu ⋯
+của Retouch). Bấm là hiện hộp thoại, mọi lựa chọn được nhớ cho lần sau:
+
+1. **Chất lượng JPEG** 1–100 (mặc định lấy số Lightroom đang dùng). Kích thước,
+   không gian màu, metadata, quy tắc đặt tên vẫn theo thông số Export của Lightroom.
+2. **Thư mục xuất** + Lightroom gặp file trùng tên: ghi đè / bỏ qua / đổi tên; bỏ ảnh 1 sao.
+3. **Ảnh retouch ghi ở đâu**: thư mục riêng `<xuất>_retouch` (mặc định) hay ghi đè
+   lên chính ảnh Lightroom vừa xuất (hỏi lại, không lùi được).
+4. **Cache xem trước**: dung lượng (mặc định 2 GB), xem đang dùng bao nhiêu, nút xoá.
+   Ảnh xem trước retouch đã tính được giữ lại: mở lại thư mục hay đang chạy mẻ vẫn
+   bấm xem được ngay; vượt dung lượng thì tự xoá tấm lâu không xem nhất.
+5. **Xuất ảnh đâu retouch đó**: bật = retouch ngay trong lúc Lightroom đang xuất
+   (song song); tắt = retouch sau khi xuất xong. Chọn **preset** retouch cho cả lượt.
+
+Hộp thoại **đo máy** (RAM trống, VRAM card NVIDIA, CPU, ổ đích). Vừa xuất vừa
+retouch cần ≥ 6 GB RAM trống, ≥ 3 GB VRAM trống và có card NVIDIA — thiếu thì app
+**tự đổi sang "retouch sau khi xuất xong"** và nói lý do; muốn ép vẫn có ô "Vẫn
+chạy song song". Khi chạy song song: retouch 1 luồng, chế độ tiết kiệm, Lightroom
+xuất lô 10 ảnh; RAM trống dưới 1,5 GB thì tạm ngưng nhận ảnh mới tới khi hồi.
+
+Bấm **Bắt đầu xuất**: app chuyển sang màn Retouch, thanh đáy hiện
+*"Lightroom xuất 120/760 · Retouch 85/760 · 12 phút"*. **Dừng** = xin Lightroom dừng
+sau lô đang chạy và thôi retouch ảnh mới. Xong có câu tổng kết ở thanh đáy và Nhật ký.
+
+**Preset retouch** (nhóm "Mức áp dụng"): chọn preset = áp cho ảnh đang xem (chưa có
+ảnh thì làm mức chung); **Lưu** = ghi bảng đang hiện thành preset (gồm cả mức riêng
+theo nhóm mặt); bảng khác preset thì hộp chọn ghi "(đã sửa)".
+
 ## Nếu không thấy gì xảy ra
 
 Cả hai đường đều đi qua vòng lặp nền của plugin (5 giây một nhịp). Quá 60 giây

@@ -2067,6 +2067,19 @@ class App(ttk.Frame):
             "“Đẩy thẳng vào Lightroom” (bật/tắt trong ⋯): plugin áp thẳng vào "
             "catalog — khỏi phải chọn ảnh rồi Metadata → Read Metadata from "
             "File. Bỏ tick thì chỉ ghi .xmp (phải đọc lại bằng tay).")
+        #[[ 9/10 — NUT XUAT (user: "Them nut Xuat. Khi bam se hien dialog de chon
+        #   cac Option"): Lightroom xuat anh co goc theo thong so Export cua no
+        #   (chat luong chon o hop thoai) -> app retouch ngay trong luc xuat hay
+        #   sau khi xuat xong — MOT thao tac. Xem xuat_ui.py + do_xuat_hop. ]]
+        self.btn_xuat_anh = gd.NutTron(cha, "3 · Xuất", kieu="phu", nen=m["toi"],
+                                       command=self.do_xuat_hop)
+        self.btn_xuat_anh.pack(side="left", padx=(0, 6))
+        self.btn_xuat_anh.goi_y = gd.GoiY(
+            self.btn_xuat_anh,
+            "Lightroom xuất ảnh cỡ gốc rồi app retouch — một thao tác.\n"
+            "Hộp thoại chọn: chất lượng JPEG, thư mục xuất, ảnh retouch ghi đâu, "
+            "cache xem trước, retouch ngay trong lúc xuất hay sau khi xuất xong "
+            "(có kiểm tài nguyên máy).")
         self.menu_them = tk.Menu(self, tearoff=0)
         self.menu_them.add_checkbutton(label="Đẩy thẳng vào Lightroom",
                                        variable=self.v_lrpush)
@@ -2729,24 +2742,149 @@ class App(ttk.Frame):
                 "Chưa có thư mục đích",
                 "Chọn “Thư mục Export” ở trên — đó là chỗ ảnh sẽ ra.")
             return
-        st = self._thong_so_xuat()
-        if not st:
-            return
-        try:
-            import thongso_lr as tl
-            import xuat_lr
-            st = tl.ep(st, dest, self.v_xuat_vc.get())
-            xuat_lr.yeu_cau_xuat(f, dest, st,
-                                 bo_sao=1 if self.v_xuat_bo1.get() else 0)
-        except (OSError, ValueError) as ex:
-            messagebox.showerror("Không gửi được yêu cầu", str(ex))
+        if not self._gui_yeu_cau_xuat(f, dest, self.v_xuat_vc.get(),
+                                      bo_sao=1 if self.v_xuat_bo1.get() else 0):
             return
         self.pb_xuat.configure(value=0)
         self.lbl_xuat.configure(text="Đã gửi yêu cầu — chờ Lightroom nhận…")
         self.status("Đã gửi yêu cầu Export sang Lightroom.", gd.MAU["nhan"])
-        if not self._xuat_dang_soi:
+        self._bat_dau_soi_xuat()
+
+    def _gui_yeu_cau_xuat(self, f, dest: str, va_cham: str, bo_sao: int = 1,
+                          chat: float | None = None, lo: int | None = None) -> bool:
+        """MỘT chỗ gửi yêu cầu xuất: đọc thông số Lightroom, ÉP (thư mục đích,
+        trùng tên, không hộp thoại, chất lượng nếu người dùng chọn) rồi gửi.
+        kiem_xuat_lr.py canh: mọi chỗ gọi yeu_cau_xuat đều phải đi qua tl.ep."""
+        st = self._thong_so_xuat()
+        if not st:
+            messagebox.showinfo(
+                "Chưa đọc được thông số Export của Lightroom",
+                "App không tự bịa thông số cho ảnh giao khách. Mở Lightroom, Export "
+                "một lần bằng tay (bất kỳ ảnh nào) rồi thử lại.")
+            return False
+        try:
+            import thongso_lr as tl
+            import xuat_lr
+            st = tl.ep(st, dest, va_cham, chat=chat)
+            xuat_lr.yeu_cau_xuat(f, dest, st, bo_sao=bo_sao, lo=lo)
+        except (OSError, ValueError) as ex:
+            messagebox.showerror("Không gửi được yêu cầu", str(ex))
+            return False
+        return True
+
+    def _bat_dau_soi_xuat(self):
+        if not getattr(self, "_xuat_dang_soi", False):
             self._xuat_dang_soi = True
             self.after(1200, self._soi_xuat_anh)
+
+    # ------------------------------------------------- Xuất một thao tác (9/10)
+    def do_xuat_hop(self):
+        """Nút “3 · Xuất”: hộp thoại cài đặt -> Lightroom xuất -> Retouch.
+
+        #[[ User 9/10: "Thay doi Flow lon nay de chay 1 thao tac khi bam xuat anh.
+        #   May vua xuat anh tu Lightroom vua chay Retouch nen can kiem tra moi
+        #   truong may va tai nguyen... Co canh bao neu chon Option vua xuat anh
+        #   vua Retouch." Hop thoai (xuat_ui.XuatDialog) do RAM / VRAM / card /
+        #   dia, canh bao va TU DOI sang "retouch sau khi xuat xong" khi may yeu;
+        #   nguoi dung van ep duoc. ]]
+        """
+        f = self.folder()
+        if not f:
+            messagebox.showinfo("Chưa chọn buổi", "Chọn thư mục buổi chụp trước.")
+            return
+        if getattr(self, "_xuat_dang_soi", False):
+            messagebox.showinfo("Đang xuất", "Lightroom đang xuất một lượt — đợi xong "
+                                             "hoặc bấm Dừng ở màn Retouch.")
+            return
+        if self._gpu_khoa():
+            messagebox.showinfo("Retouch đang bận",
+                                "Đang tải bản tăng tốc GPU cho Retouch — tải xong hãy Xuất.")
+            return
+        try:
+            import thongso_lr as tl
+            st, luc = tl.doc_prefs()
+        except Exception:                                    # noqa: BLE001
+            st, luc = {}, None
+        goi_y = ""
+        try:
+            import trang_thai as tt
+            goi_y = tt.doc(tt.ten_buoi(f)).get("thu_muc_export") or ""
+            if not goi_y:
+                import xuat_lr
+                goi_y = xuat_lr.doc().get("thu_muc") or ""
+        except Exception:                                    # noqa: BLE001
+            pass
+        rt_win = getattr(self, "_retouch_win", None)
+        muc_dang = {}
+        if rt_win is not None:
+            try:
+                muc_dang = {k: v for k, v in rt_win.muc_day_du().items() if ":" not in str(k)}
+            except Exception:                                # noqa: BLE001
+                muc_dang = {}
+        try:
+            import retouch_preset as rp
+            ds_preset = rp.danh_sach()
+        except Exception:                                    # noqa: BLE001
+            ds_preset = []
+        import xuat_ui
+        d = xuat_ui.XuatDialog(self, buoi=f.name, thu_muc_goi_y=goi_y, thong_so_lr=st,
+                               luc_lr=luc, ds_preset=ds_preset, muc_dang=muc_dang)
+        self.wait_window(d)
+        if d.ket_qua:
+            self.bat_dau_xuat(d.ket_qua)
+
+    def bat_dau_xuat(self, kq: dict) -> bool:
+        """Bắt đầu lượt xuất theo kết quả hộp thoại (xuat_ui.XuatDialog.ket_qua)."""
+        f = self.folder()
+        if not f:
+            return False
+        dest = os.path.normpath(str(kq.get("thu_muc") or "").strip())
+        if not dest:
+            return False
+        nhip = at.plugin_nhip()
+        if nhip is None or nhip > 60:
+            khi = "chưa bao giờ báo nhịp" if nhip is None else f"im {nhip:.0f} giây"
+            if not messagebox.askyesno(
+                    "Lightroom chưa thấy sống",
+                    f"Plugin AutoTone trong Lightroom {khi}. Lightroom có đang mở và "
+                    "plugin đã nạp không?\n\nVẫn gửi yêu cầu (plugin sẽ nhận khi "
+                    "Lightroom mở)?"):
+                return False
+        #[[ Mo-dun Retouch truoc: nguoi dung thay tien do o do; RetouchWindow
+        #   dung lazy nen phai _chon_khau de no ton tai. ]]
+        self._chon_khau("retouch")
+        rt_win = getattr(self, "_retouch_win", None)
+        if rt_win is not None and rt_win.worker is not None and rt_win.worker.is_alive():
+            messagebox.showinfo("Đang chạy retouch",
+                                "Đợi lượt retouch đang chạy xong (hoặc bấm Dừng) rồi mới Xuất.")
+            return False
+        if not self._gui_yeu_cau_xuat(f, dest, kq.get("va_cham") or "overwrite",
+                                      bo_sao=1 if kq.get("bo_sao1", True) else 0,
+                                      chat=float(kq.get("chat") or 80) / 100.0,
+                                      lo=10 if kq.get("song_song") else None):
+            return False
+        try:
+            import trang_thai as tt
+            them = {"thu_muc_retouch": kq["thu_muc_retouch"]} if kq.get("thu_muc_retouch") else {}
+            tt.ghi(tt.ten_buoi(f), thu_muc_export=dest, **them)
+        except Exception:                                    # noqa: BLE001
+            pass
+        if rt_win is not None:
+            try:
+                muc = None if kq.get("preset") else dict(rt_win.muc_day_du())
+            except Exception:                                # noqa: BLE001
+                muc = None
+            try:
+                rt_win.bat_dau_theo_xuat(
+                    vao=dest, ra=kq.get("thu_muc_retouch") or "",
+                    ghi_de=kq.get("retouch_ra") == "ghi_de", muc=muc,
+                    song_song=bool(kq.get("song_song")), preset=kq.get("preset") or "",
+                    ly_do_tuan_tu=kq.get("ly_do_tuan_tu") or [])
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
+        self.status("Đã gửi yêu cầu xuất sang Lightroom — chờ plugin nhận…", gd.MAU["nhan"])
+        self._bat_dau_soi_xuat()
+        return True
 
     def do_dung_xuat(self):
         try:
@@ -2766,7 +2904,8 @@ class App(ttk.Frame):
 
         Im lặng chờ mãi là kiểu hỏng khó chẩn đoán nhất — đã mất một vòng chẩn
         đoán vì plugin chết mà không ai biết. Nên quá 60 giây không thấy gì thì
-        phải nói ra."""
+        phải nói ra. 9/10: báo tiến độ sang màn Retouch (cap_nhat_xuat) khi đang
+        Xuất một thao tác; trang Export cũ (pb_xuat / lbl_xuat) có thể chưa dựng."""
         try:
             import xuat_lr
             td = xuat_lr.tien_do_xuat()
@@ -2774,34 +2913,55 @@ class App(ttk.Frame):
         except Exception:                                    # noqa: BLE001
             self._xuat_dang_soi = False
             return
+        pb, lbl = getattr(self, "pb_xuat", None), getattr(self, "lbl_xuat", None)
+
+        def noi(chu):
+            if lbl is not None:
+                try:
+                    lbl.configure(text=chu)
+                except tk.TclError:
+                    pass
+
         tong = td.get("tong") or 0
         xong = td.get("xong") or 0
-        if tong:
-            self.pb_xuat.configure(maximum=tong, value=xong)
+        if tong and pb is not None:
+            try:
+                pb.configure(maximum=tong, value=xong)
+            except tk.TclError:
+                pass
         tt = td.get("trang_thai")
+        rt_win = getattr(self, "_retouch_win", None)
+        if rt_win is not None and getattr(rt_win, "_xuat", None) is not None:
+            try:
+                rt_win.cap_nhat_xuat(td)
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
         if tt == "dang_chay":
             bo = td.get("bo_sao") or 0
-            self.lbl_xuat.configure(
-                text=f"Đang xuất {xong}/{tong} ảnh vào {td.get('thu_muc', '')}"
-                     + (f" · đã bỏ {bo} ảnh 1 sao" if bo else ""))
+            noi(f"Đang xuất {xong}/{tong} ảnh vào {td.get('thu_muc', '')}"
+                + (f" · đã bỏ {bo} ảnh 1 sao" if bo else ""))
         elif tt in ("xong", "dung", "loi"):
             self._xuat_dang_soi = False
             loi = td.get("loi") or 0
             if tt == "loi":
-                self.lbl_xuat.configure(text="Lỗi: " + str(td.get("thong_bao", "")))
+                noi("Lỗi: " + str(td.get("thong_bao", "")))
                 self.status("Export không chạy được: "
                             + str(td.get("thong_bao", "")), gd.MAU["loi"])
             else:
                 cau = (f"Xong {xong}/{td.get('tong', xong)} ảnh"
                        + (f", {loi} ảnh không ra file" if loi else "")
                        + " · " + str(td.get("thong_bao", "")))
-                self.lbl_xuat.configure(text=cau)
-                self.status(cau, gd.MAU["canh"] if (loi or tt == "dung")
-                            else gd.MAU["xong"])
+                noi(cau)
+                if rt_win is None or getattr(rt_win, "_xuat", None) is None:
+                    self.status(cau, gd.MAU["canh"] if (loi or tt == "dung")
+                                else gd.MAU["xong"])
             #[[ Xuat xong thi khau 5 phai dem lai ngay: the o tren van dang
             #   hien so anh cua lan truoc. ]]
-            self._lam_moi_export()
-            self._lam_moi_ray()
+            for ham in (self._lam_moi_export, self._lam_moi_ray):
+                try:
+                    ham()
+                except Exception:                            # noqa: BLE001
+                    pass
             self.day_export_sang_retouch(td.get("thu_muc", ""))
             return
         elif not tt and cho:

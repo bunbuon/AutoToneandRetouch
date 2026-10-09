@@ -156,6 +156,23 @@ ktra("applyJob ghi nhip moi buoc", len(nhip) >= 4 and all("vong=66" in x for x i
 ktra("buoc dau = 'bắt đầu 1 ảnh', co 'ghi 1/1'",
      "buoc=bắt đầu 1 ảnh" in nhip[0] and any("buoc=ghi 1/1" in x for x in nhip))
 
+# ---- 5. XuatCore (9/10 Xuat mot thao tac): bang path->jpg + ten file khop xuat_lr
+X = L.eval('require("XuatCore")')
+import xuat_lr
+ktra("XuatCore.BANG khop xuat_lr.TEN_BANG_XUAT", X["BANG"] == xuat_lr.TEN_BANG_XUAT, str(X["BANG"]))
+cap = L.eval('{ { src = "G:/Buoi/DSC01.ARW", jpg = "F:/Giao/SAY-01.jpg" }, '
+             '  { src = "G:/Buoi/DSC02.ARW", jpg = "F:/Giao/SAY-02.jpg" } }')
+X.ghiBang(cap)
+b = xuat_lr.bang_anh(jobs)
+ktra("ghiBang -> xuat_lr.bang_anh doc duoc (ten ra khac ten goc)",
+     b == {"G:/Buoi/DSC01.ARW": "F:/Giao/SAY-01.jpg", "G:/Buoi/DSC02.ARW": "F:/Giao/SAY-02.jpg"}, str(b))
+X.xoaBang()
+ktra("xoaBang xoa file bang", not (jobs / xuat_lr.TEN_BANG_XUAT).exists())
+f_, o_, ts_ = X.docDong(L.table("F:/Buoi", "dest=F:/Giao", "lo=10", "ts	n	LR_jpeg_quality	0.92"))
+ktra("docDong: chat luong so, lo doc duoc", ts_["LR_jpeg_quality"] == 0.92 and o_["lo"] == "10")
+src_x = (GOC / "XuatCore.lua").read_text(encoding="utf-8")
+ktra("M.xuat ghi nhip kem buoc 'xuất ảnh a/b' sau moi lo", "Core.ghiNhip(nil, 0" in src_x and "xuất ảnh %d/%d" in src_x)
+
 shutil.rmtree(tam, ignore_errors=True)
 print("TAT CA DAT" if not LOI else f"{len(LOI)} LOI")
 sys.exit(1 if LOI else 0)

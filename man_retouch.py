@@ -179,6 +179,11 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self._hen_quet_ma = None
         self.v_nhom = tk.StringVar(value="")
         self._export_cu = self.cf.get("theo_export", "")
+        #  9/10 — Xuất một thao tác (xem retouch_may.bat_dau_theo_xuat) + cache + preset
+        self._xuat = None                     # lượt xuất đang theo (None: không)
+        self._xem_khoa_cua: dict = {}         # mã yêu cầu tính -> khoá cache
+        self._xem_ban = str(self.cf.get("ban_engine") or "")
+        self.v_preset = tk.StringVar(value="")
 
         # ---------------------------------------------------------- khung
         m = gd.MAU
@@ -550,7 +555,10 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                                   icon="chay", command=self.start)
         self.btn_run.pack(side="left", padx=(0, 6))
         self.menu_rt = tk.Menu(self, tearoff=0)
-        for nhan, lenh in (("Kiểm tra tool", lambda: self._kiem(chay_thu=True)),
+        for nhan, lenh in (("Xuất ảnh từ Lightroom…",
+                            lambda: getattr(self.app, "do_xuat_hop", lambda: None)()),
+                           (None, None),
+                           ("Kiểm tra tool", lambda: self._kiem(chay_thu=True)),
                            ("Đọc lại tính năng", self.do_doc_lai_keo),
                            (None, None),
                            ("Mở thư mục vào", lambda: self._mo_thu_muc(self.v_vao)),
@@ -729,6 +737,31 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         #   "Sync tat ca" chep cho ca thu muc va lay lam MUC CHUNG. Anh chua
         #   chinh rieng thi theo muc chung (retouch.json "muc" — nhu truoc, nen
         #   ai khong dung toi Sync thi ket qua y het truoc day). ]]
+        #[[ PRESET (9/10): hop chon + Luu + xoa, tren cung nhom "Muc ap dung". ]]
+        o_ps = ttk.Frame(g_keo)
+        o_ps.pack(fill="x", pady=(4, 0))
+        ttk.Label(o_ps, text="Preset").pack(side="left")
+        hoi(o_ps, "Bộ mức đã lưu (cả mức riêng theo nhóm mặt). Chọn = áp cho ảnh "
+                  "đang xem như vừa kéo; chưa có ảnh thì làm mức chung. Lưu = ghi "
+                  "bảng đang hiện thành preset (hỏi tên). Hộp thoại Xuất cũng chọn "
+                  "preset từ đây cho cả lượt ảnh Lightroom xuất ra.")
+        self.btn_ps_xoa = gd.NutTron(o_ps, "", kieu="chu", icon="dong", font=gd.CHU,
+                                     command=self._xoa_preset)
+        self.btn_ps_xoa.goi_y = gd.GoiY(self.btn_ps_xoa, "Xoá preset đang chọn")
+        self.btn_ps_xoa.pack(side="right")
+        self.btn_ps_luu = gd.NutTron(o_ps, "Lưu", kieu="phu", font=gd.CHU,
+                                     command=self._luu_preset)
+        self.btn_ps_luu.goi_y = gd.GoiY(self.btn_ps_luu, "Lưu bảng đang hiện thành preset")
+        self.btn_ps_luu.pack(side="right", padx=(6, 4))
+        #  nut ve tay + menu (nhu moi hop chon khac cua app — khong ttk.Combobox)
+        self.btn_preset = gd.NutTron(o_ps, "(không preset)", kieu="phu", font=gd.CHU,
+                                     mui_ten=True, command=self._mo_menu_preset)
+        self.btn_preset.goi_y = gd.GoiY(self.btn_preset, "Chọn preset để áp")
+        self.btn_preset.pack(side="left", padx=(8, 0), fill="x", expand=True)
+        self.lbl_preset = ttk.Label(g_keo, style="Mo2.TLabel", text="", wraplength=WRAP,
+                                    justify="left")
+        self.lbl_preset.pack(fill="x")
+        self._lam_moi_ds_preset()
         o_pv = ttk.Frame(g_keo)
         o_pv.pack(fill="x", pady=(4, 0))
         #[[ Ten tep dai thi XUONG DONG, khong day bang dieu khien phinh ra (anh
@@ -1100,6 +1133,10 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         if getattr(self.app, "khau_dang", "") != "retouch":
             return False
         if self.worker is not None and self.worker.is_alive():
+            #[[ 9/10: dang chay me — engine ban; tam chua co ket qua nhung da
+            #   tung xem truoc dung muc nay thi cache co -> hien ngay. ]]
+            if self._duong_kq(path) is None:
+                self._hien_tu_cache(path, chip="đang chạy mẻ — xem trước lấy từ cache")
             return False
         #[[ Tam DA CO KET QUA tren dia ("✓ Đã retouch"): hien chinh file ket qua
         #   (anh that da xuat, khong ton cong tinh) — keo thanh thi van xem truoc. ]]
@@ -1111,6 +1148,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             co = False
         if not co:
             return False
+        self._xem_dung_cache = True      # 9/10: tam da co muc -> cache (neu co) hien ngay
         self._mo_xem_truoc(path, tu_dong=True)
         if self._xem_bat:
             self._xem_tu_dong = True     # bat vi anh co san thong so, khong phai keo
@@ -1378,6 +1416,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                 text=f"{xong}/{tong} ảnh đã có kết quả — còn {tong - xong}" + nhip)
             if chay:
                 self._dat_tien_do_tt(xong, tong, f"Đang retouch {xong}/{tong} ảnh" + nhip)
+        if getattr(self, "_xuat", None):
+            self._hien_tien_do_xuat()          # 9/10: "Lightroom xuất a/b · Retouch c/d"
         self._ds_luoi = ds
         if self._hen_luoi is None:
             try:

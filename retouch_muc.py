@@ -279,6 +279,7 @@ class MucMixin:
         #[[ Nguoi dung da KEO: xem truoc tu day la cua nguoi dung (giu bat khi
         #   sang tam khac), khong con la "tu bat theo tam" nua. ]]
         self._xem_tu_dong = False
+        self._xem_dung_cache = False     # keo thanh: luon hoi engine, khong tra cache
         if self._xem_bat:
             self._hen_tinh_xem()
         elif self._anh_dang:
@@ -541,6 +542,175 @@ class MucMixin:
             self._cap_nhat_dau_rieng(p)
         self._hen_luu_muc()
         self._cap_nhat_pham_vi()
+        self._cap_nhat_preset_ui()
+
+    # ------------------------------------------------------------ preset mức kéo
+    #[[ PRESET (9/10 — user: "tao preset thong so da chon de su dung cho cac lan
+    #   sau nhanh va tien hon"). Mot preset = bo muc day du (chung + rieng theo
+    #   nhom mat). CHON preset = dat ca bang theo no, nhu nguoi dung tu keo: ghi
+    #   thanh muc cua anh dang xem (chua co anh thi la muc chung) va ten preset
+    #   duoc nho cho THU MUC VAO. Bang doi khac preset -> nhan "(da sua)". Xem
+    #   retouch_preset.py; hop thoai Xuat (xuat_ui) cung chon tu danh sach nay. ]]
+    def _ds_preset(self) -> list:
+        try:
+            import retouch_preset as rp
+            return rp.danh_sach()
+        except Exception:                                    # noqa: BLE001
+            return []
+
+    def _lam_moi_ds_preset(self):
+        if getattr(self, "btn_preset", None) is None:
+            return
+        if self.v_preset.get() and self.v_preset.get() not in self._ds_preset():
+            self.v_preset.set("")
+        self._cap_nhat_preset_ui()
+
+    def _mo_menu_preset(self):
+        """Menu chọn preset dưới nút (như các hộp chọn khác của app)."""
+        menu = tk.Menu(self, tearoff=0)
+        dang = self.v_preset.get()
+        menu.add_command(label=("● " if not dang else "   ") + "(không preset)",
+                         command=lambda: self._chon_preset(""))
+        ds = self._ds_preset()
+        if ds:
+            menu.add_separator()
+            for ten in ds:
+                menu.add_command(label=("● " if ten == dang else "   ") + ten,
+                                 command=lambda t=ten: self._chon_preset(t))
+        else:
+            menu.add_command(label="(chưa có preset nào — kéo mức rồi bấm Lưu)",
+                             state="disabled")
+        self.app._bat_menu(menu, self.btn_preset)
+
+    def _dat_preset_ui(self, ten: str):
+        """Hộp chọn hiện tên preset của thư mục (không áp lại mức)."""
+        if not hasattr(self, "v_preset"):
+            return
+        self._lam_moi_ds_preset()
+        self.v_preset.set(ten if ten in self._ds_preset() else "")
+        self._cap_nhat_preset_ui()
+
+    def _cap_nhat_preset_ui(self):
+        btn, lbl = getattr(self, "btn_preset", None), getattr(self, "lbl_preset", None)
+        if btn is None or lbl is None:
+            return
+        ten = self.v_preset.get()
+        if not ten:
+            btn.configure(text="(không preset)")
+            lbl.configure(text="")
+            return
+        try:
+            import retouch_preset as rp
+            muc = rp.doc(ten)
+            khac = muc is not None and not rp.giong(muc, self._muc_chung_day_du())
+        except Exception:                                    # noqa: BLE001
+            khac = False
+        btn.configure(text=ten + (" (đã sửa)" if khac else ""))
+        lbl.configure(text=("Mức chung khác preset — bấm Lưu để ghi đè preset, "
+                            "hoặc chọn lại preset để về bộ gốc." if khac else ""))
+
+    def _chon_preset(self, ten: str):
+        """Người dùng chọn ở menu: áp preset ("" = bỏ preset, giữ mức)."""
+        if not ten:
+            self.v_preset.set("")
+            try:
+                self.rt.ghi_preset_thu_muc(self._vao_hien(), "")
+            except OSError:
+                pass
+            self._cap_nhat_preset_ui()
+            return
+        self.ap_preset(ten)
+
+    def ap_preset(self, ten: str, ca_thu_muc: bool = False) -> bool:
+        """Áp preset `ten`: đặt bảng + ghi như người dùng vừa kéo. ca_thu_muc:
+        làm mức CHUNG của thư mục (cho lượt Xuất), không đụng mức riêng từng ảnh."""
+        try:
+            import retouch_preset as rp
+            muc = rp.doc(ten)
+        except Exception:                                    # noqa: BLE001
+            muc = None
+        if muc is None:
+            self._append(f"! không đọc được preset “{ten}”")
+            return False
+        muc = self._loc_muc(muc) if hasattr(self, "_loc_muc") else dict(muc)
+        self.v_preset.set(ten)
+        try:
+            self.rt.ghi_preset_thu_muc(self._vao_hien(), ten)
+        except OSError:
+            pass
+        if ca_thu_muc or not self._anh_dang:
+            self._muc_chung_tm = dict(muc)
+            self._muc_chung_ban = True
+            self._luu_muc()
+            self._nap_muc_vao_bang(self._muc_hieu_luc(self._anh_dang)
+                                   if self._anh_dang else self._muc_chung_day_du())
+            self._cap_nhat_dau_rieng()
+            self._cap_nhat_pham_vi()
+            self._cap_nhat_preset_ui()
+            self._append(f"… preset “{ten}” làm mức chung của thư mục: "
+                         + self._mo_ta_muc(muc))
+            return True
+        self._nap_muc_vao_bang(muc)
+        self._append(f"… áp preset “{ten}” cho {Path(self._anh_dang).name}: "
+                     + self._mo_ta_muc(muc))
+        self._nguoi_doi_muc()
+        return True
+
+    def _luu_preset(self):
+        """Lưu bảng đang hiện thành preset (hỏi tên; đang có preset thì gợi ý tên đó)."""
+        from tkinter import simpledialog
+        import retouch_preset as rp
+        muc = {k: v for k, v in self.muc_day_du().items()
+               if _so_muc(v, 0) > 0 or ":" in str(k)}
+        if not any(_so_muc(v, 0) > 0 for v in muc.values()):
+            messagebox.showinfo("Chưa có gì để lưu",
+                                "Mọi thanh đang ở 0 — kéo mức muốn dùng rồi bấm Lưu.",
+                                parent=self)
+            return
+        ten = simpledialog.askstring("Lưu preset retouch", "Tên preset:",
+                                     initialvalue=self.v_preset.get() or "", parent=self)
+        if ten is None:
+            return
+        ten = rp.ten_hop_le(ten)
+        if not ten:
+            messagebox.showinfo("Tên không hợp lệ", "Tên preset trống.", parent=self)
+            return
+        if ten in rp.danh_sach() and not messagebox.askyesno(
+                "Ghi đè preset?", f"Đã có preset “{ten}”. Ghi đè bằng mức đang hiện?",
+                parent=self):
+            return
+        try:
+            rp.ghi(ten, muc)
+        except (OSError, ValueError) as ex:
+            messagebox.showerror("Không lưu được preset", str(ex), parent=self)
+            return
+        self.v_preset.set(ten)
+        try:
+            self.rt.ghi_preset_thu_muc(self._vao_hien(), ten)
+        except OSError:
+            pass
+        self._lam_moi_ds_preset()
+        self._append(f"… đã lưu preset “{ten}”: " + self._mo_ta_muc(muc))
+        self.app.status(f"Đã lưu preset retouch “{ten}”", gd.MAU["xong"])
+
+    def _xoa_preset(self):
+        import retouch_preset as rp
+        ten = self.v_preset.get()
+        if not ten:
+            messagebox.showinfo("Chưa chọn preset", "Chọn preset ở hộp rồi bấm xoá.",
+                                parent=self)
+            return
+        if not messagebox.askyesno("Xoá preset?", f"Xoá preset “{ten}”? Mức đang đặt "
+                                   "cho thư mục này vẫn giữ nguyên.", parent=self):
+            return
+        rp.xoa(ten)
+        self.v_preset.set("")
+        try:
+            self.rt.ghi_preset_thu_muc(self._vao_hien(), "")
+        except OSError:
+            pass
+        self._lam_moi_ds_preset()
+        self._append(f"… đã xoá preset “{ten}”")
 
     def _hen_luu_muc(self):
         """Ghi xuống đĩa SAU khi ngừng tay 0,6 s (kéo thanh là hàng chục lần
@@ -591,6 +761,11 @@ class MucMixin:
             self._muc_chung_tm = self.rt.doc_muc_chung(vao) if vao else {}
         except Exception:                                    # noqa: BLE001
             self._muc_chung_tm = {}
+        #  9/10: preset dang ap cho thu muc nay (ten) — hop chon hien dung ten
+        try:
+            self._dat_preset_ui(self.rt.doc_preset_thu_muc(vao) if vao else "")
+        except Exception:                                    # noqa: BLE001
+            pass
 
     def _cap_nhat_dau_rieng(self, p=None):
         """Nhãn "riêng" trên dải ảnh theo _muc_anh (p: chỉ một tấm)."""

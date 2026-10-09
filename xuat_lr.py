@@ -111,6 +111,8 @@ def mo_ta(job_dir: Path | None = None) -> str:
 TEN_YEU_CAU_XUAT = "request_xuatanh.txt"
 TEN_TIEN_DO_XUAT = "xuatanh_tiendo.txt"
 TEN_CO_DUNG_XUAT = "request_xuatanh_dung.txt"
+#  9/10: bảng ảnh gốc -> file ra, plugin ghi sau mỗi lô (XuatCore.ghiBang)
+TEN_BANG_XUAT = "xuatanh_anh.tsv"
 
 
 def _dong_thongso(thong_so: dict) -> list[str]:
@@ -152,6 +154,14 @@ def yeu_cau_xuat(folder, dest, thong_so: dict, bo_sao: int | None = 1,
     if lo:
         dong.append(f"lo={int(lo)}")
     dong += _dong_thongso(thong_so)
+    #[[ 9/10: XOA VET LUOT TRUOC truoc khi gui — tien do, bang anh, co dung.
+    #   Khong xoa thi vong theo doi doc ngay "trang_thai=xong" cua lan truoc
+    #   va ket thuc tuc khac (duyet.yeu_cau da lam dung tu dau, day thi chua). ]]
+    for ten in (TEN_TIEN_DO_XUAT, TEN_BANG_XUAT, TEN_CO_DUNG_XUAT):
+        try:
+            (d / ten).unlink()
+        except OSError:
+            pass
     p = d / TEN_YEU_CAU_XUAT
     #[[ .part roi doi ten: plugin do thu muc 5 giay mot lan, doc phai file dang
     #   ghi do la mot luot Export thieu thong so. ]]
@@ -162,8 +172,16 @@ def yeu_cau_xuat(folder, dest, thong_so: dict, bo_sao: int | None = 1,
 
 
 def dang_cho_xuat(job_dir: Path | None = None) -> bool:
+    """Yêu cầu còn nằm chờ plugin nhận không. Plugin nhận là đổi tên thành
+    `request_xuatanh.txt.<id>-<giờ>-<n>.running` rồi xoá ngay sau khi đọc
+    (xem Core.claim) — tên cũ `.txt.running` không bao giờ tồn tại."""
     d = thu_muc_job(job_dir)
-    return (d / TEN_YEU_CAU_XUAT).exists() or (d / (TEN_YEU_CAU_XUAT + ".running")).exists()
+    if (d / TEN_YEU_CAU_XUAT).exists():
+        return True
+    try:
+        return any(d.glob(TEN_YEU_CAU_XUAT + ".*.running"))
+    except OSError:
+        return False
 
 
 def dung_xuat(job_dir: Path | None = None) -> Path:
@@ -192,4 +210,25 @@ def tien_do_xuat(job_dir: Path | None = None) -> dict:
                 out[k] = int(out[k])
             except ValueError:
                 pass
+    return out
+
+
+def bang_anh(job_dir: Path | None = None) -> dict:
+    """{đường dẫn ảnh gốc: file ra} của lượt xuất đang/vừa chạy ({} khi chưa có).
+    Plugin ghi lại CẢ bảng sau mỗi lô nên đọc lúc nào cũng là bản đầy đủ tới lô
+    đó; file ra có thể mang tên khác tên gốc (quy tắc đặt tên Export)."""
+    p = thu_muc_job(job_dir) / TEN_BANG_XUAT
+    if not p.is_file():
+        return {}
+    out: dict = {}
+    try:
+        for i, dong in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines()):
+            if i == 0 and dong.startswith("path\t"):
+                continue
+            if "\t" in dong:
+                src, jpg = dong.split("\t", 1)
+                if src.strip() and jpg.strip():
+                    out[src.strip()] = jpg.strip()
+    except OSError:
+        return {}
     return out

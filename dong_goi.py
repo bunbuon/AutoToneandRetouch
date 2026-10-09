@@ -125,7 +125,10 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         "bieu_tuong",   # man_retouch (.pyd) import, khong do duoc
         #[[ khung_anh: anh lon cua mo-dun Retouch (3/10 toi) — cung import
         #   trong ham (_dung_trang), cung ly do. ]]
-        "khung_anh"]
+        "khung_anh",
+        #[[ 9/10 Xuat mot thao tac: hop thoai Xuat / cache xem truoc / preset —
+        #   deu import trong ham (autotone_gui.do_xuat_hop, retouch_may). ]]
+        "xuat_ui", "cache_xem", "retouch_preset"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).
