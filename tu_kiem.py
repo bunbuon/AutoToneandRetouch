@@ -523,9 +523,9 @@ def chay(nhanh: bool = False) -> Bao:
         b.thu("Lọc trùng khung / mặt nghiêng / MF", _loc_moi)
 
         #[[ 9/10: HSL mau da anh cuoi — quyet dinh tren da DO THAT o anh duyet
-        #   (at.hsl_da_cuoi). Chay TRONG GOI ma hoa: anh duyet tong hop (da vang,
-        #   nhat) -> Hue GIU (khong xoay ve do), Sat duong; da trong khoang on ->
-        #   khong dung. ]]
+        #   (at.hsl_da_cuoi). Chay TRONG GOI ma hoa: anh duyet tong hop. Vong 3
+        #   (dich da TRANG, hoi hong): da vang + dam -> Hue am, Sat am; da trong
+        #   khoang -> khong dung; tool tung keo do (job Orange -7) -> tra preset. ]]
         def _hsl_cuoi():
             import csv as _csv
             import math as _m
@@ -573,21 +573,41 @@ def chay(nhanh: bool = False) -> Bao:
                 os.utime(jp, (cu, cu))
                 cfg = dict(at.DEFAULTS, source="catalog", loai_buoi="cuoi", hsl_da_cuoi=True)
                 for i in range(2):
-                    duyet(f"A{i}", 45.0, 0.040)
+                    duyet(f"A{i}", 47.0, 0.050)
                 kq = at.hsl_da_cuoi(items, cfg, buoi, jobs)
                 moi = items[0].get("hsl_moi") or {}
-                #  vong 2 (9/10): KHONG xoay da ve do — da vang chi duoc tang do dam
-                if not (items[0].get("hsl_ghi") and moi.get("HueAdjustmentOrange") == 7
-                        and moi.get("SaturationAdjustmentOrange", -25) > -25):
-                    raise AssertionError(f"da vàng/nhạt mà HSL sai: {moi} · {kq}")
+                #  vong 3 (9/10): da vang + dam -> bot vang (Hue am) + trang di (Sat am)
+                if not (items[0].get("hsl_ghi") and moi.get("HueAdjustmentOrange", 7) < 7
+                        and moi.get("SaturationAdjustmentOrange", -25) < -25):
+                    raise AssertionError(f"da vàng/đậm mà HSL sai: {moi} · {kq}")
                 for i in range(2):
-                    duyet(f"A{i}", 38.0, 0.050)
+                    duyet(f"A{i}", 38.5, 0.039)
                 kq2 = at.hsl_da_cuoi(items, cfg, buoi, jobs)
                 if any(r.get("hsl_ghi") for r in items):
-                    raise AssertionError(f"da ở đích mà vẫn chỉnh HSL: {kq2}")
+                    raise AssertionError(f"da trong khoảng mà vẫn chỉnh HSL: {kq2}")
+                #  tool tung keo do (job Orange -7/-7) -> tinh tu preset -> tra 7/-25
+                cot = list(at.COT_HSL)
+                jp2 = jobs / f"apply_20261009_110000_{at.ten_job(buoi.name)}.done"
+                with open(jp2, "w", encoding="utf-8", newline="") as fh:
+                    w = _csv.writer(fh, delimiter="\t")
+                    w.writerow(["path", "Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
+                                "Tint"] + cot)
+                    for r in items:
+                        hs = {"HueAdjustmentOrange": "-7", "SaturationAdjustmentOrange": "-7"}
+                        w.writerow([r["path"], "+0.20", -20, 16, 5100, 14]
+                                   + [hs.get(k, say[k]) for k in cot])
+                cu = _t.time() - 60
+                os.utime(jp2, (cu, cu))
+                for i in range(2):
+                    duyet(f"A{i}", 33.0, 0.046)
+                kq3 = at.hsl_da_cuoi(items, cfg, buoi, jobs)
+                m3 = items[0].get("hsl_moi") or {}
+                if not (items[0].get("hsl_ghi") and m3.get("HueAdjustmentOrange") == 7
+                        and m3.get("SaturationAdjustmentOrange") == -25):
+                    raise AssertionError(f"HSL đỏ lần trước không được gỡ về preset: {m3} · {kq3}")
                 return (f"da {kq['hue_do']:.0f}°/{kq['chroma_do']:.3f} -> Cam Hue "
                         f"{int(moi['HueAdjustmentOrange'])} / Sat {int(moi['SaturationAdjustmentOrange'])}; "
-                        "da ở đích -> giữ nguyên")
+                        "da trong khoảng -> giữ; HSL đỏ cũ -> trả preset")
             finally:
                 shutil.rmtree(tam, ignore_errors=True)
         b.thu("HSL màu da cưới (đo trên ảnh duyệt)", _hsl_cuoi)
