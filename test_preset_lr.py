@@ -198,6 +198,29 @@ if root is not None:
          len(gui) == 5 and gui[0] == raws[2] and raws[5] not in gui, str([Path(x).name for x in gui]))
     ktra("nút trên thanh lưới đổi theo preset", "cưới trắng hồng 1" in app.nut_preset_ct.btn.cget("text"),
          app.nut_preset_ct.btn.cget("text"))
+
+    def cho(giay):
+        het = time.time() + giay
+        while time.time() < het:
+            app.update()
+            time.sleep(0.03)
+
+    def dau_yeu_cau():
+        yc = (JOBS / "request_xempreset.txt").read_text(encoding="utf-8").splitlines()
+        return yc[yc.index("---") + 1]
+
+    #  10/10 (học NEXUS): mở to tấm chưa có bản preset -> Lightroom làm tấm đó trước
+    id_truoc = dp.id
+    app._nap_mot_ct(raws[2])
+    cho(0.6)
+    ktra("mở lại tấm đang đứng đầu lượt -> không gửi lại (không làm lại từ đầu)",
+         dp.id == id_truoc)
+    app._nap_mot_ct(raws[4])
+    cho(0.6)
+    ktra("mở to tấm chưa có bản preset -> đẩy tấm đó lên đầu hàng Lightroom",
+         dp.id != id_truoc and dau_yeu_cau() == raws[4], Path(dau_yeu_cau()).name)
+    app._nap_mot_ct(raws[2])
+    cho(0.6)
     # plugin "render" tấm đang mở + ghi tiến độ / bảng
     r3 = render(raws[2], (30, 60, 220))
     (JOBS / "xempreset_tiendo.txt").write_text(f"id={dp.id}\ntrang_thai=dang_chay\nxong=1\ntong=5\n"

@@ -1239,12 +1239,15 @@ class MayMixin:
     #  9/10: đang theo lượt Xuất thì quét 2 s một lần — ảnh vừa ra (ổn định qua hai
     #  lần quét) lên dải ảnh / xem trước sau ~4 s thay vì ~10 s
     QUET_GIAY_XUAT = 2
+    #  10/10: có hàng đợi plugin (từng ảnh xuất xong) -> nhịp ngắn, đọc tiếp từ byte cũ
+    QUET_GIAY_HANG_DOI = 0.7
 
     def _hen_quet(self, giay: float | None = None):
         self._dung_hen_quet()
         if giay is None:
             td = self._theo_doi
-            giay = self.QUET_GIAY_XUAT if (td and td.get("xuat")) else self.QUET_GIAY
+            giay = ((self.QUET_GIAY_HANG_DOI if td.get("co_hd") else self.QUET_GIAY_XUAT)
+                    if (td and td.get("xuat")) else self.QUET_GIAY)
         try:
             self._hen_quet_ma = self.after(int(giay * 1000), self._quet_moi)
         except tk.TclError:
@@ -1316,7 +1319,15 @@ class MayMixin:
             except OSError:
                 continue
             ds_stat.append((str(p), bool(xong), st.st_size, st.st_mtime_ns, st.st_mtime))
-        san, co_moi = chon_anh_moi(ds_stat, td)
+        #[[ 10/10 KE THUA NEXUS: plugin ghi TUNG ANH vao hang doi ngay khi Lightroom
+        #   xuat xong (file da ghi tron) -> retouch ngay, khong quet thu muc roi cho
+        #   file dung yen qua hai lan quet (~2–4 s moi anh). Plugin cu khong co hang
+        #   doi -> quet thu muc nhu truoc. ]]
+        if xuat and self._doc_hang_doi(td, ds):
+            co_moi = bool(td.pop("hd_vua_co", False))
+            san = [k for k in td.get("hd_ds", []) if k not in td["biet"]]
+        else:
+            san, co_moi = chon_anh_moi(ds_stat, td)
         if co_moi or san:
             self._dem()                    # dải ảnh hiện ngay tấm mới
         #[[ 9/10 WORKER XEM TRUOC (user: "khi chon xuat man hinh chuyen sang tab
@@ -1332,7 +1343,10 @@ class MayMixin:
             #   trong "cho", lan quet sau van thay. ]]
             self._hen_quet()
             return
-        if xuat and lr_xong and not san and not td["cho"]:
+        #  hàng đợi: Lightroom báo xong thì phải đọc tới dòng "#het" (plugin ghi trước)
+        cho_het = bool(td.get("co_hd")) and td.get("hd_het") is None \
+            and x.get("trang_thai") == "xong"
+        if xuat and lr_xong and not san and not td["cho"] and not cho_het:
             self._ket_thuc_xuat()
             return
         if not san:
@@ -1363,6 +1377,37 @@ class MayMixin:
             td["biet"].add(k)
             td["cho"].pop(k, None)
         self._chay_anh_moi(san)
+
+    def _doc_hang_doi(self, td: dict, ds) -> bool:
+        """Đọc tiếp hàng đợi plugin (xuat_lr.doc_hang_doi) vào td["hd_ds"] (đường dẫn
+        theo đúng chuỗi của danh sách thư mục). -> có hàng đợi cho lượt này không."""
+        try:
+            import xuat_lr
+            co, moi, het, off = xuat_lr.doc_hang_doi(td.get("hd_off", 0))
+        except Exception:                                    # noqa: BLE001
+            return bool(td.get("co_hd"))
+        if not co:
+            return bool(td.get("co_hd"))
+        if not td.get("co_hd"):
+            td["co_hd"] = True
+            td["cho"] = {}                 # ảnh quét thư mục trước đó: hàng đợi có đủ
+        td["hd_off"] = off
+        if het is not None:
+            td["hd_het"] = het
+        if not moi:
+            return True
+        theo_nc = {os.path.normcase(os.path.normpath(str(q))): str(q) for q, _x in ds}
+        vao_nc = os.path.normcase(os.path.normpath(str(td["vao"])))
+        ds_hd = td.setdefault("hd_ds", [])
+        da = td.setdefault("hd_da", set())
+        for _src, jpg in moi:
+            nc = os.path.normcase(os.path.normpath(jpg))
+            if nc in da or not (nc == vao_nc or nc.startswith(vao_nc + os.sep)):
+                continue
+            da.add(nc)
+            ds_hd.append(theo_nc.get(nc, os.path.normpath(jpg)))
+            td["hd_vua_co"] = True
+        return True
 
     def _mo_anh_xuat_dau(self, san: list):
         """Tấm đầu tiên của lượt xuất lên ảnh lớn + xem trước theo preset — MỘT lần

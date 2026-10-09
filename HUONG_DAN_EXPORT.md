@@ -111,10 +111,19 @@ của Retouch). Bấm là hiện hộp thoại, mọi lựa chọn được nh�
    (song song); tắt = retouch sau khi xuất xong. Chọn **preset** retouch cho cả lượt.
 
 Hộp thoại **đo máy** (RAM trống, VRAM card NVIDIA, CPU, ổ đích). Vừa xuất vừa
-retouch cần ≥ 6 GB RAM trống, ≥ 3 GB VRAM trống và có card NVIDIA — thiếu thì app
+retouch cần ≥ 6 GB RAM trống, card NVIDIA có ≥ 4 GB VRAM — thiếu thì app
 **tự đổi sang "retouch sau khi xuất xong"** và nói lý do; muốn ép vẫn có ô "Vẫn
-chạy song song". Khi chạy song song: retouch 1 luồng, chế độ tiết kiệm; RAM trống
-dưới 1,5 GB thì tạm ngưng nhận ảnh mới tới khi hồi.
+chạy song song". (10/10: xét **dung lượng card**, không xét "VRAM trống" — trên
+Windows trình duyệt, Zalo… giữ vài GB VRAM mà Windows dồn ra RAM được, nên số
+"trống" luôn thấp và từng chặn oan lượt chạy song song.) Khi chạy song song:
+retouch 1 luồng, chế độ tiết kiệm; RAM trống dưới 1,5 GB thì tạm ngưng nhận ảnh
+mới tới khi hồi.
+
+**Hàng đợi từng ảnh** (10/10, học từ NEXUS AI Retouch): plugin ghi mỗi ảnh vào
+`jobs/xuatanh_hangdoi.tsv` NGAY khi Lightroom xuất xong ảnh đó (dòng cuối `#het`).
+Retouch đọc tiếp hàng đợi mỗi 0,7 giây và làm ngay — không còn quét thư mục rồi chờ
+file đứng yên qua hai lần quét; hết mẻ là làm mẻ kế liền. Plugin bản cũ không có
+hàng đợi thì vẫn quét thư mục như trước.
 
 Lightroom xuất **một lần cho cả lượt** (một phiên Export, không chia lô — 9/10), tiến
 độ đếm từng ảnh. Ảnh nào xuất xong là màn Retouch hiện ngay trên dải ảnh; tấm đầu

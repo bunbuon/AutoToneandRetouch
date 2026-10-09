@@ -311,8 +311,10 @@ XP.GIAY_MOI_LUOT = -1          # dong ho gia tinh theo giay nguyen
 yeu_cau("U2", "NoWBExposure", "User Presets", paths[4:12], id_="5")
 XP.runRequest()
 td = tien_do()
-ktra("moi luot chi lam mot phan roi tra vong lap (GIAY_MOI_LUOT)",
-     td.get("trang_thai") == "dang_chay" and td.get("xong") == "2", str(td))
+ktra("lo DAU chi MOT anh (anh dang xem hien ngay), roi tra vong lap (GIAY_MOI_LUOT)",
+     td.get("trang_thai") == "dang_chay" and td.get("xong") == "1", str(td))
+XP.runRequest()
+ktra("lo sau theo co LO (2 anh)", tien_do().get("xong") == "3", str(tien_do()))
 yeu_cau("U1", "cưới trắng hồng 1", "User Presets", paths[4:6], id_="6")
 XP.GIAY_MOI_LUOT = 10 ** 6
 XP.runRequest()
@@ -325,7 +327,7 @@ yeu_cau("U2", "NoWBExposure", "User Presets", paths[4:12], id_="7")
 XP.runRequest()
 td = tien_do()
 ktra("co viec khac dang cho (xuat anh) -> nhuong sau mot lo",
-     td.get("id") == "7" and td.get("xong") == "2" and td.get("trang_thai") == "dang_chay", str(td))
+     td.get("id") == "7" and td.get("xong") == "1" and td.get("trang_thai") == "dang_chay", str(td))
 (jobs / "request_xuatanh.txt").unlink()
 XP.runRequest()
 ktra("het viec khac -> lam tiep toi xong", tien_do().get("trang_thai") == "xong", str(tien_do()))

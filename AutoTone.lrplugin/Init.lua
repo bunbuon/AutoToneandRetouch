@@ -21,6 +21,7 @@
 local LrTasks     = import "LrTasks"
 local LrPrefs     = import "LrPrefs"
 local LrPathUtils = import "LrPathUtils"
+local LrFileUtils = import "LrFileUtils"
 
 --[[ Ghi log TỐI THIỂU, không phụ thuộc AutoToneCore.
 
@@ -193,6 +194,21 @@ LrTasks.startAsyncTask(function()
             local _, errP = Core.try("autoXemPreset", XemPreset.runRequest)
             if errP then Core.log("LOI xem preset: " .. tostring(errP)) end
         end
-        LrTasks.sleep(POLL_SECONDS)
+        --[[ 10/10: ngủ từng nhịp 0,2 s, thức NGAY khi app xin xem preset (người
+             dùng vừa bấm chọn preset / mở ảnh — đang ngồi chờ màu đổi); đang dở
+             một lượt xem preset thì gần như không nghỉ. ]]
+        if XemPreset and XemPreset.dang then
+            LrTasks.sleep(0.1)
+        else
+            local da = 0
+            while da < POLL_SECONDS do
+                LrTasks.sleep(0.2)
+                da = da + 0.2
+                if XemPreset and LrFileUtils.exists(LrPathUtils.child(Core.jobDir(),
+                        XemPreset.YEU_CAU)) then
+                    break
+                end
+            end
+        end
     end
 end)

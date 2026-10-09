@@ -558,7 +558,12 @@ end
 function M.motLo()
     local d = M.dang
     local lo = {}
-    while #lo < M.LO and #d.con > 0 do
+    --[[ 10/10 (học NEXUS: họ chỉ render ảnh đang xem, ~1 s): lô ĐẦU chỉ MỘT ảnh —
+         tấm app xếp đầu (ảnh đang mở / đang chọn) hiện theo preset sau một lần
+         render, không đợi cả lô 6 tấm. ]]
+    local co = (d.soLo or 0) == 0 and 1 or M.LO
+    d.soLo = (d.soLo or 0) + 1
+    while #lo < co and #d.con > 0 do
         local p = table.remove(d.con, 1)
         local photo = Core.try("timAnh", function() return d.tra(p) end)
         if photo then

@@ -113,6 +113,8 @@ TEN_TIEN_DO_XUAT = "xuatanh_tiendo.txt"
 TEN_CO_DUNG_XUAT = "request_xuatanh_dung.txt"
 #  9/10: bảng ảnh gốc -> file ra, plugin ghi sau mỗi lô (XuatCore.ghiBang)
 TEN_BANG_XUAT = "xuatanh_anh.tsv"
+#  10/10 (kế thừa NEXUS): plugin ghi TỪNG ẢNH ngay khi xuất xong — xem doc_hang_doi
+TEN_HANG_DOI_XUAT = "xuatanh_hangdoi.tsv"
 
 
 def _dong_thongso(thong_so: dict) -> list[str]:
@@ -160,7 +162,7 @@ def yeu_cau_xuat(folder, dest, thong_so: dict, bo_sao: int | None = 1,
     #[[ 9/10: XOA VET LUOT TRUOC truoc khi gui — tien do, bang anh, co dung.
     #   Khong xoa thi vong theo doi doc ngay "trang_thai=xong" cua lan truoc
     #   va ket thuc tuc khac (duyet.yeu_cau da lam dung tu dau, day thi chua). ]]
-    for ten in (TEN_TIEN_DO_XUAT, TEN_BANG_XUAT, TEN_CO_DUNG_XUAT):
+    for ten in (TEN_TIEN_DO_XUAT, TEN_BANG_XUAT, TEN_CO_DUNG_XUAT, TEN_HANG_DOI_XUAT):
         try:
             (d / ten).unlink()
         except OSError:
@@ -214,6 +216,33 @@ def tien_do_xuat(job_dir: Path | None = None) -> dict:
             except ValueError:
                 pass
     return out
+
+
+def doc_hang_doi(tu: int = 0, job_dir: Path | None = None):
+    """Đọc tiếp hàng đợi plugin từ byte `tu`. -> (có file?, [(gốc, jpg)…], số ảnh
+    khi gặp dòng "#het" (None nếu chưa), byte đọc tới). Chỉ lấy dòng đã đủ "\n" —
+    dòng plugin đang ghi dở để lần sau."""
+    p = thu_muc_job(job_dir) / TEN_HANG_DOI_XUAT
+    try:
+        with open(p, "rb") as fh:
+            fh.seek(max(0, int(tu)))
+            du = fh.read()
+    except OSError:
+        return False, [], None, tu
+    cuoi = du.rfind(b"\n")
+    if cuoi < 0:
+        return True, [], None, tu
+    ds, het = [], None
+    for dong in du[:cuoi + 1].decode("utf-8", "replace").splitlines():
+        c = dong.split("\t")
+        if len(c) >= 2 and c[0] == "#het":
+            try:
+                het = int(c[1])
+            except ValueError:
+                het = 0
+        elif len(c) >= 2 and c[1].strip():
+            ds.append((c[0].strip(), c[1].strip()))
+    return True, ds, het, tu + cuoi + 1
 
 
 def bang_anh(job_dir: Path | None = None) -> dict:

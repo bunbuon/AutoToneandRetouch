@@ -2422,7 +2422,8 @@ class App(ttk.Frame):
                  "nhung": "Preview trong RAW (màu máy ảnh, chưa qua preset)",
                  "anh": ""}.get(nguon, "")
         if p and nguon != "preset" and nguon_xem.la_raw(path):
-            mo_ta += " · Lightroom chưa dựng tấm này theo preset"
+            mo_ta += " · Lightroom đang dựng tấm này theo preset…"
+            self.dp_preset().uu_tien(path)
         try:
             i = self.luoi._vi_tri.get(path)
             vt = f"{i + 1}/{len(self.luoi.ds)}  ·  " if i is not None else ""

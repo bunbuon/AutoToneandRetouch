@@ -57,6 +57,7 @@ class DieuPhoiPreset:
         self.thu_muc = ""
         self.loi = ""
         self._hen = None
+        self._dau_gui = None
         self._dat_nguon()
 
     # ------------------------------------------------------------ đăng ký
@@ -149,11 +150,13 @@ class DieuPhoiPreset:
             traceback.print_exc()
             return [], []
 
-    def gui(self) -> None:
-        """Gửi các tấm CÒN THIẾU của buổi đang xem (ảnh ưu tiên đi trước)."""
+    def gui(self, dau=None) -> None:
+        """Gửi các tấm CÒN THIẾU của buổi đang xem (ảnh ưu tiên đi trước; `dau`:
+        ảnh vừa mở to — đứng đầu hết)."""
         if not self.p:
             return
         ds, uu = self._ngu_canh()
+        uu = list(dau or []) + list(uu)
         import nguon_xem
         ds = [str(x) for x in ds if nguon_xem.la_raw(x)]
         self.tong = len(ds)
@@ -176,6 +179,7 @@ class DieuPhoiPreset:
         for x in thu_tu:
             nhom.setdefault(str(Path(x).parent), []).append(x)
         self.hang_doi = list(nhom.items())
+        self._dau_gui = thu_tu[0] if thu_tu else None
         self._gui_tiep()
 
     def _gui_tiep(self) -> None:
@@ -194,6 +198,39 @@ class DieuPhoiPreset:
         self.t_gui = time.time()
         self._cap_nhat_nut()
         self._hen_soi()
+
+    def uu_tien(self, path) -> None:
+        """Mở to một ảnh chưa có bản theo preset -> đẩy nó lên ĐẦU (gửi lại danh sách
+        còn thiếu, ảnh này trước). Hẹn 0,3 s: lướt ←/→ nhanh chỉ gửi tấm dừng lại."""
+        if not self.p or not path:
+            return
+        try:
+            import nguon_xem
+            if not nguon_xem.la_raw(path) or preset_lr.anh_preset(path, self.p) is not None:
+                return
+        except Exception:                                    # noqa: BLE001
+            return
+        self._uu = str(path)
+        if getattr(self, "_hen_uu", None) is not None:
+            try:
+                self.app.after_cancel(self._hen_uu)
+            except Exception:                                # noqa: BLE001
+                pass
+        try:
+            self._hen_uu = self.app.after(300, self._gui_uu)
+        except Exception:                                    # noqa: BLE001
+            self._hen_uu = None
+
+    def _gui_uu(self) -> None:
+        self._hen_uu = None
+        p = getattr(self, "_uu", None)
+        if not p or not self.p or preset_lr.anh_preset(p, self.p) is not None:
+            return
+        #  lượt đang chạy đã xếp đúng tấm này đầu (vừa chọn preset) -> khỏi gửi lại
+        if self._dau_gui and _nc(self._dau_gui) == _nc(p) and self.td \
+                and self.td.get("trang_thai") in ("cho", "dang_chay"):
+            return
+        self.gui(dau=[p])
 
     def doi_buoi(self) -> None:
         """App vừa mở buổi khác / lưới đổi danh sách: còn tấm thiếu thì gửi."""

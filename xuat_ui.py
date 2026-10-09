@@ -57,7 +57,12 @@ MAC_DINH = {
 #   và vài GB RAM; retouch cần card (mô hình ~2–3 GB VRAM) + 2–4 GB RAM. Đo trên
 #   máy 32 GB / 3060 Ti 8 GB (9/10): còn 10 GB RAM trống khi app + LR đang mở.
 #   Dưới ngưỡng thì không cấm, chỉ TỰ ĐỔI sang chạy tuần tự + nói lý do. ]]
-NGUONG = {"ram_gb": 6.0, "vram_gb": 3.0, "dia_gb": 5.0}
+#[[ 10/10: VRAM xét theo DUNG LƯỢNG CARD, không theo "VRAM trống". Trên Windows
+#   (WDDM) trình duyệt, Zalo, VS Code… giữ vài GB VRAM mà Windows dồn ra RAM được
+#   khi cần — nvidia-smi gần như lúc nào cũng báo trống ít (đo 10/10: 1,2/8 GB
+#   trống khi KHÔNG mở Lightroom). Lượt 9/10 23:13 bị đẩy về tuần tự vì "VRAM
+#   trống 2,2 GB" trong khi engine nạp lên CUDA bình thường ngay sau đó. ]]
+NGUONG = {"ram_gb": 6.0, "vram_tong_gb": 4.0, "dia_gb": 5.0}
 
 
 # ================================================================ cài đặt
@@ -298,9 +303,9 @@ def danh_gia_song_song(tn: dict, nguong: dict | None = None) -> tuple[bool, list
     if not tn.get("card"):
         ly_do.append("không thấy card NVIDIA — retouch bằng CPU sẽ giành CPU với "
                      "Lightroom, cả hai cùng chậm")
-    elif float(tn.get("vram_trong_gb") or 0) < ng["vram_gb"]:
-        ly_do.append(f"VRAM trống {float(tn.get('vram_trong_gb') or 0):.1f} GB "
-                     f"(cần ≥ {ng['vram_gb']:.0f} GB cho mô hình retouch)")
+    elif 0 < float(tn.get("vram_tong_gb") or 0) < ng["vram_tong_gb"]:
+        ly_do.append(f"card chỉ có {float(tn.get('vram_tong_gb') or 0):.0f} GB VRAM "
+                     f"(cần ≥ {ng['vram_tong_gb']:.0f} GB cho mô hình retouch)")
     if float(tn.get("ram_trong_gb") or 0) < ng["ram_gb"]:
         ly_do.append(f"RAM trống {float(tn.get('ram_trong_gb') or 0):.1f} GB "
                      f"(cần ≥ {ng['ram_gb']:.0f} GB: Lightroom xuất + retouch)")

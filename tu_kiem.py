@@ -713,6 +713,17 @@ def chay(nhanh: bool = False) -> Bao:
                         {"ram_trong_gb": 3, "vram_trong_gb": 6, "card": "RTX", "dia_trong_gb": 50})
                     if ok or not ly:
                         raise AssertionError("máy yếu mà vẫn cho song song")
+                    #  10/10: hàng đợi từng ảnh của plugin (kế thừa NEXUS) đọc được, đọc tiếp
+                    import xuat_lr
+                    jd = tam / "jobs"
+                    jd.mkdir()
+                    (jd / xuat_lr.TEN_HANG_DOI_XUAT).write_bytes(
+                        "G:\\a.ARW\tF:\\x\\a.jpg\r\n#het\t1\r\nG:\\b".encode("utf-8"))
+                    co, ds_hd, het, off = xuat_lr.doc_hang_doi(0, jd)
+                    if not (co and ds_hd == [("G:\\a.ARW", "F:\\x\\a.jpg")] and het == 1):
+                        raise AssertionError(f"đọc hàng đợi xuất sai: {ds_hd} het={het}")
+                    if xuat_lr.doc_hang_doi(off, jd)[1]:
+                        raise AssertionError("đọc tiếp hàng đợi lấy cả dòng plugin đang ghi dở")
                     c = cache_xem.CacheXem(tam / "cache", gioi_han_mb=1)
                     im = _Im.fromarray(_np.random.default_rng(1).integers(
                         0, 255, (900, 1400, 3), dtype=_np.uint8))

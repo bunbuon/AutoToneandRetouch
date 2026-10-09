@@ -167,8 +167,10 @@ def phan_cai_dat():
     ktra("máy đủ sức -> song song", ok and not ly)
     ok, ly = xuat_ui.danh_gia_song_song(dict(tot, ram_trong_gb=4))
     ktra("RAM trống < 6 GB -> không", not ok and any("RAM" in x for x in ly), str(ly))
-    ok, ly = xuat_ui.danh_gia_song_song(dict(tot, vram_trong_gb=1))
-    ktra("VRAM trống < 3 GB -> không", not ok and any("VRAM" in x for x in ly))
+    ok, ly = xuat_ui.danh_gia_song_song(dict(tot, vram_trong_gb=1.2, vram_tong_gb=8))
+    ktra("VRAM trống ít (Windows dồn được) nhưng card 8 GB -> vẫn song song", ok, str(ly))
+    ok, ly = xuat_ui.danh_gia_song_song(dict(tot, vram_tong_gb=2))
+    ktra("card < 4 GB VRAM -> không", not ok and any("VRAM" in x for x in ly), str(ly))
     ok, ly = xuat_ui.danh_gia_song_song(dict(tot, card=""))
     ktra("không card NVIDIA -> không (retouch CPU giành CPU với Lightroom)",
          not ok and any("CPU" in x for x in ly))
@@ -431,6 +433,58 @@ def phan_giao_dien():
         ktra("câu tổng kết ở thanh đáy, đếm đủ 2 ảnh đã xử lý",
              "Xuất + retouch xong" in rt_win._chu_tt_chay and "retouch 2 ảnh" in rt_win._chu_tt_chay,
              rt_win._chu_tt_chay)
+
+        #[[ 10/10 KE THUA NEXUS: VUA XUAT VUA RETOUCH qua HANG DOI plugin — anh vao
+        #   hang doi (Lightroom da ghi xong) duoc retouch NGAY lan quet dau, khong
+        #   cho dung yen qua hai lan quet; file dang ghi do chua vao hang doi thi
+        #   khong dung; het hang doi + Lightroom xong -> ket thuc. ]]
+        import xuat_lr
+        jd_cu = at.LR_JOB_DIR
+        at.LR_JOB_DIR = TAM / "jobs_hang_doi"
+        at.LR_JOB_DIR.mkdir(exist_ok=True)
+        try:
+            vao2, ra2 = TAM / "giao2", TAM / "giao2_retouch"
+            vao2.mkdir(exist_ok=True)
+            rt_win.bat_dau_theo_xuat(vao=str(vao2), ra=str(ra2), ghi_de=False, muc={},
+                                     song_song=True)
+            rt_win._du_tai_nguyen = lambda: (True, "")      # không phụ thuộc RAM máy kiểm
+            hd = at.LR_JOB_DIR / xuat_lr.TEN_HANG_DOI_XUAT
+            hd.write_text("", encoding="utf-8")              # plugin mở hàng đợi đầu lượt
+            anh_nhieu(vao2 / "A_1.jpg", seed=3)
+            (vao2 / "A_2.jpg").write_bytes(b"\xff\xd8 Lightroom dang ghi do")
+            with open(hd, "a", encoding="utf-8") as fh:
+                fh.write(f"G:\\Buoi\\A_1.ARW\t{vao2 / 'A_1.jpg'}\n")
+            rt_win.cap_nhat_xuat({"trang_thai": "dang_chay", "xong": 1, "tong": 2,
+                                  "thu_muc": str(vao2)})
+            rt_win._quet_moi()                               # MỘT lần quét
+            td2 = rt_win._theo_doi or {}
+            biet = {Path(k).name for k in td2.get("biet", set())}
+            ktra("song song + hàng đợi: ảnh Lightroom vừa xuất được retouch NGAY lần quét đầu",
+                 "A_1.jpg" in biet and td2.get("co_hd"), str(sorted(biet)))
+            ktra("file đang ghi dở chưa vào hàng đợi: không đụng", "A_2.jpg" not in biet)
+            ktra("có hàng đợi -> nhịp quét 0,7 s",
+                 rt_win.QUET_GIAY_HANG_DOI == 0.7 and td2.get("co_hd"))
+            het = time.monotonic() + 15
+            while time.monotonic() < het and (rt_win.worker and rt_win.worker.is_alive()
+                                               or getattr(rt_win, "_cho_xong", False)):
+                app.update()
+                time.sleep(0.05)
+            anh_nhieu(vao2 / "A_2.jpg", seed=4)
+            with open(hd, "a", encoding="utf-8") as fh:
+                fh.write(f"G:\\Buoi\\A_2.ARW\t{vao2 / 'A_2.jpg'}\n#het\t2\n")
+            rt_win.cap_nhat_xuat({"trang_thai": "xong", "xong": 2, "tong": 2,
+                                  "thu_muc": str(vao2), "thong_bao": "2 giay"})
+            het = time.monotonic() + 20
+            while time.monotonic() < het and rt_win._xuat is not None:
+                if rt_win._hen_quet_ma is None and not (rt_win.worker and rt_win.worker.is_alive()):
+                    rt_win._quet_moi()
+                app.update()
+                time.sleep(0.05)
+            ktra("hết hàng đợi + Lightroom xong -> kết thúc lượt, đủ 2 ảnh",
+                 rt_win._xuat is None and (ra2 / "A_1.jpg").is_file() and (ra2 / "A_2.jpg").is_file()
+                 and "retouch 2 ảnh" in rt_win._chu_tt_chay, rt_win._chu_tt_chay)
+        finally:
+            at.LR_JOB_DIR = jd_cu
     finally:
         try:
             root.destroy()

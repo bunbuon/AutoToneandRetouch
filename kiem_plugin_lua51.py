@@ -224,9 +224,19 @@ def _py_write(p, s):
 
 
 g2.py_write = _py_write
+
+
+def _dem_hang_doi():
+    try:
+        return len((tam2 / "jobs" / "xuatanh_hangdoi.tsv").read_text(encoding="utf-8").splitlines())
+    except OSError:
+        return -1
+
+
+g2.py_dem_hang_doi = _dem_hang_doi
 L2.execute(r'''
 _PLUGIN = { path = [[%s]] }
-KICH = { phien = 0, soAnh = {}, boQua = {}, datCoSau = nil, skip = 0, render = 0 }
+KICH = { phien = 0, soAnh = {}, boQua = {}, datCoSau = nil, skip = 0, render = 0, hd = {} }
 local LrExportSession = function(params)
   KICH.phien = KICH.phien + 1
   KICH.soAnh[#KICH.soAnh + 1] = #params.photosToExport
@@ -236,6 +246,7 @@ local LrExportSession = function(params)
     ds[i] = { photo = ph,
       waitForRender = function(self)
         KICH.render = KICH.render + 1
+        KICH.hd[KICH.render] = py_dem_hang_doi()
         if KICH.datCoSau and KICH.render == KICH.datCoSau then
           py_write(_PLUGIN.path .. "/jobs/request_xuatanh_dung.txt", "dung")
         end
@@ -290,6 +301,19 @@ ktra("xuat: bang anh goc -> file ra du 23 dong (ten ra khac ten goc)",
      len(bang) == 23 and bang.get("G:/Buoi/IMG_0001.ARW", "").endswith("SAY-IMG_0001.jpg"), str(list(bang.items())[:1]))
 td = xuat_lr.tien_do_xuat(tam2 / "jobs")
 ktra("xuat: tien do cuoi xong=23 tong=23", td.get("xong") == 23 and td.get("tong") == 23, str(td))
+#  10/10 (ke thua NEXUS): hang doi TUNG ANH — anh k bat dau render thi da co k-1 dong
+co, hd, het, off = xuat_lr.doc_hang_doi(0, tam2 / "jobs")
+ktra("hang doi: 23 dong goc->jpg + '#het 23', doc tu byte 0",
+     co and len(hd) == 23 and het == 23 and hd[0][0] == "G:/Buoi/IMG_0001.ARW"
+     and hd[0][1].endswith("SAY-IMG_0001.jpg"), f"{len(hd)} dong, het={het}")
+moc = [K.hd[k] for k in range(1, 24)]
+ktra("hang doi: ghi NGAY sau moi anh (anh k render khi da co k-1 dong)",
+     moc == list(range(0, 23)), str(moc[:6]))
+co2, hd2, het2, off2 = xuat_lr.doc_hang_doi(off, tam2 / "jobs")
+ktra("hang doi: doc tiep tu byte cu -> khong lap dong", co2 and hd2 == [] and off2 == off)
+src_x2 = (GOC / "XuatCore.lua").read_text(encoding="utf-8")
+ktra("hang doi: '#het' ghi TRUOC tien do 'xong' (app thay xong la da du hang doi)",
+     src_x2.index("M.hetHangDoi(ra)") < src_x2.index("ghi(true)", src_x2.index("M.hetHangDoi(ra)") - 200))
 ktra("xuat: ghi nhip 'xuat anh 23/23'", "xuất ảnh 23/23" in (tam2 / "jobs" / "plugin_song.txt").read_text(encoding="utf-8"))
 L2.execute("KICH.phien = 0; KICH.soAnh = {}; KICH.render = 0; KICH.boQua = { IMG_0001 = true, IMG_0002 = true, IMG_0003 = true, IMG_0004 = true }")
 kq = X2.xuat(L2.eval("anhGia(10)"), dest + "2", L2.eval("{ LR_format = 'JPEG' }"))

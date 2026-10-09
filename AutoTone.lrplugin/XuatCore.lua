@@ -52,6 +52,11 @@ M.CO_DUNG  = "request_xuatanh_dung.txt"
      thể khác tên gốc (quy tắc đặt tên trong thông số Export của người dùng):
      không có bảng thì vòng theo dõi thư mục chỉ đoán được theo tên gốc. ]]
 M.BANG     = "xuatanh_anh.tsv"
+--[[ 10/10 (kế thừa NEXUS AI Retouch): HÀNG ĐỢI — mỗi ảnh một dòng "<gốc>\t<jpg>"
+     ghi NGAY sau waitForRender (file đã ghi xong), dòng cuối "#het\t<số ảnh ra>".
+     App retouch từng ảnh ngay khi có, không phải quét thư mục rồi chờ file đứng
+     yên qua hai lần quét (~2–4 s mỗi ảnh). Bảng M.BANG vẫn giữ cho bản app cũ. ]]
+M.HANG_DOI = "xuatanh_hangdoi.tsv"
 
 --[[ 9/10 — XUẤT MỘT LẦN, KHÔNG CHIA LÔ (user: "Khi chọn xuất ảnh trong Lightroom
      sẽ xuất 1 lần toàn bộ ảnh luôn. K chia nhỏ 15 ảnh nữa"). Trước đây mỗi 15 ảnh
@@ -157,6 +162,35 @@ function M.xoaBang()
         LrFileUtils.delete(LrPathUtils.child(Core.jobDir(), M.BANG))
         return true
     end)
+    Core.try("xoaHangDoiXuat", function()
+        LrFileUtils.delete(LrPathUtils.child(Core.jobDir(), M.HANG_DOI))
+        return true
+    end)
+end
+
+local function duongHangDoi() return LrPathUtils.child(Core.jobDir(), M.HANG_DOI) end
+
+--[[ Hàng đợi: mở mới (rỗng) đầu lượt, thêm từng dòng (mở "a" — mỗi dòng ghi trọn
+     rồi đóng, app đọc tới dòng nào đủ "\n" thì lấy dòng đó). ]]
+function M.moHangDoi()
+    local fh = io.open(duongHangDoi(), "w")
+    if fh then fh:close() end
+end
+
+function M.themHangDoi(src, jpg)
+    local fh = io.open(duongHangDoi(), "a")
+    if fh then
+        fh:write(tostring(src) .. "\t" .. tostring(jpg) .. "\n")
+        fh:close()
+    end
+end
+
+function M.hetHangDoi(n)
+    local fh = io.open(duongHangDoi(), "a")
+    if fh then
+        fh:write("#het\t" .. tostring(n) .. "\n")
+        fh:close()
+    end
 end
 
 --[[ Xuất cả danh sách trong MỘT phiên. tienDo(daLam, tong, ra) gọi khi ghi tiến độ.
@@ -178,6 +212,7 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
     thongSo.LR_export_destinationPathPrefix = dest
     local session = LrExportSession({ photosToExport = photos, exportSettings = thongSo })
     local ra, daLam, cap, dung, lanGhi, soLoi = 0, 0, {}, false, -1000, 0
+    M.moHangDoi()
 
     local function ghi(cuoi)
         local bay = os.time()
@@ -222,6 +257,7 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
                         end)
                     end
                     cap[#cap + 1] = { src = src or goc[i] or duong, jpg = duong }
+                    M.themHangDoi(cap[#cap].src, duong)      -- app retouch NGAY ảnh này
                 else
                     soLoi = soLoi + 1
                     if soLoi <= 5 then
@@ -237,6 +273,8 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
     if err then
         Core.log("xuatanh: LOI phien xuat -> " .. tostring(err))
     end
+    --  "#het" TRƯỚC tiến độ "xong": app thấy Lightroom xong là hàng đợi đã đủ
+    M.hetHangDoi(ra)
     ghi(true)
     --[[ 'loi' tinh tren SO DA LAM, khong tren tong: anh chua toi luot (dung giua
          chung) khong phai la loi — cung ly do da ghi o DuyetCore.xuatDuyet. ]]
