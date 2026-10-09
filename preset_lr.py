@@ -42,6 +42,7 @@ import duong_dan as dd
 TEN_DS = "lr_presets.tsv"
 XIN_DS = "request_dspreset.txt"
 YEU_CAU = "request_xempreset.txt"
+HOAN_TAC = "request_hoantac_preset.txt"     # 10/10: hoàn tác lần áp hẳn
 CO_DUNG = "request_xempreset_dung.txt"
 TIEN_DO = "xempreset_tiendo.txt"
 BANG = "xempreset_anh.tsv"
@@ -243,10 +244,70 @@ def cung_preset(a: dict | None, b: dict | None) -> bool:
 
 
 # ------------------------------------------------------------ kho ảnh theo preset
-def thu_muc_kho(thu_muc_buoi, p: dict | None) -> Path:
+def goc_buoi(thu_muc_buoi) -> Path:
+    """<dữ liệu>/xem_preset/<băm buổi>/ — kho ảnh theo từng preset + sổ hoàn tác."""
     h = hashlib.sha1(os.path.normcase(os.path.abspath(str(thu_muc_buoi))).encode(
         "utf-8", "surrogatepass")).hexdigest()[:12]
-    return dd.goc_du_lieu() / TEN_KHO / h / (khoa_preset(p) or "_")
+    return dd.goc_du_lieu() / TEN_KHO / h
+
+
+def thu_muc_kho(thu_muc_buoi, p: dict | None) -> Path:
+    return goc_buoi(thu_muc_buoi) / (khoa_preset(p) or "_")
+
+
+# ------------------------------------------------------------ áp hẳn / hoàn tác (10/10)
+def so_moi(thu_muc_buoi) -> Path:
+    """Sổ hoàn tác cho một lần ÁP HẲN (plugin ghi thông số gốc vào trước khi áp)."""
+    g = goc_buoi(thu_muc_buoi)
+    g.mkdir(parents=True, exist_ok=True)
+    return g / time.strftime("ap_truoc_%Y%m%d_%H%M%S.jsonl")
+
+
+def so_gan_nhat(thu_muc_buoi) -> Path | None:
+    """Sổ của lần áp gần nhất CHƯA hoàn tác (None nếu không có)."""
+    try:
+        ds = sorted(goc_buoi(thu_muc_buoi).glob("ap_truoc_*.jsonl"))
+    except OSError:
+        return None
+    ds = [f for f in ds if f.is_file() and f.stat().st_size > 0]
+    return ds[-1] if ds else None
+
+
+def hoan_tac(so, jd: Path | None = None) -> str:
+    jd = Path(jd or job_dir())
+    id_ = str(int(time.time() * 1000))
+    tam = jd / (HOAN_TAC + ".part")
+    tam.write_text(f"id={id_}\nso={so}\n", encoding="utf-8")
+    os.replace(tam, jd / HOAN_TAC)
+    return id_
+
+
+def _bo_kho(thu_muc_buoi, giu: str = "") -> None:
+    import shutil
+    try:
+        con = [d for d in goc_buoi(thu_muc_buoi).iterdir() if d.is_dir() and d.name != giu]
+    except OSError:
+        return
+    for d in con:
+        shutil.rmtree(d, ignore_errors=True)
+    _hop_le.clear()
+
+
+def sau_ap(thu_muc_buoi, p: dict) -> None:
+    """Vừa ÁP HẲN p vào catalog: ảnh dựng theo preset KHÁC mang trạng thái cũ -> bỏ;
+    ảnh theo chính p vẫn đúng (trạng thái mới = cũ + p) -> đóng dấu mới."""
+    _bo_kho(thu_muc_buoi, giu=khoa_preset(p))
+    kho = thu_muc_kho(thu_muc_buoi, p)
+    kho.mkdir(parents=True, exist_ok=True)
+    dd.ghi_ben(kho / "meta.json", json.dumps({"t": time.time(), "ten": p.get("ten"),
+                                              "nhom": p.get("nhom"), "ap_han": True},
+                                             ensure_ascii=False))
+    _hop_le.clear()
+
+
+def sau_hoan_tac(thu_muc_buoi) -> None:
+    """Đã trả catalog về trước lần áp: mọi ảnh theo preset của buổi đều cũ -> bỏ hết."""
+    _bo_kho(thu_muc_buoi)
 
 
 def _moc_ghi_buoi(thu_muc_buoi) -> float:
@@ -300,7 +361,7 @@ def anh_preset(path, p: dict | None = None) -> Path | None:
 
 # ------------------------------------------------------------ yêu cầu plugin
 def gui_xem(p: dict, paths: list, thu_muc_buoi, ap: bool = False,
-            jd: Path | None = None) -> str:
+            jd: Path | None = None, so=None) -> str:
     """Gửi yêu cầu render `paths` (đã xếp ưu tiên) theo preset `p`. -> id lượt."""
     jd = Path(jd or job_dir())
     kho = thu_muc_kho(thu_muc_buoi, p)
@@ -324,7 +385,8 @@ def gui_xem(p: dict, paths: list, thu_muc_buoi, ap: bool = False,
     id_ = str(int(time.time() * 1000))
     dong = [f"id={id_}", f"uuid={p.get('uuid') or ''}", f"ten={p.get('ten') or ''}",
             f"nhom={p.get('nhom') or ''}", f"dest={kho}", f"canh={CANH}", f"chat={CHAT}",
-            f"ap={1 if ap else 0}", "---"] + [str(x) for x in paths]
+            f"ap={1 if ap else 0}"] + ([f"so={so}"] if so else []) + ["---"] \
+        + [str(x) for x in paths]
     for ten in (CO_DUNG,):
         try:
             (jd / ten).unlink()

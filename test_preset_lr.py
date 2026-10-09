@@ -247,6 +247,47 @@ if root is not None:
     ktra("bấm đúp ảnh lớn (về lưới) -> lưới hiện, cuộn tới tấm đang xem",
          app._che_do_ct == "luoi" and app.luoi.winfo_manager() == "grid"
          and app.luoi.dang_chon == raws[2])
+    # ---- 10/10: ÁP HẲN vào Lightroom (như chọn hết ảnh -> bấm preset) + HOÀN TÁC
+    P2 = {"uuid": "A04EDE4F", "ten": "NoWBExposure", "nhom": "User Presets"}
+    kho2 = preset_lr.thu_muc_kho(buoi, P2)
+    kho2.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (40, 30), (1, 2, 3)).save(kho2 / "DSC0001.jpg", "JPEG")
+    n_ap = dp.ap_han()
+    yc = (JOBS / "request_xempreset.txt").read_text(encoding="utf-8").splitlines()
+    so_dong = [x for x in yc if x.startswith("so=")]
+    ktra("áp hẳn: gửi plugin ap=1 + sổ hoàn tác, đủ 6 ảnh RAW của buổi",
+         n_ap == 6 and "ap=1" in yc and so_dong and len(yc[yc.index("---") + 1:]) == 6
+         and dp.loai == "ap", str(yc[:9]))
+    ktra("áp hẳn: nút báo “Đang áp vào Lightroom”", "Đang áp vào Lightroom" in dp.mo_ta()[1],
+         dp.mo_ta()[1])
+    so = Path(so_dong[0][3:]) if so_dong else TAM / "x.jsonl"
+    so.write_text('{"path":"x","goc":{}}\n', encoding="utf-8")       # plugin ghi sổ
+    (JOBS / "xempreset_tiendo.txt").write_text(
+        f"id={dp.id}\ntrang_thai=xong\nxong=6\ntong=6\nthieu=0\nlech=0\nap=1\nloai=ap\n",
+        encoding="utf-8")
+    goi_status = []
+    app.status = lambda chu, *a, **k: goi_status.append(chu)
+    dp._soi()
+    chay(3)
+    ktra("áp xong: bỏ kho preset KHÁC (trạng thái cũ), giữ kho preset vừa áp, báo chạy lại Phân tích",
+         not kho2.exists() and preset_lr.thu_muc_kho(buoi, P).exists()
+         and any("Phân tích" in x for x in goi_status), str(goi_status[-1:]))
+    ktra("áp xong: lưới dựng tiếp theo preset (lượt xem mới)", dp.loai == "xem")
+    ktra("có sổ -> nút Hoàn tác dùng được", dp.co_hoan_tac())
+    ok_ht = dp.hoan_tac()
+    ht = (JOBS / "request_hoantac_preset.txt").read_text(encoding="utf-8")
+    ktra("hoàn tác: gửi plugin đúng sổ của lần áp", ok_ht and f"so={so}" in ht and dp.loai == "hoan_tac",
+         ht)
+    so.rename(str(so) + ".da_hoan_tac")                                   # plugin làm xong
+    (JOBS / "xempreset_tiendo.txt").write_text(
+        f"id={dp.id}\ntrang_thai=xong\nxong=6\ntong=6\nthieu=0\nlech=0\nloai=hoan_tac\n",
+        encoding="utf-8")
+    dp._soi()
+    chay(3)
+    ktra("hoàn tác xong: bỏ hết kho preset của buổi, không còn sổ để hoàn tác",
+         not preset_lr.thu_muc_kho(buoi, P).joinpath("DSC0003.jpg").exists()
+         and not dp.co_hoan_tac() and any("hoàn tác" in x for x in goi_status), str(goi_status[-1:]))
+
     # bỏ preset
     dp.chon(None)
     ktra("bỏ preset -> xin dừng plugin, lưới đọc ảnh như cũ",

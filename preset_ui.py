@@ -58,6 +58,8 @@ class DieuPhoiPreset:
         self.loi = ""
         self._hen = None
         self._dau_gui = None
+        self.loai = "xem"              # "xem" | "ap" | "hoan_tac" — việc của lượt self.id
+        self.bao_xong = ""             # câu báo sau khi áp / hoàn tác xong
         self._dat_nguon()
 
     # ------------------------------------------------------------ đăng ký
@@ -178,16 +180,103 @@ class DieuPhoiPreset:
         nhom: dict = {}
         for x in thu_tu:
             nhom.setdefault(str(Path(x).parent), []).append(x)
+        self.loai = "xem"
         self.hang_doi = list(nhom.items())
         self._dau_gui = thu_tu[0] if thu_tu else None
         self._gui_tiep()
+
+    # ------------------------------------------------------------ áp hẳn / hoàn tác (10/10)
+    def ds_ap(self) -> list:
+        """Ảnh RAW của buổi đang xem (sẽ áp hẳn preset)."""
+        ds, _uu = self._ngu_canh()
+        import nguon_xem
+        return [str(x) for x in ds if nguon_xem.la_raw(x)]
+
+    def ap_han(self) -> int:
+        """Áp hẳn preset đang chọn vào catalog cho mọi ảnh RAW của buổi — như chọn
+        hết ảnh rồi bấm preset trong Lightroom. Có sổ hoàn tác. -> số ảnh gửi."""
+        if not self.p:
+            return 0
+        ds = self.ds_ap()
+        if not ds:
+            return 0
+        nhom: dict = {}
+        for x in ds:
+            nhom.setdefault(str(Path(x).parent), []).append(x)
+        self.loai = "ap"
+        self.loi = self.bao_xong = ""
+        self.tong, self.co_san = len(ds), 0
+        self.hang_doi = list(nhom.items())
+        self._dau_gui = None
+        self._gui_tiep()
+        return len(ds)
+
+    def co_hoan_tac(self) -> bool:
+        try:
+            ds, _uu = self._ngu_canh()
+            thu = {str(Path(x).parent) for x in ds}
+            return any(preset_lr.so_gan_nhat(t) is not None for t in thu)
+        except Exception:                                    # noqa: BLE001
+            return False
+
+    def hoan_tac(self) -> bool:
+        ds, _uu = self._ngu_canh()
+        thu = sorted({str(Path(x).parent) for x in ds})
+        so = [(t, preset_lr.so_gan_nhat(t)) for t in thu]
+        so = [(t, f) for t, f in so if f is not None]
+        if not so:
+            return False
+        t, f = so[0]
+        try:
+            self.id = preset_lr.hoan_tac(f)
+        except OSError as ex:
+            self.loi = f"không gửi được yêu cầu hoàn tác: {ex}"
+            self._cap_nhat_nut()
+            return False
+        self.loai = "hoan_tac"
+        self.loi = self.bao_xong = ""
+        self.thu_muc = t
+        self.hang_doi = []
+        self.td = {"trang_thai": "cho", "xong": 0, "tong": 0}
+        self.t_gui = time.time()
+        self._cap_nhat_nut()
+        self._hen_soi()
+        return True
+
+    def _sau_viec_ghi(self, td: dict) -> None:
+        """Áp hẳn / hoàn tác vừa xong một thư mục: dọn kho cũ, lưới đọc lại, báo."""
+        n, lech = int(td.get("xong") or 0), int(td.get("lech") or 0)
+        try:
+            if self.loai == "ap":
+                preset_lr.sau_ap(self.thu_muc, self.p or {})
+            else:
+                preset_lr.sau_hoan_tac(self.thu_muc)
+        except Exception:                                    # noqa: BLE001
+            traceback.print_exc()
+        self._lam_moi_luoi(None)
+        self._bao(None)
+        if self.loai == "ap":
+            self.bao_xong = (f"Đã áp “{(self.p or {}).get('ten', '')}” vào Lightroom: {n} ảnh"
+                             + (f" · ⚠ {lech} ảnh khác preset (xem Nhật ký plugin)" if lech else "")
+                             + " — chạy lại 1 · Phân tích để tool tính trên preset mới")
+        else:
+            self.bao_xong = (f"Đã hoàn tác lần áp: {n} ảnh về như trước"
+                             + (f" · ⚠ {lech} ảnh trả lại chưa khớp" if lech else ""))
+        try:
+            self.app.status(self.bao_xong, gd.MAU["canh"] if lech else gd.MAU["xong"])
+        except Exception:                                    # noqa: BLE001
+            pass
 
     def _gui_tiep(self) -> None:
         if not self.hang_doi or not self.p:
             return
         thu_muc, ds = self.hang_doi.pop(0)
         try:
-            self.id = preset_lr.gui_xem(self.p, ds, thu_muc)
+            if self.loai == "ap":
+                self.id = preset_lr.gui_xem(self.p, ds, thu_muc, ap=True,
+                                            so=preset_lr.so_moi(thu_muc))
+            else:
+                self.id = preset_lr.gui_xem(self.p, ds, thu_muc)
         except OSError as ex:
             self.loi = f"không gửi được yêu cầu: {ex}"
             self._cap_nhat_nut()
@@ -285,6 +374,17 @@ class DieuPhoiPreset:
                 self.hang_doi = []
                 self._cap_nhat_nut()
                 return
+            if self.loai in ("ap", "hoan_tac") and tt in ("xong", "dung") and td:
+                self._sau_viec_ghi(td)
+                if self.loai == "ap" and tt == "xong" and self.hang_doi:
+                    self._gui_tiep()
+                    return
+                #  xong việc ghi -> lưới dựng tiếp theo preset đang chọn
+                self.loai = "xem"
+                self.td = None
+                self.gui()
+                self._cap_nhat_nut()
+                return
             if tt == "xong" and self.hang_doi:
                 self._gui_tiep()
             return
@@ -299,6 +399,10 @@ class DieuPhoiPreset:
         if self.loi:
             return f"Preset LR: {ten}", self.loi, "loi"
         td = self.td
+        if td and td.get("trang_thai") in ("cho", "dang_chay") and self.loai != "xem":
+            viec = "áp vào Lightroom" if self.loai == "ap" else "hoàn tác lần áp"
+            return (f"Preset LR: {ten}", f"Đang {viec} {int(td.get('xong') or 0)}/"
+                    f"{int(td.get('tong') or 0) or self.tong}", "chay")
         if td and td.get("trang_thai") in ("cho", "dang_chay"):
             xong = self.co_san + int(td.get("xong") or 0)
             phu = f"Lightroom đang dựng {xong}/{self.tong}"
@@ -308,6 +412,8 @@ class DieuPhoiPreset:
         if td and int(td.get("lech") or 0):
             return (f"Preset LR: {ten}", f"⚠ {td['lech']} ảnh trả lại thông số chưa khớp — "
                     "xem Nhật ký plugin", "loi")
+        if self.bao_xong and td is None:
+            return f"Preset LR: {ten}", self.bao_xong, ""
         thieu = int((td or {}).get("thieu") or 0)
         if not self.tong and td is None:
             return f"Preset LR: {ten}", "buổi đang xem không có ảnh RAW", ""
@@ -445,6 +551,19 @@ class BangPresetLR(tk.Toplevel):
         self.btn_lai = gd.NutTron(hang, "Dựng lại ảnh thiếu", kieu="toi", nen=m["nen"],
                                   font=gd.CHU, command=self._gui_lai)
         self.btn_lai.pack(side="left", padx=(6, 0))
+        #  10/10 (user: "nếu thao tác đúng như trong Lightroom chọn Sync All thì làm")
+        hang2 = tk.Frame(trong, background=m["nen"])
+        hang2.pack(fill="x", padx=12, pady=(0, 10))
+        self.btn_ap = gd.NutTron(hang2, "Áp hẳn vào Lightroom…", kieu="phu", nen=m["nen"],
+                                 font=gd.CHU, command=self._ap_han)
+        self.btn_ap.pack(side="left")
+        self.btn_ap.goi_y = gd.GoiY(self.btn_ap, "Áp preset đang chọn vào catalog cho mọi ảnh "
+                                    "RAW của buổi — đúng như chọn hết ảnh rồi bấm preset "
+                                    "trong Lightroom. Có sổ để hoàn tác.")
+        self.btn_ht = gd.NutTron(hang2, "Hoàn tác lần áp", kieu="toi", nen=m["nen"],
+                                 font=gd.CHU, command=self._hoan_tac)
+        self.btn_ht.pack(side="left", padx=(6, 0))
+        self._dang_hoi = False
 
         self._ds_goc: list = []
         self._hang: list = []          # [(loại, dữ liệu, y0, y1)]
@@ -478,6 +597,8 @@ class BangPresetLR(tk.Toplevel):
         self.after(120, self._kiem_focus)
 
     def _kiem_focus(self):
+        if self._dang_hoi:
+            return
         try:
             f = self.focus_get()
         except (tk.TclError, KeyError):
@@ -640,8 +761,10 @@ class BangPresetLR(tk.Toplevel):
                                            "preset đó (ảnh đang xem làm trước)."),
                               foreground=(gd.MAU["canh"] if loai == "loi" else gd.MAU["mo"]))
         chay = loai == "chay"
-        self.btn_dung.configure(state="normal" if chay else "disabled")
+        self.btn_dung.configure(state="normal" if (chay and self.dp.loai == "xem") else "disabled")
         self.btn_lai.configure(state="normal" if (p and not chay) else "disabled")
+        self.btn_ap.configure(state="normal" if (p and not chay) else "disabled")
+        self.btn_ht.configure(state="normal" if (not chay and self.dp.co_hoan_tac()) else "disabled")
 
     def _dung(self):
         self.dp.dung()
@@ -650,4 +773,44 @@ class BangPresetLR(tk.Toplevel):
     def _gui_lai(self):
         self.dp.loi = ""
         self.dp.gui()
+        self.cap_nhat_trang_thai()
+
+    def _hoi(self, ham, *a, **k):
+        """Hộp hỏi trên bảng nổi: giữ bảng mở trong lúc hỏi (mất focus là tự đóng)."""
+        from tkinter import messagebox
+        self._dang_hoi = True
+        try:
+            return getattr(messagebox, ham)(*a, parent=self.winfo_toplevel().master or self, **k)
+        finally:
+            self._dang_hoi = False
+            self._lay_focus()
+
+    def _ap_han(self):
+        p = self.dp.p
+        if not p:
+            return
+        n = len(self.dp.ds_ap())
+        if not n:
+            self._hoi("showinfo", "Không có ảnh RAW", "Buổi đang xem không có ảnh RAW để áp preset.")
+            return
+        if not self._hoi(
+                "askyesno", "Áp hẳn preset vào Lightroom",
+                f"Áp preset “{p.get('ten')}” vào catalog Lightroom cho {n} ảnh RAW của buổi?\n\n"
+                "Giống hệt chọn hết các ảnh rồi bấm preset trong Lightroom: thông số nào "
+                "preset có (WB, sáng, HSL…) thay số đang có; thông số khác giữ nguyên. (Khác "
+                "lệnh Sync Settings — lệnh đó chép TOÀN BỘ thông số của một ảnh.)\n\n"
+                "• Chỉnh WB / tone tool đã ghi sẽ bị preset ghi đè ở các khoá preset có → "
+                "chạy lại 1 · Phân tích rồi 2 · Ghi.\n"
+                "• App giữ sổ hoàn tác: bấm “Hoàn tác lần áp” để trả về như trước.\n"
+                "• Ảnh không có trong catalog thì bỏ qua."):
+            return
+        self.dp.ap_han()
+        self.cap_nhat_trang_thai()
+
+    def _hoan_tac(self):
+        if not self._hoi("askyesno", "Hoàn tác lần áp preset",
+                         "Trả các ảnh của lần “Áp hẳn vào Lightroom” gần nhất về đúng thông "
+                         "số trước khi áp?"):
+            return
+        self.dp.hoan_tac()
         self.cap_nhat_trang_thai()

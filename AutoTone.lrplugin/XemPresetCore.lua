@@ -58,6 +58,7 @@ local LrDate          = import "LrDate"
 local LrExportSession = import "LrExportSession"
 local LrFileUtils     = import "LrFileUtils"
 local LrPathUtils     = import "LrPathUtils"
+local LrTasks         = import "LrTasks"
 
 local Core = require "AutoToneCore"
 local okDuyet, Duyet = pcall(require, "DuyetCore")
@@ -72,6 +73,8 @@ M.TIEN_DO   = "xempreset_tiendo.txt"
 M.BANG      = "xempreset_anh.tsv"
 M.SO_KP     = "xempreset_khoiphuc.json"
 M.LO        = 6
+M.LO_AP     = 40          -- áp hẳn: không render, mỗi giao dịch ghi 40 ảnh
+M.HOAN_TAC  = "request_hoantac_preset.txt"   -- app ghi: id=… so=<sổ hoàn tác .jsonl>
 M.GIAY_MOI_LUOT = 15
 M.GIAY_DS   = 20
 M.CANH      = 1600
@@ -298,12 +301,14 @@ local function ghiTienDo(d, trangThai, thongBao)
     local t = {
         "id=" .. tostring(d and d.id or ""),
         "trang_thai=" .. tostring(trangThai),
-        "xong=" .. tostring(d and #d.cap or 0),
+        "xong=" .. tostring(d and (d.ap and (d.daAp or 0) or #(d.cap or {})) or 0),
         "tong=" .. tostring(d and d.tong or 0),
         "thieu=" .. tostring(d and d.thieu or 0),
         "lech=" .. tostring(d and d.lech or 0),
         "dest=" .. tostring(d and d.dest or ""),
         "ap=" .. tostring(d and d.ap and 1 or 0),
+        "loai=" .. tostring(d and d.loai or (d and d.ap and "ap" or "xem")),
+        "bo_wb=" .. tostring(d and d.boWB or 0),
         "thong_bao=" .. sach(thongBao or ""),
     }
     ghiFile(f(M.TIEN_DO), table.concat(t, "\n") .. "\n")
@@ -369,18 +374,33 @@ function M.traLai(catalog, lo, coWB)
     if coWB then
         local can = {}
         for _, x in ipairs(lo) do
-            if x.goc and tonumber(x.goc.Temperature) == nil then can[#can + 1] = x end
+            --[[ 10/10 (plugin NEXUS ghi lại): ảnh "As Shot" Lightroom vẫn trả Kelvin
+                 CŨ còn sót -> xét theo NHÃN WB, không theo có / không Temperature. ]]
+            local wb = x.goc and x.goc.WhiteBalance
+            if x.goc and ((wb and wb ~= "Custom") or tonumber(x.goc.Temperature) == nil) then
+                can[#can + 1] = x
+            end
         end
         if #can > 0 then
-            Core.try("traWB", function()
+            local khongTra = {}
+            local _, errWB = Core.try("traWB", function()
                 catalog:withWriteAccessDo("AutoTone: trả lại cân bằng trắng", function()
                     for _, x in ipairs(can) do
                         local p = presetTraWB(tostring(x.goc.WhiteBalance or "As Shot"))
-                        if p then x.photo:applyDevelopPreset(p, _PLUGIN) end
+                        if p then x.photo:applyDevelopPreset(p, _PLUGIN)
+                        else khongTra[#khongTra + 1] = x end
                     end
                 end, { timeout = 60 })
                 return true
             end)
+            --[[ Kelvin của WB theo nhãn không so được (Lightroom trả số sót) -> bước trả
+                 WB hỏng thì PHẢI tự đếm lệch, không trông vào phép so phía dưới. ]]
+            if errWB then khongTra = can end
+            for _, x in ipairs(khongTra) do
+                x.wbHong = true
+                Core.log("xempreset: TRA LAI LECH (khong tra duoc WB " ..
+                         tostring(x.goc.WhiteBalance) .. ") " .. tostring(x.path))
+            end
         end
     end
     local lech = 0
@@ -388,16 +408,21 @@ function M.traLai(catalog, lo, coWB)
         if x.goc then
             local sau = Core.try("docSau", function() return x.photo:getDevelopSettings() end) or {}
             local khac = {}
+            local wbTen = x.goc.WhiteBalance and x.goc.WhiteBalance ~= "Custom"
             for _, k in ipairs(M.KHOA_KIEM) do
-                if not giong(x.goc[k], sau[k]) then
+                --  WB theo nhãn (As Shot…): Kelvin Lightroom trả về là số sót, không so
+                if wbTen and (k == "Temperature" or k == "Tint") then
+                elseif not giong(x.goc[k], sau[k]) then
                     khac[#khac + 1] = k .. "=" .. string.sub(jMa(x.goc[k]), 1, 40) .. "->"
                         .. string.sub(jMa(sau[k]), 1, 40)
                 end
             end
-            if #khac > 0 then
+            if #khac > 0 or x.wbHong then
                 lech = lech + 1
-                Core.log("xempreset: TRA LAI LECH " .. tostring(x.path) .. " : "
-                         .. table.concat(khac, ", "))
+                if #khac > 0 then
+                    Core.log("xempreset: TRA LAI LECH " .. tostring(x.path) .. " : "
+                             .. table.concat(khac, ", "))
+                end
             end
         end
     end
@@ -475,6 +500,7 @@ end
 
 -- --------------------------------------------------------------- lượt
 M.dang = nil
+local ghiSoHoanTac, kiemSauAp
 
 local function docYeuCau(path)
     local s = docFile(path)
@@ -512,6 +538,98 @@ local function coWBTrong(st)
         or st.IncrementalTemperature ~= nil or st.IncrementalTint ~= nil
 end
 
+local function laRaw(photo)
+    local fmt = Core.try("dinhDang", function() return photo:getRawMetadata("fileFormat") end)
+    return fmt == "RAW" or fmt == "DNG"
+end
+
+--[[ Sổ hoàn tác của lần ÁP HẲN: mỗi ảnh một dòng JSON {path, goc}, ghi thêm từng lô
+     TRƯỚC khi áp. App giữ sổ theo buổi; "Hoàn tác lần áp" gửi lại sổ này. ]]
+function ghiSoHoanTac(so, lo)
+    local fh = io.open(so, "a")
+    if not fh then
+        Core.log("xempreset: KHONG GHI DUOC so hoan tac " .. tostring(so))
+        return false
+    end
+    for _, x in ipairs(lo) do
+        if x.goc then fh:write(jMa({ path = x.path, goc = x.goc }) .. "\n") end
+    end
+    fh:close()
+    return true
+end
+
+--[[ Sau khi ÁP HẲN: đọc lại từng ảnh, so các khoá preset có (số / chữ / bảng nhỏ).
+     Bỏ Kelvin / Tint: Lightroom trả số sót hoặc khoá Incremental cho RAW vừa áp
+     preset (plugin NEXUS ghi lại) — so là báo lệch giả. Lệch thật -> plugin.log. ]]
+local BO_KIEM_AP = { Temperature = true, Tint = true, IncrementalTemperature = true,
+                     IncrementalTint = true, Look = true, Name = true, Group = true,
+                     UUID = true, PresetType = true, SupportsAmount = true,
+                     SupportsAmount2 = true, SupportsColor = true, SupportsMonochrome = true }
+function kiemSauAp(lo, st)
+    local lech = 0
+    for _, x in ipairs(lo) do
+        local sau = Core.try("docSauAp", function() return x.photo:getDevelopSettings() end) or {}
+        local khac = {}
+        for k, v in pairs(st or {}) do
+            if not BO_KIEM_AP[k] and sau[k] ~= nil and (type(v) ~= "table" or #jMa(v) < 400)
+                    and not giong(v, sau[k]) then
+                khac[#khac + 1] = tostring(k) .. "=" .. string.sub(jMa(v), 1, 30) .. "->"
+                    .. string.sub(jMa(sau[k]), 1, 30)
+            end
+        end
+        if #khac > 0 then
+            lech = lech + 1
+            Core.log("xempreset: AP HAN LECH " .. tostring(x.path) .. " : " .. table.concat(khac, ", "))
+        end
+    end
+    return lech
+end
+
+--[[ HOÀN TÁC lần áp hẳn: đọc sổ, trả từng lô 30 ảnh (cùng đường trả lại của xem
+     tạm: CameraProfile / Look riêng, WB theo nhãn bằng preset plugin). ]]
+function M.hoanTac(id, so)
+    local d = { id = id, loai = "hoan_tac", ap = true, daAp = 0, tong = 0, thieu = 0,
+                lech = 0, cap = {}, dest = "" }
+    local fh = io.open(so, "r")
+    if not fh then
+        ghiTienDo(d, "loi", "Khong mo duoc so hoan tac " .. tostring(so))
+        return 0
+    end
+    local ds = {}
+    for dong in fh:lines() do
+        local ok, x = pcall(jGiai, dong)
+        if ok and type(x) == "table" and x.path and type(x.goc) == "table" then ds[#ds + 1] = x end
+    end
+    fh:close()
+    d.tong = #ds
+    ghiTienDo(d, "dang_chay", "hoan tac")
+    local catalog = LrApplication.activeCatalog()
+    local i = 1
+    while i <= #ds do
+        local lo = {}
+        for j = i, math.min(i + 29, #ds) do
+            local photo = Core.try("timAnhHT", function() return catalog:findPhotoByPath(ds[j].path) end)
+            if photo then lo[#lo + 1] = { path = ds[j].path, photo = photo, goc = ds[j].goc }
+            else d.thieu = d.thieu + 1 end
+        end
+        if #lo > 0 then
+            d.lech = d.lech + (M.traLai(catalog, lo, true) or 0)
+            d.daAp = d.daAp + #lo
+        end
+        ghiTienDo(d, "dang_chay", "hoan tac")
+        i = i + 30
+        LrTasks.yield()
+    end
+    Core.try("doiTenSoHT", function()
+        LrFileUtils.move(so, so .. ".da_hoan_tac")
+        return true
+    end)
+    ghiTienDo(d, "xong", "hoan tac xong")
+    Core.log(string.format("xempreset: HOAN TAC %d/%d anh, thieu %d, lech %d (%s)",
+                           d.daAp, d.tong, d.thieu, d.lech, tostring(so)))
+    return d.daAp
+end
+
 function M.batDau(r)
     local d = { id = r.id or "", dest = r.dest or "", tong = #r.paths, thieu = 0, lech = 0,
                 cap = {}, con = {}, ap = (r.ap == "1"),
@@ -528,12 +646,17 @@ function M.batDau(r)
         return false
     end
     local st = Core.try("presetSetting", function() return preset:getSetting() end)
-    if not d.ap and coCucBo(st) then
-        ghiTienDo(d, "loi", "Preset co mask / chinh cuc bo - khong xem truoc tam duoc " ..
-                  "(khong tra lai chac chan)")
+    if coCucBo(st) then
+        ghiTienDo(d, "loi", d.ap and
+                  ("Preset co mask / AI (Adaptive): Lightroom phai tinh mask tung anh - hay ap " ..
+                   "trong Lightroom (chon het anh -> bam preset)") or
+                  "Preset co mask / chinh cuc bo - khong xem truoc tam duoc (khong tra lai chac chan)")
         M.dang = nil
         return false
     end
+    d.presetSt = type(st) == "table" and st or {}
+    d.so = r.so or ""
+    d.daAp, d.boWB = 0, 0
     d.preset = preset
     d.ten = r.ten or ""
     d.coWB = coWBTrong(st)
@@ -561,7 +684,7 @@ function M.motLo()
     --[[ 10/10 (học NEXUS: họ chỉ render ảnh đang xem, ~1 s): lô ĐẦU chỉ MỘT ảnh —
          tấm app xếp đầu (ảnh đang mở / đang chọn) hiện theo preset sau một lần
          render, không đợi cả lô 6 tấm. ]]
-    local co = (d.soLo or 0) == 0 and 1 or M.LO
+    local co = d.ap and M.LO_AP or ((d.soLo or 0) == 0 and 1 or M.LO)
     d.soLo = (d.soLo or 0) + 1
     while #lo < co and #d.con > 0 do
         local p = table.remove(d.con, 1)
@@ -577,10 +700,27 @@ function M.motLo()
         x.goc = Core.try("docGoc", function() return x.photo:getDevelopSettings() end)
     end
     local dung = {}
-    for _, x in ipairs(lo) do if x.goc then dung[#dung + 1] = x end end
+    for _, x in ipairs(lo) do
+        if x.goc then
+            --[[ XEM TẠM + preset có WB: ảnh RAW đang WB Custom mà Lightroom KHÔNG trả
+                 Kelvin (chỉ trả IncrementalTemperature — plugin NEXUS ghi lại bẫy
+                 này) thì không trả WB lại chắc chắn được -> không đụng ảnh đó. ]]
+            if not d.ap and d.coWB and x.goc.WhiteBalance == "Custom"
+                    and tonumber(x.goc.Temperature) == nil and laRaw(x.photo) then
+                d.boWB = d.boWB + 1
+                Core.log("xempreset: bo qua (khong doc duoc Kelvin de tra lai) " .. tostring(x.path))
+            else
+                dung[#dung + 1] = x
+            end
+        end
+    end
     lo = dung
     if #lo == 0 then return end
-    if not d.ap then ghiSo(lo) end
+    if not d.ap then
+        ghiSo(lo)
+    elseif d.so ~= "" then
+        ghiSoHoanTac(d.so, lo)        -- áp hẳn: thông số gốc ghi TRƯỚC khi áp
+    end
     local okA, errA = Core.try("apPreset", function()
         d.catalog:withWriteAccessDo(d.ap and "AutoTone: áp preset" or "AutoTone: xem preset",
             function()
@@ -589,7 +729,10 @@ function M.motLo()
         return true
     end)
     local ra = {}
-    if okA then
+    if okA and d.ap then
+        d.daAp = d.daAp + #lo
+        d.lech = d.lech + kiemSauAp(lo, d.presetSt)
+    elseif okA then
         local photos = {}
         for i, x in ipairs(lo) do photos[i] = x.photo end
         ra = xuatLo(photos, d.dest, d.canh, d.chat)
@@ -601,7 +744,7 @@ function M.motLo()
         d.lech = d.lech + (lech or 0)
         xoaSo()
     end
-    if okA then
+    if okA and not d.ap then
         for _, x in ipairs(lo) do
             local jpg = jpgCua(d.dest, x.path, ra)
             if jpg then d.cap[#d.cap + 1] = { src = x.path, jpg = jpg } end
@@ -616,8 +759,10 @@ local function ketThuc(trangThai, thongBao)
     if not d then return end
     local giay = LrDate.currentTime() - (d.t0 or LrDate.currentTime())
     ghiTienDo(d, trangThai, thongBao or string.format("%.0f giay", giay))
-    Core.log(string.format("xempreset: %s \"%s\" %d/%d anh, thieu %d, lech %d, %.0f giay",
-                           trangThai, tostring(d.ten), #d.cap, d.tong, d.thieu, d.lech, giay))
+    Core.log(string.format("xempreset: %s%s \"%s\" %d/%d anh, thieu %d, lech %d, bo WB %d, %.0f giay",
+                           d.ap and "AP HAN " or "", trangThai, tostring(d.ten),
+                           d.ap and (d.daAp or 0) or #d.cap, d.tong, d.thieu, d.lech,
+                           d.boWB or 0, giay))
     M.dang = nil
 end
 
@@ -644,6 +789,17 @@ function M.runRequest()
         M.ghiDanhSach(true)
     elseif not M.dang and LrDate.currentTime() - tDs > M.GIAY_DS then
         M.ghiDanhSach(false)
+    end
+
+    local ht = f(M.HOAN_TAC)
+    if LrFileUtils.exists(ht) then
+        local claimed = Core.claim(ht)
+        if claimed then
+            local r = docYeuCau(claimed) or {}
+            Core.try("boYeuCauHT", function() LrFileUtils.delete(claimed) return true end)
+            if M.dang then ketThuc("thay", "hoan tac") end
+            if r.so and r.so ~= "" then M.hoanTac(r.id or "", r.so) end
+        end
     end
 
     local req = f(M.YEU_CAU)

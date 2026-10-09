@@ -117,8 +117,15 @@ function moiAnh(path, s)
     local t = sao(self.s)
     -- Lightroom KHONG tra Temperature/Tint cua anh As Shot "that"
     if t.WhiteBalance == "As Shot" and not self.kelvin_ket then t.Temperature = nil t.Tint = nil end
+    -- BAY (plugin NEXUS ghi lai): anh As Shot ma Lightroom tra Kelvin CU con sot
+    if t.WhiteBalance == "As Shot" and self.kelvin_sot and not self.kelvin_ket then
+      t.Temperature = self.kelvin_sot t.Tint = 3 end
+    -- BAY: RAW WB Custom ma Lightroom chi tra IncrementalTemperature, khong co Kelvin
+    if t.WhiteBalance == "Custom" and self.an_kelvin then
+      t.IncrementalTemperature = t.Temperature t.Temperature = nil t.Tint = nil end
     return t
   end
+  function ph:getRawMetadata(k) if k == "fileFormat" then return self.dinh_dang or "RAW" end end
   function ph:applyDevelopSettings(s)
     for k, v in pairs(s) do self.s[k] = sao({ v })[1] end
     -- BAY NEXUS: dat lai nhan "As Shot" qua applyDevelopSettings KHONG xoa Kelvin tam
@@ -208,9 +215,12 @@ end
 ''' % str(raw).replace("\\", "/"))
 
 
-def yeu_cau(uuid, ten, nhom, paths, ap=0, id_="1"):
+def yeu_cau(uuid, ten, nhom, paths, ap=0, id_="1", so=None):
     dong = [f"id={id_}", f"uuid={uuid}", f"ten={ten}", f"nhom={nhom}",
-            f"dest={str(ra / uuid).replace(chr(92), '/')}", "canh=1600", "chat=80", f"ap={ap}", "---"]
+            f"dest={str(ra / uuid).replace(chr(92), '/')}", "canh=1600", "chat=80", f"ap={ap}"]
+    if so:
+        dong.append(f"so={so}")
+    dong.append("---")
     (jobs / "request_xempreset.txt").write_text("\ufeff" + "\n".join(dong + paths) + "\n",
                                                 encoding="utf-8")
 
@@ -337,6 +347,69 @@ for i = 5, 13 do local p = PHOTOS[i]
   if XP.jMa(GOC_S[p.path]) ~= XP.jMa(p:getDevelopSettings()) then TRA2 = false end end
 ''')
 ktra("sau nhieu luot xem tam: anh khong ap han van dung thong so goc", bool(g.TRA2))
+
+# ---- 9. (10/10) bay WB plugin NEXUS ghi lai + AP HAN co so hoan tac + HOAN TAC
+XP.LO = 6
+XP.GIAY_MOI_LUOT = 10 ** 6
+rr = str(raw).replace("\\", "/")
+L.execute(r'''
+-- Lightroom that tra DU moi khoa -> anh gia cung co du khoa preset dung toi
+SOT = moiAnh([[%s/SOT0001.ARW]], { Exposure2012 = 0.2, WhiteBalance = "As Shot", Contrast2012 = 3,
+                                  Vibrance = 0, ToneCurvePV2012 = { 0, 0, 255, 255 } })
+SOT.kelvin_sot = 5100
+AN = moiAnh([[%s/AN0001.ARW]], { Exposure2012 = 0.4, WhiteBalance = "Custom", Temperature = 5600, Tint = 4 })
+AN.an_kelvin = true
+GOC_SOT = XP.jMa(SOT:getDevelopSettings())
+''' % (rr, rr))
+p_sot, p_an = rr + "/SOT0001.ARW", rr + "/AN0001.ARW"
+yeu_cau("U1", "cưới trắng hồng 1", "User Presets", [p_sot, p_an], id_="8")
+XP.runRequest()
+td = tien_do()
+L.execute('''
+SOT_OK = SOT.s.Temperature == nil and not SOT.kelvin_ket and XP.jMa(SOT:getDevelopSettings()) == GOC_SOT
+AN_OK = AN.lich_su == 0 and AN.s.Temperature == 5600
+''')
+ktra("As Shot ma Lightroom tra Kelvin CU: van tra WB bang nhan (het Kelvin preset)", bool(g.SOT_OK))
+ktra("RAW WB Custom khong doc duoc Kelvin + preset co WB: KHONG dung anh (bo_wb=1)",
+     bool(g.AN_OK) and td.get("bo_wb") == "1" and not (ra / "U1" / "AN0001.jpg").exists(), str(td))
+
+so = (tam / "so_hoan_tac.jsonl")
+L.execute('''
+TRUOC_AP = {}
+for i = 1, 4 do TRUOC_AP[i] = XP.jMa(PHOTOS[i]:getDevelopSettings()) end
+''')
+n_jpg = len(list((ra / "U1").glob("*.jpg")))
+yeu_cau("U1", "cưới trắng hồng 1", "User Presets", paths[:3] + [paths[4]], ap=1, id_="9",
+        so=str(so).replace("\\", "/"))
+XP.runRequest()
+td = tien_do()
+L.execute('''
+AP_OK = true
+for i = 1, 4 do local t = PHOTOS[i].s
+  if not (t.Exposure2012 == 0.5 and t.Vibrance == 20 and t.WhiteBalance == "Custom") then AP_OK = false end end
+''')
+dong = so.read_text(encoding="utf-8").splitlines() if so.exists() else []
+ktra("ap han: preset o lai tren moi anh, tu kiem khong lech, khong render",
+     bool(g.AP_OK) and td.get("loai") == "ap" and td.get("xong") == "4" and td.get("lech") == "0"
+     and len(list((ra / "U1").glob("*.jpg"))) == n_jpg, str(td))
+ktra("ap han: so hoan tac ghi thong so goc TRUOC khi ap (4 dong)", len(dong) == 4
+     and '"path"' in dong[0] and '"goc"' in dong[0])
+(jobs / "request_hoantac_preset.txt").write_text(f"id=10\nso={str(so).replace(chr(92), '/')}\n",
+                                                 encoding="utf-8")
+XP.runRequest()
+td = tien_do()
+L.execute('''
+HT_OK = true
+for i = 1, 4 do if XP.jMa(PHOTOS[i]:getDevelopSettings()) ~= TRUOC_AP[i] then HT_OK = false end end
+''')
+ktra("hoan tac lan ap: moi anh ve dung thong so truoc khi ap, so doi ten .da_hoan_tac",
+     bool(g.HT_OK) and td.get("loai") == "hoan_tac" and td.get("xong") == "4"
+     and not so.exists() and Path(str(so) + ".da_hoan_tac").exists(), str(td))
+yeu_cau("A1", "Adaptive: Blur Background", "Adaptive: Portrait", paths[:2], ap=1, id_="11")
+XP.runRequest()
+td = tien_do()
+ktra("ap han preset co mask / AI -> tu choi, chi cach ap trong Lightroom",
+     td.get("trang_thai") == "loi" and "Adaptive" in td.get("thong_bao", ""), str(td))
 
 print()
 print("KET QUA:", "DAT HET" if not LOI else f"{len(LOI)} LOI: {LOI}")
