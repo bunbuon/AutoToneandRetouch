@@ -888,6 +888,9 @@ MO_HINH = {
     "nhan_tran": ["mo_hinh/nhan.pt"],
     #  8/10: Xoá nếp nhăn vùng mắt (buoc_mat_them.BuocNhanMat)
     "nhan_mat": ["mo_hinh/nhan_mat.pt"],
+    #  9/10: Làm trắng răng (buoc_mat_them.BuocRang). nong_cam_keo.pt (kéo da dưới
+    #  hàm) là mô hình PHỤ của nong_cam: thiếu thì nọng cằm vẫn chạy, chỉ không kéo.
+    "rang": ["mo_hinh/rang.pt"],
 }
 
 UNG_VIEN = {
