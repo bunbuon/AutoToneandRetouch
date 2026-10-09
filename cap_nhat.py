@@ -67,7 +67,7 @@ import duong_dan as dd
 #[[ 9/10: PHAI khop --ban cua dong_installer o moi lan build (tu v56). Truoc do
 #   dung o 2026.10.04 suot cac ban 2026.10.09.x: app "Gioi thieu" hien ban cu, va
 #   mot ban OTA 2026.10.05 se bi coi la MOI hon ban cai 2026.10.09. ]]
-PHIEN_BAN_APP = "2026.10.09.10"
+PHIEN_BAN_APP = "2026.10.10.1"
 
 #[[ Kho phat hanh — DUNG kho voi tai_nguyen.KHO. Doi o day khi doi repo. ]]
 KHO = "https://github.com/bunbuon/AutoToneandRetouch/releases/download"

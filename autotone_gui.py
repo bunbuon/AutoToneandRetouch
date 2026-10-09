@@ -581,6 +581,18 @@ class App(ttk.Frame):
                     rt_win._nghi_may_xem()
             except Exception:                                # noqa: BLE001
                 traceback.print_exc()
+        #[[ 9/10: Retouch che do ANH RAW theo dung buoi dang mo o Can tone; dang
+        #   xem theo preset Lightroom thi dung tiep anh thieu cua man vua vao. ]]
+        if rt_win is not None and md == "retouch" and not khoa_rt:
+            try:
+                rt_win._dong_bo_nguon()
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
+        if getattr(self, "_dp_preset", None) is not None:
+            try:
+                self._dp_preset.doi_buoi()
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
         #[[ Dai bao cua buoi (quet thu muc, ban xuat Lightroom) la chuyen cua
         #   Can tone — Retouch lam tren anh da Export, khong can no. ]]
         self.dai_quet.hien(md == "tone")
@@ -2301,13 +2313,214 @@ class App(ttk.Frame):
 
     # ------------------------------------------------------------ lưới ảnh
     def _build_luoi(self, cha):
-        """Lưới ảnh của cả buổi (luoi_anh.LuoiAnh) — chế độ xem MẶC ĐỊNH."""
+        """Lưới ảnh của cả buổi (luoi_anh.LuoiAnh) — chế độ xem MẶC ĐỊNH.
+
+        9/10 (user gửi mẫu giao diện): thanh trên lưới = lọc sao + cỡ ô + Preset
+        Lightroom (xem cả lưới theo preset); BẤM một ô -> ảnh lớn (so sánh Trước /
+        Sau, phóng, ←/→), BẤM ĐÚP ảnh lớn -> về lưới."""
+        import khung_anh
         import luoi_anh
-        self.luoi = luoi_anh.LuoiAnh(cha, khi_chon=self._chon_tu_luoi,
+        import preset_ui
+        import thanh_luoi
+        m = gd.MAU
+        cha.rowconfigure(0, weight=0)
+        cha.rowconfigure(1, weight=1)
+        self.thanh_luoi_ct = thanh_luoi.ThanhLuoi(
+            cha, khi_loc=lambda _l: self._cap_nhat_luoi(giu_cuon=True),
+            khi_co=lambda px: self.luoi.dat_co_o(px), nen=m["toi"])
+        self.thanh_luoi_ct.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.nut_preset_ct = preset_ui.NutPresetLR(self.thanh_luoi_ct, self.dp_preset(),
+                                                   nen=m["toi"])
+        self.nut_preset_ct.pack(side="left", padx=(14, 0))
+        o = tk.Frame(cha, background=m["toi"])
+        o.grid(row=1, column=0, sticky="nsew")
+        o.rowconfigure(0, weight=1)
+        o.columnconfigure(0, weight=1)
+        self.luoi = luoi_anh.LuoiAnh(o, khi_chon=self._chon_tu_luoi,
                                      khi_mo=self._mo_tu_luoi,
-                                     khi_trong=self.pick_folder)
+                                     khi_trong=self.pick_folder,
+                                     khi_bam=self._mo_mot_ct)
         self.luoi.grid(row=0, column=0, sticky="nsew")
+        self.luoi.dat_co_o(self.thanh_luoi_ct.co_o())
         self._dang_dong_bo_chon = False
+        self.dp_preset().dang_ky_luoi(self.luoi)
+        self.dp_preset().dang_ky_nghe(self._preset_moi_ct)
+
+        # ---- một ảnh lớn
+        self._anh_ct = None
+        self._che_do_ct = "luoi"
+        self.o_mot_ct = tk.Frame(o, background=m["toi"])
+        self.o_mot_ct.grid(row=0, column=0, sticky="nsew")
+        self.o_mot_ct.grid_remove()
+        self.xem_ct = khung_anh.KhungAnh(self.o_mot_ct, khi_phim=self._buoc_ct,
+                                         khi_dup=self._ve_luoi_ct)
+        #  thanh dưới xếp TRƯỚC ảnh (pack side=bottom): ảnh giãn hết chỗ còn lại
+        #  mà không bao giờ đè mất thanh khi cửa sổ thấp
+        thanh = tk.Frame(self.o_mot_ct, background=m["toi"])
+        thanh.pack(side="bottom", fill="x", pady=(6, 0))
+        self.xem_ct.pack(fill="both", expand=True)
+        gd.NutTron(thanh, "Lưới", kieu="chu", nen=m["toi"], font=gd.CHU, icon="luoi",
+                   command=self._ve_luoi_ct).pack(side="left")
+        gd.NutTron(thanh, "", kieu="chu", nen=m["toi"], icon="chevron_trai",
+                   command=lambda: self._buoc_ct(-1)).pack(side="left", padx=(8, 0))
+        gd.NutTron(thanh, "", kieu="chu", nen=m["toi"], icon="chevron_phai",
+                   command=lambda: self._buoc_ct(1)).pack(side="left")
+        self.lbl_mot_ct = tk.Label(thanh, text="", background=m["toi"], foreground=m["mo"],
+                                   font=gd.CHU, anchor="w")
+        self.lbl_mot_ct.pack(side="left", padx=(8, 0), fill="x", expand=True)
+        self.v_so_ct = tk.StringVar(value=str(thanh_luoi.doc_kv("so_sanh_ct", "sau") or "sau"))
+        gd.PhanDoan(thanh, self.v_so_ct, [("sau", "Sau"), ("canh", "Trước | Sau"),
+                                          ("chia", "Chia đôi")],
+                    command=self._doi_so_ct, nen=m["toi"], deu=False).pack(side="right")
+        gd.NutTron(thanh, "Chi tiết", kieu="chu", nen=m["toi"], font=gd.CHU,
+                   command=self._chi_tiet_ct).pack(side="right", padx=(0, 10))
+        self.xem_ct.dat_che_do_so(self.v_so_ct.get())
+
+    # ------------------------------------------------------------ một ảnh lớn (9/10)
+    def _mo_mot_ct(self, path: str):
+        """Bấm một ô lưới -> ảnh lớn của tấm đó (bấm đúp ảnh lớn để về lưới)."""
+        self._che_do_ct = "mot"
+        self.luoi.grid_remove()
+        self.o_mot_ct.grid()
+        self._nap_mot_ct(path)
+        try:
+            self.xem_ct.canvas.focus_set()
+        except tk.TclError:
+            pass
+
+    def _ve_luoi_ct(self):
+        self._che_do_ct = "luoi"
+        self.o_mot_ct.grid_remove()
+        self.luoi.grid()
+        if self._anh_ct and self.luoi.dang_chon != self._anh_ct:
+            self.luoi.chon(self._anh_ct)
+        try:
+            self.luoi.canvas.focus_set()
+        except tk.TclError:
+            pass
+
+    def _nap_mot_ct(self, path: str, giu_khung: bool = False):
+        """Ảnh lớn: theo preset Lightroom đang chọn > ảnh duyệt > preview trong RAW.
+        "Trước" để so = preview trong RAW (màu máy ảnh)."""
+        import nguon_xem
+        self._anh_ct = path
+        src, nguon = nguon_xem.anh_xem(path)
+        truoc = None
+        if nguon in ("preset", "duyet"):
+            try:
+                truoc = nguon_xem.anh_nhung(path)
+            except Exception:                                # noqa: BLE001
+                truoc = None
+        if src is None:
+            self.xem_ct.dat_trong(f"Không đọc được ảnh\n{Path(path).name}")
+        else:
+            self.xem_ct.mo(src, truoc=truoc, tam=self.luoi._anh_pil.get(path),
+                           giu_khung=giu_khung)
+        p = self.dp_preset().p
+        mo_ta = {"preset": f"Preset Lightroom “{(p or {}).get('ten', '')}”",
+                 "duyet": "Ảnh duyệt Lightroom",
+                 "nhung": "Preview trong RAW (màu máy ảnh, chưa qua preset)",
+                 "anh": ""}.get(nguon, "")
+        if p and nguon != "preset" and nguon_xem.la_raw(path):
+            mo_ta += " · Lightroom chưa dựng tấm này theo preset"
+        try:
+            i = self.luoi._vi_tri.get(path)
+            vt = f"{i + 1}/{len(self.luoi.ds)}  ·  " if i is not None else ""
+        except Exception:                                    # noqa: BLE001
+            vt = ""
+        self.lbl_mot_ct.configure(text=f"{vt}{Path(path).name}" + (f"  ·  {mo_ta}" if mo_ta else ""))
+
+    def _buoc_ct(self, d: int):
+        """←/→ trên ảnh lớn: tấm trước / sau theo thứ tự lưới (đang lọc)."""
+        ds = self.luoi.ds
+        if not ds:
+            return
+        i = self.luoi._vi_tri.get(self._anh_ct, -1)
+        j = max(0, min(len(ds) - 1, i + d)) if i >= 0 else 0
+        p = ds[j]["path"]
+        if p == self._anh_ct and i >= 0:
+            return
+        self.luoi.chon(p, cuon_toi=False)
+        self._chon_tu_luoi(p)
+        self._nap_mot_ct(p)
+
+    def _doi_so_ct(self):
+        self.xem_ct.dat_che_do_so(self.v_so_ct.get())
+        import thanh_luoi
+        thanh_luoi.ghi_kv("so_sanh_ct", self.v_so_ct.get())
+
+    def _chi_tiet_ct(self):
+        if self._anh_ct:
+            self._mo_tu_luoi(self._anh_ct)
+
+    def _preset_moi_ct(self, moi):
+        """Lightroom vừa dựng xong ảnh theo preset (moi: tập đường dẫn, None = đổi
+        preset): ảnh lớn đang mở thì nạp lại đúng chỗ đang soi."""
+        if self._che_do_ct != "mot" or not self._anh_ct:
+            return
+        if moi is None or os.path.normcase(os.path.normpath(self._anh_ct)) in moi:
+            self._nap_mot_ct(self._anh_ct, giu_khung=True)
+
+    # ------------------------------------------------------------ preset Lightroom (9/10)
+    def dp_preset(self):
+        dp = getattr(self, "_dp_preset", None)
+        if dp is None:
+            import preset_ui
+            dp = self._dp_preset = preset_ui.DieuPhoiPreset(self)
+        return dp
+
+    def ds_cho_preset(self):
+        """(ảnh của buổi đang xem, ảnh ưu tiên) cho lượt Lightroom dựng theo preset:
+        đang ở Retouch chế độ ẢNH RAW thì theo thư mục Retouch; còn lại theo buổi
+        Cân tone. Ưu tiên: tấm đang mở to, rồi các ô đang nhìn."""
+        rt = getattr(self, "_retouch_win", None)
+        if getattr(self, "khau_dang", "") == "retouch" and rt is not None \
+                and rt._la_raw_mode():
+            ds = [str(p) for p, _x in (rt._ds_luoi or [])]
+            uu = [rt._anh_dang] if rt._anh_dang else []
+            lt = getattr(rt, "luoi_to", None)
+            if lt is not None and rt._che_do_anh == "luoi":
+                uu += lt.ds_dang_nhin()
+            else:
+                uu += rt.luoi.ds_dang_nhin()
+            return ds, [x for x in uu if x]
+        if self.items:
+            ds = [r["path"] for r in self.items]
+        else:
+            ds = [str(p) for p, _sc in (self.pairs or [])]
+        uu = []
+        if getattr(self, "_che_do_ct", "luoi") == "mot" and getattr(self, "_anh_ct", None):
+            uu.append(self._anh_ct)
+        luoi = getattr(self, "luoi", None)
+        if luoi is not None:
+            if luoi.dang_chon:
+                uu.append(luoi.dang_chon)
+            uu += luoi.ds_dang_nhin()
+        return ds, uu
+
+    def _sao_cua(self):
+        """Hàm path -> số sao: sao tool gắn khi lọc + sao trong bản xuất Lightroom."""
+        d = {}
+        for k, row in dict(getattr(self, "export", None) or {}).items():
+            try:
+                v = int(float(row.get("Rating") or 0))
+            except (TypeError, ValueError, AttributeError):
+                v = 0
+            if v > 0:
+                d[k] = v
+        for r in (self.items or []):
+            if r.get("rating"):
+                try:
+                    d[at.khoa_duong_dan(r["path"])] = int(r["rating"])
+                except (TypeError, ValueError):
+                    pass
+
+        def sao(p):
+            try:
+                return int(d.get(at.khoa_duong_dan(p)) or 0)
+            except Exception:                                # noqa: BLE001
+                return 0
+        return sao
 
     def _doi_xem(self):
         """[Lưới ảnh | Bảng số] — cùng một danh sách, hai cách nhìn."""
@@ -2337,9 +2550,12 @@ class App(ttk.Frame):
         catalog = self.source_value() == "catalog"
         xuat = getattr(self, "export", None) or {}
 
+        sao_cua = self._sao_cua()
+
         def o_cua(path, **kw):
             return {"path": str(path), "ten": Path(path).name, "dev": None,
-                    "canh": None, "loai": "", "sao1": False, "bo": "", **kw}
+                    "canh": None, "loai": "", "sao1": False, "bo": "",
+                    "sao": sao_cua(path), **kw}
 
         if self.items:
             ds = [o_cua(r["path"], dev=r.get("delta_ev"), canh=r.get("scene"),
@@ -2359,7 +2575,18 @@ class App(ttk.Frame):
             ds += thieu                 # bảng đang sắp thế nào thì giữ thế ấy
         else:
             ds = sorted(ds + thieu, key=lambda o: o["path"])
+        #  9/10: lọc theo sao (thanh trên lưới) — số đếm trên cả buổi
+        tl = getattr(self, "thanh_luoi_ct", None)
+        if tl is not None:
+            import thanh_luoi
+            tl.dat_so(*thanh_luoi.dem(ds))
+            ds = thanh_luoi.loc_ds(ds, tl.loc)
         luoi.dat_ds(ds, giu_cuon=giu_cuon)
+        #  9/10: đang xem theo preset Lightroom -> buổi mới / ảnh mới thì dựng tiếp
+        try:
+            self.dp_preset().doi_buoi()
+        except Exception:                                    # noqa: BLE001
+            traceback.print_exc()
         if not ds:
             if self.folder() is None:
                 luoi.dat_trong("Chưa chọn buổi chụp.\n"
@@ -2396,6 +2623,8 @@ class App(ttk.Frame):
                 self.luoi.chon(sel[0])
             finally:
                 self._dang_dong_bo_chon = False
+            if getattr(self, "_che_do_ct", "luoi") == "mot" and sel[0] != self._anh_ct:
+                self._nap_mot_ct(sel[0])
 
     def _mo_tu_luoi(self, path: str):
         """Bấm đúp một ô lưới -> mở bảng chi tiết của tấm đó (như bấm đúp bảng)."""
@@ -2924,9 +3153,16 @@ class App(ttk.Frame):
         import xuat_ui
         #  ảnh tool đã gắn sao khi lọc (trùng khung / nhắm mắt) trong lần phân tích này
         so_da_loc = sum(1 for r in (self.items or []) if r.get("rating"))
+        #  9/10: preset retouch đang chọn ở Retouch là mặc định ("" = Tuỳ chỉnh)
+        preset_md = None
+        if rt_win is not None and getattr(rt_win, "v_preset", None) is not None:
+            try:
+                preset_md = rt_win.v_preset.get()
+            except Exception:                                # noqa: BLE001
+                preset_md = None
         d = xuat_ui.XuatDialog(self, buoi=f.name, thu_muc_goi_y=goi_y, thong_so_lr=st,
                                luc_lr=luc, ds_preset=ds_preset, muc_dang=muc_dang,
-                               so_da_loc=so_da_loc)
+                               so_da_loc=so_da_loc, preset_md=preset_md)
         self.wait_window(d)
         if d.ket_qua:
             self.bat_dau_xuat(d.ket_qua)
@@ -2973,16 +3209,26 @@ class App(ttk.Frame):
         except Exception:                                    # noqa: BLE001
             pass
         if rt_win is not None:
+            #[[ 9/10 (user): Tuy chinh -> muc nguoi dung keo (chung + rieng tung
+            #   anh RAW); chon preset -> muc cua preset. ]]
             try:
-                muc = None if kq.get("preset") else dict(rt_win.muc_day_du())
+                goi = rt_win.goi_muc_cho_xuat(kq.get("preset") or "")
             except Exception:                                # noqa: BLE001
-                muc = None
+                traceback.print_exc()
+                goi = {}
+            muc = None if kq.get("preset") else (goi.get("muc_chung") or None)
+            if muc is None and not kq.get("preset"):
+                try:
+                    muc = dict(rt_win.muc_day_du())
+                except Exception:                            # noqa: BLE001
+                    muc = None
             try:
                 rt_win.bat_dau_theo_xuat(
                     vao=dest, ra=kq.get("thu_muc_retouch") or "",
                     ghi_de=kq.get("retouch_ra") == "ghi_de", muc=muc,
                     song_song=bool(kq.get("song_song")), preset=kq.get("preset") or "",
-                    ly_do_tuan_tu=kq.get("ly_do_tuan_tu") or [])
+                    ly_do_tuan_tu=kq.get("ly_do_tuan_tu") or [],
+                    rieng_ten=goi.get("rieng_ten") or {})
             except Exception:                                # noqa: BLE001
                 traceback.print_exc()
         #  ghim SAU bat_dau_theo_xuat: nó dừng lượt theo dõi cũ = trả CPU về như cũ

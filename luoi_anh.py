@@ -46,6 +46,18 @@ TRAN_KHO = 30000        # quá số tấm này thì dọn bớt kho ảnh nhỏ
 SO_LUONG = 4            # luồng đọc ảnh
 
 
+#[[ NGUON (9/10 — xem truoc preset Lightroom): ham path -> file anh de doc thay
+#   cho chinh file do (JPEG Lightroom render theo preset dang chon), None = doc
+#   nhu cu. CHUNG cho moi luoi (Can tone + Retouch): chon preset mot cho la ca
+#   hai luoi doi. App dat qua dat_nguon(). ]]
+NGUON = None
+
+
+def dat_nguon(ham) -> None:
+    global NGUON
+    NGUON = ham
+
+
 # ── kho ảnh nhỏ trên đĩa ─────────────────────────────────────────────────────
 def thu_muc_kho() -> Path:
     try:
@@ -179,7 +191,11 @@ class BoDoc:
                     continue
                 self.dang_doc += 1
             try:
-                im = doc_anh_nho(p, self._kho)
+                src = NGUON(p) if NGUON is not None else None
+            except Exception:                                # noqa: BLE001
+                src = None
+            try:
+                im = doc_anh_nho(str(src) if src else p, self._kho)
             except Exception:                                # noqa: BLE001
                 im = None
             with self._khoa:
@@ -222,10 +238,13 @@ class LuoiAnh(tk.Frame):
 
     def __init__(self, cha, khi_chon=None, khi_mo=None, nen: str | None = None,
                  khi_trong=None, dai: bool = False, chon_nhieu: bool = False,
-                 khi_doi_chon=None):
+                 khi_doi_chon=None, khi_bam=None):
         self._nen = nen or gd.MAU["toi"]
         super().__init__(cha, background=self._nen)
         self._khi_chon = khi_chon
+        #  9/10: khi_bam(path) — CHỈ bấm chuột thường lên một ô (không gọi khi đi
+        #  bằng phím mũi tên / Ctrl / Shift): "bấm vào một ảnh sẽ mở to ảnh đó"
+        self._khi_bam = khi_bam
         self._khi_mo = khi_mo
         self._chon_nhieu = bool(chon_nhieu)
         self._khi_doi_chon = khi_doi_chon
@@ -242,6 +261,9 @@ class LuoiAnh(tk.Frame):
         #   (rong hon thi da du cho them mot cot) = ~330 px, van duoi CANH_KHO
         #   nen anh nho khong phai phong to. ]]
         self.co_o = round(lh * 10.5)
+        #  9/10: cỡ ô chỉnh được (thanh trượt trên lưới) — giới hạn theo cỡ chữ
+        self.co_o_min = round(lh * 5.5)
+        self.co_o_max = round(lh * 30)
         self._ow = self.co_o
         self._khe = max(8, round(lh * 0.6))
         self._cao_chu = lh + 4
@@ -368,6 +390,47 @@ class LuoiAnh(tk.Frame):
         self._sap_xep()
         if self.da_chon != cu_chon:
             self._bao_doi_chon()
+
+    def dat_co_o(self, px: int) -> None:
+        """Đổi cỡ ô tối thiểu (lưới tự chia đều bề ngang theo cỡ này)."""
+        px = int(max(self.co_o_min, min(self.co_o_max, int(px))))
+        if px == self.co_o:
+            return
+        self.co_o = px
+        self._anh_tk.clear()               # PhotoImage cỡ cũ không dùng lại được
+        self._sap_xep()
+        if self.dang_chon in self._vi_tri:
+            self._cuon_toi(self._vi_tri[self.dang_chon])
+
+    def ds_dang_nhin(self) -> list:
+        """Các tấm đang nằm trong khung nhìn (để việc nền làm chúng trước)."""
+        if not self.ds:
+            return []
+        try:
+            if self.ngang:
+                i0, i1 = self._o_nhin_ngang()
+            else:
+                h0, h1 = self._hang_nhin()
+                i0, i1 = h0 * self._cot, min(len(self.ds), (h1 + 1) * self._cot)
+        except tk.TclError:
+            return []
+        return [o["path"] for o in self.ds[max(0, i0):max(0, i1)]]
+
+    def lam_moi_anh(self, ds_path=None) -> None:
+        """Đọc lại ảnh nhỏ (nguồn vừa đổi — ảnh theo preset vừa render xong,
+        hoặc bỏ preset). ds_path None = mọi tấm."""
+        if ds_path is None:
+            self._anh_pil.clear()
+            self._anh_tk.clear()
+            self._hong.clear()
+        else:
+            s = {str(p) for p in ds_path}
+            for p in s:
+                self._anh_pil.pop(p, None)
+                self._hong.discard(p)
+            for k in [k for k in self._anh_tk if k[0] in s]:
+                self._anh_tk.pop(k, None)
+        self._ve()
 
     def dat_trong(self, chu: str, co_nut: bool = True) -> None:
         """Chữ hiện giữa lưới khi chưa có ảnh nào. Dòng ĐẦU là tiêu đề (đậm,
@@ -607,9 +670,13 @@ class LuoiAnh(tk.Frame):
                 chu = m["mo"] if loai == "zero" else "#f2f2f2"
                 txt = "lỗi" if loai == "err" else f"{dev:+.2f}"
                 self._nhan(c, x + ow - 4, y + ah - 4, txt, "se", nen, chu, f_so)
-            if o.get("sao1"):
-                self._nhan(c, x + 4, y + ah - 4, "1★", "sw", "#5a1f1b", "#f3b7b2",
-                           f_so)
+            #  số sao (Lightroom / tool gắn khi lọc): 1 sao nhãn đỏ (ảnh loại), 2–5 vàng
+            sao = int(o.get("sao") or (1 if o.get("sao1") else 0) or 0)
+            if sao >= 1:
+                if sao == 1:
+                    self._nhan(c, x + 4, y + ah - 4, "1★", "sw", "#5a1f1b", "#f3b7b2", f_so)
+                else:
+                    self._nhan(c, x + 4, y + ah - 4, f"{sao}★", "sw", "#3d3412", "#ffde17", f_so)
             if bo:
                 self._nhan(c, x + ow - 4, y + 4, bo, "ne", "#111214", m["mo"],
                            f_nho)
@@ -816,6 +883,8 @@ class LuoiAnh(tk.Frame):
             self._bao_doi_chon()
         if self._khi_chon is not None:
             self._khi_chon(self.dang_chon)
+        if self._khi_bam is not None:
+            self._khi_bam(p)
 
     def _bam_dup(self, e):
         i = self._o_tai(e.x, e.y)

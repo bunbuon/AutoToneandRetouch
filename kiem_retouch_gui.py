@@ -442,8 +442,15 @@ def main() -> int:
         x0, y0, ww, hh = w.xem.vung_ve
         return tuple(w.xem._photo._PhotoImage__photo.get(ww // 2, hh // 2))
 
+    #  9/10 (user gửi mẫu giao diện): mở mô-đun là LƯỚI ẢNH, chọn sẵn tấm đầu;
+    #  bấm một ô mới mở to (bấm đúp ảnh lớn -> về lưới)
+    chay(3)
+    ktra("mở mô-đun là LƯỚI ẢNH, chọn sẵn tấm đầu (bảng thanh kéo theo tấm đó)",
+         w._che_do_anh == "luoi" and w.o_luoi_to.winfo_manager() == "grid"
+         and w._anh_dang == str(vao / "A0.png"), f"{w._che_do_anh} · {Path(w._anh_dang or '—').name}")
+    w._mo_mot(str(vao / "A0.png"))
     cho_anh()
-    ktra("mở mô-đun là có ẢNH LỚN ngay (tấm đầu), không phải khung trống",
+    ktra("bấm một ô lưới -> ẢNH LỚN tấm đó, không phải khung trống",
          w._anh_dang == str(vao / "A0.png") and w.xem.kich_thuoc() == (300, 200)
          and w.luoi.dang_chon == str(vao / "A0.png"), Path(w._anh_dang or "—").name)
     ktra("ảnh lớn ở trên, dải ảnh MỘT hàng ở dưới",
@@ -1467,6 +1474,67 @@ def main() -> int:
     ktra("tải lỗi + chọn “Dùng tạm bằng CPU”: Retouch mở bình thường",
          not app.khoa_rt.winfo_ismapped() and app.khung_ngoai["retouch"].winfo_ismapped())
     app._gpu_tt, app._gpu_bo_qua = "", False
+
+    # ---- 9/10: nguồn ẢNH RAW của buổi (kéo thanh xem ngay trên ảnh duyệt; Xuất mới áp)
+    raw_dir = Path(tmp) / "buoi_raw"
+    (raw_dir / "_duyet").mkdir(parents=True)
+    for i in range(3):
+        (raw_dir / f"R{i}.ARW").write_bytes(b"II*\x00gia")
+        Image.new("RGB", (300, 200), (90, 30 * i, 160)).save(raw_dir / "_duyet" / f"R{i}.jpg")
+    app.v_folder.set(str(raw_dir))
+    w.v_nguon.set("raw")
+    w._doi_nguon()
+    het = time.time() + 6
+    while time.time() < het and not any(str(x).endswith(".ARW") for x, _y in (w._ds_luoi or [])):
+        chay(2)
+        time.sleep(0.05)
+    chay(4)
+    ktra("RAW: thư mục vào = buổi Cân tone, lưới liệt kê file RAW",
+         w._vao_hien() == str(raw_dir)
+         and sorted(Path(p).name for p, _x in w._ds_luoi) == ["R0.ARW", "R1.ARW", "R2.ARW"],
+         str([Path(p).name for p, _x in w._ds_luoi]))
+    ktra("RAW: ẩn Ra / Ghi đè / Tự retouch; nút chạy là “Xuất & retouch…”",
+         not w.o_ghide.winfo_manager() and not w.o_tu_moi.winfo_manager()
+         and "Xuất & retouch" in str(w.btn_run.cget("text")), str(w.btn_run.cget("text")))
+    goi_xuat = []
+    app.do_xuat_hop = lambda: goi_xuat.append(1)
+    w.start()
+    ktra("RAW: bấm chạy -> mở hộp Xuất (không retouch thẳng RAW)", goi_xuat == [1])
+    r1 = str(raw_dir / "R1.ARW")
+    w._mo_mot(r1)
+    cho_anh()
+    ktra("RAW: ảnh lớn = ảnh duyệt Lightroom của tấm đó",
+         w.xem.kich_thuoc() == (300, 200) and "duyệt" in chip(), chip())
+    jpg1 = str(raw_dir / "_duyet" / "R1.jpg")
+    ktra("RAW: engine nhận JPEG ảnh duyệt, tin trả về đổi lại tên RAW",
+         w._fp_that(r1) == jpg1 and w._dich_tin({"fp": jpg1, "loai": "x"})["fp"] == r1)
+    w._muc_anh[w._khoa(r1)] = {"vet": 40}
+    goi = w.goi_muc_cho_xuat("")
+    ktra("Tuỳ chỉnh: mức riêng ảnh RAW mang sang Xuất theo tên",
+         (goi["rieng_ten"].get("r1") or {}).get("vet") == 40, str(goi["rieng_ten"]))
+    ktra("chọn preset: không mang mức riêng", w.goi_muc_cho_xuat("abc")["rieng_ten"] == {})
+    # lượt xuất: ảnh xuất cùng tên RAW theo mức riêng, còn lại mức chung — gom theo mức
+    xuat_dir = Path(tmp) / "xuat_raw"
+    xuat_dir.mkdir()
+    for i in range(3):
+        Image.new("RGB", (300, 200), (10, 10, 10)).save(xuat_dir / f"R{i}.jpg")
+    bat = []
+    w._chay_viec = lambda **kw: bat.append(kw)
+    w.bat_dau_theo_xuat(vao=str(xuat_dir), ra="", ghi_de=True, muc={"vet": 10},
+                        song_song=True, rieng_ten=goi["rieng_ten"])
+    ktra("bắt đầu Xuất: Retouch chuyển nguồn “Ảnh đã xuất”", w.v_nguon.get() == "xuat")
+    w._chay_anh_moi([str(xuat_dir / "R0.jpg"), str(xuat_dir / "R1.jpg"), str(xuat_dir / "R2.jpg")])
+    viec = bat[-1]["viec"] if bat else []
+    nhom = sorted((m.get("vet"), sorted(Path(a).name for a in ds)) for m, ds, _l in viec)
+    ktra("ảnh xuất R1 theo mức riêng (40), R0/R2 theo mức chung (10)",
+         nhom == [(10, ["R0.jpg", "R2.jpg"]), (40, ["R1.jpg"])], str(nhom))
+    ktra("mức riêng ghi vào bảng của thư mục xuất",
+         (w._muc_anh.get(w._khoa(str(xuat_dir / "R1.jpg"))) or {}).get("vet") == 40)
+    try:
+        w._dung_theo_doi("kiểm xong")
+    except Exception:                                        # noqa: BLE001
+        pass
+    del w._chay_viec
 
     root.destroy()
     print()

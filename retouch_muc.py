@@ -271,10 +271,21 @@ class MucMixin:
         if not self._dang_nap_muc:
             self._nguoi_doi_muc()
 
-    def _nguoi_doi_muc(self):
+    def _nguoi_doi_muc(self, tu_preset: bool = False):
         """Người dùng vừa đổi mức trên bảng: (1) ghi thành mức của ẢNH ĐANG
         XEM — chưa có ảnh nào thì là mức chung; (2) ảnh lớn tính lại theo mức
-        đó, chưa bật xem trước thì TỰ BẬT (không còn nút "Xem trước")."""
+        đó, chưa bật xem trước thì TỰ BẬT (không còn nút "Xem trước").
+
+        9/10 (user): đang chọn preset mà KÉO TAY -> về "Tuỳ chỉnh" — bộ mức
+        người dùng vừa kéo là bộ được dùng (Xuất cũng theo bộ này)."""
+        if not tu_preset and getattr(self, "v_preset", None) is not None \
+                and self.v_preset.get():
+            self.v_preset.set("")
+            try:
+                self.rt.ghi_preset_thu_muc(self._vao_hien(), "")
+            except OSError:
+                pass
+            self._cap_nhat_preset_ui()
         self._ghi_muc_dang()
         #[[ Nguoi dung da KEO: xem truoc tu day la cua nguoi dung (giu bat khi
         #   sang tam khac), khong con la "tu bat theo tam" nua. ]]
@@ -569,7 +580,7 @@ class MucMixin:
         """Menu chọn preset dưới nút (như các hộp chọn khác của app)."""
         menu = tk.Menu(self, tearoff=0)
         dang = self.v_preset.get()
-        menu.add_command(label=("● " if not dang else "   ") + "(không preset)",
+        menu.add_command(label=("● " if not dang else "   ") + "Tuỳ chỉnh (mức đang kéo)",
                          command=lambda: self._chon_preset(""))
         ds = self._ds_preset()
         if ds:
@@ -596,7 +607,7 @@ class MucMixin:
             return
         ten = self.v_preset.get()
         if not ten:
-            btn.configure(text="(không preset)")
+            btn.configure(text="Tuỳ chỉnh")
             lbl.configure(text="")
             return
         try:
@@ -610,7 +621,11 @@ class MucMixin:
                             "hoặc chọn lại preset để về bộ gốc." if khac else ""))
 
     def _chon_preset(self, ten: str):
-        """Người dùng chọn ở menu: áp preset ("" = bỏ preset, giữ mức)."""
+        """Người dùng chọn ở menu. "" = Tuỳ chỉnh (giữ mức đang kéo).
+
+        9/10 (user: "chọn Preset thì sử dụng thông số của Preset"): preset là
+        mức CHUNG của cả thư mục; ảnh đang có mức riêng thì hỏi bỏ đi (bỏ =
+        mọi ảnh theo preset; giữ = ảnh đó vẫn theo mức riêng)."""
         if not ten:
             self.v_preset.set("")
             try:
@@ -619,7 +634,29 @@ class MucMixin:
                 pass
             self._cap_nhat_preset_ui()
             return
-        self.ap_preset(ten)
+        n_rieng = len(self._muc_anh)
+        bo_rieng = False
+        if n_rieng:
+            tl = messagebox.askyesnocancel(
+                "Áp preset cho cả thư mục",
+                f"Preset “{ten}” sẽ là mức của MỌI ảnh trong thư mục.\n\n"
+                f"{n_rieng} ảnh đang có mức riêng (kéo tay từng ảnh). Bỏ các mức "
+                "riêng đó để mọi ảnh theo preset?\n\n"
+                "Có = bỏ, mọi ảnh theo preset · Không = giữ mức riêng của các ảnh đó",
+                parent=self)
+            if tl is None:
+                return
+            bo_rieng = bool(tl)
+        if bo_rieng:
+            for k in list(self._muc_anh):
+                self._muc_anh.pop(k, None)
+        if self.ap_preset(ten, ca_thu_muc=True) and bo_rieng:
+            self._luu_muc()
+            self._cap_nhat_dau_rieng()
+            self._append(f"… bỏ mức riêng của {n_rieng} ảnh — mọi ảnh theo preset “{ten}”")
+            if self._anh_dang:
+                self._nap_muc_vao_bang(self._muc_hieu_luc(self._anh_dang))
+                self._tu_xem_neu_co_muc(self._anh_dang)
 
     def ap_preset(self, ten: str, ca_thu_muc: bool = False) -> bool:
         """Áp preset `ten`: đặt bảng + ghi như người dùng vừa kéo. ca_thu_muc:
@@ -653,7 +690,7 @@ class MucMixin:
         self._nap_muc_vao_bang(muc)
         self._append(f"… áp preset “{ten}” cho {Path(self._anh_dang).name}: "
                      + self._mo_ta_muc(muc))
-        self._nguoi_doi_muc()
+        self._nguoi_doi_muc(tu_preset=True)
         return True
 
     def _luu_preset(self):

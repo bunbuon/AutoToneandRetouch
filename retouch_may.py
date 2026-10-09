@@ -47,6 +47,36 @@ class MayMixin:
     #
     #   Dang chay ca me thi KHONG bat: hai tien trinh cung nap mo hinh len mot
     #   card do hoa la duong ngan nhat toi "OOM on device 0". ]]
+    # ------------------------------------------------------------ nguồn RAW (9/10)
+    #[[ Che do "Anh RAW cua buoi": anh logic la file RAW — engine (cv2) va khung
+    #   anh (PIL) khong doc RAW, nen MOI cho goi engine / doc dia deu qua
+    #   _fp_that(): RAW -> JPEG de nhin (anh preset Lightroom dang chon > anh
+    #   duyet > preview nhung, xem nguon_xem.anh_xem). Tin engine tra ve mang
+    #   duong dan JPEG -> _dich_tin() doi nguoc ve RAW, phan con lai cua may xem
+    #   truoc khong phai biet gi. ]]
+    def _fp_that(self, path):
+        if not path:
+            return path
+        try:
+            import nguon_xem
+            if not nguon_xem.la_raw(path):
+                return path
+            src, _ng = nguon_xem.anh_xem(path)
+        except Exception:                                    # noqa: BLE001
+            return path
+        if src is None:
+            return path
+        src = str(src)
+        self._fp_map[src] = str(path)
+        return src
+
+    def _dich_tin(self, d: dict) -> dict:
+        fp = d.get("fp")
+        if fp and fp in self._fp_map:
+            d = dict(d)
+            d["fp"] = self._fp_map[fp]
+        return d
+
     def _mo_xem_truoc(self, anh: str | None = None, tu_dong: bool = False):
         """Bật xem trước: ẢNH LỚN tính lại theo mức của ảnh đang xem.
 
@@ -126,7 +156,7 @@ class MayMixin:
     def _khoa_cache(self, fp, muc: dict):
         try:
             import cache_xem
-            return cache_xem.khoa(fp, muc, self._ban_engine())
+            return cache_xem.khoa(self._fp_that(fp), muc, self._ban_engine())
         except Exception:                                    # noqa: BLE001
             return None
 
@@ -153,7 +183,7 @@ class MayMixin:
         giữ chuột so bản gốc với bản xem trước lấy từ cache."""
         try:
             from PIL import Image
-            with Image.open(path) as im:
+            with Image.open(self._fp_that(path)) as im:
                 im.draft("RGB", (2800, 2800))
                 im = im.convert("RGB")
                 im.thumbnail((1400, 1400), Image.BILINEAR)
@@ -321,10 +351,13 @@ class MayMixin:
         m = self._may_xem
         if m is None or not self._xem_san_sang or self._xem_mo_dang is not None:
             return
-        if path == self._xem_fp and self._xem_goc_im is not None:
+        src = self._fp_that(path)
+        if path == self._xem_fp and self._xem_goc_im is not None \
+                and src == getattr(self, "_xem_src", src):
             return
-        if m.gui(viec="mo_anh", fp=path):
+        if m.gui(viec="mo_anh", fp=src):
             self._xem_mo_dang = path
+            self._xem_src = src            # 9/10: nguồn đổi (preset LR mới về) -> mở lại
 
     def _xem_gui_mo(self, path: str, hien_dia: bool = False):
         """Đang xem trước mà tấm đổi (hoặc vừa bật): mở tấm đó ở tiến trình
@@ -414,7 +447,7 @@ class MayMixin:
             #  không giữ khoá của các yêu cầu đã trôi (lướt nhanh hàng chục tấm)
             for ma_cu in [x for x in self._xem_khoa_cua if x < self._xem_ma - 20]:
                 self._xem_khoa_cua.pop(ma_cu, None)
-        m.gui(viec="tinh", ma=self._xem_ma, fp=self._xem_fp, muc=muc)
+        m.gui(viec="tinh", ma=self._xem_ma, fp=self._fp_that(self._xem_fp), muc=muc)
         self._xem_t0 = time.monotonic()
         self._dat_chip_xem("đang tính…")
         if getattr(self, "_hen_giay_xem", None) is not None:
@@ -469,6 +502,7 @@ class MayMixin:
             return
         import xem_truoc
         for d in m.lay():
+            d = self._dich_tin(d)
             t = d.get("loai")
             if t == "san_sang":
                 self._xem_san_sang = True
@@ -659,6 +693,13 @@ class MayMixin:
 
     def start(self):
         if self._bi_khoa():
+            return
+        #[[ 9/10: che do ANH RAW — khong retouch thang RAW: nut chay la "Xuat &
+        #   retouch…" (Lightroom xuat roi retouch dung muc dang keo / preset). ]]
+        if getattr(self, "_la_raw_mode", None) is not None and self._la_raw_mode():
+            ham = getattr(self.app, "do_xuat_hop", None)
+            if ham is not None:
+                ham()
             return
         if not self._kiem():
             messagebox.showinfo("Chưa dùng được tool retouch",
@@ -1338,6 +1379,9 @@ class MayMixin:
 
         def mo():
             try:
+                if hasattr(self, "_mo_mot"):
+                    self._mo_mot(p)          # 9/10: mặc định là lưới -> mở to tấm đầu
+                    return
                 luoi = getattr(self, "luoi", None)
                 if luoi is not None and luoi.dang_chon != p:
                     luoi.chon(p)
@@ -1380,9 +1424,31 @@ class MayMixin:
         ten = ", ".join(Path(p).name for p in ds[:3]) + (" …" if len(ds) > 3 else "")
         #[[ 9/10: luot Xuat voi muc 0 het (chua keo gi / preset rong) — khong
         #   retouch, chi chep nguyen ban sang thu muc ra (ghi de: giu nguyen). ]]
-        la0 = bool(td.get("xuat")) and self.rt.muc_trong(td["muc"])
+        #[[ 9/10: muc HIEU LUC tung anh — Tuy chinh: anh co muc rieng (keo o
+        #   che do RAW, ghep theo ten; hoac da keo rieng ngay trong thu muc xuat)
+        #   theo muc rieng; con lai muc chung / preset. Gom anh cung muc thanh
+        #   mot lo. Muc rieng mang tu RAW duoc ghi vao bang cua thu muc xuat. ]]
+        rieng_ten = td.get("rieng_ten") or {}
+        ghi_rieng = False
+
+        def muc_cua(p):
+            nonlocal ghi_rieng
+            m = rieng_ten.get(Path(p).stem.lower())
+            if m is not None:
+                k = self._khoa(p)
+                if self._muc_anh.get(k) != m:
+                    self._muc_anh[k] = dict(m)
+                    ghi_rieng = True
+                return dict(m)
+            if td.get("xuat") and not td.get("preset") and self._khoa(p) in self._muc_anh:
+                return self._muc_hieu_luc(p)
+            return dict(td["muc"])
+        viec = [(dict(m), list(a), bool(td.get("xuat")) and self.rt.muc_trong(m))
+                for m, a in self.rt.nhom_theo_muc(list(ds), muc_cua)]
+        if ghi_rieng:
+            self._hen_luu_muc()
         self._chay_viec(vao=vao, ra=ra, ghi_de=td["ghi_de"], lam_lai=True,
-                        de_quy=td["de_quy"], viec=[(dict(td["muc"]), list(ds), la0)],
+                        de_quy=td["de_quy"], viec=viec,
                         tam_goc=tam_goc, muc_thang=dict(td["muc"]), xong_dau=0,
                         tieu_de=(f"retouch {len(ds)} ảnh Lightroom vừa xuất ({ten})"
                                  if td.get("xuat") else
@@ -1399,7 +1465,11 @@ class MayMixin:
     #   ngay tung dot; tuan tu: doi Lightroom bao xong. App bao tien do Lightroom
     #   qua cap_nhat_xuat(); ket thuc khi Lightroom xong VA khong con anh cho. ]]
     def bat_dau_theo_xuat(self, *, vao: str, ra: str, ghi_de: bool, muc: dict | None,
-                          song_song: bool, preset: str = "", ly_do_tuan_tu=()) -> bool:
+                          song_song: bool, preset: str = "", ly_do_tuan_tu=(),
+                          rieng_ten: dict | None = None) -> bool:
+        """rieng_ten (9/10): {tên RAW không đuôi (thường): bộ mức} — ảnh người dùng
+        kéo riêng ở chế độ ẢNH RAW; file xuất cùng tên retouch theo bộ đó. Có
+        preset thì bỏ qua (user: "chọn Preset thì dùng thông số của Preset")."""
         if self.worker is not None and self.worker.is_alive():
             messagebox.showinfo("Đang chạy retouch",
                                 "Đợi lượt retouch đang chạy xong (hoặc bấm Dừng) rồi "
@@ -1413,8 +1483,17 @@ class MayMixin:
         except OSError as ex:
             messagebox.showerror("Không tạo được thư mục xuất", f"{vao}\n{ex}", parent=self)
             return False
+        #  9/10: lượt Xuất retouch trên ảnh Lightroom vừa xuất -> nguồn "Ảnh đã xuất"
+        if getattr(self, "v_nguon", None) is not None and self.v_nguon.get() != "xuat":
+            self.v_nguon.set("xuat")
+            try:
+                self.rt.ghi_cau_hinh({"nguon": "xuat"})
+            except OSError:
+                pass
         self.v_ghide.set(bool(ghi_de))
         self.v_vao.set(vao)
+        if hasattr(self, "_ap_nguon_ui"):
+            self._ap_nguon_ui()
         if not ghi_de:
             self.v_ra.set(os.path.normpath(str(ra).strip().strip('"')) if ra
                           else os.path.normpath(vao.rstrip("\\/") + "_retouch"))
@@ -1428,10 +1507,13 @@ class MayMixin:
             self._luu_muc()
             self._nap_muc_vao_bang(self._muc_chung_day_du())
         chung = self._loc_muc({k: v for k, v in self._muc_chung_day_du().items()})
+        rieng_ten = {} if preset else {str(k).lower(): self._loc_muc(dict(v))
+                                       for k, v in dict(rieng_ten or {}).items() if v}
         self._theo_doi = {"vao": vao, "ra": self.v_ra.get().strip(), "ghi_de": bool(ghi_de),
                           "de_quy": False, "muc": chung, "so": 0, "cho": {}, "biet": set(),
                           "xuat": True, "tu_luc": time.time() - 2.0, "ban_do": set(),
-                          "xong_rt": 0, "loi_rt": 0}
+                          "xong_rt": 0, "loi_rt": 0, "preset": preset or "",
+                          "rieng_ten": rieng_ten}
         self._xuat = {"song_song": bool(song_song), "t0": time.time(), "tong": 0,
                       "xong_lr": 0, "loi_lr": 0, "trang_thai": "cho", "thu_muc": vao,
                       "thong_bao": "", "tam_ngung": "", "ly_do": list(ly_do_tuan_tu or [])}
@@ -1445,7 +1527,8 @@ class MayMixin:
         self._append(f"\n=== {datetime.now():%H:%M:%S}  XUẤT TỪ LIGHTROOM → {vao}"
                      + (" · retouch SONG SONG" if song_song else " · retouch SAU khi xuất xong")
                      + (f" (máy không đủ sức: {'; '.join(ly_do_tuan_tu)})" if ly_do_tuan_tu else "")
-                     + (f" · preset “{preset}”" if preset else "")
+                     + (f" · preset “{preset}”" if preset else " · Tuỳ chỉnh")
+                     + (f" · {len(rieng_ten)} ảnh mức riêng" if rieng_ten else "")
                      + f" · mức: {self._mo_ta_muc(chung) if not self.rt.muc_trong(chung) else '0 hết → chỉ chép'}"
                      + (" · ghi đè lên ảnh xuất" if ghi_de else f" · ra {self.v_ra.get()}") + " ===")
         self._hien_tien_do_xuat()

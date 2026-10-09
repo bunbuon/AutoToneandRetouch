@@ -336,7 +336,7 @@ class XuatDialog(tk.Toplevel):
     def __init__(self, cha, buoi: str = "", thu_muc_goi_y: str = "",
                  thong_so_lr: dict | None = None, luc_lr=None,
                  ds_preset: list | None = None, muc_dang: dict | None = None,
-                 so_da_loc: int = 0):
+                 so_da_loc: int = 0, preset_md: str | None = None):
         super().__init__(cha)
         self.title("Xuất ảnh từ Lightroom")
         self.transient(cha)
@@ -362,7 +362,9 @@ class XuatDialog(tk.Toplevel):
         self.v_retouch_ra = tk.StringVar(value=cd["retouch_ra"])
         self.v_cache_gb = tk.StringVar(value=f"{cd['cache_mb'] / 1024.0:.1f}".rstrip("0").rstrip("."))
         self.v_tu_retouch = tk.BooleanVar(value=bool(cd["tu_retouch"]))
-        self.v_preset = tk.StringVar(value=cd.get("preset") or "")
+        #  9/10: mặc định theo preset đang chọn ở Retouch ("" = Tuỳ chỉnh)
+        self.v_preset = tk.StringVar(value=(preset_md if preset_md is not None
+                                            else cd.get("preset")) or "")
         self.v_ep = tk.BooleanVar(value=bool(cd["ep_song_song"]))
         self._nhan_e = nhan_e()
         at_md = cd.get("an_toan_cpu")
@@ -469,7 +471,8 @@ class XuatDialog(tk.Toplevel):
         o6.pack(fill="x", pady=(6, 0))
         ttk.Label(o6, text="Preset retouch").pack(side="left")
         self.cb_preset = ttk.Combobox(o6, textvariable=self.v_preset, state="readonly", width=34,
-                                      values=["(mức đang đặt trong Retouch)"] + self._ds_preset)
+                                      values=["Tuỳ chỉnh (mức đang kéo trong Retouch)"]
+                                      + self._ds_preset)
         if not self.v_preset.get() or self.v_preset.get() not in self._ds_preset:
             self.cb_preset.current(0)
         self.cb_preset.pack(side="left", padx=(8, 0))

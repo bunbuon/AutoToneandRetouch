@@ -210,6 +210,49 @@ def chay(nhanh: bool = False) -> Bao:
                 f"thật: {mod / 'AutoTone.lrplugin' if mod else '?'}")
     b.thu("Plugin tự cài vào Lightroom (Modules)", _plugin_modules)
 
+    #[[ 9/10: xem truoc preset Lightroom cho ca luoi — plugin co XemPresetCore va
+    #   Init goi no; phia app doc duoc danh sach preset (ban plugin / quet .xmp),
+    #   ghi duoc yeu cau vao thu muc TAM (khong dung jobs that), nguon anh doi
+    #   sang anh Lightroom render khi da co. ]]
+    def _xem_preset():
+        import tempfile
+        nguon = dd.goc_tai_nguyen() / "AutoTone.lrplugin"
+        if not (nguon / "XemPresetCore.lua").is_file():
+            raise AssertionError("plugin trong gói thiếu XemPresetCore.lua")
+        init = (nguon / "Init.lua").read_text(encoding="utf-8", errors="ignore")
+        if "XemPresetCore" not in init or "khoiPhuc" not in init:
+            raise AssertionError("Init.lua chưa gọi XemPresetCore (runRequest / khoiPhuc)")
+        import nguon_xem
+        import preset_lr
+        tam = Path(tempfile.mkdtemp(prefix="tk_preset_"))
+        try:
+            jd = tam / "jobs"
+            jd.mkdir()
+            (jd / preset_lr.TEN_DS).write_text("U1\tThử\tUser Presets\t\n", encoding="utf-8")
+            ds = preset_lr.danh_sach(False, jd)
+            if [x["uuid"] for x in ds] != ["U1"]:
+                raise AssertionError(f"đọc danh sách preset sai: {ds}")
+            buoi = tam / "buoi"
+            buoi.mkdir()
+            raw = buoi / "A.ARW"
+            raw.write_bytes(b"x")
+            id_ = preset_lr.gui_xem(ds[0], [str(raw)], buoi, jd=jd)
+            yc = (jd / preset_lr.YEU_CAU).read_text(encoding="utf-8")
+            if f"id={id_}" not in yc or str(raw) not in yc:
+                raise AssertionError("yêu cầu gửi plugin thiếu id / ảnh")
+            kho = preset_lr.thu_muc_kho(buoi, ds[0])
+            from PIL import Image
+            Image.new("RGB", (32, 24), (90, 60, 40)).save(kho / "A.jpg", "JPEG")
+            if preset_lr.anh_preset(raw, ds[0]) != kho / "A.jpg":
+                raise AssertionError("không nhận ảnh Lightroom vừa render theo preset")
+            if not nguon_xem.la_raw(raw):
+                raise AssertionError("không nhận .ARW là RAW")
+        finally:
+            shutil.rmtree(tam, ignore_errors=True)
+        n = len(preset_lr.danh_sach(False))
+        return f"plugin đủ · {n} preset người dùng thấy được trên máy này"
+    b.thu("Xem trước preset Lightroom (cả lưới)", _xem_preset)
+
     # --- 3. Khoá hạn dùng ---------------------------------------------------
     def _khoa():
         import khoa
@@ -247,7 +290,9 @@ def chay(nhanh: bool = False) -> Bao:
                #   (trong App._lam_retouch) nen mo app khong du de biet no con
                #   nap duoc trong goi; kiem o day. ]]
                "hop_thoai", "cua_saytool", "man_retouch", "retouch_chung",
-               "retouch_muc", "retouch_may"]
+               "retouch_muc", "retouch_may",
+               #  9/10: lưới to / một ảnh, nguồn RAW, preset Lightroom
+               "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui"]
         hong = []
         for t in ten:
             try:

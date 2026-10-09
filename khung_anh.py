@@ -319,16 +319,35 @@ class KhungAnh(tk.Frame):
     LE = 12                 # lề quanh ảnh khi vừa khung
     MAT_MAX = 2.0           # "Vào mặt" phóng tối đa 200%
 
-    def __init__(self, cha, nen: str | None = None, khi_doi=None, khi_phim=None):
+    #[[ SO SANH TRUOC / SAU (9/10 — user: "co cac tinh nang zoom, man hinh so sanh
+    #   truoc sau nhu trong Lightroom"). Ba kieu, cung khung nhin (ti le + tam)
+    #   cho ca hai ban — phong / keo mot ben la ben kia theo:
+    #     "sau"   mot anh; giu chuot / phim \\ xem goc (nhu truoc nay)
+    #     "canh"  TRUOC | SAU canh nhau, moi ben nua khung
+    #     "chia"  mot anh, ben trai vach la TRUOC, ben phai la SAU; keo vach
+    #   Khong co ban truoc thi moi kieu deu ve nhu "sau". ]]
+    KHE_CANH = 8
+
+    def __init__(self, cha, nen: str | None = None, khi_doi=None, khi_phim=None,
+                 khi_dup=None):
         self._nen = nen or "#101114"
         super().__init__(cha, background=self._nen)
         self._khi_doi = khi_doi
         self._khi_phim = khi_phim
+        #  9/10: bấm đúp ảnh -> gọi khi_dup (vd. về lưới ảnh) thay vì phóng 100%
+        self._khi_dup = khi_dup
+        self.che_do_so = "sau"
+        self._chia = 0.5
+        self._keo_chia = False
         self.canvas = tk.Canvas(self, background=self._nen, highlightthickness=0,
                                 borderwidth=0, takefocus=1, cursor="arrow")
         self.canvas.pack(fill="both", expand=True)
         c = self.canvas
         self._i_anh = c.create_image(0, 0, anchor="nw", state="hidden")
+        self._i_anh2 = c.create_image(0, 0, anchor="nw", state="hidden")      # bản TRƯỚC khi so
+        self._i_vach = c.create_line(0, 0, 0, 0, fill="#ffffff", width=2, state="hidden")
+        self._i_nut_vach = c.create_oval(0, 0, 0, 0, fill="#ffffff", outline="#111214",
+                                         width=2, state="hidden")
         f_nhan = gd._phong(self, ("Segoe UI", 10, "bold"))
         #[[ Nhan "ANH GOC" nam tren nen toi rieng: chu cam tren anh cuoi (phong
         #   nen kem, vay trang) la khong doc duoc — da thay tren anh that. ]]
@@ -338,6 +357,14 @@ class KhungAnh(tk.Frame):
                                      font=f_nhan)
         self._i_chu = c.create_text(0, 0, anchor="center", text="", fill=gd.MAU["mo"],
                                     font=gd._phong(self, gd.CHU), justify="center")
+        #  nhãn TRƯỚC / SAU khi so sánh (viên bo tròn như Lightroom / mẫu user gửi)
+        f_so = gd._phong(self, ("Segoe UI", 9, "bold"))
+        self._nhan_so = {}
+        for ten, nen_v in (("truoc", "#3b3f47"), ("sau", "#6d4ad8")):
+            nen_id = c.create_rectangle(0, 0, 0, 0, fill=nen_v, outline="", state="hidden")
+            chu_id = c.create_text(0, 0, anchor="nw", text="TRƯỚC" if ten == "truoc" else "SAU",
+                                   fill="#ffffff", font=f_so, state="hidden")
+            self._nhan_so[ten] = (nen_id, chu_id)
         self._o_trong = tk.Frame(c, background=self._nen)
         #[[ 7/10 (thiet ke lai): bieu tuong khung anh lon + tieu de dam + dong
         #   giai thich mo — giong man trong cua luoi anh (luoi_anh.dat_trong). ]]
@@ -374,6 +401,7 @@ class KhungAnh(tk.Frame):
         self._ma = 0
         self._bo_nap: _BoNap | None = None
         self._photo = None
+        self._photo2 = None
         self._nhanh_toi = 0.0
         self._hen_ve = self._hen_net = self._hen_bom = self._hen_giu = None
         self._hen_tha_phim = None
@@ -392,6 +420,7 @@ class KhungAnh(tk.Frame):
         c.bind("<B1-Motion>", self._di)
         c.bind("<ButtonRelease-1>", self._tha)
         c.bind("<Double-Button-1>", self._dup)
+        c.bind("<Motion>", self._re_chuot, add="+")
         c.bind("<MouseWheel>", self._lan)
         c.bind("<Button-4>", lambda e: self._lan(e, 1))
         c.bind("<Button-5>", lambda e: self._lan(e, -1))
@@ -411,9 +440,43 @@ class KhungAnh(tk.Frame):
         self.bind("<Destroy>", self._huy, add="+")
 
     # ================================================================ trạng thái
-    def _kt(self):
+    def _kt_canvas(self):
         c = self.canvas
         return max(1, c.winfo_width()), max(1, c.winfo_height())
+
+    def _so_canh(self) -> bool:
+        return self.che_do_so == "canh" and self._truoc is not None and self._sau is not None
+
+    def _so_chia(self) -> bool:
+        return self.che_do_so == "chia" and self._truoc is not None and self._sau is not None
+
+    def _kt(self):
+        """Cỡ MỘT ô nhìn: cả khung, hoặc nửa khung khi so TRƯỚC | SAU cạnh nhau —
+        mọi phép vừa khung / kẹp / phóng tính trên ô này."""
+        W, H = self._kt_canvas()
+        if self._so_canh():
+            return max(1, (W - self.KHE_CANH) // 2), H
+        return W, H
+
+    def _diem_o(self, x, y):
+        """Toạ độ chuột -> toạ độ trong ô nhìn (ô phải khi so cạnh nhau)."""
+        if self._so_canh():
+            Wo, _H = self._kt()
+            if x >= Wo + self.KHE_CANH:
+                return x - (Wo + self.KHE_CANH), y
+            return min(x, Wo), y
+        return x, y
+
+    def dat_che_do_so(self, che_do: str) -> None:
+        """"sau" | "canh" | "chia" — đổi kiểu so sánh, giữ chỗ đang soi."""
+        che_do = che_do if che_do in ("sau", "canh", "chia") else "sau"
+        if che_do == self.che_do_so:
+            return
+        self.che_do_so = che_do
+        self.hien_truoc = self._goc_do_chuot = False
+        self._kep()
+        self._ve()
+        self._bao()
 
     def kich_thuoc(self):
         """(rộng, cao) logic của ảnh đang xem, None nếu chưa có ảnh."""
@@ -520,7 +583,7 @@ class KhungAnh(tk.Frame):
     def _khi_doi_co(self):
         self._kep()
         c = self.canvas
-        W, H = self._kt()
+        W, H = self._kt_canvas()
         c.coords(self._i_trong, W / 2, H / 2)
         c.coords(self._i_chu, W / 2, H / 2)
         self._ve()
@@ -625,7 +688,7 @@ class KhungAnh(tk.Frame):
                 self.nut_trong.pack(pady=(16, 0))
         else:
             self.nut_trong.pack_forget()
-        W, H = self._kt()
+        W, H = self._kt_canvas()
         self.canvas.coords(self._i_trong, W / 2, H / 2)
         self.canvas.itemconfigure(self._i_trong, state="normal")
         self._ve()
@@ -717,28 +780,9 @@ class KhungAnh(tk.Frame):
         self._nhanh_toi = 0.0
         self._ve()
 
-    def _ve_that(self):
-        self._hen_ve = None
-        c = self.canvas
-        try:
-            W, H = self._kt()
-        except tk.TclError:
-            return
-        th = self._sau
-        if th is None:
-            self._an_anh()
-            self.vung_ve = None
-            self._dat_nhan("")
-            if self.dang_trong():
-                c.itemconfigure(self._i_chu, text="")
-            else:
-                c.coords(self._i_chu, W / 2, H / 2)
-                c.itemconfigure(self._i_chu, text=self.loi or (
-                    "đang mở ảnh…" if self.dang_nap else ""),
-                    fill=gd.MAU["loi"] if self.loi else gd.MAU["mo"])
-            return
-        c.itemconfigure(self._i_chu, text="")
-        hien = self._truoc if (self.hien_truoc and self._truoc is not None) else th
+    def _cat_ve(self, hien, th, W, H, ox: float = 0.0):
+        """Vẽ bản `hien` (khung nhìn theo toạ độ ảnh chính `th`) vào ô rộng W, cao
+        H đặt ở ox. -> (ảnh PIL đã cắt, px, py, tên bộ lọc, tầng) hoặc None."""
         s = self.ty_le()
         kx, ky = hien.rong / th.rong, hien.cao / th.cao
         sx, sy = s / kx, s / ky
@@ -748,8 +792,7 @@ class KhungAnh(tk.Frame):
         y0 = max(0.0, cy - H / (2 * sy))
         y1 = min(float(hien.cao), cy + H / (2 * sy))
         if x1 - x0 < 1e-3 or y1 - y0 < 1e-3:
-            self._an_anh()
-            return
+            return None
         fx, fy, im = hien.chon(min(sx, sy))
         box = (max(0.0, x0 / fx), max(0.0, y0 / fy),
                min(float(im.width), x1 / fx), min(float(im.height), y1 / fy))
@@ -764,22 +807,134 @@ class KhungAnh(tk.Frame):
             loc, ten = Image.LANCZOS, "lanczos"
         else:
             loc, ten = Image.BICUBIC, "bicubic"
+        out = im.resize((tw, tch), loc, box=box)
+        px = int(round(ox + W / 2 + (x0 - cx) * sx))
+        py = int(round(H / 2 + (y0 - cy) * sy))
+        return out, px, py, ten, fx
+
+    def _ve_that(self):
+        self._hen_ve = None
+        c = self.canvas
         try:
-            out = im.resize((tw, tch), loc, box=box)
-            self._photo = ImageTk.PhotoImage(out, master=c)
+            Wc, Hc = self._kt_canvas()
+        except tk.TclError:
+            return
+        th = self._sau
+        if th is None:
+            self._an_anh()
+            self._an_so()
+            self.vung_ve = None
+            self._dat_nhan("")
+            if self.dang_trong():
+                c.itemconfigure(self._i_chu, text="")
+            else:
+                c.coords(self._i_chu, Wc / 2, Hc / 2)
+                c.itemconfigure(self._i_chu, text=self.loi or (
+                    "đang mở ảnh…" if self.dang_nap else ""),
+                    fill=gd.MAU["loi"] if self.loi else gd.MAU["mo"])
+            return
+        c.itemconfigure(self._i_chu, text="")
+        W, H = self._kt()
+        try:
+            if self._so_canh():
+                #  TRƯỚC | SAU cạnh nhau: ô trái bản trước, ô phải bản sau
+                tr = self._cat_ve(self._truoc, th, W, H, 0.0)
+                sa = self._cat_ve(th, th, W, H, float(W + self.KHE_CANH))
+                if sa is None:
+                    self._an_anh()
+                    return
+                out, px, py, ten, fx = sa
+                self._photo = ImageTk.PhotoImage(out, master=c)
+                c.coords(self._i_anh, px, py)
+                c.itemconfigure(self._i_anh, image=self._photo, state="normal")
+                if tr is not None:
+                    #  ô trái không được tràn sang ô phải
+                    o2, px2, py2 = tr[0], tr[1], tr[2]
+                    tran = px2 + o2.width - W
+                    if tran > 0:
+                        o2 = o2.crop((0, 0, max(1, o2.width - tran), o2.height))
+                    self._photo2 = ImageTk.PhotoImage(o2, master=c)
+                    c.coords(self._i_anh2, px2, py2)
+                    c.itemconfigure(self._i_anh2, image=self._photo2, state="normal")
+                else:
+                    c.itemconfigure(self._i_anh2, image="", state="hidden")
+                c.itemconfigure(self._i_vach, state="hidden")
+                c.itemconfigure(self._i_nut_vach, state="hidden")
+                self._dat_nhan("")
+                self._dat_nhan_so(12, W + self.KHE_CANH + 12)
+                self.vung_ve = (px, py, out.width, out.height)
+            else:
+                hien = self._truoc if (self.hien_truoc and self._truoc is not None
+                                       and not self._so_chia()) else th
+                ve = self._cat_ve(hien, th, W, H, 0.0)
+                if ve is None:
+                    self._an_anh()
+                    return
+                out, px, py, ten, fx = ve
+                self._photo = ImageTk.PhotoImage(out, master=c)
+                c.coords(self._i_anh, px, py)
+                c.itemconfigure(self._i_anh, image=self._photo, state="normal")
+                if self._so_chia():
+                    #  CHIA ĐÔI: bản trước phủ phần bên trái vạch
+                    xv = int(round(W * self._chia))
+                    tr = self._cat_ve(self._truoc, th, W, H, 0.0)
+                    if tr is not None and xv > tr[1]:
+                        o2, px2, py2 = tr[0], tr[1], tr[2]
+                        o2 = o2.crop((0, 0, max(1, min(o2.width, xv - px2)), o2.height))
+                        self._photo2 = ImageTk.PhotoImage(o2, master=c)
+                        c.coords(self._i_anh2, px2, py2)
+                        c.itemconfigure(self._i_anh2, image=self._photo2, state="normal")
+                    else:
+                        c.itemconfigure(self._i_anh2, image="", state="hidden")
+                    c.coords(self._i_vach, xv, 0, xv, H)
+                    r = 9
+                    c.coords(self._i_nut_vach, xv - r, H / 2 - r, xv + r, H / 2 + r)
+                    c.itemconfigure(self._i_vach, state="normal")
+                    c.itemconfigure(self._i_nut_vach, state="normal")
+                    c.tag_raise(self._i_vach)
+                    c.tag_raise(self._i_nut_vach)
+                    self._dat_nhan("")
+                    self._dat_nhan_so(12, max(xv + 12, 12))
+                else:
+                    c.itemconfigure(self._i_anh2, image="", state="hidden")
+                    c.itemconfigure(self._i_vach, state="hidden")
+                    c.itemconfigure(self._i_nut_vach, state="hidden")
+                    self._an_so()
+                    self._dat_nhan("ẢNH GỐC" if hien is not th else "")
+                self.vung_ve = (px, py, out.width, out.height)
         except Exception as ex:                              # noqa: BLE001
             self.loi = f"Không vẽ được ảnh: {ex}"
             self._an_anh()
             return
-        px = int(round(W / 2 + (x0 - cx) * sx))
-        py = int(round(H / 2 + (y0 - cy) * sy))
-        c.coords(self._i_anh, px, py)
-        c.itemconfigure(self._i_anh, image=self._photo, state="normal")
-        self._dat_nhan("ẢNH GỐC" if hien is not th else "")
-        self.vung_ve = (px, py, tw, tch)
         self.loc_ve = ten
         self.tang_ve = fx
         self.lan_ve += 1
+
+    def _dat_nhan_so(self, x_truoc, x_sau):
+        c = self.canvas
+        for ten, x in (("truoc", x_truoc), ("sau", x_sau)):
+            nen_id, chu_id = self._nhan_so[ten]
+            c.coords(chu_id, x + 10, 14)
+            c.itemconfigure(chu_id, state="normal")
+            bb = c.bbox(chu_id)
+            if bb:
+                c.coords(nen_id, bb[0] - 10, bb[1] - 4, bb[2] + 10, bb[3] + 4)
+            c.itemconfigure(nen_id, state="normal")
+            c.tag_raise(nen_id)
+            c.tag_raise(chu_id)
+
+    def _an_so(self):
+        c = self.canvas
+        for nen_id, chu_id in self._nhan_so.values():
+            c.itemconfigure(nen_id, state="hidden")
+            c.itemconfigure(chu_id, state="hidden")
+        c.itemconfigure(self._i_vach, state="hidden")
+        c.itemconfigure(self._i_nut_vach, state="hidden")
+        try:
+            c.itemconfigure(self._i_anh2, image="", state="hidden")
+        except tk.TclError:
+            pass
+        self._photo2 = None
 
     def _an_anh(self):
         #[[ Go ANH khoi muc canvas TRUOC khi bo PhotoImage: muc con tro ten mot
@@ -787,9 +942,11 @@ class KhungAnh(tk.Frame):
         #   "image pyimageN doesn't exist". ]]
         try:
             self.canvas.itemconfigure(self._i_anh, image="", state="hidden")
+            self.canvas.itemconfigure(self._i_anh2, image="", state="hidden")
         except tk.TclError:
             pass
         self._photo = None
+        self._photo2 = None
 
     def _dat_nhan(self, chu: str):
         c = self.canvas
@@ -909,13 +1066,29 @@ class KhungAnh(tk.Frame):
         self.giu_goc(False)
 
     # ================================================================ chuột
+    def _gan_vach(self, x) -> bool:
+        if not self._so_chia():
+            return False
+        W, _H = self._kt()
+        return abs(x - W * self._chia) <= 10
+
+    def _re_chuot(self, e):
+        if self._so_chia():
+            if self._gan_vach(e.x):
+                self.canvas.configure(cursor="sb_h_double_arrow")
+                return
+        self.canvas.configure(cursor="fleur" if self.keo_duoc() else "arrow")
+
     def _nhan(self, e):
         self.canvas.focus_set()
         self._bat_dau = (e.x, e.y)
         self._keo = (e.x, e.y)
         self._da_keo = False
         self._huy_giu()
-        if self._truoc is not None:
+        self._keo_chia = self._gan_vach(e.x)
+        if self._keo_chia:
+            return
+        if self._truoc is not None and self.che_do_so == "sau":
             #[[ Giu (khong keo) moi la xem goc — cham mot cai de lay tieu diem
             #   thi khong nhay sang anh goc. ]]
             try:
@@ -925,6 +1098,11 @@ class KhungAnh(tk.Frame):
 
     def _di(self, e):
         if self._bat_dau is None:
+            return
+        if self._keo_chia:
+            W, _H = self._kt()
+            self._chia = min(0.98, max(0.02, e.x / max(1, W)))
+            self._ve()
             return
         if not self._da_keo:
             if abs(e.x - self._bat_dau[0]) < 4 and abs(e.y - self._bat_dau[1]) < 4:
@@ -947,6 +1125,7 @@ class KhungAnh(tk.Frame):
         self._keo = (e.x, e.y)
 
     def _tha(self, _e=None):
+        self._keo_chia = False
         self._huy_giu()
         if self._goc_do_chuot:
             self.giu_goc(False)
@@ -962,8 +1141,15 @@ class KhungAnh(tk.Frame):
             self.giu_goc(False)
         if self._sau is None:
             return
+        if self._khi_dup is not None:
+            try:
+                self._khi_dup()
+            except Exception:                                # noqa: BLE001
+                import traceback
+                traceback.print_exc()
+            return
         if self.la_vua():
-            self.phong_100((e.x, e.y))
+            self.phong_100(self._diem_o(e.x, e.y))
         else:
             self.vua_khung()
 
@@ -981,7 +1167,7 @@ class KhungAnh(tk.Frame):
             return "break"
         n = self._nac(e) if n is None else n
         if n:
-            self.phong(self.BUOC_LAN ** n, (e.x, e.y))
+            self.phong(self.BUOC_LAN ** n, self._diem_o(e.x, e.y))
         return "break"
 
     def _phim_buoc(self, d):

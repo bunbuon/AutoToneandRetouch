@@ -201,6 +201,21 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self._xem_khoa_cua: dict = {}         # mã yêu cầu tính -> khoá cache
         self._xem_ban = str(self.cf.get("ban_engine") or "")
         self.v_preset = tk.StringVar(value="")
+        #[[ 9/10 (user gui mau giao dien): LUOI TO <-> MOT ANH (bam mot o mo to,
+        #   bam dup anh lon ve luoi), kieu so sanh Truoc/Sau, va NGUON ANH RAW
+        #   (keo thanh xem ngay tren anh duyet Lightroom / preview nhung trong
+        #   RAW; muc keo = bo "Tuy chinh" mang sang luot Xuat). ]]
+        self._che_do_anh = "luoi"             # "luoi" (lưới to) | "mot" (một ảnh lớn)
+        self._fp_map: dict = {}               # file JPEG gửi engine -> ảnh logic (RAW)
+        self.v_so_sanh = tk.StringVar(value=str(self.cf.get("so_sanh") or "sau"))
+        nguon_md = str(self.cf.get("nguon") or "")
+        if nguon_md not in ("raw", "xuat"):
+            co_xuat = bool(vao_md) and Path(vao_md).is_dir() and not (
+                app.folder() and _cung_thu_muc(vao_md, str(app.folder())))
+            nguon_md = "xuat" if co_xuat else ("raw" if app.folder() else "xuat")
+        self.v_nguon = tk.StringVar(value=nguon_md)
+        if nguon_md == "raw" and app.folder():
+            self.v_vao.set(str(app.folder()))
 
         # ---------------------------------------------------------- khung
         m = gd.MAU
@@ -303,8 +318,10 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         tren = tk.Frame(self.chia, background=m["toi"])
         self._dung_thanh_xem(tren)
         self.xem = khung_anh.KhungAnh(tren, khi_doi=self._cap_nhat_thanh_xem,
-                                      khi_phim=self._buoc_anh)
+                                      khi_phim=self._buoc_anh,
+                                      khi_dup=self._ve_che_do_luoi)
         self.xem.pack(fill="both", expand=True)
+        self.xem.dat_che_do_so(self.v_so_sanh.get())
         duoi = tk.Frame(self.chia, background=m["toi"])
         tk.Frame(duoi, background=m["vien"], height=1).pack(fill="x")
         #[[ chon_nhieu: Ctrl / Shift + bam chon NHIEU tam — de "Sync anh da
@@ -319,6 +336,42 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.chia.add(tren, minsize=220, stretch="always")
         self.chia.add(duoi, minsize=80, height=self._cao_dai_md(), stretch="never")
         self.chia.bind("<ButtonRelease-1>", self._nho_cao_dai, add="+")
+
+        #[[ LUOI TO (9/10): che do mac dinh khi mo thu muc — o to / nho theo thanh
+        #   truot, loc theo sao. Bam mot o -> mo to anh do (khung_anh); bam dup
+        #   anh lon -> ve day. Cung danh sach voi dai anh duoi anh lon. ]]
+        import thanh_luoi
+        self.o_luoi_to = tk.Frame(giua, background=m["toi"])
+        self.o_luoi_to.grid(row=0, column=0, sticky="nsew")
+        self.o_luoi_to.rowconfigure(1, weight=1)
+        self.o_luoi_to.columnconfigure(0, weight=1)
+        self.thanh_luoi = thanh_luoi.ThanhLuoi(self.o_luoi_to,
+                                               khi_loc=lambda _l: self._hen_ve_luoi(),
+                                               khi_co=self._doi_co_o, nen=m["toi"])
+        self.thanh_luoi.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.luoi_to = luoi_anh.LuoiAnh(self.o_luoi_to, khi_chon=self._chon_tu_luoi_to,
+                                        khi_bam=self._mo_mot, khi_mo=self._mo_mot,
+                                        khi_trong=lambda: self._pick(self.v_vao),
+                                        chon_nhieu=True,
+                                        khi_doi_chon=self._doi_chon_luoi_to)
+        self.luoi_to.nut_trong.configure(text="Chọn thư mục ảnh")
+        self.luoi_to.grid(row=1, column=0, sticky="nsew")
+        self.luoi_to.dat_co_o(self.thanh_luoi.co_o())
+        #  9/10: Preset Lightroom (chế độ ẢNH RAW) — chung bộ điều phối với Cân tone
+        self.nut_preset_rt = None
+        dp_ham = getattr(self.app, "dp_preset", None)
+        if dp_ham is not None:
+            try:
+                import preset_ui
+                dp = dp_ham()
+                self.nut_preset_rt = preset_ui.NutPresetLR(self.thanh_luoi, dp, nen=m["toi"])
+                self.nut_preset_rt.pack(side="left", padx=(14, 0))
+                dp.dang_ky_luoi(self.luoi_to)
+                dp.dang_ky_luoi(self.luoi)
+                dp.dang_ky_nghe(self._preset_moi)
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
+                self.nut_preset_rt = None
 
         self.khung_log = tk.Frame(giua, background=m["toi"])
         self.khung_log.grid(row=0, column=0, sticky="nsew")
@@ -349,7 +402,9 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                            "về bản trên đĩa.\n"
                            "Lăn chuột: phóng to / thu nhỏ quanh con trỏ.\n"
                            "Kéo: di chuyển ảnh đang phóng.\n"
-                           "Nháy đúp: 100% đúng chỗ bấm ↔ vừa khung.\n"
+                           "Nháy đúp lên ảnh: về LƯỚI ẢNH (bấm một ô để mở to lại).\n"
+                           "So sánh: Sau · Trước | Sau cạnh nhau · Chia đôi (kéo "
+                           "vạch) — phóng / kéo một bên là bên kia theo.\n"
                            "Giữ chuột trên ảnh (hoặc giữ phím \\): xem ảnh GỐC.\n"
                            "← →: tấm trước / sau · 0: vừa khung · 1: 100% · "
                            "M: vào mặt kế tiếp.\n"
@@ -365,6 +420,16 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             self.btn_goc.cget("state") != "disabled"), add="+")
         self.btn_goc.bind("<ButtonRelease-1>", lambda _e: self.xem.giu_goc(False),
                           add="+")
+        #  9/10: kiểu so sánh Trước / Sau như Lightroom
+        self.pd_so = gd.PhanDoan(t, self.v_so_sanh, [("sau", "Sau"), ("canh", "Trước | Sau"),
+                                                    ("chia", "Chia đôi")],
+                                 command=self._doi_so_sanh, nen=nen, deu=False)
+        self.pd_so.pack(side="right", padx=(10, 0))
+        self.btn_ve_luoi = gd.NutTron(t, "Lưới", kieu="chu", nen=nen, font=gd.CHU,
+                                      icon="luoi", command=self._ve_che_do_luoi)
+        self.btn_ve_luoi.goi_y = gd.GoiY(self.btn_ve_luoi,
+                                         "Về lưới ảnh (hoặc bấm đúp lên ảnh lớn)")
+        self.btn_ve_luoi.pack(side="left", padx=(0, 6))
         self.lbl_zoom = tk.Label(t, text="", background=nen, foreground=m["chu"],
                                  font=gd.CHU_SO, width=5, anchor="e")
         self.lbl_zoom.pack(side="right", padx=(8, 0))
@@ -464,13 +529,241 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                 pass
 
     def _doi_xem(self):
-        """[Ảnh | Nhật ký] — cùng một lượt chạy, hai cách nhìn."""
+        """[Ảnh | Nhật ký] — cùng một lượt chạy, hai cách nhìn. “Ảnh” là LƯỚI TO
+        hoặc MỘT ẢNH LỚN (_che_do_anh)."""
+        o_luoi = getattr(self, "o_luoi_to", None)
         if self.v_xem.get() == "nhat_ky":
             self.khung_anh.grid_remove()
+            if o_luoi is not None:
+                o_luoi.grid_remove()
             self.khung_log.grid()
         else:
             self.khung_log.grid_remove()
-            self.khung_anh.grid()
+            if o_luoi is not None and self._che_do_anh == "luoi":
+                self.khung_anh.grid_remove()
+                o_luoi.grid()
+            else:
+                if o_luoi is not None:
+                    o_luoi.grid_remove()
+                self.khung_anh.grid()
+
+    # ------------------------------------------------------------ lưới to ↔ một ảnh (9/10)
+    def _hen_ve_luoi(self):
+        if self._hen_luoi is None:
+            try:
+                self._hen_luoi = self.after_idle(self._ve_luoi)
+            except tk.TclError:
+                pass
+
+    def _doi_co_o(self, px: int):
+        lt = getattr(self, "luoi_to", None)
+        if lt is not None:
+            lt.dat_co_o(px)
+
+    def _mo_mot(self, path: str):
+        """Bấm một ô lưới -> mở to ảnh đó (bấm đúp ảnh lớn để về lưới)."""
+        self._che_do_anh = "mot"
+        if self.v_xem.get() != "luoi":
+            self.v_xem.set("luoi")
+        self._doi_xem()
+        if self.luoi.dang_chon != path:
+            self.luoi.chon(path)
+        self._chon_anh(path)
+        try:
+            self.xem.canvas.focus_set()
+        except tk.TclError:
+            pass
+
+    def _ve_che_do_luoi(self):
+        """Bấm đúp ảnh lớn (hoặc nút lưới) -> về lưới to, cuộn tới tấm đang xem."""
+        self._che_do_anh = "luoi"
+        self._doi_xem()
+        lt = getattr(self, "luoi_to", None)
+        if lt is None:
+            return
+        p = self._anh_dang
+        if p and lt.dang_chon != p:
+            lt.chon(p)
+        #  nhóm đã Ctrl / Shift chọn ở dải ảnh -> lưới to cũng chọn y vậy
+        chon = {q for q in self.luoi.da_chon if q in lt._vi_tri}
+        if chon and chon != lt.da_chon:
+            lt.da_chon = chon | ({p} if p in lt._vi_tri else set())
+            lt._ve()
+        try:
+            lt.canvas.focus_set()
+        except tk.TclError:
+            pass
+
+    def _chon_tu_luoi_to(self, path: str):
+        """Lưới to đổi tấm đang chọn (bấm / phím mũi tên): dải ảnh + bảng thanh kéo
+        theo tấm đó; chưa mở to (bấm thường mới mở — _mo_mot)."""
+        if self.luoi.dang_chon != path:
+            self.luoi.chon(path, cuon_toi=False)
+        if self._che_do_anh == "luoi":
+            self._anh_dang = path
+            self._ten_hien = Path(path).name
+            self._nap_muc_vao_bang(self._muc_hieu_luc(path))
+            self._cap_nhat_pham_vi()
+
+    def _doi_chon_luoi_to(self, ds: list):
+        """Ctrl / Shift chọn nhiều ở lưới to -> dải ảnh chọn y vậy (Sync / Chạy)."""
+        s = {p for p in ds if p in self.luoi._vi_tri}
+        if self.luoi.dang_chon in self.luoi._vi_tri:
+            s.add(self.luoi.dang_chon)
+        if s != self.luoi.da_chon:
+            self.luoi.da_chon = s
+            self.luoi._ve()
+        self._cap_nhat_pham_vi()
+
+    def _doi_so_sanh(self):
+        che = self.v_so_sanh.get()
+        self.xem.dat_che_do_so(che)
+        try:
+            self.rt.ghi_cau_hinh({"so_sanh": che})
+        except OSError:
+            pass
+
+    def _bang_sao(self):
+        """Hàm path -> số sao: sao tool gắn khi lọc (lần phân tích) hoặc sao trong
+        catalog Lightroom (bản xuất thông số); ảnh đã xuất thì tra ngược về RAW."""
+        app = self.app
+        d = {}
+        try:
+            import autotone as at
+            khoa = at.khoa_duong_dan
+        except Exception:                                    # noqa: BLE001
+            return lambda _p: 0
+        for k, row in dict(getattr(app, "export", None) or {}).items():
+            try:
+                v = int(float(row.get("Rating") or 0))
+            except (TypeError, ValueError, AttributeError):
+                v = 0
+            if v > 0:
+                d[k] = v
+        for r in (getattr(app, "items", None) or []):
+            if r.get("rating"):
+                try:
+                    d[khoa(r["path"])] = int(r["rating"])
+                except (TypeError, ValueError):
+                    pass
+        nguoc = {}
+        if not self._la_raw_mode():
+            try:
+                import xuat_lr
+                nguoc = {os.path.normcase(v): k for k, v in xuat_lr.bang_anh().items()}
+            except Exception:                                # noqa: BLE001
+                nguoc = {}
+
+        def sao(p):
+            try:
+                v = d.get(khoa(p))
+                if v is None and nguoc:
+                    src = nguoc.get(os.path.normcase(str(p)))
+                    v = d.get(khoa(src)) if src else None
+                return int(v or 0)
+            except Exception:                                # noqa: BLE001
+                return 0
+        return sao
+
+    # ------------------------------------------------------------ nguồn ảnh RAW (9/10)
+    def _la_raw_mode(self) -> bool:
+        v = getattr(self, "v_nguon", None)
+        return v is not None and v.get() == "raw"
+
+    def _doi_nguon(self):
+        n = self.v_nguon.get()
+        try:
+            self.rt.ghi_cau_hinh({"nguon": n})
+        except OSError:
+            pass
+        if n == "raw":
+            f = self.app.folder()
+            if f and not _cung_thu_muc(self._vao_hien(), str(f)):
+                self.v_vao.set(str(f))
+        else:
+            d = ""
+            try:
+                import trang_thai as tt
+                import xuat_ui
+                g = self.app.folder()
+                d = ((tt.doc(tt.ten_buoi(g)).get("thu_muc_export") if g else "")
+                     or xuat_ui.doc_cai_dat().get("thu_muc") or "")
+            except Exception:                                # noqa: BLE001
+                d = ""
+            if d and not _cung_thu_muc(self._vao_hien(), d):
+                self.v_vao.set(d)
+        self._ap_nguon_ui()
+        self._hen_dem()
+
+    def _dong_bo_nguon(self):
+        """Vào mô-đun Retouch: chế độ RAW theo đúng buổi đang mở ở Cân tone."""
+        if self._la_raw_mode():
+            f = self.app.folder()
+            if f and not _cung_thu_muc(self._vao_hien(), str(f)):
+                self.v_vao.set(str(f))
+        self._ap_nguon_ui()
+
+    def _ap_nguon_ui(self):
+        """RAW: ẩn Ra / Ghi đè / Tự retouch (không retouch thẳng RAW — Xuất mới áp)."""
+        raw = self._la_raw_mode()
+        n_ps = getattr(self, "nut_preset_rt", None)
+        if n_ps is not None:
+            if raw and not n_ps.winfo_manager():
+                n_ps.pack(side="left", padx=(14, 0))
+            elif not raw and n_ps.winfo_manager():
+                n_ps.pack_forget()
+        for w in ("o_tu_moi", "o_ghide", "o_ra", "hang_ra"):
+            o = getattr(self, w, None)
+            if o is not None:
+                self._hien_an(o, not raw)
+        if raw:
+            self._hien_an(self.lbl_ghide, False)
+        else:
+            try:
+                self._doi_ghide()
+            except Exception:                                # noqa: BLE001
+                pass
+        lbl = getattr(self, "lbl_nguon", None)
+        if lbl is not None:
+            lbl.configure(text=(
+                "Kéo thanh là xem ngay trên ẢNH DUYỆT Lightroom (⋯ › Duyệt nhanh — đúng "
+                "WB / tone / preset); chưa có thì trên preview trong RAW. Đây là bộ "
+                "“Tuỳ chỉnh”: bấm “Xuất & retouch…” — Lightroom xuất rồi retouch đúng "
+                "mức này (chọn preset thì theo preset)." if raw else
+                "Ảnh Lightroom đã xuất: chạy retouch thẳng trên các file này."))
+        try:
+            self._cap_nhat_nut_chay()
+        except Exception:                                    # noqa: BLE001
+            pass
+
+    def _preset_moi(self, moi):
+        """Lightroom vừa dựng ảnh theo preset (moi: tập đường dẫn normcase, None =
+        đổi preset): tấm đang mở to là một trong số đó thì nạp lại — đang xem
+        trước retouch thì engine mở lại nguồn mới rồi tính (xem _fp_that)."""
+        if not self._la_raw_mode() or not self._anh_dang:
+            return
+        if moi is not None and os.path.normcase(os.path.normpath(self._anh_dang)) not in moi:
+            return
+        if self._xem_bat and self._may_xem is not None:
+            self._xem_gui_mo(self._anh_dang)
+        elif not self._xem_dang_hien:
+            self._hien_anh_dia(self._anh_dang, giu_khung=True)
+
+    def goi_muc_cho_xuat(self, preset: str = "") -> dict:
+        """Mức mang sang lượt Xuất (user 9/10: "Tuỳ chỉnh -> thông số người dùng
+        kéo; chọn Preset -> thông số của Preset"): mức CHUNG của thư mục đang mở
+        + (chế độ ẢNH RAW) mức riêng từng ảnh, khoá theo tên RAW không đuôi để
+        ghép sang file xuất cùng tên. Chọn preset thì không mang mức riêng."""
+        if self._hen_luu_ma is not None:
+            self._luu_muc()
+        chung = dict(self._muc_chung_day_du())
+        rieng_ten = {}
+        if self._la_raw_mode() and not preset:
+            for p, _x in (self._ds_luoi or []):
+                if self._khoa(p) in self._muc_anh:
+                    rieng_ten[Path(p).stem.lower()] = dict(self._muc_hieu_luc(p))
+        return {"muc_chung": chung, "rieng_ten": rieng_ten,
+                "preset": preset or "", "raw": self._la_raw_mode()}
 
     def _hien_pb(self, co: bool):
         """(8/10) Thanh tiến độ ở đầu trang KHÔNG hiện nữa — tiến độ retouch
@@ -547,6 +840,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         except Exception:                                    # noqa: BLE001
             n = 0
         chu = f"Chạy retouch  ·  {n} ảnh" if n else "Chạy retouch"
+        if self._la_raw_mode():
+            chu = "Xuất & retouch…"        # 9/10: RAW — Lightroom xuất rồi retouch
         if btn.cget("text") != chu:
             btn.configure(text=chu)
 
@@ -708,6 +1003,14 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         nhom = nhom_hien                                     # noqa: F841
 
         # ------------------------------------------------ thư mục
+        #  9/10: nguồn ảnh — RAW của buổi (kéo thanh xem ngay, Xuất mới áp) / đã xuất
+        self.pd_nguon = gd.PhanDoan(g_tm, self.v_nguon, [("raw", "Ảnh RAW của buổi"),
+                                                         ("xuat", "Ảnh đã xuất")],
+                                    command=self._doi_nguon)
+        self.pd_nguon.pack(fill="x", pady=(4, 2))
+        self.lbl_nguon = ttk.Label(g_tm, style="Mo2.TLabel", text="", wraplength=WRAP,
+                                   justify="left")
+        self.lbl_nguon.pack(fill="x", pady=(0, 2))
         _d, _l, self.e_vao, self.btn_vao = o_duong(
             g_tm, "Vào", self.v_vao,
             "Thư mục Lightroom vừa Export ra — retouch lấy ảnh từ đây. Mở buổi "
@@ -724,11 +1027,14 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             "Nơi lưu ảnh đã retouch. Bật “Ghi đè lên ảnh gốc” thì không cần ô "
             "này.", lambda: self._pick(self.v_ra))
         self._dat_cho(self.o_theo_export, truoc=hang_ra, fill="x", pady=(6, 0))
+        self.hang_ra = hang_ra
+        self.o_ra = self.e_ra.master
         o = ct(g_tm, self.v_ghide, "Ghi đè lên ảnh gốc",
                "Không cần thư mục ra: ảnh retouch THAY THẾ ảnh gốc. Không lùi lại "
                "được — lúc bấm Chạy sẽ hỏi lại kèm số ảnh và đường dẫn.",
                lenh=self._doi_ghide)
         o.pack_configure(pady=(10, 2))
+        self.o_ghide = o
         self.lbl_ghide = ttk.Label(g_tm, style="Canh.TLabel", text="",
                                    wraplength=WRAP, justify="left")
         self._dat_cho(self.lbl_ghide, fill="x", pady=(2, 2))
@@ -741,6 +1047,11 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             "có sẵn lúc bấm Chạy không bị tính là ảnh mới. Bấm Dừng để thôi theo "
             "dõi.",
             lenh=self._doi_tu_moi)
+        #  thứ tự hiện lại khi đổi nguồn (xem _ap_nguon_ui)
+        self._dat_cho(self.o_tu_moi, fill="x", anchor="w", pady=2)
+        self._dat_cho(self.o_ghide, truoc=self.o_tu_moi, fill="x", anchor="w", pady=(10, 2))
+        self._dat_cho(self.o_ra, truoc=self.o_ghide, fill="x", pady=(3, 0))
+        self._dat_cho(self.hang_ra, truoc=self.o_ra, fill="x", pady=(6, 0))
 
         # ------------------------------------------------ mức áp dụng
         #[[ THANH KEO DUNG DONG, theo danh sach saytool DANG co (rt.thanh_keo).
@@ -771,7 +1082,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.btn_ps_luu.goi_y = gd.GoiY(self.btn_ps_luu, "Lưu bảng đang hiện thành preset")
         self.btn_ps_luu.pack(side="right", padx=(6, 4))
         #  nut ve tay + menu (nhu moi hop chon khac cua app — khong ttk.Combobox)
-        self.btn_preset = gd.NutTron(o_ps, "(không preset)", kieu="phu", font=gd.CHU,
+        self.btn_preset = gd.NutTron(o_ps, "Tuỳ chỉnh", kieu="phu", font=gd.CHU,
                                      mui_ten=True, command=self._mo_menu_preset)
         self.btn_preset.goi_y = gd.GoiY(self.btn_preset, "Chọn preset để áp")
         self.btn_preset.pack(side="left", padx=(8, 0), fill="x", expand=True)
@@ -1033,13 +1344,23 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         """Đổ danh sách ảnh vào dải ảnh (rt.ds_anh — cùng cách lọc với tool),
         giữ tấm đang xem; chưa xem tấm nào thì mở tấm đầu lên ảnh lớn."""
         self._hen_luoi = None
-        ghi_de = bool(self.v_ghide.get())
+        ghi_de = bool(self.v_ghide.get()) or self._la_raw_mode()
+        sao_cua = self._bang_sao()
         o = [{"path": str(p), "ten": p.name, "dev": None, "canh": None, "loai": "",
-              "sao1": False, "bo": "",
+              "sao1": False, "sao": sao_cua(str(p)), "bo": "",
               "dau": "✓ đã làm" if (xong and not ghi_de) else "",
               "rieng": self._khoa(p) in self._muc_anh}
              for p, xong in self._ds_luoi]
+        #  9/10: thanh lọc sao trên lưới to (đếm trên cả thư mục, lọc cả hai lưới)
+        tl = getattr(self, "thanh_luoi", None)
+        if tl is not None:
+            import thanh_luoi
+            tl.dat_so(*thanh_luoi.dem(o))
+            o = thanh_luoi.loc_ds(o, tl.loc)
         self.luoi.dat_ds(o, giu_cuon=True)
+        lt = getattr(self, "luoi_to", None)
+        if lt is not None:
+            lt.dat_ds(o, giu_cuon=True)
         if not o:
             vao = self.v_vao.get().strip().strip('"')
             if not vao:
@@ -1049,6 +1370,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             else:
                 chu = f"Không có thư mục:\n{vao}"
             self.luoi.dat_trong("Chưa có ảnh.", co_nut=False)
+            if lt is not None:
+                lt.dat_trong(chu, co_nut=not vao or not Path(vao).is_dir())
             self.xem.dat_trong(chu, nut="Chọn thư mục ảnh đã Export",
                                lenh=lambda: self._pick(self.v_vao))
             co_anh = self._anh_dang is not None
@@ -1069,13 +1392,21 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         dang = self._anh_dang if self._anh_dang in co else None
         if dang is None:
             #[[ Mo len la co ANH ngay, nhu Evoto — khong de khung lon trong
-            #   bat nguoi dung di bam mot tam truoc. ]]
+            #   bat nguoi dung di bam mot tam truoc. Dang o luoi to thi chi chon
+            #   (bang thanh keo theo tam do), chua mo anh lon. ]]
             dang = o[0]["path"]
             self.luoi.chon(dang)
-            self._chon_anh(dang)
+            if lt is not None:
+                lt.chon(dang, cuon_toi=False)
+            if self._che_do_anh == "mot" or lt is None:
+                self._chon_anh(dang)
+            else:
+                self._chon_tu_luoi_to(dang)
             return
         if self.luoi.dang_chon != dang:
             self.luoi.chon(dang, cuon_toi=False)
+        if lt is not None and lt.dang_chon != dang:
+            lt.chon(dang, cuon_toi=False)
         if not self._xem_bat:
             #[[ Tam DANG XEM vua co ket qua (luot chay vua ghi ra), hay doi
             #   thu muc ra -> mo lai ban ket qua, giu nguyen cho dang soi. Doc
@@ -1087,8 +1418,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                 self._hien_anh_dia(dang, giu_khung=True)
 
     def _duong_kq(self, path):
-        """Bản kết quả CÓ THẬT của một ảnh vào (None: chưa làm / ghi đè)."""
-        if self.v_ghide.get():
+        """Bản kết quả CÓ THẬT của một ảnh vào (None: chưa làm / ghi đè / RAW)."""
+        if self.v_ghide.get() or self._la_raw_mode():
             return None
         vao = self.v_vao.get().strip().strip('"')
         ra = self.v_ra.get().strip().strip('"')
@@ -1174,6 +1505,37 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
     def _hien_anh_dia(self, path: str, giu_khung: bool = False):
         """Ảnh lớn từ đĩa: bản KẾT QUẢ nếu đã làm (giữ chuột = bản gốc), không
         thì chính ảnh vào. Ảnh nhỏ của dải hiện ngay trong lúc chờ nạp."""
+        if self._la_raw_mode():
+            #  9/10: RAW -> ảnh duyệt Lightroom (đúng màu xuất), thiếu thì preview nhúng
+            import nguon_xem
+            src, nguon = nguon_xem.anh_xem(path)
+            self._anh_kq_duong = None
+            self._xem_dang_hien = False
+            self._anh_hien = path
+            if src is None:
+                self.xem.dat_trong(f"Không đọc được ảnh RAW\n{Path(path).name}")
+                self._dat_chip("")
+                self._thanh_cu = None
+                self._cap_nhat_thanh_xem()
+                return
+            truoc = None
+            if nguon in ("preset", "duyet"):
+                try:
+                    truoc = nguon_xem.anh_nhung(path)       # "Trước" = màu máy ảnh
+                except Exception:                            # noqa: BLE001
+                    truoc = None
+            self.xem.mo(src, truoc=truoc, tam=self.luoi._anh_pil.get(path),
+                        giu_khung=giu_khung)
+            if nguon == "preset":
+                p = self.app.dp_preset().p if hasattr(self.app, "dp_preset") else None
+                self._dat_chip("chua", f"Preset Lightroom “{(p or {}).get('ten', '')}”")
+            else:
+                self._dat_chip("chua", "Ảnh duyệt Lightroom" if nguon == "duyet" else
+                               "Preview trong RAW — chưa qua preset (chọn Preset LR trên "
+                               "lưới để xem theo preset)")
+            self._thanh_cu = None
+            self._cap_nhat_thanh_xem()
+            return
         kq = self._duong_kq(path)
         self._anh_kq_duong = kq
         self._xem_dang_hien = False
@@ -1239,6 +1601,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         #   retouch thanh cong truoc. Chay that bai (nhu lan 3/9) thi khong bao
         #   gio thoat ra duoc.
         #]]
+        if self._la_raw_mode():
+            return                         # 9/10: thư mục RAW không phải thư mục Export
         try:
             import trang_thai as tt
             goc = self.app.folder()
@@ -1265,6 +1629,16 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         if not d or d == ".":
             return
         self._export_moi = d
+        if self._la_raw_mode():
+            if tu_dong:
+                return                     # đang xem RAW: không tự đổi thư mục dưới tay
+            self.v_nguon.set("xuat")
+            try:
+                self.rt.ghi_cau_hinh({"nguon": "xuat"})
+            except OSError:
+                pass
+            self.v_vao.set(d)
+            self._ap_nguon_ui()
         vao = self.v_vao.get().strip().strip('"')
         if not tu_dong or not vao or _cung_thu_muc(vao, self._export_cu) \
                 or _cung_thu_muc(vao, d):
@@ -1294,7 +1668,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         #   Ghi de len duong dan ho vua go la kieu "tu dong" gay uc che nhat.
         #]]
         vao = self.v_vao.get().strip().strip('"')
-        if vao and not self.v_ra.get().strip():
+        if vao and not self.v_ra.get().strip() and not self._la_raw_mode():
             self.v_ra.set(os.path.normpath(vao.rstrip("\\/") + "_retouch"))
         #[[ Moi thu muc vao mot bang muc rieng tung anh (rt.doc_muc_anh). ]]
         self._doi_bang_muc_anh(vao)
@@ -1406,9 +1780,21 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         s_vao = self.v_vao.get().strip().strip('"')
         s_ra = self.v_ra.get().strip().strip('"')
         ghi_de = bool(self.v_ghide.get())
-        ds = self.rt.ds_anh(Path(s_vao) if s_vao else None,
-                            None if (ghi_de or not s_ra) else Path(s_ra),
-                            self.v_dequy.get())
+        if self._la_raw_mode():
+            #  9/10: nguồn ẢNH RAW — liệt kê RAW (chưa có "kết quả": Xuất mới retouch)
+            import nguon_xem
+            vao_p = Path(s_vao) if s_vao else None
+            try:
+                ds = ([(p, False) for p in sorted(vao_p.iterdir())
+                       if p.is_file() and nguon_xem.la_raw(p)]
+                      if vao_p is not None and vao_p.is_dir() else [])
+            except OSError:
+                ds = []
+            ghi_de = True                  # không đếm "đã làm" bằng file
+        else:
+            ds = self.rt.ds_anh(Path(s_vao) if s_vao else None,
+                                None if (ghi_de or not s_ra) else Path(s_ra),
+                                self.v_dequy.get())
         tong = len(ds)
         if ghi_de:
             xong = min(int(getattr(self, "_tien_do_tool", 0) or 0), tong)

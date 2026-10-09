@@ -92,6 +92,17 @@ elseif type(Chup.runRequest) ~= "function" then
     Chup = nil
 end
 
+--[[ XemPresetCore (9/10): danh sách preset Lightroom + render cả lưới theo
+     preset (áp TẠM -> render -> trả lại). Nạp riêng, cùng lý do ba module trên. ]]
+local okXP, XemPreset = pcall(require, "XemPresetCore")
+if not okXP then
+    rawLog("khong nap duoc XemPresetCore -> " .. tostring(XemPreset))
+    XemPreset = nil
+elseif type(XemPreset.runRequest) ~= "function" then
+    rawLog("XemPresetCore thieu ham runRequest (ban cu con sot?)")
+    XemPreset = nil
+end
+
 --[[ 2 giây (trước 5): mỗi vòng chỉ là vài lệnh kiểm file có tồn tại không. App
      nhờ xuất thì người dùng đang ngồi chờ — 5 giây là quá nửa thời gian chờ. ]]
 local POLL_SECONDS = 2
@@ -107,6 +118,13 @@ LrTasks.startAsyncTask(function()
     -- Chi an toan o day, luc chua vong nao chay.
     if type(Core.recoverStale) == "function" then
         Core.try("recoverStale", Core.recoverStale)
+    end
+    --[[ Lan truoc Lightroom tat / may sap giua mot lo "xem preset" (anh dang
+         mang preset TAM) -> tra lai thong so goc theo so khoi phuc, TRUOC moi
+         viec khac. ]]
+    if XemPreset and type(XemPreset.khoiPhuc) == "function" then
+        local _, errK = Core.try("xemPresetKhoiPhuc", XemPreset.khoiPhuc)
+        if errK then Core.log("LOI khoi phuc xem preset: " .. tostring(errK)) end
     end
     Core.log("plugin da nap (vong #" .. tostring(myGen) ..
              "), tu dong ap = " .. tostring(prefs.autoApply))
@@ -167,6 +185,13 @@ LrTasks.startAsyncTask(function()
         if Chup then
             local _, errC = Core.try("autoChup", Chup.runRequest)
             if errC then Core.log("LOI yeu cau chup: " .. tostring(errC)) end
+        end
+        --[[ Xem truoc preset Lightroom (jobs/request_xempreset.txt) + danh
+             sach preset. Moi lan goi chi lam toi ~15 giay roi tra ve — viec
+             khac van duoc phuc vu xen giua cac lo. ]]
+        if XemPreset then
+            local _, errP = Core.try("autoXemPreset", XemPreset.runRequest)
+            if errP then Core.log("LOI xem preset: " .. tostring(errP)) end
         end
         LrTasks.sleep(POLL_SECONDS)
     end
