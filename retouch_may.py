@@ -195,9 +195,10 @@ class MayMixin:
         self._hien_xem_truoc(im, tu_cache=True, chip=chip)
         return True
 
-    def _tat_xem_truoc(self, dong_may: bool = False):
+    def _tat_xem_truoc(self, dong_may: bool = False, giu_anh: bool = False):
         """Tắt xem trước: ảnh lớn về bản trên đĩa, GIỮ chỗ đang soi. dong_may:
-        tắt hẳn tiến trình con (nhường card đồ hoạ cho lượt chạy)."""
+        tắt hẳn tiến trình con (nhường card đồ hoạ cho lượt chạy). giu_anh: để
+        nguyên bản xem trước đang hiện (lượt Xuất — kết quả thật sẽ thay nó)."""
         self._xem_bat = False
         if self._hen_tinh is not None:
             try:
@@ -207,6 +208,10 @@ class MayMixin:
             self._hen_tinh = None
         if dong_may:
             self._dong_may_xem()
+        if giu_anh and self._xem_dang_hien:
+            self._dat_chip("xem", "Xem trước theo preset · đang retouch cả lượt — xong tấm "
+                                  "nào hiện bản thật tấm đó")
+            return
         if self._anh_dang:
             if self._xem_dang_hien:
                 self._hien_anh_dia(self._anh_dang, giu_khung=True)
@@ -943,7 +948,10 @@ class MayMixin:
             self._dam_bao_may_xem()
         self._engine_dung = self._may_xem is not None and self._may_xem.song()
         if self._engine_dung:
-            self._tat_xem_truoc(dong_may=False)
+            #  9/10: lượt Xuất — giữ ảnh xem trước theo preset trên màn tới khi có
+            #  kết quả thật (không chớp về ảnh gốc trong lúc mẻ chạy)
+            self._tat_xem_truoc(dong_may=False,
+                                giu_anh=bool(getattr(self, "_xuat", None)))
             self._append("… chạy mẻ trong máy xem trước (mô hình đã nạp sẵn) — "
                          "xem trước tạm dừng tới khi xong")
         elif self._may_xem is not None:
@@ -1115,6 +1123,8 @@ class MayMixin:
                     self.rt.don_thu_muc_tam(tam_goc)
             self.log_q.put(("ma", ma))
 
+        #  còn mẻ chưa báo xong (luồng đã hết nhưng _pump chưa xử lý "ma") — xem _quet_moi
+        self._cho_xong = True
         self.worker = threading.Thread(target=work, daemon=True)
         self.worker.start()
 
@@ -1185,10 +1195,17 @@ class MayMixin:
                         f"bằng mức chung (đã làm {td['so']} ảnh mới). Bấm Dừng để "
                         "thôi.", gd.MAU["xong"])
 
-    def _hen_quet(self):
+    #  9/10: đang theo lượt Xuất thì quét 2 s một lần — ảnh vừa ra (ổn định qua hai
+    #  lần quét) lên dải ảnh / xem trước sau ~4 s thay vì ~10 s
+    QUET_GIAY_XUAT = 2
+
+    def _hen_quet(self, giay: float | None = None):
         self._dung_hen_quet()
+        if giay is None:
+            td = self._theo_doi
+            giay = self.QUET_GIAY_XUAT if (td and td.get("xuat")) else self.QUET_GIAY
         try:
-            self._hen_quet_ma = self.after(int(self.QUET_GIAY * 1000), self._quet_moi)
+            self._hen_quet_ma = self.after(int(giay * 1000), self._quet_moi)
         except tk.TclError:
             self._hen_quet_ma = None
 
@@ -1229,15 +1246,17 @@ class MayMixin:
         if not xuat and not self.v_tu_moi.get():
             self._dung_theo_doi("đã tắt “Tự retouch ảnh mới”")
             return
-        if self.worker and self.worker.is_alive():
+        #[[ 9/10: CHUA bao xong cung tinh la dang chay. Luong me vua het nhung _pump
+        #   chua doc tin "ma" (khe <= 250 ms): quet luc nay se mo me MOI, de
+        #   _luot_chay cua me truoc -> _xong dem sai so anh da retouch (cau tong ket
+        #   thieu anh). Lightroom bao "xong" roi vao dung khe do la gap that. ]]
+        if getattr(self, "_cho_xong", False) and not (self.worker and self.worker.is_alive()):
+            self._bom_log()                # luồng mẻ đã hết: xử lý ngay tin "ma" (gọi _xong)
+        if (self.worker and self.worker.is_alive()) or getattr(self, "_cho_xong", False):
             self._hen_quet()
             return
         x = getattr(self, "_xuat", None) or {}
         lr_xong = x.get("trang_thai") in ("xong", "dung", "loi")
-        if xuat and not x.get("song_song") and not lr_xong:
-            #[[ Che do TUAN TU: cho Lightroom xuat xong roi moi retouch. ]]
-            self._hen_quet()
-            return
         if xuat:
             try:
                 import xuat_lr
@@ -1259,6 +1278,19 @@ class MayMixin:
         san, co_moi = chon_anh_moi(ds_stat, td)
         if co_moi or san:
             self._dem()                    # dải ảnh hiện ngay tấm mới
+        #[[ 9/10 WORKER XEM TRUOC (user: "khi chon xuat man hinh chuyen sang tab
+        #   Retouch. Can co Worker check neu co anh thi load vao preview va duoc add
+        #   luon preset Retouch len Review"): tam DAU TIEN Lightroom xuat ra (da
+        #   ghi xong — on dinh qua hai lan quet) len anh lon + xem truoc theo muc
+        #   chung = preset cua luot. ]]
+        if xuat and san:
+            self._mo_anh_xuat_dau(san)
+        if xuat and not x.get("song_song") and not lr_xong:
+            #[[ Che do TUAN TU: chua retouch — cho Lightroom xuat xong. Anh da ra van
+            #   hien o dai anh, xem truoc duoc (engine ranh). Anh on dinh nam lai
+            #   trong "cho", lan quet sau van thay. ]]
+            self._hen_quet()
+            return
         if xuat and lr_xong and not san and not td["cho"]:
             self._ket_thuc_xuat()
             return
@@ -1281,10 +1313,56 @@ class MayMixin:
             if x.get("tam_ngung"):
                 self._append("… tài nguyên đã hồi — tiếp tục retouch ảnh mới")
                 x["tam_ngung"] = ""
+        if xuat and self._cho_xem_dau():
+            #  song song: tấm đầu đang tính xem trước — mẻ chạy cùng engine, chạy
+            #  ngay thì xem trước bị tắt giữa chừng. Đợi (tối đa 20 s) rồi mới chạy.
+            self._hen_quet(1.0)
+            return
         for k in san:
             td["biet"].add(k)
             td["cho"].pop(k, None)
         self._chay_anh_moi(san)
+
+    def _mo_anh_xuat_dau(self, san: list):
+        """Tấm đầu tiên của lượt xuất lên ảnh lớn + xem trước theo preset — MỘT lần
+        mỗi lượt (sau đó người dùng tự chọn tấm khác thì không giật lại)."""
+        x = getattr(self, "_xuat", None)
+        if x is None or x.get("da_mo_dau") or not san:
+            return
+        p = sorted(san)[0]
+        x["da_mo_dau"] = True
+        x["xem_dau"] = p
+        x["xem_dau_luc"] = time.monotonic()
+        self._append(f"… ảnh đầu tiên Lightroom xuất ra: {Path(p).name} — xem trước theo "
+                     f"mức của lượt ({self._mo_ta_muc(self._muc_chung_day_du())})")
+
+        def mo():
+            try:
+                luoi = getattr(self, "luoi", None)
+                if luoi is not None and luoi.dang_chon != p:
+                    luoi.chon(p)
+                self._chon_anh(p)
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
+        try:
+            #  sau _ve_luoi (cũng after_idle, _dem vừa hẹn): tấm đã có trong dải ảnh
+            self.after_idle(mo)
+        except tk.TclError:
+            pass
+
+    def _cho_xem_dau(self) -> bool:
+        """Còn phải đợi xem trước tấm đầu tiên không (chế độ song song)."""
+        x = getattr(self, "_xuat", None) or {}
+        p = x.get("xem_dau")
+        if not p or x.get("xem_dau_xong"):
+            return False
+        da_hien = (self._xem_dang_hien and self._anh_hien == p
+                   and self._xem_dang_tinh is None and self._xem_mo_dang is None)
+        qua_lau = time.monotonic() - float(x.get("xem_dau_luc") or 0) > 20
+        if da_hien or qua_lau or (not self._xem_bat and not self._xem_dang_hien):
+            x["xem_dau_xong"] = True
+            return False
+        return True
 
     def _chay_anh_moi(self, ds: list):
         if self._bi_khoa():
@@ -1516,6 +1594,12 @@ class MayMixin:
             m.dong()
 
     def _pump(self):
+        self._bom_log()
+        self._pump_tiep()
+
+    def _bom_log(self):
+        """Xử lý hết tin đang chờ trong log_q (luồng chính) — _pump gọi định kỳ;
+        _quet_moi gọi ngay khi luồng mẻ đã hết mà tin "ma" chưa được xử lý."""
         try:
             while True:
                 loai, gt = self.log_q.get_nowait()
@@ -1582,6 +1666,8 @@ class MayMixin:
                         del ds[:-80]
         except queue.Empty:
             pass
+
+    def _pump_tiep(self):
         #[[ Dem file THUA hon moi 1.5 giay, khong phai moi vong bom log.
         #   _dem() goi iterdir() tren thu muc co the hang nghin anh; goi 3
         #   lan/giay tren o mang la tu lam cham chinh tien trinh dang do.
@@ -1596,6 +1682,7 @@ class MayMixin:
         self.after(250 if song else 800, self._pump)
 
     def _xong(self, ma: int):
+        self._cho_xong = False
         self.proc = None
         try:
             import trang_thai as tt

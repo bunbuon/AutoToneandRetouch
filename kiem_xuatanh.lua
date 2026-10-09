@@ -8,7 +8,8 @@
           bật lên trên cả nghìn ảnh mà không ai báo gì.
        2. Không có thông số thì DỪNG, tuyệt đối không bịa bộ mặc định.
        3. Thư mục đích do app đặt phải THẮNG mọi thứ có sẵn trong thông số.
-       4. Chia lô đúng, cờ dừng ăn giữa hai lô.
+       4. MỘT phiên cho cả lượt (9/10 — không chia lô 15 ảnh nữa), theo dõi từng
+          ảnh qua renditions() + waitForRender(); cờ dừng ăn trước mỗi ảnh.
        5. Đếm ảnh ra theo FILE CÓ THẬT, không theo số ảnh đưa vào.
        6. Đường xuất ảnh không được dính vào đường ghi màu.
 
@@ -39,12 +40,40 @@ local LrFileUtils = {
 }
 local LrTasks = { yield = function() end, sleep = function() end }
 
-local KICH = { lo = {}, thongSoCuoi = nil, hongSau = nil, boQua = {} }
+local KICH = { lo = {}, thongSoCuoi = nil, hongSau = nil, boQua = {}, skip = 0, render = 0 }
 local LrExportSession = function(params)
     KICH.thongSoCuoi = params.exportSettings
     KICH.lo[#KICH.lo + 1] = #params.photosToExport
     local ra = {}
+    --[[ 9/10: XuatCore xuất MỘT phiên, đi từng rendition: waitForRender() vẽ đúng
+         tấm đó (trả true, đường dẫn), skipRender() khi đã xin dừng. ]]
+    local dest0 = params.exportSettings.LR_export_destinationPathPrefix
+    local ds = {}
+    for i = 1, #params.photosToExport do
+        local ph = params.photosToExport[i]
+        ds[i] = { photo = ph,
+            waitForRender = function()
+                KICH.render = KICH.render + 1
+                os.execute('mkdir -p "' .. dest0 .. '"')
+                if KICH.datCoSauAnh and KICH.render == KICH.datCoSauAnh then
+                    local c = io.open(SAN .. "/jobs/request_xuatanh_dung.txt", "w")
+                    c:write("dung"); c:close()
+                end
+                if KICH.boQua[ph.__ten] then return false, "loi gia" end
+                local p = dest0 .. "/" .. ph.__ten .. ".jpg"
+                local f = io.open(p, "w"); f:write("JPEG"); f:close()
+                return true, p
+            end,
+            skipRender = function() KICH.skip = KICH.skip + 1 end }
+    end
     return {
+        renditions = function()
+            local i = 0
+            return function()
+                i = i + 1
+                if ds[i] then return i, ds[i] end
+            end
+        end,
         doExportOnCurrentTask = function()
             local dest = params.exportSettings.LR_export_destinationPathPrefix
             os.execute('mkdir -p "' .. dest .. '"')
@@ -68,13 +97,7 @@ local LrExportSession = function(params)
                 c:write("dung"); c:close()
             end
         end,
-        renditions = function()
-            local i = 0
-            return function()
-                i = i + 1
-                if ra[i] then return i, { destinationPath = ra[i] } end
-            end
-        end,
+
     }
 end
 local LrApplication = { activeCatalog = function() return { __gia = true } end }
@@ -213,8 +236,8 @@ datYeuCau({ "F:/Buoi/2705", "dest=" .. ra_dir, "lo=10", "bo_sao=0",
             "ts\tn\tLR_jpeg_quality\t0.7" })
 n = X.runRequest()
 ktra("xuất đủ 23 ảnh", n == 23, tostring(n))
-ktra("chia đúng lô 10/10/3",
-     #KICH.lo == 3 and KICH.lo[1] == 10 and KICH.lo[3] == 3,
+ktra("MỘT phiên cho cả 23 ảnh (không chia lô, kể cả khi yêu cầu còn ghi lo=10)",
+     #KICH.lo == 1 and KICH.lo[1] == 23,
      table.concat(KICH.lo, "/"))
 --[[ Thong so gui sang co san mot duong dan CU. App dat dest moi thi cai moi
      phai thang — neu khong, anh ra dung o thu muc buoi truoc va khong ai biet
@@ -246,20 +269,22 @@ ktra("ảnh 1 sao không được xuất", n == 8, tostring(n))
 ktra("tiến độ nói rõ đã bỏ mấy tấm", tonumber(docTienDo().bo_sao) == 2,
      docTienDo().bo_sao)
 
--- cờ dừng ăn giữa hai lô
+-- cờ dừng ăn trước mỗi ảnh: xin dừng sau ảnh thứ 5 -> 45 ảnh còn lại skipRender
 KICH.lo = {}
 KICH.anh = anhGia(50)
-KICH.datCoSauLo = 1
-datYeuCau({ "F:/Buoi/2705", "dest=" .. SAN .. "/ra4", "lo=5", "bo_sao=0",
+KICH.render, KICH.skip = 0, 0
+KICH.datCoSauAnh = 5
+datYeuCau({ "F:/Buoi/2705", "dest=" .. SAN .. "/ra4", "bo_sao=0",
             "ts\ts\tLR_format\tJPEG" })
 n = X.runRequest()
-ktra("xin dừng thì dừng sau lô đầu", #KICH.lo == 1, #KICH.lo .. " lô đã chạy")
+ktra("xin dừng sau ảnh thứ 5 -> ra 5 ảnh, 45 ảnh bỏ qua (skipRender)",
+     n == 5 and KICH.skip == 45, n .. " ảnh · " .. KICH.skip .. " bỏ qua")
 ktra("tiến độ ghi trạng thái “dung”", docTienDo().trang_thai == "dung",
      docTienDo().trang_thai)
 ktra("dừng giữa chừng KHÔNG bị tính là 45 ảnh lỗi",
      tonumber(docTienDo().loi) == 0, docTienDo().loi)
 ktra("cờ dừng được xoá sau khi dùng", not coTren(SAN .. "/jobs/" .. X.CO_DUNG))
-KICH.datCoSauLo = nil
+KICH.datCoSauAnh = nil
 
 --[[ Va chieu nguoc lai: co SOT tu lan truoc thi luot moi phai chay binh
      thuong, khong duoc dung ngay. Neu khong, mot lan bam Dung se lam moi lan
@@ -271,7 +296,7 @@ datYeuCau({ "F:/Buoi/2705", "dest=" .. SAN .. "/ra5", "lo=5", "bo_sao=0",
             "ts\ts\tLR_format\tJPEG" })
 n = X.runRequest()
 ktra("cờ dừng SÓT của lần trước không làm hỏng lượt mới",
-     n == 12 and #KICH.lo == 3, tostring(n) .. " ảnh · " .. #KICH.lo .. " lô")
+     n == 12 and #KICH.lo == 1, tostring(n) .. " ảnh · " .. #KICH.lo .. " phiên")
 
 -- ---------------------------- 6. không dính vào đường ghi màu
 local nguon = io.open(GOC .. "/XuatCore.lua", "r"):read("*a")

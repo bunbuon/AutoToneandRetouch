@@ -205,6 +205,104 @@ ktra("docDong: chat luong so, lo doc duoc", ts_["LR_jpeg_quality"] == 0.92 and o
 src_x = (GOC / "XuatCore.lua").read_text(encoding="utf-8")
 ktra("M.xuat ghi nhip kem buoc 'xuất ảnh a/b' sau moi lo", "Core.ghiNhip(nil, 0" in src_x and "xuất ảnh %d/%d" in src_x)
 
+# ---- 6. XuatCore.xuat (9/10): MOT phien cho ca luot, theo doi tung anh, dung giua chung
+tam2 = Path(tempfile.mkdtemp(prefix="kiem_xuat1phien_"))
+(tam2 / "jobs").mkdir()
+L2 = lua51.LuaRuntime(unpack_returned_tuples=True)
+g2 = L2.globals()
+g2.py_exists = lambda p: os.path.exists(p)
+g2.py_mkdirs = lambda p: os.makedirs(p, exist_ok=True) or True
+g2.py_delete = lambda p: (os.remove(p) if os.path.isfile(p) else None) or True
+g2.py_move = move
+
+
+def _py_write(p, s):
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8") as fh:
+        fh.write(s)
+    return True
+
+
+g2.py_write = _py_write
+L2.execute(r'''
+_PLUGIN = { path = [[%s]] }
+KICH = { phien = 0, soAnh = {}, boQua = {}, datCoSau = nil, skip = 0, render = 0 }
+local LrExportSession = function(params)
+  KICH.phien = KICH.phien + 1
+  KICH.soAnh[#KICH.soAnh + 1] = #params.photosToExport
+  local dest = params.exportSettings.LR_export_destinationPathPrefix
+  local ds = {}
+  for i, ph in ipairs(params.photosToExport) do
+    ds[i] = { photo = ph,
+      waitForRender = function(self)
+        KICH.render = KICH.render + 1
+        if KICH.datCoSau and KICH.render == KICH.datCoSau then
+          py_write(_PLUGIN.path .. "/jobs/request_xuatanh_dung.txt", "dung")
+        end
+        if KICH.boQua[ph.__ten] then return false, "loi gia" end
+        local p = dest .. "/SAY-" .. ph.__ten .. ".jpg"
+        py_write(p, "JPEG")
+        return true, p
+      end,
+      skipRender = function(self) KICH.skip = KICH.skip + 1 end }
+  end
+  return { renditions = function(self)
+             local i = 0
+             return function() i = i + 1; if ds[i] then return i, ds[i] end end
+           end,
+           doExportOnCurrentTask = function() error("phien mot lan khong duoc goi doExportOnCurrentTask") end }
+end
+local fake = {
+  LrFileUtils = { exists = function(p) return py_exists(p) end, delete = function(p) return py_delete(p) end,
+                  move = function(a, b) return py_move(a, b) end,
+                  createAllDirectories = function(p) return py_mkdirs(p) end },
+  LrPathUtils = { child = function(a, b) return a .. "/" .. b end,
+                  leafName = function(p) return string.match(p, "[^/\\]+$") end,
+                  removeExtension = function(p) return (string.gsub(p, "%%.[^.]*$", "")) end },
+  LrFunctionContext = { pcallWithContext = function(tag, fn) return pcall(fn) end },
+  LrTasks = { yield = function() end, sleep = function() end },
+  LrDate = { currentTime = function() return os.time() end },
+  LrApplication = {},
+  LrExportSession = LrExportSession,
+}
+function import(name) return fake[name] or {} end
+package.path = [[%s/?.lua;]] .. package.path
+function anhGia(n)
+  local ds = {}
+  for i = 1, n do
+    local ten = string.format("IMG_%%04d", i)
+    ds[i] = { __ten = ten, getRawMetadata = function(self, k)
+      if k == "path" then return "G:/Buoi/" .. self.__ten .. ".ARW" end
+      return nil end }
+  end
+  return ds
+end
+''' % (str(tam2).replace("\\", "/"), str(GOC).replace("\\", "/")))
+X2 = L2.eval('require("XuatCore")')
+dest = str(tam2 / "ra").replace("\\", "/")
+kq = X2.xuat(L2.eval("anhGia(23)"), dest, L2.eval("{ LR_format = 'JPEG' }"))
+K = L2.globals().KICH
+ktra("xuat: MOT phien cho ca 23 anh (khong chia lo)", K.phien == 1 and K.soAnh[1] == 23,
+     f"{K.phien} phien, {K.soAnh[1]} anh")
+ktra("xuat: dem 23 anh ra, 0 loi, khong dung", kq["ra"] == 23 and kq["loi"] == 0 and not kq["da_dung"])
+bang = xuat_lr.bang_anh(tam2 / "jobs")
+ktra("xuat: bang anh goc -> file ra du 23 dong (ten ra khac ten goc)",
+     len(bang) == 23 and bang.get("G:/Buoi/IMG_0001.ARW", "").endswith("SAY-IMG_0001.jpg"), str(list(bang.items())[:1]))
+td = xuat_lr.tien_do_xuat(tam2 / "jobs")
+ktra("xuat: tien do cuoi xong=23 tong=23", td.get("xong") == 23 and td.get("tong") == 23, str(td))
+ktra("xuat: ghi nhip 'xuat anh 23/23'", "xuất ảnh 23/23" in (tam2 / "jobs" / "plugin_song.txt").read_text(encoding="utf-8"))
+L2.execute("KICH.phien = 0; KICH.soAnh = {}; KICH.render = 0; KICH.boQua = { IMG_0001 = true, IMG_0002 = true, IMG_0003 = true, IMG_0004 = true }")
+kq = X2.xuat(L2.eval("anhGia(10)"), dest + "2", L2.eval("{ LR_format = 'JPEG' }"))
+ktra("xuat: 4 anh khong ra file -> ra 6, loi 4", kq["ra"] == 6 and kq["loi"] == 4, f"{kq['ra']} / {kq['loi']}")
+L2.execute("KICH.phien = 0; KICH.soAnh = {}; KICH.render = 0; KICH.boQua = {}; KICH.skip = 0; KICH.datCoSau = 5")
+kq = X2.xuat(L2.eval("anhGia(50)"), dest + "3", L2.eval("{ LR_format = 'JPEG' }"))
+K = L2.globals().KICH
+ktra("xuat: xin dung sau anh thu 5 -> ra 5, 45 anh skipRender, loi 0, co dung bi xoa",
+     kq["ra"] == 5 and kq["da_dung"] and K.skip == 45 and kq["loi"] == 0
+     and not (tam2 / "jobs" / "request_xuatanh_dung.txt").exists(),
+     f"ra {kq['ra']} · skip {K.skip} · loi {kq['loi']}")
+shutil.rmtree(tam2, ignore_errors=True)
+
 shutil.rmtree(tam, ignore_errors=True)
 print("TAT CA DAT" if not LOI else f"{len(LOI)} LOI")
 sys.exit(1 if LOI else 0)

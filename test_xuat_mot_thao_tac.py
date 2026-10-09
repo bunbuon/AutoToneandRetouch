@@ -406,8 +406,17 @@ def phan_giao_dien():
             app.update()
             time.sleep(0.05)
         ktra("tuần tự: Lightroom chưa xong thì chưa retouch; thanh đáy nói “Lightroom xuất 1/2”",
-             not rt_win._theo_doi["cho"] and not (rt_win.worker and rt_win.worker.is_alive())
+             not (rt_win.worker and rt_win.worker.is_alive())
+             and not (ra / "IMG_1.jpg").exists()
              and "Lightroom xuất 1/2" in rt_win._chu_tt_chay, rt_win._chu_tt_chay)
+        #[[ 9/10 WORKER (user: "co anh thi load vao preview va add luon preset len
+        #   Review"): anh vua xuat ra hien NGAY tren dai anh + anh lon, ke ca khi
+        #   chua retouch (tuan tu). ]]
+        ktra("worker: ảnh vừa xuất lên dải ảnh + ảnh lớn ngay trong lúc Lightroom đang xuất",
+             any(str(p).endswith("IMG_1.jpg") for p, _x in rt_win._ds_luoi)
+             and str(rt_win._anh_dang or "").endswith("IMG_1.jpg")
+             and rt_win._xuat.get("xem_dau", "").endswith("IMG_1.jpg"),
+             f"{rt_win._anh_dang} · {len(rt_win._ds_luoi)} ảnh")
         anh_nhieu(vao / "IMG_2.jpg", seed=2)
         rt_win.cap_nhat_xuat({"trang_thai": "xong", "xong": 2, "tong": 2, "thu_muc": str(vao),
                               "thong_bao": "3 giay"})
@@ -419,7 +428,9 @@ def phan_giao_dien():
         ktra("Lightroom xong -> retouch (mức 0: chép nguyên bản) -> kết thúc lượt",
              rt_win._xuat is None and rt_win._theo_doi is None and (ra / "IMG_1.jpg").is_file()
              and (ra / "IMG_2.jpg").is_file(), rt_win._chu_tt_chay)
-        ktra("câu tổng kết ở thanh đáy", "Xuất + retouch xong" in rt_win._chu_tt_chay, rt_win._chu_tt_chay)
+        ktra("câu tổng kết ở thanh đáy, đếm đủ 2 ảnh đã xử lý",
+             "Xuất + retouch xong" in rt_win._chu_tt_chay and "retouch 2 ảnh" in rt_win._chu_tt_chay,
+             rt_win._chu_tt_chay)
     finally:
         try:
             root.destroy()

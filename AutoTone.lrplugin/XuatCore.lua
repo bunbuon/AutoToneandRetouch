@@ -53,10 +53,16 @@ M.CO_DUNG  = "request_xuatanh_dung.txt"
      không có bảng thì vòng theo dõi thư mục chỉ đoán được theo tên gốc. ]]
 M.BANG     = "xuatanh_anh.tsv"
 
---[[ Ảnh giao khách nặng hơn ảnh duyệt nhiều nên lô nhỏ hơn: người dùng thấy
-     tiến trình nhúc nhích thường xuyên hơn, và xin dừng thì dừng nhanh hơn.
-     Vẫn chia lô vì đúng ba lý do đã ghi ở DuyetCore.lua. ]]
-M.LO = 15
+--[[ 9/10 — XUẤT MỘT LẦN, KHÔNG CHIA LÔ (user: "Khi chọn xuất ảnh trong Lightroom
+     sẽ xuất 1 lần toàn bộ ảnh luôn. K chia nhỏ 15 ảnh nữa"). Trước đây mỗi 15 ảnh
+     là một LrExportSession mới: Lightroom dựng lại phiên, hiện từng đợt nhỏ, và
+     giữa hai đợt thì đứng. Giờ MỘT phiên cho cả lượt — Lightroom tự xếp hàng / vẽ
+     song song như khi anh Export tay. Vẫn theo dõi TỪNG ẢNH bằng
+     session:renditions() + rendition:waitForRender() (cách SDK đưa cho
+     LrExportSession): xong ảnh nào là đếm, ghi bảng ảnh gốc -> file ra, ghi nhịp
+     sống (thưa: GHI_MOI_GIAY); cờ dừng kiểm trước MỖI ảnh -> phần còn lại
+     rendition:skipRender(). ]]
+M.GHI_MOI_GIAY = 2
 
 function M.xinDung()
     return LrFileUtils.exists(LrPathUtils.child(Core.jobDir(), M.CO_DUNG))
@@ -125,65 +131,7 @@ end
 
 -- ----------------------------------------------------------------- xuất ảnh
 
---[[ Xuất một lô. Trả về số file thật sự ra được.
-
-     Đếm theo FILE CÓ THẬT TRÊN ĐĨA (qua rendition.destinationPath), không đếm
-     theo số ảnh đưa vào. Đếm theo số đưa vào thì lượt nào cũng "thành công
-     100%" kể cả khi ổ đầy. ]]
-local function xuatMotLo(photos, thongSo)
-    --[[ Đường dẫn gốc lấy TRƯỚC khi export (lúc còn chắc chắn đọc được) — để
-         ghép với file ra thành bảng M.BANG. ]]
-    local goc = {}
-    Core.try("docDuongDanGiao", function()
-        for i = 1, #photos do
-            goc[i] = photos[i]:getRawMetadata("path")
-        end
-        return true
-    end)
-    local session = LrExportSession({
-        photosToExport = photos,
-        exportSettings = thongSo,
-    })
-    local _, err = Core.try("doExportGiao", function()
-        session:doExportOnCurrentTask()
-        return true
-    end)
-    if err then
-        Core.log("xuatanh: LOI mot lo -> " .. tostring(err))
-    end
-    local ra, cap = 0, {}
-    Core.try("docRenditionsGiao", function()
-        for i, r in session:renditions() do
-            local p = r.destinationPath
-            if p and p ~= "" and LrFileUtils.exists(p) then
-                ra = ra + 1
-                --[[ Ảnh gốc của rendition: hỏi thẳng (r.photo), không có thì
-                     khớp theo tên không đuôi, cuối cùng mới theo thứ tự — tên
-                     ra có thể đã đổi theo quy tắc đặt tên của người dùng. ]]
-                local src = nil
-                if r.photo and type(r.photo.getRawMetadata) == "function" then
-                    local okP, v = pcall(r.photo.getRawMetadata, r.photo, "path")
-                    if okP then src = v end
-                end
-                if not src then
-                    local base = LrPathUtils.removeExtension(LrPathUtils.leafName(p))
-                    for j = 1, #goc do
-                        if goc[j] and LrPathUtils.removeExtension(LrPathUtils.leafName(goc[j])) == base then
-                            src = goc[j]
-                            break
-                        end
-                    end
-                end
-                if not src then src = goc[i] end
-                if src then cap[#cap + 1] = { src = src, jpg = p } end
-            end
-        end
-        return true
-    end)
-    return ra, cap
-end
-
---[[ Bảng ảnh gốc -> file ra, ghi đè cả bảng sau mỗi lô (.part rồi đổi tên). ]]
+--[[ Bảng ảnh gốc -> file ra, ghi đè cả bảng (.part rồi đổi tên). ]]
 function M.ghiBang(cap)
     local d = Core.jobDir()
     if not LrFileUtils.exists(d) then LrFileUtils.createAllDirectories(d) end
@@ -211,49 +159,88 @@ function M.xoaBang()
     end)
 end
 
-function M.xuat(photos, dest, thongSo, lo, tienDo)
-    lo = tonumber(lo) or M.LO
-    if lo < 1 then lo = 1 end
+--[[ Xuất cả danh sách trong MỘT phiên. tienDo(daLam, tong, ra) gọi khi ghi tiến độ.
+     Đếm theo FILE CÓ THẬT TRÊN ĐĨA (waitForRender trả đường dẫn + kiểm tồn tại),
+     không đếm theo số ảnh đưa vào — đếm vậy thì lượt nào cũng "thành công 100%"
+     kể cả khi ổ đầy. ]]
+function M.xuat(photos, dest, thongSo, _lo, tienDo)
     if not LrFileUtils.exists(dest) then
         LrFileUtils.createAllDirectories(dest)
     end
+    -- đường dẫn gốc lấy TRƯỚC khi export, lúc còn chắc chắn đọc được
+    local goc = {}
+    Core.try("docDuongDanGiao", function()
+        for i = 1, #photos do goc[i] = photos[i]:getRawMetadata("path") end
+        return true
+    end)
+    local tong = #photos
+    --  thư mục đích do app đặt THẮNG mọi đường dẫn có sẵn trong thông số
+    thongSo.LR_export_destinationPathPrefix = dest
+    local session = LrExportSession({ photosToExport = photos, exportSettings = thongSo })
+    local ra, daLam, cap, dung, lanGhi, soLoi = 0, 0, {}, false, -1000, 0
 
-    local ra, idx, capTatCa = 0, 1, {}
-    while idx <= #photos do
-        local last = math.min(idx + lo - 1, #photos)
-        local nhom = {}
-        for i = idx, last do nhom[#nhom + 1] = photos[i] end
-
-        local n, cap = xuatMotLo(nhom, thongSo)
-        ra = ra + n
-        for _, c in ipairs(cap) do capTatCa[#capTatCa + 1] = c end
-        local tsv = M.ghiBang(capTatCa)
-        if tienDo then tienDo(last, #photos, ra) end
-        M.ghiTienDo({ trang_thai = "dang_chay", xong = last, tong = #photos,
-                      loi = last - ra, thu_muc = dest, tsv = tsv })
-        --[[ NHỊP SỐNG kèm bước (9/10): lượt xuất cả nghìn ảnh cỡ gốc chặn
-             vòng lặp plugin hàng chục phút; không ghi nhịp thì app thấy
-             plugin_song.txt cũ 45 s là báo "plugin chết". cachGiay 0 = ghi
-             ngay. Bản Core cũ không có hàm thì bỏ qua. ]]
+    local function ghi(cuoi)
+        local bay = os.time()
+        if not cuoi and bay - lanGhi < M.GHI_MOI_GIAY then return end
+        lanGhi = bay
+        local tsv = M.ghiBang(cap)
+        if tienDo then tienDo(daLam, tong, ra) end
+        M.ghiTienDo({ trang_thai = "dang_chay", xong = daLam, tong = tong,
+                      loi = daLam - ra, thu_muc = dest, tsv = tsv })
+        --[[ NHỊP SỐNG kèm bước: lượt xuất cả nghìn ảnh cỡ gốc chặn vòng lặp plugin
+             hàng chục phút; không ghi nhịp thì app thấy plugin_song.txt cũ 45 s là
+             báo "plugin chết". Bản Core cũ không có hàm thì bỏ qua. ]]
         if type(Core.ghiNhip) == "function" then
             Core.try("nhipXuat", function()
-                return Core.ghiNhip(nil, 0, string.format("xuất ảnh %d/%d", last, #photos))
+                return Core.ghiNhip(nil, 0, string.format("xuất ảnh %d/%d", daLam, tong))
             end)
         end
-        LrTasks.yield()
-        idx = last + 1
-
-        if M.xinDung() then
-            M.xoaCoDung()
-            Core.log(string.format("xuatanh: nguoi dung xin dung o anh %d/%d",
-                                   last, #photos))
-            --[[ 'loi' tinh tren SO DA LAM, khong tren tong: may tam chua toi
-                 luot khong phai la loi. Dem chung vao loi la bao dong gia —
-                 cung ly do da ghi o DuyetCore.xuatDuyet. ]]
-            return { ra = ra, loi = last - ra, da_dung = true, da_lam = last }
-        end
     end
-    return { ra = ra, loi = #photos - ra, da_dung = false, da_lam = #photos }
+
+    local _, err = Core.try("xuatMotPhien", function()
+        local i = 0
+        for _, r in session:renditions() do
+            i = i + 1
+            if not dung and M.xinDung() then
+                dung = true
+                M.xoaCoDung()
+                Core.log(string.format("xuatanh: nguoi dung xin dung o anh %d/%d", daLam, tong))
+            end
+            if dung then
+                Core.try("boQuaAnhGiao", function() r:skipRender(); return true end)
+            else
+                local thanh, duong = r:waitForRender()
+                daLam = daLam + 1
+                if thanh and duong and duong ~= "" and LrFileUtils.exists(duong) then
+                    ra = ra + 1
+                    --[[ Ảnh gốc của rendition: hỏi thẳng (r.photo), không được thì
+                         theo thứ tự — tên ra có thể đã đổi theo quy tắc đặt tên. ]]
+                    local src = nil
+                    if r.photo then
+                        src = Core.try("docGocGiao", function()
+                            return r.photo:getRawMetadata("path")
+                        end)
+                    end
+                    cap[#cap + 1] = { src = src or goc[i] or duong, jpg = duong }
+                else
+                    soLoi = soLoi + 1
+                    if soLoi <= 5 then
+                        Core.log("xuatanh: anh khong ra file -> " .. tostring(duong))
+                    end
+                end
+                ghi(false)
+                LrTasks.yield()
+            end
+        end
+        return true
+    end)
+    if err then
+        Core.log("xuatanh: LOI phien xuat -> " .. tostring(err))
+    end
+    ghi(true)
+    --[[ 'loi' tinh tren SO DA LAM, khong tren tong: anh chua toi luot (dung giua
+         chung) khong phai la loi — cung ly do da ghi o DuyetCore.xuatDuyet. ]]
+    return { ra = ra, loi = daLam - ra, da_dung = dung, da_lam = daLam }
 end
 
 -- ------------------------------------------------------- yêu cầu từ phía app
@@ -322,7 +309,7 @@ function M.runRequest()
                   thu_muc = dest, bo_sao = boSao })
 
     local res, err = Core.try("xuatAnhGiao", function()
-        return M.xuat(photos, dest, ts, tonumber(opts.lo))
+        return M.xuat(photos, dest, ts)
     end)
     if not res then
         Core.log("xuatanh: LOI -> " .. tostring(err))

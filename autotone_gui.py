@@ -2964,8 +2964,7 @@ class App(ttk.Frame):
         if not self._gui_yeu_cau_xuat(f, dest, kq.get("va_cham") or "overwrite",
                                       bo_sao=int(kq["bo_sao"]) if "bo_sao" in kq
                                       else (1 if kq.get("bo_sao1", True) else 0),
-                                      chat=float(kq.get("chat") or 80) / 100.0,
-                                      lo=10 if kq.get("song_song") else None):
+                                      chat=float(kq.get("chat") or 80) / 100.0):
             return False
         try:
             import trang_thai as tt

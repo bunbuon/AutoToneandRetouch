@@ -113,8 +113,13 @@ của Retouch). Bấm là hiện hộp thoại, mọi lựa chọn được nh�
 Hộp thoại **đo máy** (RAM trống, VRAM card NVIDIA, CPU, ổ đích). Vừa xuất vừa
 retouch cần ≥ 6 GB RAM trống, ≥ 3 GB VRAM trống và có card NVIDIA — thiếu thì app
 **tự đổi sang "retouch sau khi xuất xong"** và nói lý do; muốn ép vẫn có ô "Vẫn
-chạy song song". Khi chạy song song: retouch 1 luồng, chế độ tiết kiệm, Lightroom
-xuất lô 10 ảnh; RAM trống dưới 1,5 GB thì tạm ngưng nhận ảnh mới tới khi hồi.
+chạy song song". Khi chạy song song: retouch 1 luồng, chế độ tiết kiệm; RAM trống
+dưới 1,5 GB thì tạm ngưng nhận ảnh mới tới khi hồi.
+
+Lightroom xuất **một lần cho cả lượt** (một phiên Export, không chia lô — 9/10), tiến
+độ đếm từng ảnh. Ảnh nào xuất xong là màn Retouch hiện ngay trên dải ảnh; tấm đầu
+tiên tự lên ảnh lớn kèm **xem trước theo preset** của lượt (chế độ song song: đợi xem
+trước tấm đầu rồi mới chạy mẻ; xong tấm nào thì ảnh lớn đổi sang bản retouch thật).
 
 Bấm **Bắt đầu xuất**: app chuyển sang màn Retouch, thanh đáy hiện
 *"Lightroom xuất 120/760 · Retouch 85/760 · 12 phút"*. **Dừng** = xin Lightroom dừng
