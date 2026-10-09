@@ -127,6 +127,102 @@ def _cap_nhat_plugin(nguon: Path, dich: Path) -> list:
     return doi
 
 
+#[[ PLUGIN TU CAI VAO THU MUC Modules CUA LIGHTROOM (9/10 — user: "co cach nao
+#   de Lightroom tu dong nhan Plugin cua Tool khi lan dau cai Tool xong").
+#
+#   Lightroom Classic tu nap MOI plugin nam trong thu muc Modules moi lan khoi
+#   dong — khong can Plug-in Manager → Add (may user da co thu muc nay, dang
+#   chua saytool.lrdevplugin). Cung voi LrForceInitPlugin (Info.lua) la mo
+#   Lightroom → vong nhan job tu chay.
+#
+#   App (KHONG phai bo cai: bo cai co the chay quyen admin -> ghi nham sang tai
+#   khoan khac, va RedirectionGuard 6/10) chep plugin vao Modules o lan mo dau,
+#   cac lan sau dong bo file ma nhu ban o thu muc du lieu, va ghi `jobs_dir.txt`
+#   tro ve thu muc job THAT (cua ban o thu muc du lieu) — xem ThuMucJob.lua. Nho
+#   vay ban trong Modules va ban nguoi dung tung Add dung CHUNG mot jobs/, phia
+#   app khong doi gi.
+#
+#   KHONG cai khi: chay tu ma nguon; tu kiem (kiem_goi dat AUTOTONE_TU_KIEM +
+#   AUTOTONE_DATA tam — cai luc do la tro plugin THAT cua nguoi dung vao thu muc
+#   tam se bi xoa); thu muc du lieu nam trong thu muc tam; tien trinh con.
+#   AUTOTONE_LR_MODULES = dat thu muc Modules (bai kiem). ]]
+TEN_TRO_JOBS = "jobs_dir.txt"
+#: Kết quả lần cài vào Modules của lần mở app này — giao diện đọc để nhắc.
+#: {"duong": thư mục plugin trong Modules, "moi": lần đầu cài, "doi": [file đã
+#:  cập nhật], "loi": lý do không cài được ("" = ổn), "bo_qua": lý do không cài}
+PLUGIN_MODULES: dict = {}
+_DA_CAI_MODULES: list = []
+
+
+def thu_muc_modules_lr() -> Path | None:
+    """Thư mục Lightroom tự nạp plugin (Modules) của người dùng này."""
+    tu_dat = os.environ.get("AUTOTONE_LR_MODULES")
+    if tu_dat:
+        return Path(tu_dat)
+    if sys.platform.startswith("win"):
+        g = os.environ.get("APPDATA")
+        return Path(g) / "Adobe" / "Lightroom" / "Modules" if g else None
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "Adobe"
+                / "Lightroom" / "Modules")
+    return None
+
+
+def ly_do_khong_cai_modules() -> str:
+    """"" = được cài vào Modules lúc này; khác "" = vì sao không."""
+    if os.environ.get("AUTOTONE_LR_MODULES"):
+        return ""
+    if not dong_goi():
+        return "chạy từ mã nguồn"
+    if os.environ.get("AUTOTONE_TU_KIEM") or "--tu-kiem" in sys.argv[1:]:
+        return "đang tự kiểm"
+    try:
+        import multiprocessing as _mp
+        if _mp.current_process().name != "MainProcess":
+            return "tiến trình con"
+    except Exception:                                        # noqa: BLE001
+        pass
+    try:
+        import tempfile
+        tam = os.path.normcase(os.path.abspath(tempfile.gettempdir()))
+        du = os.path.normcase(os.path.abspath(str(goc_du_lieu())))
+        if du == tam or du.startswith(tam + os.sep):
+            return "thư mục dữ liệu là thư mục tạm"
+    except Exception:                                        # noqa: BLE001
+        pass
+    return ""
+
+
+def cai_vao_modules(nguon: Path, jobs: Path, modules: Path | None = None) -> dict:
+    """Chép / đồng bộ plugin vào thư mục Modules + ghi file trỏ jobs_dir.txt.
+    Không bao giờ ném lỗi — lỗi nằm ở kq["loi"]."""
+    kq = {"duong": "", "moi": False, "doi": [], "loi": "", "bo_qua": ""}
+    modules = Path(modules) if modules else thu_muc_modules_lr()
+    if modules is None:
+        kq["loi"] = "không rõ thư mục Modules của Lightroom trên hệ điều hành này"
+        return kq
+    dich = modules / "AutoTone.lrplugin"
+    kq["duong"] = str(dich)
+    try:
+        kq["moi"] = not (dich / "Info.lua").is_file()
+        dich.mkdir(parents=True, exist_ok=True)
+        kq["doi"] = _cap_nhat_plugin(Path(nguon), dich)
+        tro = dich / TEN_TRO_JOBS
+        noi = str(Path(jobs)) + "\n"
+        cu = tro.read_text(encoding="utf-8") if tro.is_file() else None
+        if cu != noi:
+            tam = tro.with_suffix(".part")
+            tam.write_text(noi, encoding="utf-8")
+            os.replace(tam, tro)
+            if not kq["moi"]:
+                kq["doi"].append(TEN_TRO_JOBS)
+        if not (dich / "Info.lua").is_file():
+            kq["loi"] = "chép xong mà thiếu Info.lua"
+    except OSError as ex:
+        kq["loi"] = f"{type(ex).__name__}: {ex}"
+    return kq
+
+
 def plugin() -> Path:
     """Thư mục plugin Lightroom dùng thật — chép từ gói ra lần đầu, các lần sau
     cập nhật file mã khi bản cài mang plugin mới hơn (giữ nguyên jobs/).
@@ -164,6 +260,17 @@ def plugin() -> Path:
         except OSError:
             pass
     tao(dich / "jobs")
+    #  9/10: bản tự nạp trong thư mục Modules của Lightroom (xem cai_vao_modules)
+    if not _DA_CAI_MODULES and nguon.is_dir():
+        _DA_CAI_MODULES.append(True)
+        ly_do = ly_do_khong_cai_modules()
+        if ly_do:
+            PLUGIN_MODULES.clear()
+            PLUGIN_MODULES.update({"duong": "", "moi": False, "doi": [], "loi": "",
+                                   "bo_qua": ly_do})
+        else:
+            PLUGIN_MODULES.clear()
+            PLUGIN_MODULES.update(cai_vao_modules(nguon, dich / "jobs"))
     return dich
 
 

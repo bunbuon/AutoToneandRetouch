@@ -7168,6 +7168,12 @@ def plugin_khac(dang_dung: Path | None = None) -> list:
             if meip:
                 ung_vien.append(Path(meip) / "AutoTone.lrplugin")
         ung_vien.append(Path(sys.argv[0]).resolve().parent / "AutoTone.lrplugin")
+        #[[ 9/10: ban app tu cai vao thu muc Modules cua Lightroom. Binh thuong
+        #   jobs/ cua no TRONG (file tro jobs_dir.txt dua ve thu muc dang dung);
+        #   co hoat dong o day nghia la Lightroom chay ban CU chua biet file tro. ]]
+        mod = dd.thu_muc_modules_lr()
+        if mod is not None:
+            ung_vien.append(mod / "AutoTone.lrplugin")
     except (OSError, ValueError):
         pass
 

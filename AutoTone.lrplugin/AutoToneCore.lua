@@ -22,7 +22,11 @@ local M = {}
      Lightroom có thể trỏ %APPDATA% trong khi Python hiểu là %LOCALAPPDATA%, lệch
      một cái là plugin không bao giờ thấy job. Lấy theo thư mục plugin thì hai bên
      luôn chỉ về đúng một chỗ, dù cài plugin ở đâu. ]]
+--[[ 9/10: có file trỏ jobs_dir.txt (bản app tự cài vào thư mục Modules của
+     Lightroom) thì dùng thư mục trong đó — xem ThuMucJob.lua. ]]
+local okTMJ, TMJ = pcall(require, "ThuMucJob")
 function M.jobDir()
+    if okTMJ and type(TMJ) == "table" and TMJ.jobDir then return TMJ.jobDir() end
     return LrPathUtils.child(_PLUGIN.path, "jobs")
 end
 

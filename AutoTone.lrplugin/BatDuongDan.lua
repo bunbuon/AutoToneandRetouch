@@ -59,7 +59,11 @@ local LrView      = import "LrView"
      AutoToneCore mà file đó lỗi (bản đang sửa dở chẳng hạn), Lightroom sẽ báo
      lỗi filter ngay giữa hộp thoại Export. Vài dòng lặp lại ở đây rẻ hơn nhiều
      so với việc đó. ]]
+--  ThuMucJob.lua nhỏ, không require gì — nạp được ở đây mà không kéo lỗi của
+--  AutoToneCore vào hộp thoại Export. Không nạp được thì như cũ.
+local okTMJ, TMJ = pcall(require, "ThuMucJob")
 local function jobDir()
+    if okTMJ and type(TMJ) == "table" and TMJ.jobDir then return TMJ.jobDir() end
     return LrPathUtils.child(_PLUGIN.path, "jobs")
 end
 

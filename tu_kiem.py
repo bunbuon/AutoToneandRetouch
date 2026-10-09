@@ -179,6 +179,37 @@ def chay(nhanh: bool = False) -> Bao:
         return "không kèm jobs/"
     b.thu("Plugin trong gói sạch", _plugin_sach)
 
+    #[[ 9/10: app tu cai plugin vao thu muc Modules cua Lightroom. Kiem TRONG GOI
+    #   bang ham that, vao thu muc TAM (khong dung Lightroom that): du file ma, co
+    #   ThuMucJob.lua, file tro dung thu muc job, lan hai khong ghi gi. ]]
+    def _plugin_modules():
+        import tempfile
+        nguon = dd.goc_tai_nguyen() / "AutoTone.lrplugin"
+        if not (nguon / "Info.lua").is_file():
+            raise AssertionError(f"không thấy plugin trong gói: {nguon}")
+        if not (nguon / "ThuMucJob.lua").is_file():
+            raise AssertionError("plugin trong gói thiếu ThuMucJob.lua")
+        tam = Path(tempfile.mkdtemp(prefix="tk_mod_"))
+        try:
+            jobs = tam / "jobs"
+            kq = dd.cai_vao_modules(nguon, jobs, tam / "Modules")
+            dich = tam / "Modules" / "AutoTone.lrplugin"
+            if kq.get("loi") or not kq.get("moi"):
+                raise AssertionError(f"cài vào Modules hỏng: {kq}")
+            tro = (dich / dd.TEN_TRO_JOBS).read_text(encoding="utf-8").strip()
+            if tro != str(jobs):
+                raise AssertionError(f"file trỏ sai: {tro}")
+            kq2 = dd.cai_vao_modules(nguon, jobs, tam / "Modules")
+            if kq2.get("doi"):
+                raise AssertionError(f"lần hai vẫn ghi: {kq2['doi']}")
+            n = len(list(dich.glob("*.lua")))
+        finally:
+            shutil.rmtree(tam, ignore_errors=True)
+        mod = dd.thu_muc_modules_lr()
+        return (f"{n} file .lua + jobs_dir.txt → Modules (thử ở thư mục tạm) · Lightroom "
+                f"thật: {mod / 'AutoTone.lrplugin' if mod else '?'}")
+    b.thu("Plugin tự cài vào Lightroom (Modules)", _plugin_modules)
+
     # --- 3. Khoá hạn dùng ---------------------------------------------------
     def _khoa():
         import khoa

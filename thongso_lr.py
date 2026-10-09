@@ -213,6 +213,51 @@ def ep(thong_so: dict, dest: str, va_cham: str = "overwrite",
     return st
 
 
+# ------------------------------------------------------- plugin đã Add (9/10)
+
+#[[ Lightroom ghi danh sach plugin nguoi dung Add bang Plug-in Manager vao chinh
+#   file cau hinh nay, dang chuoi Lua long trong chuoi Lua:
+#       AgSdkPluginLoader_installedPluginPaths = "t = {\
+#           [\"C:\\\\Users\\\\x\\\\AutoTone.lrplugin\"] = \"C:...\",\
+#       }\
+#       ",
+#   (moi dau \ cua duong dan thanh 4 dau). Chi DOC — khong bao gio ghi file nay:
+#   Lightroom ghi de no luc thoat. ]]
+_DS_PLUGIN = re.compile(r'\[\\"(.*?)\\"\]')
+
+
+def _khoi(van: str, khoa: str) -> str:
+    i = van.find(khoa + " = ")
+    if i < 0:
+        return ""
+    j = van.find('\n",', i)
+    return van[i:j if j > 0 else len(van)]
+
+
+def plugin_da_them_lr(p: Path | None = None, goc: Path | None = None) -> list[str]:
+    """Đường dẫn các bản AutoTone.lrplugin người dùng đã Add trong Plug-in
+    Manager mà KHÔNG tắt (Disable). [] nếu không đọc được."""
+    p = p or file_prefs(goc)
+    if not p or not Path(p).is_file():
+        return []
+    try:
+        van = Path(p).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+
+    def ds(khoa):
+        ra = []
+        for m in _DS_PLUGIN.findall(_khoi(van, khoa)):
+            duong = m.replace("\\\\\\\\", "\\").replace("\\\\", "\\")
+            ra.append(duong)
+        return ra
+
+    tat = {x.lower().rstrip("\\/") for x in ds("AgSdkPluginLoader_disabledPluginPaths")}
+    return [x for x in ds("AgSdkPluginLoader_installedPluginPaths")
+            if x.lower().rstrip("\\/").endswith("autotone.lrplugin")
+            and x.lower().rstrip("\\/") not in tat]
+
+
 def mo_ta(thong_so: dict) -> str:
     """Một dòng tóm tắt cho giao diện — thứ người dùng cần liếc để yên tâm."""
     if not thong_so:

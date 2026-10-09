@@ -610,24 +610,52 @@ class App(ttk.Frame):
     #   Tai loi (mat mang...): noi ro, co "Thu lai" va "Dung tam bang CPU" —
     #   khong de nguoi dung ket han. ]]
     def _bao_plugin_cap_nhat(self):
-        """Bản cài vừa chép plugin Lightroom mới đè lên bản cũ -> nhắc Reload.
+        """Sau khi app tự cài / cập nhật plugin Lightroom: nói một lần, đúng việc
+        người dùng phải làm (thường chỉ là tắt / mở lại Lightroom).
 
         #[[ 6/10: plugin cu (4/9) nam o thu muc du lieu suot nhieu ban cai vi
         #   duong_dan.plugin() chi chep khi chua co. Nay no tu cap nhat file ma
         #   (duong_dan._cap_nhat_plugin) — nhung Lightroom chi doc file moi khi
         #   Reload / mo lai. Chua Reload thi ban xuat van thieu cot WhiteBalance /
-        #   Contrast -> tool bo qua WB va ba thanh Tone, y het loi user bao. ]]
+        #   Contrast -> tool bo qua WB va ba thanh Tone, y het loi user bao.
+        #
+        #   9/10: app tu cai plugin vao thu muc Modules cua Lightroom (Lightroom
+        #   tu nap luc khoi dong, khoi Plug-in Manager → Add). Lan dau cai: noi
+        #   "tat / mo lai Lightroom mot lan" + ban tung Add tay gio thua. ]]
         """
-        doi = list(getattr(dd, "PLUGIN_CAP_NHAT", []) or [])
+        mod = dict(getattr(dd, "PLUGIN_MODULES", {}) or {})
+        doi = sorted(set(list(getattr(dd, "PLUGIN_CAP_NHAT", []) or [])
+                         + [x for x in (mod.get("doi") or []) if x != dd.TEN_TRO_JOBS]))
+        if mod.get("moi") and not mod.get("loi"):
+            try:
+                import thongso_lr as tl
+                cu = [x for x in tl.plugin_da_them_lr()
+                      if os.path.normcase(x.rstrip("\\/"))
+                      != os.path.normcase(str(mod.get("duong", "")).rstrip("\\/"))]
+            except Exception:                                # noqa: BLE001
+                cu = []
+            chu = ("Đã cài plugin AutoTone vào Lightroom — thư mục Modules:\n"
+                   f"{mod.get('duong', '')}\n\n"
+                   "Từ nay Lightroom TỰ NẠP plugin mỗi lần mở, không cần Plug-in "
+                   "Manager → Add.\n\n"
+                   "Nếu Lightroom đang mở: TẮT HẲN rồi MỞ LẠI Lightroom một lần để "
+                   "nó nạp plugin.")
+            if cu:
+                chu += ("\n\nBản anh từng Add tay trong Plug-in Manager giờ thừa:\n"
+                        + "\n".join(f"   {x}" for x in cu)
+                        + "\nKhông bắt buộc, nhưng nên gỡ cho gọn: Lightroom → File › "
+                          "Plug-in Manager… › chọn bản đó › Remove. (Hai bản cùng mã, "
+                          "dùng chung thư mục job nên không chạy trùng.)")
+            messagebox.showinfo("Đã cài plugin Lightroom", chu, parent=self)
+            return
         if not doi:
             return
         messagebox.showinfo(
             "Đã cập nhật plugin Lightroom",
             f"Bản cài này mang plugin AutoTone mới ({len(doi)} file đã cập nhật).\n\n"
-            "Để Lightroom dùng bản mới: trong Lightroom vào File › Plug-in "
-            "Manager… › chọn AutoTone › bấm Reload Plug-in (hoặc tắt hẳn rồi mở "
-            "lại Lightroom).\n\n"
-            "Chưa Reload thì Lightroom vẫn chạy plugin cũ: tool không nhận ra "
+            "Để Lightroom dùng bản mới: TẮT HẲN rồi MỞ LẠI Lightroom (hoặc File › "
+            "Plug-in Manager… › chọn AutoTone › Reload Plug-in).\n\n"
+            "Chưa nạp lại thì Lightroom vẫn chạy plugin cũ: tool không nhận ra "
             "preset bỏ trống WB / Tone nên sẽ bỏ qua cân WB và Contrast / Whites / "
             "Blacks.", parent=self)
 
@@ -3444,35 +3472,57 @@ class App(ttk.Frame):
         self.refresh_plan()
 
     def show_plugin_help(self):
-        installed = at.LR_PLUGIN_DIR.is_dir()
+        """⋯ › Cài plugin…: tình trạng plugin + cài lại vào thư mục Modules.
+
+        #[[ 9/10: cach chinh la app TU CAI vao thu muc Modules cua Lightroom
+        #   (duong_dan.cai_vao_modules) — Lightroom tu nap, khong can Add. Cach cu
+        #   (Plug-in Manager → Add) chi con la duong du phong khi khong cai duoc. ]]
+        """
         pending = len(list(at.LR_JOB_DIR.glob("*.tsv"))) if at.LR_JOB_DIR.is_dir() else 0
         done = len(list(at.LR_JOB_DIR.glob("*.done"))) if at.LR_JOB_DIR.is_dir() else 0
-        state = (f"Plugin đã có sẵn tại:\n{at.LR_PLUGIN_DIR}\n\n"
-                 f"Job đang chờ Lightroom xử lý: {pending}\n"
-                 f"Job đã xử lý xong: {done}\n\n"
-                 if installed else "KHÔNG tìm thấy thư mục plugin!\n\n")
-        if done == 0 and pending > 0:
-            state += ("Chưa job nào được xử lý — nhiều khả năng plugin chưa được thêm "
-                      "vào Lightroom, hoặc Lightroom chưa mở.\n\n")
+        nhip = at.plugin_nhip()
+        mod = dict(getattr(dd, "PLUGIN_MODULES", {}) or {})
+        thu_muc_mod = dd.thu_muc_modules_lr()
+        ban_mod = (thu_muc_mod / "AutoTone.lrplugin") if thu_muc_mod else None
+        co_mod = bool(ban_mod and (ban_mod / "Info.lua").is_file())
+        if nhip is None:
+            song = "Lightroom CHƯA bao giờ chạy plugin (chưa có nhịp sống)."
+        elif nhip <= 60:
+            song = f"Plugin đang chạy trong Lightroom (nhịp {nhip:.0f} giây trước)."
+        else:
+            song = (f"Plugin im {nhip / 60:.0f} phút — Lightroom đang tắt, hoặc chưa "
+                    "nạp plugin.")
+        if co_mod:
+            cach = (f"Plugin đã cài vào thư mục Modules của Lightroom:\n{ban_mod}\n"
+                    "Lightroom TỰ NẠP mỗi lần mở — không cần Plug-in Manager → Add. "
+                    "Vừa cài / cập nhật thì tắt hẳn rồi mở lại Lightroom một lần.")
+        else:
+            ly_do = mod.get("loi") or mod.get("bo_qua") or "chưa cài"
+            cach = ("Plugin CHƯA nằm trong thư mục Modules của Lightroom "
+                    f"({ly_do}).\nCách thủ công: Lightroom → File → Plug-in Manager… "
+                    f"→ Add → trỏ tới:\n   {at.LR_PLUGIN_DIR}")
         messagebox.showinfo(
-            "Plugin Lightroom — cài một lần",
-            state +
-            "Cách thêm vào Lightroom (chỉ làm 1 lần):\n"
-            "   1. Mở Lightroom Classic\n"
-            "   2. File → Plug-in Manager...\n"
-            "   3. Bấm Add ở góc dưới bên trái\n"
-            f"   4. Trỏ tới thư mục:\n      {at.LR_PLUGIN_DIR}\n"
-            "   5. Bấm Done\n\n"
-            "Xong rồi thì mỗi lần bấm “2 · Ghi và đẩy vào Lightroom”, Lightroom tự cập nhật "
-            "thông số trong vài giây, không phải bấm gì thêm.\n\n"
-            "Plugin chỉ sửa đúng 5 trường tone (Exposure, Highlights, Shadows, "
-            "Temperature, Tint) và giữ nguyên mọi thứ khác của ảnh — an toàn hơn "
-            "Read Metadata from File, vốn ghi đè toàn bộ chỉnh sửa trong catalog.\n\n"
-            "Muốn tắt tự động: Library → Plug-in Extras → “AutoTone: bật/tắt tự động áp”.")
-        if installed and messagebox.askyesno("Mở thư mục plugin?",
-                                             "Mở thư mục plugin trong Explorer để tiện "
-                                             "copy đường dẫn?"):
-            open_in_explorer(at.LR_PLUGIN_DIR)
+            "Plugin Lightroom",
+            f"{song}\nJob đang chờ: {pending} · đã xử lý: {done}\n\n{cach}\n\n"
+            "Plugin chỉ sửa đúng các trường tone / màu tool tính và giữ nguyên mọi "
+            "thứ khác của ảnh. Muốn tắt tự động: Library → Plug-in Extras → "
+            "“AutoTone: bật/tắt tự động áp”.", parent=self)
+        if ban_mod is not None and dd.dong_goi() and messagebox.askyesno(
+                "Cài lại plugin vào Lightroom?",
+                "Chép lại plugin vào thư mục Modules của Lightroom ngay bây giờ?\n"
+                "(Dùng khi plugin bị xoá / hỏng. Xong thì tắt hẳn rồi mở lại "
+                "Lightroom.)", parent=self):
+            kq = dd.cai_vao_modules(dd.goc_tai_nguyen() / "AutoTone.lrplugin",
+                                    at.LR_JOB_DIR)
+            dd.PLUGIN_MODULES.clear()
+            dd.PLUGIN_MODULES.update(kq)
+            if kq.get("loi"):
+                messagebox.showerror("Không cài được plugin", kq["loi"], parent=self)
+            else:
+                messagebox.showinfo(
+                    "Đã cài plugin",
+                    f"Đã chép plugin vào:\n{kq['duong']}\n\nTắt hẳn rồi mở lại "
+                    "Lightroom để nó nạp.", parent=self)
 
     def folder(self) -> Path | None:
         s = self.v_folder.get().strip().strip('"')

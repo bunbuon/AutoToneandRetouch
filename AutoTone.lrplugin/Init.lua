@@ -30,8 +30,10 @@ local LrPathUtils = import "LrPathUtils"
      rồi nhưng vòng lặp không chạy". Đã mất một vòng chẩn đoán vì chuyện này.
 
      Nay Init.lua tự ghi được, nên lần chạy nào cũng để lại dấu vết. ]]
+local okTMJ, TMJ = pcall(require, "ThuMucJob")      -- 9/10: jobs_dir.txt (bản trong Modules)
 local function rawLog(msg)
-    local dir = LrPathUtils.child(_PLUGIN.path, "jobs")
+    local dir = (okTMJ and type(TMJ) == "table" and TMJ.jobDir and TMJ.jobDir())
+                or LrPathUtils.child(_PLUGIN.path, "jobs")
     local f = io.open(LrPathUtils.child(dir, "plugin.log"), "a")
     if f then
         f:write(os.date("%Y-%m-%d %H:%M:%S") .. "  [init] " .. tostring(msg) .. "\n")

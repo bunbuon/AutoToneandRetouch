@@ -63,6 +63,8 @@ LOAI_TRU = [
     "do_ranh_canh.py", "do_chot_mat_ao.py", "so_sanh_do_mat.py",
     "xem_chot.py", "xem_do_sang.py", "eye_probe.py", "eye_sheet.py",
     "make_testdata.py", "tools_smoke_test.py", "dong_goi.py", "bao_mat.py",
+    #  9/10: bai kiem rieng (khong phai tu_kiem goi toi)
+    "test_xuat_mot_thao_tac.py", "test_plugin_modules.py",
     #[[ 3/10: kiem_dong_goi bao "moi file kiem/do deu bi loai" DO — nhieu file
     #   kiem them tu 29/9 toi 3/10 chua ai ke vao day. Bo sung ca loat. ]]
     "kiem_2ban_quay.py", "kiem_ghi_de.py", "kiem_nhan_keo.py", "kiem_tham_chieu.py",
@@ -174,7 +176,8 @@ TAI_NGUYEN = [("models", "models"), ("AutoTone.lrplugin", "AutoTone.lrplugin")]
 #   Nen truoc khi build, plugin duoc chep sang mot ban SACH trong build/ va
 #   --add-data lay tu do. Xem plugin_sach().
 #]]
-BO_KHOI_PLUGIN = ["jobs"]
+#  jobs_dir.txt: file trỏ app ghi vào bản trong Modules (9/10) — không thuộc gói
+BO_KHOI_PLUGIN = ["jobs", "jobs_dir.txt"]
 
 # Gói nặng của phần retouch — PyInstaller không tự dò ra hết
 RETOUCH_GOI = ["torch", "torchvision", "onnxruntime", "insightface",

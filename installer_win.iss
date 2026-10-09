@@ -108,6 +108,12 @@ Name: "{group}\{#TenApp}"; Filename: "{app}\{#Exe}"
 Name: "{group}\Gỡ cài đặt {#TenApp}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#TenApp}"; Filename: "{app}\{#Exe}"; Tasks: desktopicon
 
+[UninstallDelete]
+; 9/10: app tu chep plugin vao thu muc Modules cua Lightroom (Lightroom tu nap
+; plugin o do, khong can Plug-in Manager → Add — xem duong_dan.cai_vao_modules).
+; Go app thi go luon ban do, khong de Lightroom nap mot plugin khong con app.
+Type: filesandordirs; Name: "{userappdata}\Adobe\Lightroom\Modules\AutoTone.lrplugin"
+
 [Run]
 ; Hoi mo app ngay sau khi cai xong.
 ; Mo QUA explorer.exe, KHONG chay thang {app}\{#Exe}: Inno Setup 6.5+ bat
