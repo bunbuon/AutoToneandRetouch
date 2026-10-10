@@ -1674,6 +1674,8 @@ class App(ttk.Frame):
         self.v_level = tk.BooleanVar(value=True)
         self.v_dong_bo_loat = tk.BooleanVar(
             value=bool(at.DEFAULTS.get("dong_bo_loat", True)))
+        self.v_mat_sang_nhat = tk.BooleanVar(        # 11/10: at.do_mat_sang_nhat
+            value=bool(at.DEFAULTS.get("mat_sang_nhat", True)))
         self.v_burst = tk.BooleanVar(value=False)
         self.v_blink = tk.BooleanVar(value=False)
         self.v_upright = tk.BooleanVar(value=False)
@@ -1853,6 +1855,14 @@ class App(ttk.Frame):
             "Đo độ sáng ở đâu trên ảnh. “Khuôn mặt + điểm bắt nét” đo da mặt "
             "của người được lấy nét — khuyên dùng. Đổi cách đo thì phải bấm "
             "“1 · Phân tích” để quét lại ảnh.")
+        #[[ 11/10 — user: "chi do sang tren mat sac net, out net bo qua; anh tap
+        #   the thi xu ly cho mat dang sang nhat". Xem at.do_mat_sang_nhat. Tinh
+        #   tren so do tung mat da co -> doi o nay chi tinh lai, khong quet lai. ]]
+        ct(g_tone, self.v_mat_sang_nhat, "Ảnh nhiều người: đo mặt nét sáng nhất",
+           "Ảnh có từ 2 mặt: bỏ mặt out nét, đo theo mặt đang được chiếu "
+           "sáng nhất — mặt đó không bị cháy, cả nhóm cùng một mức. Ảnh đám "
+           "đông không tối đi quá 0.5 EV so với cách đo cũ. Ảnh một người "
+           "giữ nguyên.")
         hop(g_tone, "Cân bằng trắng", self.v_wb, [w[0] for w in WBS],
             self.refresh_plan,
             "Da trắng hồng: kéo màu da về đích da trắng hồng (đích riêng cho ánh "
@@ -2014,7 +2024,7 @@ class App(ttk.Frame):
                   self.v_hsl_da, self.v_loai_buoi, self.v_bu_sang, self.v_gap_on, self.v_gap,
                   self.v_gap_can_sig, self.v_scenesig, self.v_level,
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
-                  self.v_upright):
+                  self.v_upright, self.v_mat_sang_nhat):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         self._tom_tat_nhom()
 
@@ -3833,6 +3843,7 @@ class App(ttk.Frame):
                                      if self.v_scenesig.get() else 0.0),
                    scene_gap_can_sig=self.v_gap_can_sig.get(),
                    dong_bo_loat=self.v_dong_bo_loat.get(),
+                   mat_sang_nhat=self.v_mat_sang_nhat.get(),
                    max_ev_up=self._num(self.v_maxup, 1.0),
                    #[[ Anh sang cua buoi — nguoi dung chon o khau 2.
                    #   Thieu dong nay thi o chon la mot cai nut khong noi vao

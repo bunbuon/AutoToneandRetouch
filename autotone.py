@@ -2704,6 +2704,25 @@ DEFAULTS = {
     "canh_ev100_ke": 8,
     "canh_ev100_min": 3,
     "canh_ev100_tt": 1.0,
+    #[[ 11/10 — DO THEO MAT NET SANG NHAT (do_mat_sang_nhat). User: "chi do
+    #   sang tren cac khuon mat sac net, out net bo qua. Anh tap the nhieu
+    #   nguoi thi xu ly cho khuon mat ma anh sang dang sang nhat."
+    #   mat_sang_nhat_net : mat net < bay nhieu phan mat NET NHAT = out net, bo
+    #   mat_sang_nhat_diem: diem YuNet toi thieu (mat ao / mat mo nhoe bo)
+    #   mat_sang_nhat_tran: khong SANG hon phep do cu qua bay nhieu EV — anh
+    #                       dam dong 20-50 mat, mat sang nhat la ngoai le (dim
+    #                       toi 1.5-2 EV neu khong chan). 0 = khong chan.
+    #   Cong dap an tay (kiem_2ban_quay, 11/10), anh user SUA: gan / xa, sai tb
+    #     2609     : 191 / 94,  0.208 -> 0.190 EV · anh da duyet doi >0.3: 7.1%
+    #     TrainTool: 122 / 46,  0.223 -> 0.205 EV · anh da duyet doi >0.3: 4.5%
+    #   Anh doi gan nhu toan anh NHOM / DAM DONG (196/219 o 2609 co >= 6 mat) va
+    #   doi theo chieu TOI di — dung chieu user sua anh >= 2 mat (288 toi / 109
+    #   sang). Net 0.4 tot hon 0 va 0.6; chan 0.5 bot anh da duyet bi doi 12% -> 7%.
+    #]]
+    "mat_sang_nhat": True,
+    "mat_sang_nhat_net": 0.4,
+    "mat_sang_nhat_diem": 0.6,
+    "mat_sang_nhat_tran": 0.5,
     #[[ MUC 2 — WB THEO DU LIEU MAY + THEO THAN MAY.
     #   wb_theo_may_pull: catalog khong co AsShot -> keo Temp ve nhiet do may
     #     da dung render preview (Sony 0xb021 dat tay, Nikon 0x004F tu do),
@@ -4023,6 +4042,57 @@ def do_mat_theo_anh_sang(items: list, cfg: dict) -> int:
     for r, p in p95_dong:
         r["face_p95_dong"] = round(float(p), 5)
     return len(sua)
+
+
+def do_mat_sang_nhat(items: list, cfg: dict) -> int:
+    """Anh >= 2 mat: phep do mat = mat SANG NHAT trong cac mat NET. Tra ve so anh doi.
+
+    Ung vien: diem YuNet >= mat_sang_nhat_diem, do net >= mat_sang_nhat_net phan
+    cua mat net nhat trong anh (mat out net bo qua). Can >= 2 ung vien — anh mot
+    nguoi giu nguyen phep do cu. Khong sang hon phep do cu qua mat_sang_nhat_tran.
+
+    #[[ VI SAO — user 11/10: anh cung canh "buc tang EV buc giam EV". Do that
+    #   buoi 1010 (o G): SAY08563 va SAY08566 cung nhom nguoi, cung thong so may,
+    #   mat sang nhat deu ~-0.5 — nhung phep do cu (trung binh co trong so cac
+    #   mat, chon theo co mat / do net) ra -0.53 va -1.24 -> Exposure -0.47 va
+    #   +0.36. Mat sang nhat on dinh hon: nhieu EV mat trong nhom cung thong so
+    #   (p85) giam o ca 5 buoi do lai (1010 1.29 -> 0.76, BVDay3 0.50 -> 0.35).
+    #
+    #   Chay tren face_debug (so do TUNG mat, luu san khi phan tich) — khong
+    #   can quet lai anh; ban phan tich da luu (phan_tich/) cung dung duoc.
+    #   Ghi qua _doi_mat_do nen _tra_mat_goc() tra lai so cu moi lan tinh.
+    #]]
+    """
+    if not cfg.get("mat_sang_nhat"):
+        return 0
+    ti_net = float(cfg.get("mat_sang_nhat_net", 0.4) or 0.0)
+    diem = float(cfg.get("mat_sang_nhat_diem", 0.6) or 0.0)
+    tran = float(cfg.get("mat_sang_nhat_tran", 0.5) or 0.0)
+    n = 0
+    for r in items:
+        cu = r.get("metered_face_ev")
+        fd = r.get("face_debug")
+        if cu is None or not fd or len(fd) < 2:
+            continue
+        ung = []
+        for f in fd:
+            ev, s = f.get("ev"), f.get("score")
+            if ev is None or s is None or float(s) < diem:
+                continue
+            ung.append((float(ev), float(f.get("sharp") or 0.0)))
+        if len(ung) < 2:
+            continue
+        net_nhat = max(u[1] for u in ung)
+        ung = [u for u in ung if u[1] >= ti_net * net_nhat]
+        if len(ung) < 2:
+            continue
+        moi = max(u[0] for u in ung)
+        if tran > 0:
+            moi = min(moi, float(cu) + tran)
+        if abs(moi - float(cu)) > 0.02:
+            _doi_mat_do(r, moi, "mat-sang-nhat")
+            n += 1
+    return n
 
 
 def _tra_mat_goc(items: list) -> None:
@@ -5652,6 +5722,8 @@ def decide(items: list, cfg: dict) -> None:
     #]]
     _tra_mat_goc(items)
     if cfg["meter"] == "face":
+        #  Chon MAT nao de do truoc — moi buoc sua phep do phia sau ap len no.
+        do_mat_sang_nhat(items, cfg)
         sua_mat_lech_khung(items, cfg)
         # Muc 4 truoc (hieu chinh tung may), muc 1 sau (dong thuan trong cung
         # may) — dao lai thi muc 1 lay trung vi tren so chua hieu chinh.
