@@ -716,6 +716,48 @@ Giao diện: ô "Cùng khung + cùng thông số → cùng một mức" (cột 3
 Còn lại: hai khung gần nhau của cùng nhóm người (chữ ký ~0.2) vẫn có thể lệch nhẹ;
 đo nhầm mặt (−4.25, −4.87) vẫn làm hỏng tấm đứng MỘT MÌNH — chưa sửa.
 
+## Mặt NÉT sáng nhất cho ảnh nhiều người (11/10) — `mat_sang_nhat`, BẬT
+
+User 11/10 (buổi G:\1010, 647 ảnh, A7M5 + A7M4): "cùng cảnh bức tăng EV bức giảm
+EV… có thể bỏ gom cảnh thời gian"; rồi "chỉ đo sáng trên mặt sắc nét, out nét bỏ
+qua; ảnh tập thể xử lý cho mặt đang sáng nhất". `do_mat_sang_nhat()` đầu decide()
+(trước mọi bước sửa phép đo), chạy trên `face_debug` — không quét lại ảnh.
+Ứng viên: điểm YuNet ≥ 0.6, nét ≥ 0.4 × mặt nét nhất; cần ≥ 2 ứng viên; lấy mặt
+sáng nhất nhưng không sáng hơn phép đo cũ quá 0.5 EV (đám đông 20–50 mặt: mặt sáng
+nhất là ngoại lệ, không chặn thì dìm 1.5–2 EV). Ô "Ảnh nhiều người: đo mặt nét
+sáng nhất" (nhóm Cách cân tone). Kiểm: `test_mat_sang_nhat.py`.
+
+Cổng đáp án tay (harness `cong_canh.py` trong scratchpad, gọi kiem_2ban_quay;
+đáp án TrainTool nằm ở `Claude outputs\TrainTool\`, không phải `do\TrainTool`):
+| | A (ảnh user sửa) | B (đã duyệt dời >0.30) |
+|---|---|---|
+| 2609 | gần 191 / xa 94, sai 0.208 → 0.190 | 7.05% |
+| TrainTool | gần 122 / xa 46, sai 0.223 → 0.205 | 4.46% |
+B dời gần như toàn ảnh nhóm/đám đông (2609: 196/219 có ≥ 6 mặt), chiều TỐI đi —
+đúng chiều user sửa ảnh ≥ 2 mặt (288 tối / 109 sáng). Phụ: HL 2609 A 4/17 (ảnh
+tối đi thì kéo Highlights ít hơn). Nét 0.4 tốt hơn 0 và 0.6; chặn 0.5 so với
+"chặn theo trung vị các mặt" (B 17%) hay "chỉ chặn khi > 6/10 mặt" (B 8–9%).
+1010: SAY08563/08566 (cùng nhóm, cùng thông số) 0.71 → 0.36 EV.
+
+ĐÃ ĐO, ĐỪNG THỬ LẠI KHÔNG CÓ BẰNG CHỨNG MỚI (11/10):
+- **Bỏ gom theo thời gian KHÔNG phải cách chữa**: 1010 chỉ 10/101 nhát cắt là theo
+  giờ (90 là bối cảnh, 71/90 khi máy giữ nguyên thông số). Tắt: Exposure đổi
+  15/2309 (2609), 26/1502 (TrainTool) — trung tính; WB TrainTool KÉM đi (8/20).
+- **Một ánh sáng một số** (cùng máy + WB tay + EV100 ±1, mặt' = trung vị ± k):
+  k=0 → 2609 A 179/234, sai 0.208 → 0.239, B 18%; k=0.15 → 125/129, B 8.5%. Bỏ
+  luật bối cảnh: A 66/42 nhưng B 10%. Nới `dong_bo_loat` (300 s / 0.15–0.2 / 0.4–0.5):
+  A hoà, B 5–8%. Lý do: chính user để Exposure KHÁC nhau giữa ảnh liền nhau cùng
+  máy + cùng thông số (≤ 2 phút): y hệt 45% (tool 32%), lệch > 0.3 EV 19% (tool 20%)
+  ở 2609; TrainTool 44% / 11% (tool 31% / 12%). Tool đã "nhảy" gần bằng user.
+- Mặt sáng nhất trong các mặt ĐÃ qua lọc chủ thể (meter_boxes): gần như không đổi gì
+  (lọc AF thường chỉ còn 1 mặt) — nhiễu nằm ở chính mặt chủ thể.
+- 1010 lần đẩy 01:11 tái hiện 643/647 với `che_do_sang` "trong" + **max EV 3** (GUI
+  không lưu, dò ngược). Ảnh flash hụt (mặt −6..−8 EV, cả khung không điểm sáng —
+  SAY08328–32) bị kéo +3.3..+3.8 cạnh ảnh −0.41: đó là trần EV 3, không phải gom
+  cảnh. Trần 1.0: Exposure > +2 từ 19 ảnh còn 0.
+- Thợ chụp đặt WB TAY trên máy (wb_may_che_do "tay" ở cả 4 buổi gần nhất) — đổi
+  Kelvin trên máy = họ thấy nguồn sáng đổi. Chưa dùng làm luật cắt cảnh.
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị
