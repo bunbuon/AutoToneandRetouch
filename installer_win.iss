@@ -114,6 +114,37 @@ Name: "{autodesktop}\{#TenApp}"; Filename: "{app}\{#Exe}"; Tasks: desktopicon
 ; Go app thi go luon ban do, khong de Lightroom nap mot plugin khong con app.
 Type: filesandordirs; Name: "{userappdata}\Adobe\Lightroom\Modules\AutoTone.lrplugin"
 
+[Code]
+{ 11/10: TRAM RETOUCH CHAY NGAM (AutoTone --say-tram, plugin Lightroom mo khi app dang tat)
+  va ENGINE cua no (--say-xem) KHONG co cua so -> Restart Manager khong dong duoc, Setup bao
+  "unable to automatically close all applications" du app da dong (user 11/10). Truoc khi
+  cai / go: ghi co dung cho tram (tram tu thoat), roi tat han cac tien trinh NEN cua app —
+  chi dong lenh co "--say-" (khong dong cua so app: Restart Manager lo nhu thuong). }
+procedure DungTienTrinhNen();
+var
+  RC: Integer;
+begin
+  SaveStringToFile(ExpandConstant('{localappdata}\AutoTone\AutoTone.lrplugin\jobs\tram_retouch\dung_tram.txt'), '1', False);
+  Sleep(1500);
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | ' +
+    'Where-Object { $_.Name -eq ''AutoTone.exe'' -and $_.CommandLine -match ''--say-'' } | ' +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"',
+    '', SW_HIDE, ewWaitUntilTerminated, RC);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  DungTienTrinhNen();
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  DungTienTrinhNen();
+  Result := True;
+end;
+
 [Run]
 ; Hoi mo app ngay sau khi cai xong.
 ; Mo QUA explorer.exe, KHONG chay thang {app}\{#Exe}: Inno Setup 6.5+ bat

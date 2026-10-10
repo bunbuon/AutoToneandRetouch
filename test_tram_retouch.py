@@ -405,6 +405,46 @@ ktra("đổi mức trong app (thêm bước mới) -> ngừng tay 2 s thì hâm 
 ktra("nhịp báo nong=1 khi đã hâm xong", tr.doc_nhip(THU, "app").get("nong") == "1")
 rt.chay = chay_gia
 
+# ---------------------------------------------------------------- 14. trạm ngầm thoát (11/10)
+#  user: Setup báo "unable to automatically close all applications" dù đã đóng app — còn
+#  AutoTone --say-tram (không cửa sổ). Nay: trình cài ghi dung_tram.txt; Lightroom tắt -> thoát.
+import threading as _th
+THU2 = TAM / "jobs2" / "tram_retouch"
+THU2.mkdir(parents=True)
+tr.GIU = GiuGia()
+
+
+def chay_ngam():
+    kq_ = {}
+    t = _th.Thread(target=lambda: kq_.setdefault("ma", tr.main_rieng([str(THU2)])), daemon=True)
+    t.start()
+    return t, kq_
+
+
+cu = THU2 / tr.DUNG_TRAM
+cu.write_text("1", encoding="utf-8")
+os.utime(cu, (time.time() - 600, time.time() - 600))
+tr.lightroom_dang_chay = lambda: True
+t, _k = chay_ngam()
+time.sleep(1.5)
+ktra("cờ dừng CŨ (lần cài trước) -> trạm ngầm mới vẫn chạy, xoá cờ", t.is_alive() and not cu.exists())
+(THU2 / tr.DUNG_TRAM).write_text("1", encoding="utf-8")
+t.join(5)
+ktra("trình cài đặt ghi dung_tram.txt -> trạm ngầm thoát ngay, xoá nhịp",
+     not t.is_alive() and tr.doc_nhip(THU2, "rieng") is None
+     and "lệnh dừng" in (THU2 / "tram.log").read_text(encoding="utf-8"))
+tr.lightroom_dang_chay = lambda: False
+tr.KHONG_LR_THOAT = 1
+(THU2 / tr.DUNG_TRAM).unlink(missing_ok=True)
+t, _k = chay_ngam()
+t.join(10)
+ktra("Lightroom đã tắt -> trạm ngầm tự thoát (không giữ card / chặn cài đặt)",
+     not t.is_alive() and "Lightroom đã tắt" in (THU2 / "tram.log").read_text(encoding="utf-8"))
+iss = (Path(__file__).resolve().parent / "installer_win.iss").read_text(encoding="utf-8")
+ktra("installer: PrepareToInstall + InitializeUninstall dừng tiến trình nền --say- (không đụng cửa sổ app)",
+     "function PrepareToInstall" in iss and "function InitializeUninstall" in iss
+     and "dung_tram.txt" in iss and "--say-" in iss and "Stop-Process" in iss)
+
 # ---------------------------------------------------------------- 10. lệnh mở trạm / điều kiện mở
 l = tr.lenh_mo_tram(THU)
 ktra("lệnh mở trạm chạy ngầm: --say-tram + thư mục trạm" + (" + start (Windows)" if os.name == "nt" else ""),

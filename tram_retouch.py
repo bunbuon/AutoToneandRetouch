@@ -50,6 +50,8 @@ TỆP TRONG <jobs>/tram_retouch/   (key=value, UTF-8 — Lua đọc / ghi đư�
   tram_lenh.txt   app: lệnh mở trạm chạy ngầm (plugin chạy khi không thấy trạm nào)
   presets.txt     tên preset retouch (hộp Export liệt kê)
   tram.log        nhật ký
+  dung_tram.txt   trình cài / gỡ đặt (installer_win.iss): trạm ngầm thoát ngay — trạm
+                  ngầm KHÔNG có cửa sổ nên Setup không tự đóng được, chặn cài đặt (11/10)
 """
 from __future__ import annotations
 
@@ -74,7 +76,9 @@ MOC_TAM = ".autotone_tam"
 DUOI_NHAN = {".jpg", ".jpeg", ".tif", ".tiff", ".png"}
 
 GIU_GIAY = 30 * 60        # giữ engine sau lần đổi mức / lần retouch cuối
-RANH_THOAT = 10 * 60      # trạm chạy ngầm rảnh chừng này thì thoát
+RANH_THOAT = 5 * 60       # trạm chạy ngầm rảnh chừng này thì thoát
+KHONG_LR_THOAT = 30       # Lightroom đã tắt chừng này giây -> trạm ngầm thoát (không còn Export)
+DUNG_TRAM = "dung_tram.txt"   # trình cài / gỡ đặt ghi: trạm ngầm thoát NGAY
 CU_GIAY = 5               # nhịp cũ hơn -> coi như trạm đó không chạy
 CU_YEU_CAU = 15 * 60      # yêu cầu nằm lâu hơn (plugin đã bỏ) -> dọn
 NHA_CPU_GIAY = 60         # rảnh chừng này thì trả CPU (an toàn máy)
@@ -165,6 +169,22 @@ def file_xong(p: Path, nho: dict, k) -> bool:
         except OSError:
             return False
     return True
+
+
+def lightroom_dang_chay() -> bool:
+    """Có tiến trình Lightroom không (Windows Lightroom.exe, Mac "Adobe Lightroom
+    Classic"). Không đọc được (thiếu psutil…) thì coi như CÓ — không tự thoát oan."""
+    try:
+        import psutil
+    except ImportError:
+        return True
+    try:
+        for pr in psutil.process_iter(["name"]):
+            if "lightroom" in str(pr.info.get("name") or "").lower():
+                return True
+        return False
+    except Exception:                                        # noqa: BLE001
+        return True
 
 
 def an_thu_muc(p) -> None:
@@ -1055,6 +1075,11 @@ def main_rieng(args: list) -> int:
     if n and str(n.get("pid")) != str(os.getpid()):
         return 0                           # đã có trạm riêng khác đang chạy
     tram = Tram(thu, "rieng")
+    t_bat = time.time()
+    try:
+        (thu / DUNG_TRAM).unlink()        # cờ dừng cũ (lần cài trước) không áp cho trạm mới
+    except OSError:
+        pass
     tram.log(f"trạm chạy ngầm bắt đầu (pid {os.getpid()})")
     tram.ghi_nhip(ep=True)
     threading.Thread(target=tram._vong_nhip, name="tram_nhip", daemon=True).start()
@@ -1063,11 +1088,26 @@ def main_rieng(args: list) -> int:
             goc = tram.goc_tool()
             if goc and tram.rt.hop_le(goc):
                 tram.giu.lay(tram.rt, goc, dung=False)    # nạp mô hình NGAY
+        t_lr = time.time()                 # lần cuối thấy Lightroom chạy
+        t_hoi_lr = 0.0
         while True:
+            try:
+                if (thu / DUNG_TRAM).stat().st_mtime >= t_bat - 1:
+                    tram.log("có lệnh dừng (trình cài / gỡ đặt) — thoát")
+                    break
+            except OSError:
+                pass
+            if time.time() - t_hoi_lr > 5:
+                t_hoi_lr = time.time()
+                if lightroom_dang_chay():
+                    t_lr = time.time()
+            if time.time() - t_lr > KHONG_LR_THOAT and not tram.dang:
+                tram.log("Lightroom đã tắt — thoát (không còn lượt Export nào)")
+                break
             lam = tram.mot_vong()
             ranh = time.time() - tram.t_viec
             if not lam and ranh > RANH_THOAT and not tram._cho_giao:
-                tram.log("rảnh 10 phút — thoát")
+                tram.log("rảnh 5 phút — thoát")
                 break
             if not lam and not tram.duoc_nhan() and ranh > 3 and not tram._cho_giao:
                 tram.log("engine app đã sẵn sàng — nhường app, thoát")
