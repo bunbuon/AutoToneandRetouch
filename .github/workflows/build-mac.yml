@@ -30,13 +30,25 @@ on:
         description: "GỠ LỖI: bỏ mã hoá (bản ra có mã nguồn — KHÔNG giao khách)"
         type: boolean
         default: false
+      #[[ 10/10: user chay ban Apple Silicon tren Mac CHIP INTEL -> "Bad CPU type
+      #   in executable". PyInstaller khong build universal2 duoc voi torch /
+      #   onnxruntime (khong co wheel universal2) -> moi loai mot lan build. ]]
+      loai_mac:
+        description: "Loại Mac: Apple Silicon (M1/M2/M3/M4) hay Intel"
+        type: choice
+        options:
+          - apple-silicon
+          - intel
+        default: apple-silicon
 
 jobs:
   dong-goi:
     #[[ macos-14 la Apple Silicon (arm64). Goi ra chay tren may M1/M2/M3...
     #   May Intel doi macos-13. Xem ghi chu o buoc "Dong goi" ben duoi. ]]
-    runs-on: macos-14
-    timeout-minutes: 90
+    #[[ Intel: macos-15-intel (x86_64 — anh Intel cuoi cung cua GitHub, macos-13
+    #   da nghi 12/2025). ]]
+    runs-on: ${{ inputs.loai_mac == 'intel' && 'macos-15-intel' || 'macos-14' }}
+    timeout-minutes: 120
 
     steps:
       - name: Lấy mã nguồn
@@ -78,6 +90,8 @@ jobs:
           BAN_PY="3.12.11"
           MOC="20250723"
           KT="aarch64"       # macos-14 la Apple Silicon
+          if [ "${{ inputs.loai_mac }}" = "intel" ]; then KT="x86_64"; fi
+          echo "Máy build: $(uname -m) · Python: $KT"
           URL="https://github.com/astral-sh/python-build-standalone/releases/download/${MOC}/cpython-${BAN_PY}+${MOC}-${KT}-apple-darwin-install_only.tar.gz"
           echo "Tải: $URL"
           curl -fsSL "$URL" -o python.tar.gz
@@ -87,6 +101,22 @@ jobs:
       - name: Cài thư viện
         run: |
           "$PY" -m pip install --upgrade pip
+          #[[ MAC INTEL (10/10): PyTorch NGUNG ra wheel macOS x86_64 tu 2.3 -> ban
+          #   cuoi 2.2.2, dich voi numpy 1.x (numpy 2 lam torch.from_numpy hong).
+          #   onnxruntime x86_64 macOS cuoi la 1.23.2. Ghim bang PIP_CONSTRAINT de
+          #   MOI lenh pip ben duoi (ke ca phu thuoc cua insightface / mediapipe)
+          #   khong keo numpy 2 len. Tra PyPI 10/10: torch 2.2.2 / numpy 1.26.4 /
+          #   onnxruntime 1.23.2 / onnx 1.22 (universal2) / mediapipe 0.10.14 /
+          #   opencv 4.11.0.86 deu co wheel cp312 macOS x86_64. ]]
+          if [ "${{ inputs.loai_mac }}" = "intel" ]; then
+            printf '%s\n' "numpy==1.26.4" "torch==2.2.2" "onnxruntime==1.23.2" > "$RUNNER_TEMP/rang_buoc_intel.txt"
+            echo "PIP_CONSTRAINT=$RUNNER_TEMP/rang_buoc_intel.txt" >> "$GITHUB_ENV"
+            export PIP_CONSTRAINT="$RUNNER_TEMP/rang_buoc_intel.txt"
+            "$PY" -m pip install "numpy==1.26.4"
+            ORT="onnxruntime==1.23.2"
+          else
+            ORT="onnxruntime==1.29.0"
+          fi
           #[[ GHIM opencv-python==4.11.0.86 TREN macOS — KHONG de pip lay 5.0.
           #
           #   LOI THAT (4/10, bản .app bao mat dau tien tren Actions): goi chay
@@ -147,7 +177,7 @@ jobs:
           #   loi recursion cv2 trong .app) va jax/jaxlib (dong_goi --exclude-module
           #   jax, ban Windows cung khong mang). Cai tay cac goi con lai. ]]
           if [ "${{ inputs.khong_retouch }}" != "true" ]; then
-            "$PY" -m pip install "protobuf==4.25.9" "onnx==1.22.0" "onnxruntime==1.29.0" \
+            "$PY" -m pip install "protobuf==4.25.9" "onnx==1.22.0" "$ORT" \
               "insightface==1.0.1" "opencv-python==4.11.0.86"
             "$PY" -m pip install --no-deps "mediapipe==0.10.14"
             "$PY" -m pip install absl-py attrs flatbuffers matplotlib sounddevice "protobuf==4.25.9"
@@ -155,6 +185,11 @@ jobs:
           #[[ Kiem NGAY rang ba thu quyet dinh deu nam dung cho, truoc khi
           #   build. Bon lan chay truoc deu phai suy luan tu log gian tiep. ]]
           echo "=== kiểm trước khi build ==="
+          "$PY" -c "import platform, numpy; print('máy    :', platform.machine()); print('numpy  :', numpy.__version__)"
+          if [ "${{ inputs.loai_mac }}" = "intel" ]; then
+            "$PY" -c "import platform; assert platform.machine() == 'x86_64', 'Python khong phai x86_64: ' + platform.machine()" \
+              || { echo "DỪNG: bản Intel mà Python không phải x86_64."; exit 1; }
+          fi
           "$PY" -c "import sys, cv2, tkinter; print('prefix :', sys.prefix); print('cv2    :', cv2.__version__); print('tk     :', tkinter.TkVersion)"
           #[[ torch nay PHAI co (nhoi vao goi). Co retouch ma thieu torch thi goi
           #   ra se hong phan Retouch — chan ngay, dung build ra ban hong. ]]
@@ -363,7 +398,11 @@ jobs:
           chmod +x "$APPDIR/AutoTone" 2>/dev/null || true
           ln -s /Applications "$STAGE/Applications"
           mkdir -p dist
-          DMG="dist/Tone-Retouch-macOS.dmg"
+          if [ "${{ inputs.loai_mac }}" = "intel" ]; then
+            DMG="dist/Tone-Retouch-macOS-Intel.dmg"
+          else
+            DMG="dist/Tone-Retouch-macOS-AppleSilicon.dmg"
+          fi
           rm -f "$DMG"
           hdiutil create -volname "Tone&Retouch" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           rm -rf "$STAGE"
@@ -373,7 +412,7 @@ jobs:
       - name: Gửi gói ra
         uses: actions/upload-artifact@v4
         with:
-          name: AutoTone-macOS
+          name: AutoTone-macOS-${{ inputs.loai_mac == 'intel' && 'Intel' || 'AppleSilicon' }}
           #[[ .dmg la file cai chinh. Van kem .zip/.tar.gz lam ban du phong
           #   (nen_goi dung ditto ra .zip, lui ve tar neu thieu ditto). ]]
           path: |

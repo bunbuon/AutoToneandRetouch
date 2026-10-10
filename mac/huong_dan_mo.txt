@@ -1,5 +1,10 @@
 TONE&RETOUCH TRÊN macOS — CÁCH MỞ
 
+CHỌN ĐÚNG BẢN: Menu Apple › Giới thiệu về máy Mac này (About This Mac):
+  - "Chip: Apple M1 / M2 / M3 / M4…"  -> bản Tone-Retouch-macOS-AppleSilicon.dmg
+  - "Bộ xử lý: … Intel Core …"          -> bản Tone-Retouch-macOS-Intel.dmg
+  Nhầm bản thì máy báo "Bad CPU type in executable".
+
 1. Kéo CẢ thư mục "Tone&Retouch" vào Applications (Ứng dụng).
 2. Mở thư mục đó, CHUỘT PHẢI vào "Mở Tone&Retouch.command" › Mở (Open).
    Lần đầu macOS hỏi "nhà phát triển chưa xác minh" — bấm Mở (Open).

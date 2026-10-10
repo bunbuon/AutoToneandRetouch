@@ -27,6 +27,27 @@ fi
 
 xattr -dr com.apple.quarantine "$DIR" 2>/dev/null
 
+#  10/10: tải nhầm bản (Apple Silicon chạy trên Mac Intel -> "Bad CPU type in
+#  executable") — nói rõ phải tải bản nào thay vì để macOS báo câu khó hiểu.
+MAY="$(uname -m)"
+LOAI="$(file "$APP" 2>/dev/null)"
+if [ "$MAY" = "x86_64" ] && echo "$LOAI" | grep -q "arm64" && ! echo "$LOAI" | grep -q "x86_64"; then
+  if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" != "1" ]; then
+    echo "Máy Mac này dùng CHIP INTEL, còn bản Tone&Retouch này dành cho Mac chip Apple"
+    echo "(M1 / M2 / M3 / M4). Hãy tải bản \"Intel\" (Tone-Retouch-macOS-Intel.dmg)."
+    read -r -p "Nhấn Enter để đóng…" _
+    exit 1
+  fi
+fi
+if [ "$MAY" = "arm64" ] && echo "$LOAI" | grep -q "x86_64" && ! echo "$LOAI" | grep -q "arm64"; then
+  if ! /usr/bin/pgrep -q oahd 2>/dev/null; then
+    echo "Bản này dành cho Mac chip Intel. Trên Mac chip Apple, nên tải bản \"AppleSilicon\""
+    echo "(chạy nhanh hơn). Hoặc cài Rosetta để chạy bản này:  softwareupdate --install-rosetta"
+    read -r -p "Nhấn Enter để đóng…" _
+    exit 1
+  fi
+fi
+
 echo "Đang mở Tone&Retouch… (lần đầu có thể mất 30–60 giây)"
 echo "Nhật ký: $LOG"
 nohup "$APP" >"$LOG" 2>&1 </dev/null &
