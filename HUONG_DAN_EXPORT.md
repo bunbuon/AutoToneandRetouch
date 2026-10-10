@@ -119,6 +119,26 @@ Windows trình duyệt, Zalo… giữ vài GB VRAM mà Windows dồn ra RAM đư
 retouch 1 luồng, chế độ tiết kiệm; RAM trống dưới 1,5 GB thì tạm ngưng nhận ảnh
 mới tới khi hồi.
 
+## Retouch ngay trong Export của Lightroom (10/10)
+
+Không cần bấm "3 · Xuất" trong app: Export bằng Lightroom như mọi khi, ảnh ra thư mục
+đích đã được retouch.
+
+1. Hộp **Export** của Lightroom › cột trái, mục **Post-Process Actions** › **AutoTone
+   (SAY Media)** › chọn **"AutoTone: Retouch khi xuất"** › **Insert**.
+2. Ở phần "AutoTone — Retouch khi xuất" bên phải: để tích **Retouch ảnh xuất ra**;
+   **Mức retouch** = "Theo app" (mức / preset đã đặt cho buổi trong màn Retouch — đúng
+   như preview) hoặc chọn hẳn một preset retouch.
+3. **Lưu vào Export preset** (Add ở cột trái) — từ đó Export bằng preset này (kể cả
+   Export with Previous) là có retouch, không phải tích lại.
+
+Mô hình nạp TRƯỚC khi bấm Export: kéo thanh / chọn preset trong màn Retouch là app giữ
+engine 30 phút (kể cả khi rời màn Retouch); app đang tắt thì mở hộp Export là plugin tự
+mở trạm retouch chạy ngầm và nạp mô hình (dòng trạng thái trong hộp báo "Sẵn sàng").
+Ảnh nào lỗi / quá giờ / không phải JPEG-TIFF-PNG vẫn ra đủ (chưa retouch) — xem
+plugin.log. Bấm ✕ ở thanh "AutoTone: retouch khi xuất" = các ảnh còn lại ra không
+retouch, lượt Export vẫn chạy tiếp. Chỉ dùng cho Export (không cho Publish Services).
+
 **Hàng đợi từng ảnh** (10/10, học từ NEXUS AI Retouch): plugin ghi mỗi ảnh vào
 `jobs/xuatanh_hangdoi.tsv` NGAY khi Lightroom xuất xong ảnh đó (dòng cuối `#het`).
 Retouch đọc tiếp hàng đợi mỗi 0,7 giây và làm ngay — không còn quét thư mục rồi chờ

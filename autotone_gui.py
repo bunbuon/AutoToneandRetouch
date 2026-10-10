@@ -282,7 +282,59 @@ class App(ttk.Frame):
         self.after(1200, self._bao_plugin_cap_nhat)
         self._soi_khoa()
         self.after(3000, self._soi_xuat)
+        self.after(2500, self._mo_tram_retouch)
         self._set_busy(False)
+
+    # ------------------------------------------------------------ trạm retouch (10/10)
+    def _mo_tram_retouch(self):
+        """Trạm retouch cho hành động Post-Process "AutoTone: Retouch khi xuất" của
+        Lightroom — dùng chung engine xem trước (tram_retouch.GIU). Ghi lệnh mở trạm
+        chạy ngầm để plugin dùng khi app tắt."""
+        try:
+            import tram_retouch as tr
+            if tr.ly_do_khong_mo():
+                return
+            thu = tr.thu_muc()
+            tr.ghi_lenh(thu)
+
+            def goc_tool():
+                rw = getattr(self, "_retouch_win", None)
+                return getattr(rw, "_xem_goc_tool", None) if rw is not None else None
+
+            def khoa_ok():
+                return bool(bq.kiem()["co_phep"] or khoa.kiem()["chay_duoc"])
+
+            def chan():
+                return ("đang tải bản tăng tốc GPU cho Retouch" if self._gpu_khoa() else "")
+
+            self._tram = tr.Tram(thu, "app", goc_tool=goc_tool,
+                                 dang_xuat=lambda: bool(getattr(self, "_ghim_xuat", None)),
+                                 khoa_ok=khoa_ok, chan=chan)
+            self._tram.bat_nen()
+            self._tram_xong_cu = 0
+            self.after(2000, self._soi_tram)
+        except Exception:                                    # noqa: BLE001
+            traceback.print_exc()
+
+    def _soi_tram(self):
+        """Lightroom đang Export có "Retouch khi xuất": nói ở thanh trạng thái."""
+        t = getattr(self, "_tram", None)
+        if t is None:
+            return
+        try:
+            n = int(t.so_xong)
+            if n != self._tram_xong_cu or t.dang:
+                moi = n - self._tram_xong_cu
+                self._tram_xong_cu = n
+                if moi > 0 or t.dang:
+                    self.status(f"Lightroom Export · Retouch khi xuất: đã retouch {n} ảnh"
+                                + (" · đang làm…" if t.dang else ""), gd.MAU["nhan"])
+        except Exception:                                    # noqa: BLE001
+            pass
+        try:
+            self.after(2000, self._soi_tram)
+        except tk.TclError:
+            pass
 
     # ------------------------------------------------------------ khung vỏ
     def _build_shell(self):
@@ -6068,6 +6120,11 @@ def main():
         pass
 
     _tham = sys.argv[1:]
+    #[[ 10/10: TRAM RETOUCH CHAY NGAM — plugin Lightroom mo khi app dang tat va nguoi
+    #   dung Export co "Retouch khi xuat". Khong giao dien; ranh 10 phut tu thoat. ]]
+    if _tham and _tham[0] == "--say-tram":
+        import tram_retouch
+        sys.exit(tram_retouch.main_rieng(_tham[1:]))
     if _tham and _tham[0] in ("--say-chay", "--say-keo", "--say-kiem",
                               "--say-tainguyen", "--say-key", "--say-tim",
                               "--say-xem"):
@@ -6187,8 +6244,14 @@ def main():
     #   bi bo qua — giao dien se van trang boc du da dat mau khap noi.
     #]]
     gd.dat_theme(root)
-    App(root)
+    app = App(root)
     root.mainloop()
+    #  10/10: đóng app -> dừng trạm retouch + đóng engine (dù đang được giữ)
+    try:
+        import tram_retouch
+        tram_retouch.tat_het(getattr(app, "_tram", None))
+    except Exception:                                        # noqa: BLE001
+        pass
 
 
 if __name__ == "__main__":

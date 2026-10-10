@@ -683,10 +683,20 @@ def main() -> int:
          ok and w._xem_bat and w._anh_dang == str(vao2 / "P0.png"), chip())
     w._muc_anh.pop(k_p1, None)
     p_cu = w._may_xem.proc if w._may_xem is not None else None
+    #[[ 10/10 (user): vua keo thanh -> engine duoc GIU 30 phut cho Lightroom xuat
+    #   ("Retouch khi xuat") — roi mo-dun KHONG tat. Het han giu thi moi tra card. ]]
+    import tram_retouch
+    ktra("vừa kéo thanh: engine được GIỮ cho Lightroom xuất (~30 phút)",
+         tram_retouch.GIU.giu_toi > time.time() + 25 * 60)
     app._chon_khau("phan_tich")
     chay(3)
-    ktra("rời mô-đun Retouch: tắt máy xem trước (trả card đồ hoạ)",
-         w._may_xem is None and p_cu is not None and cho(lambda: p_cu.poll() is not None, 5))
+    ktra("rời mô-đun Retouch khi đang giữ: engine VẪN sống (Lightroom xuất không phải nạp lại)",
+         w._may_xem is None and p_cu is not None and p_cu.poll() is None
+         and tram_retouch.GIU.may is not None and tram_retouch.GIU.may.proc is p_cu)
+    tram_retouch.GIU.giu_toi = 0
+    tram_retouch.GIU.don()
+    ktra("hết hạn giữ: trả card đồ hoạ (đóng tiến trình engine)",
+         cho(lambda: p_cu.poll() is not None, 5) and tram_retouch.GIU.may is None)
     app._chon_khau("retouch")
     cho(lambda: w._xem_fp == str(vao2 / "P0.png"))
     chay(3)

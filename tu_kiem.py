@@ -253,6 +253,50 @@ def chay(nhanh: bool = False) -> Bao:
         return f"plugin đủ · {n} preset người dùng thấy được trên máy này"
     b.thu("Xem trước preset Lightroom (cả lưới)", _xem_preset)
 
+    #[[ 10/10: "Retouch khi xuat" — plugin co hanh dong Post-Process moi (Info.lua
+    #   mang 2 phan tu, id cu giu nguyen); tram tra loi dung giao thuc o thu muc
+    #   TAM (khong dong toi jobs that, khong mo engine): anh muc 0 -> bo qua, giu
+    #   nguyen; lenh mo tram chay ngam tro dung file chay cua goi. ]]
+    def _retouch_khi_xuat():
+        import tempfile
+        import tram_retouch as tr
+        nguon = dd.goc_tai_nguyen() / "AutoTone.lrplugin"
+        if not (nguon / "RetouchKhiXuat.lua").is_file():
+            raise AssertionError("plugin trong gói thiếu RetouchKhiXuat.lua")
+        info = (nguon / "Info.lua").read_text(encoding="utf-8", errors="ignore")
+        for can in ("RetouchKhiXuat.lua", "vn.saymedia.autotone.retouchkhixuat",
+                    "vn.saymedia.autotone.batduongdan"):
+            if can not in info:
+                raise AssertionError(f"Info.lua thiếu {can}")
+        tam = Path(tempfile.mkdtemp(prefix="tk_tram_"))
+        try:
+            thu = tam / "tram_retouch"
+            anh = tam / "DSC0001.jpg"
+            anh.write_bytes(b"JPEG")
+            raw = tam / "Buoi" / "DSC0001.ARW"
+            raw.parent.mkdir()
+            raw.write_bytes(b"raw")
+            t = tr.Tram(thu, "rieng", giu=tr.GiuMay(), goc_tool="x", khoa_ok=lambda: True)
+            #  preset không có -> trạm bỏ qua, KHÔNG gọi engine (máy thật có mức gần
+            #  nhất của người dùng thì "app" sẽ đòi engine)
+            tr.ghi_kv(thu / "yc_1.txt", {"anh": anh, "goc": raw,
+                                          "che_do": "preset:__tu_kiem_khong_co__"})
+            t.mot_vong()
+            kq = tr.doc_kv(thu / "kq_1.txt") or {}
+            if not (kq.get("ok") == "1" and kq.get("bo_qua") == "1" and anh.read_bytes() == b"JPEG"):
+                raise AssertionError(f"trạm trả lời sai: {kq}")
+            nhip = tr.doc_nhip(thu, "rieng")
+            if not nhip:
+                raise AssertionError("trạm không ghi nhịp")
+            l = tr.lenh_mo_tram(thu)
+            if "--say-tram" not in l or str(thu) not in l:
+                raise AssertionError(f"lệnh mở trạm sai: {l}")
+        finally:
+            shutil.rmtree(tam, ignore_errors=True)
+        return "plugin có hành động Post-Process · trạm trả lời đúng giao thức · " + \
+            ("lệnh mở trạm trỏ file chạy của gói" if getattr(sys, "frozen", False) else "chạy từ mã nguồn")
+    b.thu("Retouch khi xuất (trạm cho Lightroom Export)", _retouch_khi_xuat)
+
     # --- 3. Khoá hạn dùng ---------------------------------------------------
     def _khoa():
         import khoa
@@ -292,7 +336,8 @@ def chay(nhanh: bool = False) -> Bao:
                "hop_thoai", "cua_saytool", "man_retouch", "retouch_chung",
                "retouch_muc", "retouch_may",
                #  9/10: lưới to / một ảnh, nguồn RAW, preset Lightroom
-               "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui"]
+               "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui",
+               "tram_retouch"]
         hong = []
         for t in ten:
             try:

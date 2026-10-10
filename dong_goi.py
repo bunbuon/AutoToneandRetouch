@@ -66,6 +66,7 @@ LOAI_TRU = [
     #  9/10: bai kiem rieng (khong phai tu_kiem goi toi)
     "test_xuat_mot_thao_tac.py", "test_plugin_modules.py",
     "test_preset_lr.py", "kiem_xem_preset_lua.py",
+    "test_tram_retouch.py", "kiem_retouch_khi_xuat_lua.py", "kiem_tram_that.py",
     #[[ 3/10: kiem_dong_goi bao "moi file kiem/do deu bi loai" DO — nhieu file
     #   kiem them tu 29/9 toi 3/10 chua ai ke vao day. Bo sung ca loat. ]]
     "kiem_2ban_quay.py", "kiem_ghi_de.py", "kiem_nhan_keo.py", "kiem_tham_chieu.py",
@@ -134,7 +135,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         "xuat_ui", "cache_xem", "retouch_preset",
         #[[ 9/10 giao dien moi (luoi to / mot anh, nguon RAW, preset Lightroom
         #   xem ca luoi): deu import trong ham. ]]
-        "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui"]
+        "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui",
+        #  10/10: trạm retouch cho "Retouch khi xuất" của Lightroom (import trong hàm)
+        "tram_retouch"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).

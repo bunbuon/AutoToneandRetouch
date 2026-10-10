@@ -278,6 +278,7 @@ class MucMixin:
 
         9/10 (user): đang chọn preset mà KÉO TAY -> về "Tuỳ chỉnh" — bộ mức
         người dùng vừa kéo là bộ được dùng (Xuất cũng theo bộ này)."""
+        self._giu_engine_cho_xuat()
         if not tu_preset and getattr(self, "v_preset", None) is not None \
                 and self.v_preset.get():
             self.v_preset.set("")
@@ -678,6 +679,7 @@ class MucMixin:
         if ca_thu_muc or not self._anh_dang:
             self._muc_chung_tm = dict(muc)
             self._muc_chung_ban = True
+            self._giu_engine_cho_xuat()
             self._luu_muc()
             self._nap_muc_vao_bang(self._muc_hieu_luc(self._anh_dang)
                                    if self._anh_dang else self._muc_chung_day_du())
@@ -778,6 +780,18 @@ class MucMixin:
                                     dict(self._muc_chung_tm))
             except OSError as ex:
                 self._append(f"! không ghi được mức của thư mục này: {ex}")
+        #  10/10: người dùng vừa đổi -> trạm retouch (Lightroom xuất) dùng làm mức
+        #  dự phòng cho buổi chưa đặt mức riêng
+        if getattr(self, "_gan_nhat_ban", False):
+            self._gan_nhat_ban = False
+            try:
+                import tram_retouch
+                tram_retouch.ghi_gan_nhat(
+                    self._muc_chung_day_du(),
+                    self.v_preset.get() if getattr(self, "v_preset", None) is not None else "",
+                    self._muc_anh_vao or "")
+            except Exception:                                # noqa: BLE001
+                pass
 
     def _doi_bang_muc_anh(self, vao: str):
         """Đổi thư mục vào: ghi nốt mức riêng của thư mục cũ, đọc của thư mục

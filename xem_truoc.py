@@ -654,6 +654,13 @@ class MayXem:
         #   "ban"; vong lap toi thieu (MA_CON fallback) / ban cu thi khong ->
         #   retouch.chay di duong tien trinh con. ]]
         self.co_chay = None
+        #[[ 10/10 (tram_retouch): engine dung CHUNG giua xem truoc va tram retouch
+        #   cho Lightroom. Tin san_sang giu lai de nguoi dung sau (man Retouch mo lai
+        #   engine da nap san) biet ngay la san sang; khoa me: hai mẻ (app chay
+        #   retouch + Lightroom xuat) KHONG duoc chen nhau — chay_me tu doc hang
+        #   q_chay, mẻ thu hai cho mẻ dau xong. ]]
+        self.tin_san_sang = None
+        self._khoa_me = threading.Lock()
 
     def bat_dau(self, may: str = "auto") -> str:
         """'' nếu khởi động được, không thì câu lỗi để nói ra."""
@@ -719,6 +726,7 @@ class MayXem:
                         continue
                     if d.get("loai") == "san_sang":
                         self.co_chay = "ban" in d
+                        self.tin_san_sang = dict(d)
                     (self.q_chay if d.get("loai") in ("dong", "xong_chay") else self.q).put(d)
         except Exception:                                    # noqa: BLE001
             pass
@@ -740,7 +748,12 @@ class MayXem:
     def chay_me(self, tham: dict):
         """Chạy MỘT mẻ trong tiến trình này (gọi ở luồng nền). Sinh ("dong", chữ)…
         rồi ("ma", mã thoát): 0 xong, 1 lỗi đường ống, mã tiến trình nếu nó chết
-        giữa chừng (để vòng tự-chạy-lại của giao diện nhận ra 0xC0000005...)."""
+        giữa chừng (để vòng tự-chạy-lại của giao diện nhận ra 0xC0000005...).
+        Mẻ khác đang chạy (trạm retouch / app) thì chờ nó xong."""
+        with self._khoa_me:
+            yield from self._chay_me(tham)
+
+    def _chay_me(self, tham: dict):
         try:
             while True:
                 self.q_chay.get_nowait()

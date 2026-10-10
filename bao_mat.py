@@ -50,7 +50,10 @@ MA_HOA = ["autotone", "retouch", "khoa", "ban_quyen",
           "thu_gu", "learn_corrections", "giao_dien", "autotone_gui",
           #[[ 7/10 giai doan 2: autotone_gui tach ba phan — cung la ruot app. ]]
           "man_retouch", "hop_thoai", "cua_saytool",
-          "retouch_chung", "retouch_muc", "retouch_may"]
+          "retouch_chung", "retouch_muc", "retouch_may",
+          #[[ 10/10: tram chay ngam tu kiem ban quyen truoc khi retouch cho
+          #   Lightroom — de .py la ai cung sua duoc cho bo qua. ]]
+          "tram_retouch"]
 
 #[[ Banner CẢNH BÁO + BẢN QUYỀN. Với module .py còn ship (plumbing) thì đây là
 #   răn đe; với module đã biên dịch thì nguồn không còn nên banner chỉ còn trong

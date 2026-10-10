@@ -37,10 +37,21 @@ return {
          Không có cách nào tự bật hộ: Lightroom không cho plugin sửa preset
          Export của người dùng, và cũng không phát sự kiện Export nào để nghe
          từ ngoài. Xem đầu BatDuongDan.lua. ]]
+    --[[ 10/10: HAI hành động Post-Process (mảng). "Retouch khi xuất": Lightroom
+         render ảnh nào -> trạm retouch của app sửa tại chỗ -> ảnh ra thư mục đích đã
+         retouch. Xem RetouchKhiXuat.lua. id của hành động cũ GIỮ NGUYÊN — Export
+         preset người dùng đã lưu tham chiếu theo id. ]]
     LrExportFilterProvider = {
-        title = "AutoTone: ghi lại thư mục Export",
-        file = "BatDuongDan.lua",
-        id = "vn.saymedia.autotone.batduongdan",
+        {
+            title = "AutoTone: ghi lại thư mục Export",
+            file = "BatDuongDan.lua",
+            id = "vn.saymedia.autotone.batduongdan",
+        },
+        {
+            title = "AutoTone: Retouch khi xuất",
+            file = "RetouchKhiXuat.lua",
+            id = "vn.saymedia.autotone.retouchkhixuat",
+        },
     },
 
     LrLibraryMenuItems = {

@@ -219,6 +219,9 @@ def main() -> int:
         rw._xem_dang_hien and ("mức riêng" in chu or "mức chung" in chu)
         and max(rw.xem.kich_thuoc() or (0, 0)) <= 1400, chu)
     p = rw._may_xem.proc if rw._may_xem is not None else None
+    #  10/10: vừa kéo thanh -> engine được giữ cho Lightroom xuất; bỏ giữ để kiểm đường tắt
+    import tram_retouch
+    tram_retouch.GIU.giu_toi = 0
     rw._tat_xem_truoc(dong_may=True)
     time.sleep(0.5)
     ket("tắt xem trước: đóng tiến trình con, ảnh lớn về bản trên đĩa",

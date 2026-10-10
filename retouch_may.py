@@ -268,11 +268,17 @@ class MayMixin:
         self._xem_can_tinh = False
         self._xem_cuoi = None
         if m is not None:
-            m.dong()
+            #  engine chung: chỉ đóng thật khi không còn được giữ cho Lightroom xuất
+            try:
+                import tram_retouch
+                tram_retouch.GIU.tha(m)
+            except Exception:                                # noqa: BLE001
+                m.dong()
 
     def _nghi_may_xem(self):
         """Rời mô-đun Retouch: tắt máy xem trước — trả card đồ hoạ / bộ nhớ cho
-        Lightroom. Quay lại thì _san_may_xem mở lại (ở nền)."""
+        Lightroom. Quay lại thì _san_may_xem mở lại (ở nền). 10/10: vừa đổi mức /
+        chọn preset (đang được giữ cho Lightroom xuất) thì engine vẫn sống."""
         if self._xem_bat:
             self._tat_xem_truoc(dong_may=True)
         else:
@@ -308,17 +314,22 @@ class MayMixin:
             return True
         if not self.rt.hop_le(goc) or (self.worker is not None and self.worker.is_alive()):
             return False
+        #[[ 10/10: ENGINE CHUNG (tram_retouch.GIU) — cung engine phuc vu Lightroom
+        #   xuat anh ("Retouch khi xuat"). Dang co san (vua xuat / vua doi muc o
+        #   lan truoc) thi dung lai, khoi nap lai ~10 s. ]]
         try:
-            import xem_truoc
+            import tram_retouch
+            may, loi, moi = tram_retouch.GIU.lay(self.rt, goc, self.v_may.get() or "auto")
         except Exception as ex:                              # noqa: BLE001
-            self._xem_hong = f"{type(ex).__name__}: {ex}"
+            may, loi, moi = None, f"{type(ex).__name__}: {ex}", False
+        if loi or may is None:
+            self._xem_hong = loi or "không mở được engine"
+            self._append(f"! xem trước: {self._xem_hong}")
             return False
-        may = xem_truoc.MayXem(self.rt, goc)
-        loi = may.bat_dau(self.v_may.get() or "auto")
-        if loi:
-            self._xem_hong = loi
-            self._append(f"! xem trước: {loi}")
-            return False
+        if not moi:
+            may.lay()                      # tin cũ của lần dùng trước
+            if may.tin_san_sang:
+                may.q.put(dict(may.tin_san_sang))
         self._may_xem = may
         self._xem_goc_tool = goc
         self._xem_san_sang = False
@@ -328,9 +339,27 @@ class MayMixin:
         self._xem_can_tinh = False
         self._xem_cuoi = None
         self._xem_loi_cuoi = ""
-        self._append("… máy xem trước: đang nạp mô hình (lần đầu ~10 giây)")
+        self._append("… máy xem trước: đang nạp mô hình (lần đầu ~10 giây)" if moi else
+                     "… máy xem trước: dùng engine đã nạp sẵn")
         self._hen_bom_xem()
         return True
+
+    def _giu_engine_cho_xuat(self):
+        """10/10 (user): "nạp mô hình ngay khi người dùng thay đổi thông số retouch
+        hoặc chọn preset — bấm xuất là chỉ xuất ảnh". Giữ engine 30 phút (kể cả khi
+        rời màn Retouch) cho lượt Export Lightroom có "Retouch khi xuất"; chưa nạp
+        thì nạp luôn."""
+        try:
+            import tram_retouch
+            tram_retouch.GIU.giu()
+        except Exception:                                    # noqa: BLE001
+            pass
+        self._gan_nhat_ban = True
+        if self._may_xem is None and not self._xem_hong:
+            try:
+                self._dam_bao_may_xem()
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
 
     def _san_may_xem(self):
         """Vào mô-đun Retouch / chạy xong: mở SẴN máy xem trước (ảnh lớn vẫn là
@@ -638,6 +667,11 @@ class MayMixin:
                 #   chet -> mo). Bam dup mot tam o dai anh la thu lai. ]]
                 self._xem_hong = ly_do or "tiến trình xem trước đã dừng"
                 bat = self._xem_bat
+                try:
+                    import tram_retouch
+                    tram_retouch.GIU.tha(m)
+                except Exception:                            # noqa: BLE001
+                    pass
                 self._may_xem = None
                 self._xem_san_sang = False
                 self._xem_dang_tinh = None
