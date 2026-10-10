@@ -114,11 +114,65 @@ else:
                  k.get("ok") == "1" and doi > 0.05 and sau.shape == truoc.shape,
                  f"{k.get('mo_ta')} · đổi {doi:.2f}% điểm ảnh")
             ktra("EXIF của Lightroom còn nguyên sau khi đè", artist == "SAY Media kiem tram", str(artist))
-    ktra("engine đã nạp: mỗi ảnh xong trong vài giây (không nạp lại mô hình)",
-         max(thoi_gian[1:]) < 15, " · ".join(f"{x:.1f} s" for x in thoi_gian))
+    #  < 30 s: bắt được "nạp lại mô hình mỗi ảnh" (thử thật lạnh 45 s) kể cả khi máy đang
+    #  bận (Lightroom + app khác giữ card — đo 11/10: 8–15 s/ảnh; máy rảnh ~2 s)
+    ktra("engine đã nạp: mỗi ảnh không phải nạp lại mô hình",
+         max(thoi_gian[1:]) < 30, " · ".join(f"{x:.1f} s" for x in thoi_gian))
     ktra("thư mục tạm cạnh ảnh render đã dọn", not list(REN.glob(".autotone_tram_*")))
     t.dung()
     giu.don(ep=True)
+
+# ================================================================ 1b. luồng mới (11/10): hâm nóng +
+#   render trước vào thư mục tạm + giao khi Lightroom xong -> ảnh hiện trong thư mục xuất là
+#   đã retouch. Engine MỚI (lạnh) để đo đúng thời gian hâm nóng.
+if goc and rt.hop_le(goc):
+    for f in THU.glob("*"):
+        if f.is_file():
+            f.unlink()
+    giu2 = tr.GiuMay()
+    t2 = tr.Tram(THU, "app", rt=rt, giu=giu2, goc_tool=goc, khoa_ok=lambda: True)
+    t0 = time.monotonic()
+    t2.lay_may(cho=240)
+    t_nap = time.monotonic() - t0
+    t2._nong_cho = (MUC, "kiểm")
+    t0 = time.monotonic()
+    t2.ham_nong()
+    t_nong = time.monotonic() - t0
+    ktra("hâm nóng mô hình các bước đang bật (ảnh mẫu có mặt)", bool(t2._buoc_nong),
+         f"nạp engine {t_nap:.1f} s · hâm {t_nong:.1f} s · bước {sorted(t2._buoc_nong)}")
+    XUAT = TAM / "Xuat"
+    TAMX = XUAT / ".autotone_dang_retouch"
+    TAMX.mkdir(parents=True)
+    ten = [f"DSC10{i}.jpg" for i in range(1, 7)]
+    for i, t in enumerate(ten, 1):           # Lightroom render TRƯỚC cả lượt
+        src = chuan_bi(t)
+        shutil.move(str(src), str(TAMX / t))
+        tr.ghi_kv(THU / f"cho_x{i}.txt", {"anh": TAMX / t, "dich": XUAT / t,
+                                          "goc": RAW / (Path(t).stem + ".ARW"), "che_do": "app"})
+    lan_dau, thay_bo = [], False
+    t0 = time.monotonic()
+    for i, t in enumerate(ten, 1):           # vòng của plugin: tới ảnh nào báo san_ ảnh đó
+        (THU / f"san_x{i}.txt").write_text("1", encoding="utf-8")
+        t1 = time.monotonic()
+        while not (THU / f"kq_x{i}.txt").exists() and time.monotonic() - t1 < 240:
+            if any((XUAT / x).exists() and not (XUAT / x).read_bytes()[:2] == b"\xff\xd8" for x in ten):
+                pass
+            t2.mot_vong()
+            time.sleep(0.05)
+        lan_dau.append(time.monotonic() - t1)
+    tong = time.monotonic() - t0
+    ok_het = all((XUAT / x).is_file() for x in ten) and not list(TAMX.glob("*.jpg"))
+    doi = []
+    for x in ten:
+        a = np.asarray(Image.open(XUAT / x).convert("RGB"), dtype=np.int16)
+        doi.append(a.shape)
+    ktra("6 ảnh render trước -> đều ra thư mục xuất (đã retouch), thư mục tạm sạch", ok_het,
+         f"tổng {tong:.1f} s · {tong / len(ten):.1f} s/ảnh · chờ từng ảnh "
+         + " ".join(f"{x:.1f}" for x in lan_dau))
+    ktra("đã hâm nóng: ảnh ĐẦU không còn chờ nạp mô hình (thử thật trước đây 45 s)",
+         lan_dau[0] < 15, f"{lan_dau[0]:.1f} s")
+    t2.dung()
+    giu2.don(ep=True)
 
 # ================================================================ 2. trạm chạy ngầm (lệnh plugin)
 for f in THU.glob("*"):

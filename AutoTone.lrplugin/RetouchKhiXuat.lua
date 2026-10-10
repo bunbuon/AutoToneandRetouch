@@ -38,11 +38,19 @@
      dùng bấm Export thì mô hình đã nạp — chỉ còn xuất ảnh. Dòng trạng thái trong hộp
      cho biết đã sẵn sàng chưa.
 
-     MỘT ẢNH MỘT LẦN, KHÔNG GỐI ĐẦU: chỉ sang ảnh kế khi ảnh này đã retouch xong rồi
-     mới renditionIsDone — để Lightroom không bao giờ nhận file chưa retouch xong.
-     Lightroom vẫn render các ảnh sau trong lúc trạm làm ảnh trước (nếu có render
-     trước thì nó dùng); plugin.log ghi thời gian chờ render / chờ retouch từng ảnh
-     để đo trên Lightroom thật. ]]
+     ẢNH HIỆN TRONG THƯ MỤC XUẤT LÀ ĐÃ RETOUCH (11/10 — thử thật: Lightroom render
+     THẲNG vào thư mục xuất và render trước rất nhanh — 41 ảnh chưa retouch hiện hết
+     rồi mới bị đè dần trong 5 phút). Nay:
+       - filterSettings (SDK: "trả về chuỗi = đường dẫn mới của file") cho Lightroom
+         render vào <thư mục xuất>/.autotone_dang_retouch/<tên đích>, đồng thời ghi
+         cho_<id>.txt báo trước trạm -> trạm retouch SỚM, theo lô, ngay khi file ghi
+         trọn (Lightroom render trước cả chục ảnh);
+       - tới ảnh đó trong vòng lặp (waitForRender xong = Lightroom xong với file) ->
+         san_<id>.txt -> trạm os.replace bản retouch sang ĐÚNG tên đích (cùng ổ) ->
+         renditionIsDone. Đích chỉ xuất hiện MỘT lần, đã retouch.
+       - Lightroom bỏ qua đường tạm (báo cáo: Export with Previous bỏ filterSettings)
+         -> lùi về sửa tại chỗ như bản đầu (yc_), plugin.log ghi rõ.
+     Mọi đường hỏng -> chuyển bản Lightroom render sang đích (chưa retouch). ]]
 
 local LrDialogs       = import "LrDialogs"
 local LrFileUtils     = import "LrFileUtils"
@@ -64,6 +72,7 @@ M.CHO_MOI_ANH = 180     -- giây: các ảnh sau
 M.CU_NHIP     = 6       -- nhịp trạm cũ hơn chừng này giây -> trạm không chạy
 M.NGU         = 0.05    -- nhịp hỏi kết quả
 M.DUOI = { jpg = true, jpeg = true, tif = true, tiff = true, png = true }
+M.TEN_TAM = ".autotone_dang_retouch"   -- thư mục render tạm trong thư mục xuất
 
 local function tramDir()
     local d = LrPathUtils.child(jobDir(), "tram_retouch")
@@ -132,15 +141,18 @@ function M.moTram()
     return true
 end
 
---[[ -> "app" | "rieng" | "dang_mo" | nil (không mở được). xinNap: app đang mở mà
-     engine chưa nạp thì xin nạp ngay. ]]
-function M.damBaoTram(xinNap)
+--[[ -> "app" | "rieng" | "dang_mo" | nil (không mở được). xinNap: ghi xin_nap.txt kèm
+     chế độ mức (che_do) — trạm nạp engine nếu chưa có và HÂM NÓNG mô hình các bước
+     của mức đó (ảnh đầu khỏi chờ nạp — thử thật 45 s). ]]
+function M.xinNap(cheDo)
+    ghiFile(f("xin_nap.txt"), "che_do=" .. sach(cheDo or "app") .. "\n")
+end
+
+function M.damBaoTram(xinNap, cheDo)
     local a = M.nhip("app")
     local r = M.nhip("rieng")
-    if a and (a.san_sang == "1" or not r) then
-        if xinNap and a.san_sang ~= "1" then ghiFile(f("xin_nap.txt"), "1\n") end
-        return "app"
-    end
+    if xinNap then M.xinNap(cheDo) end
+    if a and (a.san_sang == "1" or not r) then return "app" end
     if r then return "rieng" end
     if M.tMo and os.time() - M.tMo < 60 then return "dang_mo" end
     return M.moTram() and "dang_mo" or nil
@@ -149,6 +161,11 @@ end
 function M.moTaTram()
     local a, r = M.nhip("app"), M.nhip("rieng")
     local function may(d) return (d.may and d.may ~= "") and (" · " .. d.may) or "" end
+    for _, d in ipairs({ a or false, r or false }) do
+        if d and d.san_sang == "1" and d.dang_nong == "1" then
+            return "Đang nạp mô hình các bước retouch đang bật (lần đầu ~10–40 giây)…", false
+        end
+    end
     if a and a.san_sang == "1" then
         return "Sẵn sàng — engine retouch của app đã nạp mô hình" .. may(a) .. ".", true
     end
@@ -177,12 +194,18 @@ local function duoiNhan(path)
     return M.DUOI[e] == true
 end
 
---[[ Gửi một ảnh cho trạm, chờ kết quả. -> bảng kết quả (ok/bo_qua/loi/mo_ta/giay). ]]
+--[[ Gửi một ảnh cho trạm (sửa tại chỗ), chờ kết quả. -> bảng kết quả. ]]
 function M.guiVaCho(anh, goc, cheDo, cho)
     local id = moiId()
     ghiFile(f("yc_" .. id .. ".txt"), table.concat({
         "anh=" .. sach(anh), "goc=" .. sach(goc), "che_do=" .. sach(cheDo),
         "t=" .. tostring(os.time()) }, "\n") .. "\n")
+    return M.choKq(id, cho)
+end
+
+--[[ Chờ kq_<id>.txt. Quá giờ: ghi huy_<id> (trạm không được đè / giao nữa), rút
+     yc_ / cho_ nếu trạm chưa nhận. ]]
+function M.choKq(id, cho)
     local kq = f("kq_" .. id .. ".txt")
     local t0 = os.time()
     local daMoLai = false
@@ -205,11 +228,17 @@ function M.guiVaCho(anh, goc, cheDo, cho)
         end
         LrTasks.sleep(M.NGU)
     end
-    --  quá giờ: rút yêu cầu nếu trạm chưa nhận; nhận rồi thì cấm trạm đè file
+    --  quá giờ: rút yêu cầu nếu trạm chưa nhận; nhận rồi thì cấm trạm đè / giao file
+    M.huy(id)
+    return { ok = "0", loi = string.format("quá %d giây chưa xong", cho), qua_gio = "1" }
+end
+
+function M.huy(id)
     ghiFile(f("huy_" .. id .. ".txt"), "1\n")
-    local yc = f("yc_" .. id .. ".txt")
-    if LrFileUtils.exists(yc) then LrFileUtils.delete(yc) end
-    return { ok = "0", loi = string.format("quá %d giây chưa xong", cho) }
+    for _, tien in ipairs({ "yc_", "cho_", "san_" }) do
+        local p = f(tien .. id .. ".txt")
+        if LrFileUtils.exists(p) then LrFileUtils.delete(p) end
+    end
 end
 
 -- ------------------------------------------------------------ hộp Export
@@ -242,7 +271,10 @@ function M.startDialog(pt)
             pt.autotone_rt_trang_thai = "Đang tắt — ảnh xuất ra không retouch."
             return
         end
-        M.damBaoTram(true)
+        M.damBaoTram(true, pt.autotone_rt_muc)
+        if type(pt.addObserver) == "function" then
+            pt:addObserver("autotone_rt_muc", function(_p, _k, moi) M.xinNap(moi) end)
+        end
         for _ = 1, 360 do                  -- tối đa 3 phút
             if M.lanDong >= lan then return end
             local chu, xong = M.moTaTram()
@@ -286,13 +318,35 @@ function M.sectionForFilterInDialog(fv, pt)
 end
 
 -- ------------------------------------------------------------ lượt Export
+--[[ Ghi .part rồi os.rename (hàm C, không yield) — dùng được cả trong filterSettings,
+     nơi không chắc lời gọi SDK có được yield không. ]]
+local function ghiNhanh(path, text)
+    local tmp = path .. ".part"
+    local fh = io.open(tmp, "w")
+    if not fh then return false end
+    fh:write(text)
+    fh:close()
+    os.remove(path)
+    return os.rename(tmp, path) and true or false
+end
+
+--[[ Chuyển bản Lightroom render (chưa retouch) sang đích — đường lùi của mọi lỗi. ]]
+local function chuyenGoc(tam, dich)
+    if not tam or not dich or tam == dich or not LrFileUtils.exists(tam) then return end
+    if LrFileUtils.exists(dich) then LrFileUtils.delete(dich) end
+    LrFileUtils.move(tam, dich)
+end
+
 function M.postProcessRenderedPhotos(functionContext, filterContext)
     local pt = filterContext.propertyTable or {}
     local bat = pt.autotone_rt_bat ~= false
     local cheDo = pt.autotone_rt_muc or "app"
     if cheDo == "" then cheDo = "app" end
-    local tong = #(filterContext.renditionsToSatisfy or {})
+    local ds = filterContext.renditionsToSatisfy or {}
+    local tong = #ds
     local thanh = nil
+    --  thư mục render tạm (trong thư mục xuất — cùng ổ, chuyển sang đích là đổi tên)
+    local thuTam, rawCua = {}, {}
     if bat then
         LrTasks.pcall(function()
             thanh = LrProgressScope({ title = "AutoTone: retouch khi xuất",
@@ -300,17 +354,64 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
             thanh:setCancelable(true)
             thanh:setCaption(string.format("Chuẩn bị retouch %d ảnh…", tong))
         end)
-        local kieu = M.damBaoTram(false)
+        for _, r in ipairs(ds) do
+            LrTasks.pcall(function()
+                rawCua[r.photo.localIdentifier] = r.photo:getRawMetadata("path") or ""
+                local dich = r.destinationPath
+                if dich and dich ~= "" and duoiNhan(dich) then
+                    local thu = LrPathUtils.child(LrPathUtils.parent(dich), M.TEN_TAM)
+                    if thuTam[thu] == nil then
+                        if not LrFileUtils.exists(thu) then LrFileUtils.createAllDirectories(thu) end
+                        thuTam[thu] = LrFileUtils.exists(thu) and true or false
+                    end
+                end
+            end)
+        end
+        local kieu = M.damBaoTram(true, cheDo)
         log(string.format("bắt đầu %d ảnh · mức %s · trạm %s", tong, cheDo, tostring(kieu)))
     end
-    local i, ok, boQua, loi, huyTay = 0, 0, 0, 0, false
+
+    --  Lightroom hỏi đường render từng ảnh (render trước nhiều ảnh): vào thư mục tạm +
+    --  báo trước trạm (cho_). Lỗi gì ở đây -> nil = render thẳng đích như thường.
+    local phien = string.format("%d%04d", os.time(), math.random(0, 9999))
+    local n, idCua, tamCua = 0, {}, {}
+    local tuyChon = {}
+    if bat then
+        tuyChon.filterSettings = function(renditionToSatisfy, _exportSettings)
+            local ok, kq = pcall(function()
+                local dich = renditionToSatisfy.destinationPath
+                if not dich or dich == "" or not duoiNhan(dich) then return nil end
+                local thu = LrPathUtils.child(LrPathUtils.parent(dich), M.TEN_TAM)
+                if not thuTam[thu] then return nil end
+                n = n + 1
+                local id = phien .. "_" .. n
+                local tam = LrPathUtils.child(thu, LrPathUtils.leafName(dich))
+                local ph = renditionToSatisfy.photo
+                local goc = (ph and rawCua[ph.localIdentifier]) or ""
+                if not ghiNhanh(f("cho_" .. id .. ".txt"), table.concat({
+                        "anh=" .. sach(tam), "dich=" .. sach(dich), "goc=" .. sach(goc),
+                        "che_do=" .. sach(cheDo), "t=" .. tostring(os.time()) }, "\n") .. "\n") then
+                    return nil
+                end
+                idCua[dich], tamCua[dich] = id, tam
+                return tam
+            end)
+            if ok then return kq end
+            return nil
+        end
+    end
+
+    local i, ok, boQua, loi, huyTay, taiCho = 0, 0, 0, 0, false, 0
     local tCho, tRt = 0, 0
-    for sourceRendition, renditionToSatisfy in filterContext:renditions() do
+    for sourceRendition, renditionToSatisfy in filterContext:renditions(tuyChon) do
         i = i + 1
         local t0 = os.time()
         local thanhR, duong = sourceRendition:waitForRender()
         tCho = tCho + (os.time() - t0)
+        local dich = renditionToSatisfy.destinationPath
+        local id, tam = idCua[dich], tamCua[dich]
         if not thanhR then
+            if id then M.huy(id) end
             renditionToSatisfy:renditionIsDone(false, duong)
         else
             if bat and thanh and not huyTay then
@@ -320,32 +421,56 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
                     log(string.format("bấm ✕ ở ảnh %d/%d — các ảnh còn lại xuất KHÔNG retouch", i, tong))
                 end
             end
-            if bat and not huyTay and duoiNhan(duong) then
-                local goc = ""
-                LrTasks.pcall(function()
-                    goc = sourceRendition.photo:getRawMetadata("path") or ""
-                end)
-                if i == 1 then
-                    log("ảnh đầu: render " .. tostring(duong) .. " · đích "
-                        .. tostring(renditionToSatisfy.destinationPath) .. " · gốc " .. tostring(goc))
+            if i == 1 and bat then
+                log("ảnh đầu: render " .. tostring(duong) .. " · đích " .. tostring(dich)
+                    .. (id and (duong == tam and " · qua thư mục tạm"
+                                or " · Lightroom BỎ QUA đường tạm — sửa tại chỗ")
+                        or (duoiNhan(duong) and " · Lightroom KHÔNG hỏi đường render (Export with Previous?) — sửa tại chỗ" or "")))
+            end
+            local kq = nil
+            local t1 = os.time()
+            if id and duong == tam then
+                --  render vào thư mục tạm: trạm giữ bản retouch, báo Lightroom xong -> giao
+                if bat and not huyTay then
+                    ghiFile(f("san_" .. id .. ".txt"), "1\n")
+                    local okG, k = LrTasks.pcall(function()
+                        return M.choKq(id, i == 1 and M.CHO_DAU or M.CHO_MOI_ANH)
+                    end)
+                    kq = okG and k or { ok = "0", loi = tostring(k) }
+                    if okG and k and k.qua_gio == "1" then chuyenGoc(tam, dich) end
+                else
+                    M.huy(id)
+                    chuyenGoc(tam, dich)
                 end
-                local t1 = os.time()
-                local okG, kq = LrTasks.pcall(function()
+                --  chốt: đích phải có file (trạm lỗi giữa chừng -> bản chưa retouch)
+                if not LrFileUtils.exists(dich) then chuyenGoc(tam, dich) end
+            elseif bat and not huyTay and duoiNhan(duong) then
+                --  Lightroom render thẳng đích (bỏ qua đường tạm): sửa tại chỗ như bản đầu
+                if id then M.huy(id) end
+                taiCho = taiCho + 1
+                local goc = ""
+                LrTasks.pcall(function() goc = sourceRendition.photo:getRawMetadata("path") or "" end)
+                local okG, k = LrTasks.pcall(function()
                     return M.guiVaCho(duong, goc, cheDo, i == 1 and M.CHO_DAU or M.CHO_MOI_ANH)
                 end)
-                tRt = tRt + (os.time() - t1)
-                if not okG then kq = { ok = "0", loi = tostring(kq) } end
+                kq = okG and k or { ok = "0", loi = tostring(k) }
+            elseif id then
+                M.huy(id)
+                chuyenGoc(tam, dich)
+            end
+            tRt = tRt + (os.time() - t1)
+            if kq then
                 if kq.ok == "1" and kq.bo_qua == "1" then
                     boQua = boQua + 1
                     if boQua <= 3 then
-                        log(LrPathUtils.leafName(duong) .. ": không retouch — " .. tostring(kq.mo_ta))
+                        log(LrPathUtils.leafName(dich or duong) .. ": không retouch — " .. tostring(kq.mo_ta))
                     end
                 elseif kq.ok == "1" then
                     ok = ok + 1
                 else
                     loi = loi + 1
                     if loi <= 10 then
-                        log(LrPathUtils.leafName(duong) .. ": xuất CHƯA retouch — " .. tostring(kq.loi))
+                        log(LrPathUtils.leafName(dich or duong) .. ": xuất CHƯA retouch — " .. tostring(kq.loi))
                     end
                 end
             end
@@ -360,9 +485,21 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
         end
     end
     if thanh then LrTasks.pcall(function() thanh:done() end) end
+    --  dọn thư mục render tạm (chỉ khi trống — còn file là có lỗi, để lại xem được)
+    for thu, coTao in pairs(thuTam) do
+        if coTao then
+            LrTasks.pcall(function()
+                local con = false
+                for _ in LrFileUtils.files(thu) do con = true break end
+                if not con then LrFileUtils.delete(thu) end
+            end)
+        end
+    end
     if bat then
-        log(string.format("xong %d ảnh: retouch %d, không cần %d, CHƯA retouch %d%s · chờ render %d s, chờ retouch %d s",
-                          i, ok, boQua, loi, huyTay and " (bấm ✕)" or "", tCho, tRt))
+        log(string.format("xong %d ảnh: retouch %d, không cần %d, CHƯA retouch %d%s%s · chờ render %d s, chờ retouch %d s",
+                          i, ok, boQua, loi, huyTay and " (bấm ✕)" or "",
+                          taiCho > 0 and string.format(" · %d ảnh Lightroom render THẲNG đích (sửa tại chỗ)", taiCho) or "",
+                          tCho, tRt))
         if loi > 0 then
             LrTasks.pcall(function()
                 LrDialogs.showBezel(string.format("AutoTone: %d ảnh xuất ra CHƯA retouch — xem plugin.log", loi), 6)

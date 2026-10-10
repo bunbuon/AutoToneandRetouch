@@ -68,12 +68,14 @@ class GiuGia(tr.GiuMay):
 
 
 GOI = []
+GOI_SO = []
 HANH_DONG_GIUA = []
 
 
 def chay_gia(goc, vao, ra, muc, engine=None, **kw):
     GOI.append({"vao": str(vao), "muc": dict(muc), "anh": sorted(p.name for p in Path(vao).iterdir()),
                 "kw": dict(kw), "engine": engine is not None})
+    GOI_SO.append(len(list(Path(vao).iterdir())))
     yield ("lenh", "gia")
     for h in list(HANH_DONG_GIUA):
         h()
@@ -266,6 +268,142 @@ m3 = MayGia()
 g.may, g.goc, g.so_dung, g.giu_toi = m3, "C:/tool", 0, 0
 m3.dang_chay = True
 ktra("đang chạy mẻ -> không đóng", not g.don())
+
+# ---------------------------------------------------------------- 11. (11/10) render vào thư mục tạm
+#  user thử thật: ảnh chưa retouch hiện trong thư mục xuất rồi mới bị đè -> nay Lightroom
+#  render vào <đích>/.autotone_dang_retouch, trạm GIỮ bản retouch, giao khi có san_.
+for f in THU.glob("*.txt"):
+    f.unlink()
+rt.ghi_muc_anh(str(RAW), {}, {"vet": 30})
+XUAT = TAM / "Xuat"
+TAMX = XUAT / ".autotone_dang_retouch"
+TAMX.mkdir(parents=True)
+
+
+def cho(id_, ten, noi=b"R\xff\xd9", goc=None):
+    tam = TAMX / ten
+    tam.write_bytes(noi)
+    tr.ghi_kv(THU / f"cho_{id_}.txt", {"anh": tam, "dich": XUAT / ten,
+                                       "goc": goc or RAW / (Path(ten).stem + ".ARW"), "che_do": "app"})
+    return tam, XUAT / ten
+
+
+tc = tram_moi()
+tam1, dich1 = cho("c1", "DSC0101.jpg")
+GOI.clear()
+tc.mot_vong()                                    # vừa thấy file: chưa đứng yên đủ
+ktra("file render vừa xuất hiện (chưa đứng yên ON_DINH_GIAY) -> chưa nhận", not GOI)
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+tc.mot_vong()
+ktra("file ghi trọn (JPEG có FFD9, đứng yên) -> retouch SỚM, GIỮ bản retouch, đích CHƯA có file",
+     len(GOI) == 1 and not dich1.exists() and "c1" in tc._cho_giao and not kq("c1"))
+(THU / "san_c1.txt").write_text("1", encoding="utf-8")
+tc.mot_vong()
+ktra("plugin báo san_ (Lightroom xong với file) -> giao: đích là bản retouch, file tạm đã xoá",
+     dich1.read_bytes().startswith(b"RT:") and not tam1.exists() and kq("c1").get("ok") == "1"
+     and not (THU / "san_c1.txt").exists() and not list(TAMX.glob(".kq_*")), str(kq("c1")))
+tam2, dich2 = cho("c2", "DSC0102.jpg", noi=b"R2 dang ghi")   # JPEG chưa có FFD9
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+GOI.clear()
+tc.mot_vong()
+tc.mot_vong()
+ktra("JPEG chưa có FFD9 (Lightroom đang ghi) -> không nhận dù đứng yên", not GOI)
+(THU / "san_c2.txt").write_text("1", encoding="utf-8")
+tc.mot_vong()
+ktra("có san_ (Lightroom đã xong) -> nhận ngay và giao", dich2.read_bytes().startswith(b"RT:"))
+tam3, dich3 = cho("c3", "DSC0103.jpg")
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+tc.mot_vong()
+tc.mot_vong()
+(THU / "huy_c3.txt").write_text("1", encoding="utf-8")
+tc.mot_vong()
+ktra("plugin huỷ (quá giờ / bấm ✕) -> không giao, bỏ bản giữ (plugin tự chuyển bản gốc)",
+     not dich3.exists() and "c3" not in tc._cho_giao and not list(TAMX.glob(".kq_*")))
+rt.ghi_muc_anh(str(RAW), {}, {})
+tam4, dich4 = cho("c4", "DSC0104.jpg", noi=b"R4\xff\xd9")
+(THU / "san_c4.txt").write_text("1", encoding="utf-8")
+tc.mot_vong()
+ktra("mức 0 -> giao NGUYÊN bản Lightroom sang đích (bỏ qua)", dich4.read_bytes() == b"R4\xff\xd9"
+     and kq("c4").get("bo_qua") == "1" and not tam4.exists())
+rt.ghi_muc_anh(str(RAW), {}, {"vet": 30})
+tam5, dich5 = cho("c5", "KHONG_RA105.jpg", noi=b"R5\xff\xd9")
+(THU / "san_c5.txt").write_text("1", encoding="utf-8")
+tc.mot_vong()
+ktra("tool không ra ảnh -> vẫn giao bản Lightroom sang đích, báo lỗi",
+     dich5.read_bytes() == b"R5\xff\xd9" and kq("c5").get("ok") == "0")
+GOI.clear()
+GOI_SO.clear()
+for i in range(10):
+    t_, _d = cho(f"l{i}", f"DSC02{i:02d}.jpg")
+tc.mot_vong()                                    # lần đầu thấy file
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+tc.mot_vong()                                    # đứng yên đủ -> nhận tối đa 2 lô
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+tc.mot_vong()
+ktra("nhiều ảnh render trước -> mẻ engine tối đa LO_TOI_DA ảnh, làm hết",
+     GOI_SO and max(GOI_SO) == tr.LO_TOI_DA and sum(GOI_SO) == 10, str(GOI_SO))
+for i in range(10):
+    (THU / f"huy_l{i}.txt").write_text("1", encoding="utf-8")
+tc.mot_vong()
+for f in list(THU.glob("*.txt")) + list(TAMX.glob("*")):
+    f.unlink()
+
+# ---------------------------------------------------------------- 12. nhịp ở luồng riêng
+th = tram_moi("app")
+th.giu.lay(rt, "C:/tool", dung=False)
+th.bat_nen()
+cham = []
+
+
+def chay_cham(goc, vao, ra, muc, engine=None, **kw):
+    cham.append(1)
+    yield ("lenh", "cham")
+    time.sleep(3.0)
+    yield ("ma", 0)
+
+
+rt.chay = chay_cham
+a30 = anh("DSC0030.jpg", b"C")
+yc("30", a30, str(RAW / "DSC0030.ARW"))
+time.sleep(2.5)
+n = tr.doc_nhip(THU, "app", cu=1.5)
+ktra("trạm đang làm mẻ dài vẫn báo nhịp mới (plugin không tưởng chết, không mở engine thứ hai)",
+     cham and n is not None and n.get("dang") == "1", str(n))
+th.dung()
+time.sleep(1.5)
+rt.chay = chay_gia
+for f in THU.glob("*.txt"):
+    f.unlink()
+
+# ---------------------------------------------------------------- 13. hâm nóng
+tn = tram_moi()
+nong = []
+tn.ham_nong_goc = tn.ham_nong
+
+
+def chay_nong(goc, vao, ra, muc, engine=None, **kw):
+    nong.append((sorted(p.name for p in Path(vao).iterdir()), dict(muc)))
+    yield ("ma", 0)
+
+
+rt.chay = chay_nong
+tr.ghi_kv(THU / tr.XIN_NAP, {"che_do": "preset:Cưới mịn"})
+tn.mot_vong()
+ktra("hộp Export mở (xin_nap che_do=preset) -> hâm nóng bằng ảnh mẫu với đúng mức preset",
+     len(nong) == 1 and nong[0][0] == ["nong.jpg"] and nong[0][1] == {"vet": 100.0, "min_da": 60.0},
+     str(nong))
+tr.ghi_kv(THU / tr.XIN_NAP, {"che_do": "preset:Cưới mịn"})
+tn.mot_vong()
+ktra("các bước đã hâm trên engine này -> không hâm lại", len(nong) == 1)
+tr.ghi_gan_nhat({"vet": 50, "chan": 40}, "", "")
+tn.mot_vong()                     # thấy đổi
+time.sleep(tr.NONG_SAU_GIAY + 0.2)
+tn.mot_vong()                     # ngừng tay đủ lâu -> đặt chờ
+tn.mot_vong()                     # hâm
+ktra("đổi mức trong app (thêm bước mới) -> ngừng tay 2 s thì hâm bước mới",
+     len(nong) == 2 and nong[1][1] == {"vet": 50, "chan": 40}, str(nong[1:]))
+ktra("nhịp báo nong=1 khi đã hâm xong", tr.doc_nhip(THU, "app").get("nong") == "1")
+rt.chay = chay_gia
 
 # ---------------------------------------------------------------- 10. lệnh mở trạm / điều kiện mở
 l = tr.lenh_mo_tram(THU)

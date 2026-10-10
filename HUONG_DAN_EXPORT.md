@@ -132,6 +132,12 @@ Không cần bấm "3 · Xuất" trong app: Export bằng Lightroom như mọi k
 3. **Lưu vào Export preset** (Add ở cột trái) — từ đó Export bằng preset này (kể cả
    Export with Previous) là có retouch, không phải tích lại.
 
+Ảnh hiện trong thư mục xuất là ĐÃ retouch (11/10): Lightroom render vào thư mục tạm ẩn
+`.autotone_dang_retouch` bên trong thư mục xuất, trạm retouch theo lô ngay khi ảnh render
+xong rồi mới chuyển sang đúng tên — không còn cảnh ảnh chưa retouch hiện ra rồi bị đè.
+(Riêng "Export with Previous": Lightroom có thể bỏ qua thư mục tạm — khi đó ảnh vẫn được
+retouch nhưng theo kiểu đè tại chỗ; plugin.log ghi rõ. Dùng Export with Preset để tránh.)
+
 Mô hình nạp TRƯỚC khi bấm Export: kéo thanh / chọn preset trong màn Retouch là app giữ
 engine 30 phút (kể cả khi rời màn Retouch); app đang tắt thì mở hộp Export là plugin tự
 mở trạm retouch chạy ngầm và nạp mô hình (dòng trạng thái trong hộp báo "Sẵn sàng").

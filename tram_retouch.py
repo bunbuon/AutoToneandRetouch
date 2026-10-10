@@ -27,13 +27,26 @@ AI PHỤC VỤ
   - Hai bên không tranh nhau: app chỉ nhận việc khi engine của nó đã nạp HOẶC không
     có trạm riêng; trạm riêng nhường hẳn khi thấy engine app đã sẵn sàng.
 
+ẢNH HIỆN TRONG THƯ MỤC XUẤT LÀ ĐÃ RETOUCH (11/10 — thử thật: Lightroom render THẲNG
+  vào thư mục xuất và render trước rất nhanh — 41 ảnh chưa retouch hiện hết rồi mới bị
+  đè dần). Nay plugin bảo Lightroom render vào thư mục tạm ẩn <đích>/.autotone_dang_
+  retouch (filterSettings của SDK), báo trước cho trạm (cho_<id>.txt). Trạm retouch SỚM
+  theo lô ngay khi file render ghi trọn (JPEG có FFD9 + cỡ đứng yên), GIỮ kết quả; plugin
+  tới ảnh đó (Lightroom đã xong với file) thì ghi san_<id>.txt -> trạm os.replace bản
+  retouch sang đúng tên đích (cùng ổ: nguyên tử). Không chuyển file trước san_: Lightroom
+  có thể còn đụng tới file nó vừa render.
+
 TỆP TRONG <jobs>/tram_retouch/   (key=value, UTF-8 — Lua đọc / ghi được, khỏi JSON)
-  yc_<id>.txt     plugin: anh=, goc=, che_do=app | preset:<tên>, t=
+  cho_<id>.txt    plugin (lúc Lightroom định đường render): anh=<file tạm>, dich=<đích>,
+                  goc=, che_do=
+  san_<id>.txt    plugin: Lightroom đã render xong ảnh này -> trạm được giao sang đích
+  yc_<id>.txt     plugin (Lightroom bỏ qua đường tạm, vd Export with Previous): sửa TẠI
+                  CHỖ như bản đầu — anh=, goc=, che_do=, t=
   dang_<id>.txt   trạm đã nhận (đổi tên nguyên tử — hai trạm không cùng làm một ảnh)
   kq_<id>.txt     trạm: ok=1|0, bo_qua=1|0, loi=, mo_ta=, giay=
   huy_<id>.txt    plugin: quá giờ — trạm KHÔNG được đè file nữa
   tram_app.txt / tram_rieng.txt   nhịp: pid, san_sang, may, dang, t (giây epoch)
-  xin_nap.txt     plugin: hộp Export vừa mở -> nạp mô hình ngay
+  xin_nap.txt     plugin: hộp Export vừa mở -> nạp + hâm nóng mô hình (che_do=)
   tram_lenh.txt   app: lệnh mở trạm chạy ngầm (plugin chạy khi không thấy trạm nào)
   presets.txt     tên preset retouch (hộp Export liệt kê)
   tram.log        nhật ký
@@ -65,6 +78,9 @@ RANH_THOAT = 10 * 60      # trạm chạy ngầm rảnh chừng này thì thoát
 CU_GIAY = 5               # nhịp cũ hơn -> coi như trạm đó không chạy
 CU_YEU_CAU = 15 * 60      # yêu cầu nằm lâu hơn (plugin đã bỏ) -> dọn
 NHA_CPU_GIAY = 60         # rảnh chừng này thì trả CPU (an toàn máy)
+LO_TOI_DA = 4             # ảnh mỗi mẻ engine (song song trong engine, kết quả ra theo lô)
+ON_DINH_GIAY = 0.4        # file render đứng yên chừng này mới coi là ghi xong
+NONG_SAU_GIAY = 2.0       # người dùng ngừng đổi mức chừng này thì hâm nóng
 
 
 # ====================================================================== tệp
@@ -123,6 +139,79 @@ def nhat_ky(thu: Path, chu: str) -> None:
             fh.write(time.strftime("%m-%d %H:%M:%S ") + chu + "\n")
     except OSError:
         pass
+
+
+def file_xong(p: Path, nho: dict, k) -> bool:
+    """File Lightroom render đã ghi trọn chưa: cỡ / thời gian sửa đứng yên ON_DINH_GIAY,
+    JPEG phải kết thúc bằng FFD9 (đang ghi dở thì chưa có)."""
+    try:
+        st = Path(p).stat()
+    except OSError:
+        return False
+    if st.st_size <= 0:
+        return False
+    bay = time.monotonic()
+    dau = (st.st_size, st.st_mtime_ns)
+    cu = nho.get(k)
+    t0 = cu[2] if cu and cu[:2] == dau else bay
+    nho[k] = (dau[0], dau[1], t0)
+    if bay - t0 < ON_DINH_GIAY:
+        return False
+    if Path(p).suffix.lower() in (".jpg", ".jpeg"):
+        try:
+            with open(p, "rb") as fh:
+                fh.seek(-2, 2)
+                return fh.read(2) == b"\xff\xd9"
+        except OSError:
+            return False
+    return True
+
+
+def an_thu_muc(p) -> None:
+    """Ẩn thư mục render tạm trong thư mục xuất (Windows)."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetFileAttributesW(str(p), 0x2)
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
+def anh_nong() -> Path | None:
+    """Ảnh mẫu có mặt người để hâm nóng (đi kèm insightface trong gói / venv), phóng lên
+    cỡ ảnh xuất thật (tool bỏ qua mặt < 150 px). None nếu không có."""
+    g = None
+    try:
+        if getattr(sys, "frozen", False):
+            g = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "insightface"
+        else:
+            import importlib.util
+            sp = importlib.util.find_spec("insightface")
+            if sp is not None and sp.submodule_search_locations:
+                g = Path(list(sp.submodule_search_locations)[0])
+    except Exception:                                        # noqa: BLE001
+        g = None
+    if g is None:
+        return None
+    nguon = g / "data" / "images" / "t1.jpg"
+    if not nguon.is_file():
+        return None
+    try:
+        import tempfile
+        from PIL import Image
+        ra = Path(tempfile.gettempdir()) / "autotone_anh_nong.jpg"
+        if not ra.is_file():
+            with Image.open(nguon) as im:
+                im = im.convert("RGB")
+                k = 3000 / max(im.size)
+                im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+                tam = ra.with_suffix(".part.jpg")
+                im.save(tam, "JPEG", quality=92)
+                os.replace(tam, ra)
+        return ra
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 # ====================================================================== mức
@@ -306,6 +395,16 @@ class Tram:
         self._t_khoa = 0.0
         self._khoa_cache = True
         self._dem_tam = 0
+        self._khoa_nhip = threading.Lock()
+        self._kich: dict = {}              # id -> (cỡ, mtime, lúc đứng yên) — file_xong
+        self._cho_giao: dict = {}          # id -> kết quả giữ chờ san_ (render vào thư mục tạm)
+        self._da_an: set = set()
+        self._buoc_nong: set = set()       # bước đã hâm nóng trên engine hiện tại
+        self._may_nong = None
+        self._nong_cho = None              # (bộ mức, lý do) chờ hâm nóng
+        self._t_gan_nhat = self._mtime_gan_nhat()   # mức lúc trạm bật = mức cũ
+        self._t_doi_gan_nhat = 0.0
+        self.dang_nong = False
 
     # ------------------------------------------------------------ phụ
     @property
@@ -348,16 +447,28 @@ class Tram:
     def ghi_nhip(self, ep: bool = False) -> None:
         if not ep and time.time() - self.t_nhip < 1.0:
             return
-        self.t_nhip = time.time()
-        try:
-            ghi_kv(self.thu / f"tram_{self.loai}.txt", {
-                "pid": os.getpid(), "loai": self.loai,
-                "san_sang": 1 if self.giu.san_sang() else 0,
-                "may": self.giu.thiet_bi(), "dang": self.dang, "xong": self.so_xong,
-                "t": int(time.time())})
-        except OSError:
-            pass
-        self._ghi_ds_preset()
+        with self._khoa_nhip:
+            self.t_nhip = time.time()
+            try:
+                ghi_kv(self.thu / f"tram_{self.loai}.txt", {
+                    "pid": os.getpid(), "loai": self.loai,
+                    "san_sang": 1 if self.giu.san_sang() else 0,
+                    "may": self.giu.thiet_bi(), "dang": self.dang, "xong": self.so_xong,
+                    "dang_nong": 1 if self.dang_nong else 0,
+                    "nong": 1 if (self.giu.san_sang() and not self.dang_nong
+                                  and self._nong_cho is None and self._buoc_nong) else 0,
+                    "t": int(time.time())})
+            except OSError:
+                pass
+            self._ghi_ds_preset()
+
+    def _vong_nhip(self) -> None:
+        """Nhịp ở LUỒNG RIÊNG (11/10): trạm đang làm mẻ / nạp mô hình vẫn báo sống —
+        trước đây im 45 s ở ảnh đầu, plugin tưởng trạm chết, mở thêm trạm ngầm nạp bộ
+        mô hình thứ hai."""
+        while not self._dung.is_set():
+            self.ghi_nhip(ep=True)
+            self._dung.wait(1.0)
 
     def _ghi_ds_preset(self) -> None:
         try:
@@ -421,14 +532,102 @@ class Tram:
             return
         if self.loai == "app" and not self.giu.song() and doc_nhip(self.thu, "rieng"):
             return                         # trạm riêng đang giữ việc này
+        d = doc_kv(f) or {}
         try:
             f.unlink()
         except OSError:
             pass
         self.giu.giu()
         if not self.giu.song():
-            self.log("hộp Export mở — nạp sẵn mô hình retouch")
-            threading.Thread(target=lambda: self.lay_may(cho=0.1), daemon=True).start()
+            goc = self.goc_tool()
+            if goc and self.rt.hop_le(goc):
+                m, loi, _moi = self.giu.lay(self.rt, goc, dung=False)
+                self.log("hộp Export mở — nạp sẵn mô hình retouch" + (f" (lỗi: {loi})" if loi else ""))
+        try:
+            muc, _mt = muc_cho(self.rt, d.get("che_do") or "app", "")
+        except Exception:                                    # noqa: BLE001
+            muc = None
+        if muc:
+            self._nong_cho = (muc, "hộp Export mở")
+
+    # ------------------------------------------------------------ hâm nóng
+    @staticmethod
+    def buoc_cua(muc: dict) -> set:
+        ra = set()
+        for k, v in dict(muc or {}).items():
+            try:
+                if float(v or 0) > 0:
+                    ra.add(str(k).split(":")[-1])
+            except (TypeError, ValueError):
+                pass
+        return ra
+
+    def can_nong(self, muc: dict) -> bool:
+        m = self.giu.may
+        if m is not self._may_nong:
+            self._may_nong, self._buoc_nong = m, set()
+        return bool(self.buoc_cua(muc) - self._buoc_nong)
+
+    @staticmethod
+    def _mtime_gan_nhat() -> float:
+        try:
+            import duong_dan as dd
+            return dd.du_lieu(GAN_NHAT).stat().st_mtime
+        except Exception:                                    # noqa: BLE001
+            return 0.0
+
+    def _soi_gan_nhat(self) -> None:
+        """App: người dùng vừa đổi mức / chọn preset (tram_muc_gan_nhat.json đổi, kể cả
+        lần đầu được tạo) -> ngừng tay NONG_SAU_GIAY thì hâm nóng các bước đó."""
+        mt = self._mtime_gan_nhat()
+        if not mt:
+            return
+        if mt != self._t_gan_nhat:
+            self._t_gan_nhat = mt
+            self._t_doi_gan_nhat = time.time()
+            return
+        if self._t_doi_gan_nhat and time.time() - self._t_doi_gan_nhat > NONG_SAU_GIAY:
+            self._t_doi_gan_nhat = 0.0
+            g = doc_gan_nhat()
+            if g and self.giu.song():
+                self._nong_cho = (g["muc"], "đổi mức trong app")
+
+    def ham_nong(self) -> None:
+        """Chạy MỘT ảnh mẫu qua đúng các bước đang bật: mô hình từng bước (nạp lười ở ảnh
+        đầu — thử thật 45 s) nạp xong TRƯỚC khi Lightroom xuất."""
+        nong, self._nong_cho = self._nong_cho, None
+        if not nong:
+            return
+        muc, ly_do = nong
+        if not muc or self.rt.muc_trong(muc) or not self.can_nong(muc):
+            return
+        anh = anh_nong()
+        if anh is None:
+            return
+        may = self.lay_may(cho=180)
+        if may is None:
+            return
+        import tempfile
+        tam = Path(tempfile.mkdtemp(prefix="autotone_nong_"))
+        buoc = self.buoc_cua(muc)
+        self.dang_nong = True
+        self.ghi_nhip(ep=True)
+        t0 = time.monotonic()
+        try:
+            (tam / "vao").mkdir()
+            shutil.copy2(anh, tam / "vao" / "nong.jpg")
+            for _loai, _gt in self.rt.chay(self.goc_tool(), tam / "vao", tam / "ra", muc,
+                                           engine=may, lam_lai=True, chat_luong="auto"):
+                pass
+            self._buoc_nong |= buoc
+            self.log(f"hâm nóng mô hình ({ly_do}): {', '.join(sorted(buoc))} · "
+                     f"{time.monotonic() - t0:.1f} s")
+        except Exception as ex:                              # noqa: BLE001
+            self.log(f"hâm nóng lỗi: {type(ex).__name__}: {ex}")
+        finally:
+            self.dang_nong = False
+            shutil.rmtree(tam, ignore_errors=True)
+            self.ghi_nhip(ep=True)
 
     # ------------------------------------------------------------ CPU (an toàn máy)
     def _ghim_cpu(self) -> None:
@@ -469,15 +668,22 @@ class Tram:
         """Nhịp + xin nạp + nhận và làm các yêu cầu đang chờ. -> số ảnh đã làm."""
         self.ghi_nhip()
         self.xin_nap()
+        self.giao_cho()
+        if self.loai == "app":
+            self._soi_gan_nhat()
         if time.time() - self.t_viec > NHA_CPU_GIAY:
             self._tra_cpu()
-        if self.loai == "app" and time.time() - self.t_viec > 5:
+        if self.loai == "app" and time.time() - self.t_viec > 5 and not self._cho_giao:
             self.giu.don()                 # hết hạn giữ + không ai dùng -> trả card
         if not self.duoc_nhan():
             return 0
         ds = self.nhan()
         if not ds:
+            if self._nong_cho is not None:
+                self.ham_nong()
             return 0
+        if self.loai == "app":
+            self._t_doi_gan_nhat = 0.0     # đang có việc thật — khỏi hâm nóng
         self.t_viec = time.time()
         self.dang = len(ds)
         self.ghi_nhip(ep=True)
@@ -492,12 +698,59 @@ class Tram:
             self.dang = 0
             self.t_viec = time.time()
             self.giu.giu()
+            self.giao_cho()
             self.ghi_nhip(ep=True)
         return len(ds)
 
+    def _cu_qua(self, f: Path) -> bool:
+        """Tệp nằm quá CU_YEU_CAU (plugin đã bỏ) -> xoá, True."""
+        try:
+            if time.time() - f.stat().st_mtime > CU_YEU_CAU:
+                f.unlink()
+                return True
+        except OSError:
+            return True
+        return False
+
     def nhan(self) -> list:
-        """Giành các yc_*.txt (đổi tên nguyên tử) -> [yêu cầu]."""
+        """Giành (đổi tên nguyên tử) các ảnh đã render xong -> [yêu cầu].
+        cho_: render vào thư mục tạm — nhận khi file ghi trọn hoặc plugin đã báo san_.
+        yc_: sửa tại chỗ (Lightroom bỏ qua đường tạm)."""
         ra = []
+        try:
+            ds_cho = sorted(self.thu.glob("cho_*.txt"))
+        except OSError:
+            ds_cho = []
+        for f in ds_cho:
+            if len(ra) >= LO_TOI_DA * 2:
+                break
+            id_ = f.stem[4:]
+            if self._cu_qua(f):
+                continue
+            if (self.thu / f"huy_{id_}.txt").exists():
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+                continue
+            d = doc_kv(f) or {}
+            tam = d.get("anh") or ""
+            if not tam or not d.get("dich"):
+                continue
+            if not ((self.thu / f"san_{id_}.txt").exists() or file_xong(Path(tam), self._kich, id_)):
+                continue
+            dang = self.thu / f"dang_{id_}.txt"
+            try:
+                os.replace(f, dang)
+            except OSError:
+                continue
+            self._kich.pop(id_, None)
+            cha = str(Path(tam).parent)
+            if cha not in self._da_an:
+                self._da_an.add(cha)
+                an_thu_muc(cha)
+            d["id"], d["_dang"], d["_cho"] = id_, str(dang), True
+            ra.append(d)
         try:
             ds = sorted(self.thu.glob("yc_*.txt"))
         except OSError:
@@ -527,16 +780,83 @@ class Tram:
 
     def tra_loi(self, y: dict, ok: bool, bo_qua: bool = False, loi: str = "",
                 mo_ta: str = "", giay: float = 0.0) -> None:
+        if ok and not bo_qua:
+            self.so_xong += 1
         try:
             ghi_kv(self.thu / f"kq_{y['id']}.txt", {
                 "ok": 1 if ok else 0, "bo_qua": 1 if bo_qua else 0, "loi": loi,
                 "mo_ta": mo_ta, "giay": f"{giay:.2f}"})
         except OSError:
             pass
-        try:
-            Path(y.get("_dang") or "").unlink()
-        except OSError:
-            pass
+        for f in (y.get("_dang") or "", str(self.thu / f"san_{y['id']}.txt")):
+            try:
+                Path(f).unlink()
+            except OSError:
+                pass
+
+    def ket(self, y: dict, ra_f=None, ok: bool = True, bo_qua: bool = False, loi: str = "",
+            mo_ta: str = "", giay: float = 0.0) -> None:
+        """Kết quả một ảnh. ra_f: bản retouch (None = giữ ảnh như Lightroom render).
+        Sửa tại chỗ (yc_): đè ngay. Render vào thư mục tạm (cho_): GIỮ, giao sang đích
+        khi plugin báo Lightroom đã xong ảnh đó (giao_cho)."""
+        if y.get("_cho"):
+            giu_f = None
+            if ra_f is not None:
+                try:
+                    giu_f = Path(y["anh"]).with_name(f".kq_{y['id']}{Path(y['anh']).suffix}")
+                    os.replace(ra_f, giu_f)
+                except OSError as ex:
+                    giu_f, ok, loi = None, False, f"không giữ được bản retouch: {ex}"
+            try:
+                Path(y.get("_dang") or "").unlink()
+            except OSError:
+                pass
+            self._cho_giao[y["id"]] = {"y": y, "f": giu_f, "ok": ok, "bo_qua": bo_qua,
+                                       "loi": loi, "mo_ta": mo_ta, "giay": giay,
+                                       "t": time.time()}
+            return
+        if ra_f is not None:
+            try:
+                os.replace(ra_f, y["anh"])
+            except OSError as ex:
+                ok, loi = False, f"không đè được ảnh: {ex}"
+        self.tra_loi(y, ok=ok, bo_qua=bo_qua, loi=loi, mo_ta=mo_ta, giay=giay)
+
+    def giao_cho(self) -> int:
+        """Giao các kết quả đang giữ mà plugin đã báo san_ (Lightroom xong với file):
+        os.replace sang đúng tên đích (cùng ổ — ảnh hiện ra một lần, trọn vẹn), xoá file
+        render tạm. Plugin đã huỷ (quá giờ / bấm ✕) thì bỏ — plugin tự chuyển bản gốc."""
+        n = 0
+        for id_, g in list(self._cho_giao.items()):
+            y = g["y"]
+            if (self.thu / f"huy_{id_}.txt").exists() or time.time() - g["t"] > CU_YEU_CAU:
+                if g["f"] is not None:
+                    try:
+                        Path(g["f"]).unlink()
+                    except OSError:
+                        pass
+                del self._cho_giao[id_]
+                continue
+            if not (self.thu / f"san_{id_}.txt").exists():
+                continue
+            ok, loi = g["ok"], g["loi"]
+            try:
+                if g["f"] is not None:
+                    os.replace(g["f"], y["dich"])
+                    try:
+                        os.remove(y["anh"])
+                    except OSError:
+                        pass
+                elif os.path.isfile(y["anh"]):
+                    os.replace(y["anh"], y["dich"])
+                else:
+                    ok, loi = False, loi or "không còn file render"
+            except OSError as ex:
+                ok, loi = False, f"không giao được sang thư mục xuất: {ex}"
+            del self._cho_giao[id_]
+            self.tra_loi(y, ok=ok, bo_qua=g["bo_qua"], loi=loi, mo_ta=g["mo_ta"], giay=g["giay"])
+            n += 1
+        return n
 
     def da_huy(self, y: dict) -> bool:
         return (self.thu / f"huy_{y['id']}.txt").exists()
@@ -568,12 +888,12 @@ class Tram:
                 self.tra_loi(y, ok=False, loi="không thấy file Lightroom vừa render")
                 continue
             if Path(anh).suffix.lower() not in DUOI_NHAN:
-                self.tra_loi(y, ok=True, bo_qua=True, mo_ta="định dạng không retouch")
+                self.ket(y, ok=True, bo_qua=True, mo_ta="định dạng không retouch")
                 continue
             muc, mo_ta = muc_cho(rt, y.get("che_do") or "app", y.get("goc") or "")
             if muc is None or rt.muc_trong(muc):
-                self.tra_loi(y, ok=True, bo_qua=True,
-                             mo_ta=(mo_ta if muc is None else f"{mo_ta}: mọi mức ở 0"))
+                self.ket(y, ok=True, bo_qua=True,
+                         mo_ta=(mo_ta if muc is None else f"{mo_ta}: mọi mức ở 0"))
                 continue
             k = (json.dumps(rt._chuan_muc(muc), sort_keys=True),
                  os.path.normcase(str(Path(anh).parent)))
@@ -582,7 +902,9 @@ class Tram:
             return
         self._ghim_cpu()
         for muc, mo_ta, ys in nhom.values():
-            self.chay_nhom(muc, mo_ta, ys)
+            for i in range(0, len(ys), LO_TOI_DA):
+                self.chay_nhom(muc, mo_ta, ys[i:i + LO_TOI_DA])
+                self.giao_cho()            # ảnh plugin đang chờ ra NGAY, không đợi hết lô sau
 
     def chay_nhom(self, muc: dict, mo_ta: str, ys: list) -> None:
         """Một mẻ engine cho các ảnh cùng mức, cùng thư mục render: liên kết cứng vào
@@ -600,7 +922,7 @@ class Tram:
             (tam / MOC_TAM).write_text("AutoTone — thu muc tam, xoa duoc\n", encoding="utf-8")
         except OSError as ex:
             for y in ys:
-                self.tra_loi(y, ok=False, loi=f"không tạo được thư mục tạm: {ex}")
+                self.ket(y, ok=False, loi=f"không tạo được thư mục tạm: {ex}")
             return
         ten_cua = {}
         for y in ys:
@@ -613,7 +935,7 @@ class Tram:
                     shutil.copy2(p, dich)
                 ten_cua[y["id"]] = p.name
             except OSError as ex:
-                self.tra_loi(y, ok=False, loi=f"không chép được ảnh: {ex}")
+                self.ket(y, ok=False, loi=f"không chép được ảnh: {ex}")
         ys = [y for y in ys if y["id"] in ten_cua]
         if not ys:
             shutil.rmtree(tam, ignore_errors=True)
@@ -639,16 +961,10 @@ class Tram:
                 self.tra_loi(y, ok=False, loi="plugin đã huỷ (quá giờ) — không đè ảnh", giay=giay)
                 continue
             if ra_f.is_file() and ra_f.stat().st_size > 0:
-                try:
-                    os.replace(ra_f, y["anh"])
-                    self.so_xong += 1
-                    self.tra_loi(y, ok=True, mo_ta=mo_ta, giay=giay)
-                    continue
-                except OSError as ex:
-                    self.tra_loi(y, ok=False, loi=f"không đè được ảnh: {ex}", giay=giay)
-                    continue
-            self.tra_loi(y, ok=False, giay=giay,
-                         loi=(f"tool không ra ảnh (mã {ma})" + (f": {loi_tool[:120]}" if loi_tool else "")))
+                self.ket(y, ra_f, ok=True, mo_ta=mo_ta, giay=giay)
+                continue
+            self.ket(y, ok=False, giay=giay,
+                     loi=(f"tool không ra ảnh (mã {ma})" + (f": {loi_tool[:120]}" if loi_tool else "")))
         shutil.rmtree(tam, ignore_errors=True)
         self.log(f"{len(ys)} ảnh · {mo_ta} · {giay:.2f} s/ảnh · mã {ma}"
                  + (f" · {Path(ys[0]['anh']).name}" if len(ys) == 1 else ""))
@@ -660,6 +976,7 @@ class Tram:
         self._dung.clear()
         self._luong = threading.Thread(target=self._vong, name="tram_retouch", daemon=True)
         self._luong.start()
+        threading.Thread(target=self._vong_nhip, name="tram_nhip", daemon=True).start()
         self.log(f"bắt đầu (pid {os.getpid()})")
 
     def _vong(self) -> None:
@@ -740,16 +1057,19 @@ def main_rieng(args: list) -> int:
     tram = Tram(thu, "rieng")
     tram.log(f"trạm chạy ngầm bắt đầu (pid {os.getpid()})")
     tram.ghi_nhip(ep=True)
+    threading.Thread(target=tram._vong_nhip, name="tram_nhip", daemon=True).start()
     try:
         if tram.duoc_nhan():
-            tram.lay_may(cho=0.1)          # nạp mô hình NGAY, không đợi ảnh đầu
+            goc = tram.goc_tool()
+            if goc and tram.rt.hop_le(goc):
+                tram.giu.lay(tram.rt, goc, dung=False)    # nạp mô hình NGAY
         while True:
             lam = tram.mot_vong()
             ranh = time.time() - tram.t_viec
-            if not lam and ranh > RANH_THOAT:
+            if not lam and ranh > RANH_THOAT and not tram._cho_giao:
                 tram.log("rảnh 10 phút — thoát")
                 break
-            if not lam and not tram.duoc_nhan() and ranh > 3:
+            if not lam and not tram.duoc_nhan() and ranh > 3 and not tram._cho_giao:
                 tram.log("engine app đã sẵn sàng — nhường app, thoát")
                 break
             time.sleep(Tram.NGU)

@@ -60,7 +60,7 @@ GOI = []
 
 
 def chay_gia(goc, vao, ra, muc, engine=None, **kw):
-    GOI.append(dict(muc))
+    GOI.append(len(list(Path(vao).iterdir())))
     yield ("lenh", "gia")
     for p in Path(vao).iterdir():
         (Path(ra) / p.name).write_bytes(b"RT:" + json.dumps(muc, sort_keys=True).encode() + b"|" + p.read_bytes())
@@ -100,7 +100,17 @@ g = L.globals()
 g.py_ngu = ngu
 g.py_chay = lambda c: DA_CHAY.append(str(c)) or 0
 g.py_exists = lambda p: os.path.exists(p)
-g.py_delete = lambda p: (os.remove(p) if os.path.isfile(p) else None) or True
+g.py_delete = lambda p: (os.remove(p) if os.path.isfile(p) else (os.rmdir(p) if os.path.isdir(p) else None)) or True
+NOI_CUA = {}            # nội dung byte của ảnh render (qua Lua là mã hoá lại — giữ ở Python)
+g.py_ghi = lambda p, k: Path(p).write_bytes(NOI_CUA[str(k)]) and True
+
+
+def _files(d):
+    it = iter(sorted(str(Path(d) / x) for x in os.listdir(d)) if os.path.isdir(d) else [])
+    return lambda *_: next(it, None)
+
+
+g.py_files = _files
 g.py_move = lambda a, b: os.replace(a, b) or True
 g.py_mkdirs = lambda p: os.makedirs(p, exist_ok=True) or True
 L.execute(r'''
@@ -111,9 +121,11 @@ THANH = {}
 local fake = {
   LrFileUtils = { exists = function(p) return py_exists(p) end, delete = function(p) return py_delete(p) end,
                   move = function(a, b) return py_move(a, b) end,
-                  createAllDirectories = function(p) return py_mkdirs(p) end },
+                  createAllDirectories = function(p) return py_mkdirs(p) end,
+                  files = function(d) return py_files(d) end },
   LrPathUtils = { child = function(a, b) return a .. "/" .. b end,
                   leafName = function(p) return string.match(p, "[^/\\]+$") end,
+                  parent = function(p) return string.match(p, "^(.*)[/\\][^/\\]+$") end,
                   extension = function(p) return string.match(p, "%%.([^./\\]+)$") or "" end },
   LrTasks = { sleep = function(s) py_ngu(s) end, execute = function(c) return py_chay(c) end,
               pcall = pcall, startAsyncTask = function(fn) fn() end },
@@ -133,23 +145,32 @@ function import(name) return fake[name] or {} end
 package.path = [[%s/?.lua;]] .. package.path
 
 function boLoc(ds, pt)
-  local rends = {}
+  local rends, sats = {}, {}
   for i, d in ipairs(ds) do
     local r = { i = i }
-    r.src = { photo = { getRawMetadata = function(self, k) return d.raw end },
+    local ph = { localIdentifier = i, getRawMetadata = function(self, k) return d.raw end }
+    r.src = { photo = ph,
               waitForRender = function(self)
                 SU_KIEN[#SU_KIEN + 1] = "render" .. i
                 if d.hong then return false, "loi render" end
-                return true, d.path end }
-    r.sat = { destinationPath = d.path,
+                return true, r.duong end }
+    r.sat = { destinationPath = d.path, photo = ph,
               renditionIsDone = function(self, ok, msg)
                 SU_KIEN[#SU_KIEN + 1] = "xong" .. i
                 KQ[i] = ok end }
-    rends[i] = r
+    rends[i], sats[i] = r, r.sat
   end
-  KQ = {}
-  local fc = { propertyTable = pt, renditionsToSatisfy = rends }
-  function fc:renditions()
+  KQ, TRUOC = {}, {}
+  local fc = { propertyTable = pt, renditionsToSatisfy = sats }
+  function fc:renditions(tuy)
+    -- đo thật 11/10: Lightroom định đường + render TRƯỚC (41 ảnh trong vài giây)
+    for i, r in ipairs(rends) do
+      local p = nil
+      if tuy and tuy.filterSettings and not BO_QUA_DUONG then p = tuy.filterSettings(r.sat, {}) end
+      r.duong = p or r.sat.destinationPath
+      if not ds[i].hong then py_ghi(r.duong, ds[i].noi) end
+      TRUOC[i] = py_exists(r.sat.destinationPath)
+    end
     local i = 0
     return function() i = i + 1; local r = rends[i]; if r then return r.src, r.sat end end
   end
@@ -165,6 +186,10 @@ def lua_ds(ds):
         e = L.table()
         e["path"] = str(d["path"]).replace("\\", "/")
         e["raw"] = str(d.get("raw", ""))
+        k = str(len(NOI_CUA) + 1)
+        noi = d.get("noi", "LR")
+        NOI_CUA[k] = noi.encode("latin-1") if isinstance(noi, str) else noi
+        e["noi"] = k
         if d.get("hong"):
             e["hong"] = True
         t[i] = e
@@ -183,78 +208,112 @@ def chay_loc(ds, **kw):
     fc = L.globals().boLoc(lua_ds(ds), pt(**kw))
     R.postProcessRenderedPhotos(L.table(), fc)
     kq = L.globals().KQ
+    truoc = L.globals().TRUOC
+    global TRUOC_VONG
+    TRUOC_VONG = [truoc[i] for i in range(1, len(ds) + 1)]
     return [kq[i] for i in range(1, len(ds) + 1)], list(L.globals().SU_KIEN.values())
 
 
-def anh(ten, noi=b"JPG"):
-    p = REN / ten
-    p.write_bytes(noi)
-    return p
+TRUOC_VONG = []
+JPEG_DUOI = "\xff\xd9"
+
+
+def anh(ten, noi="JPG"):
+    """Đường đích của một ảnh xuất (Lightroom giả render nội dung `noi` + FFD9)."""
+    return REN / ten
+
+
+def nd(p):
+    return p.read_bytes() if p.exists() else b""
 
 
 # ---- 1. lượt Export bình thường: trạm app sẵn sàng
+#  bài kiểm chạy nhanh hơn ngưỡng "file đứng yên" -> để 0 (ngưỡng thật: test_tram_retouch)
+tr.ON_DINH_GIAY = 0.0
 TRAM.ghi_nhip(ep=True)
-a1, a2, d3 = anh("DSC0001.jpg", b"A1"), anh("DSC0002.jpg", b"A2"), anh("DSC0003.dng", b"D3")
-a5 = anh("DSC0005.jpg", b"A5")
+a1, a2, d3 = anh("DSC0001.jpg"), anh("DSC0002.jpg"), anh("DSC0003.dng")
+anh_th = [anh(f"DSC000{i}.jpg") for i in (5, 6, 7, 8, 9)]
 GOI.clear()
-kq, sk = chay_loc([{"path": a1, "raw": str(RAW / "DSC0001.ARW")},
-                   {"path": a2, "raw": str(RAW / "DSC0002.ARW")},
-                   {"path": d3, "raw": str(RAW / "DSC0003.ARW")},
-                   {"path": REN / "hong.jpg", "hong": True},
-                   {"path": a5, "raw": str(RAW / "DSC0005.ARW")}])
-ktra("ảnh JPEG xuất ra ĐÃ retouch tại chỗ theo mức buổi (vet 40)",
-     a1.read_bytes() == b'RT:{"vet": 40}|A1' and a2.read_bytes().startswith(b"RT:")
-     and a5.read_bytes().startswith(b"RT:"), a1.read_bytes()[:30])
-ktra("DNG không gửi trạm, giữ nguyên", d3.read_bytes() == b"D3" and len(GOI) == 3, f"{len(GOI)} mẻ")
+ds1 = ([{"path": a1, "raw": str(RAW / "DSC0001.ARW"), "noi": "A1" + JPEG_DUOI},
+        {"path": a2, "raw": str(RAW / "DSC0002.ARW"), "noi": "A2" + JPEG_DUOI},
+        {"path": d3, "raw": str(RAW / "DSC0003.ARW"), "noi": "D3"},
+        {"path": REN / "hong.jpg", "hong": True}]
+       + [{"path": a, "raw": str(RAW / (a.stem + ".ARW")), "noi": "AX" + JPEG_DUOI} for a in anh_th])
+kq, sk = chay_loc(ds1)
+ktra("Lightroom render trước mọi ảnh mà thư mục xuất CHƯA có file nào (render vào thư mục tạm)",
+     TRUOC_VONG[:2] == [False, False] and not any(TRUOC_VONG[4:]), str(TRUOC_VONG))
+ktra("ảnh hiện trong thư mục xuất là ĐÃ retouch theo mức buổi (vet 40)",
+     nd(a1) == b'RT:{"vet": 40}|A1\xff\xd9' and nd(a2).startswith(b"RT:")
+     and all(nd(a).startswith(b"RT:") for a in anh_th), nd(a1)[:30])
+ktra("trạm retouch THEO LÔ (Lightroom render trước -> nhiều ảnh một mẻ engine)",
+     max(GOI or [0]) > 1 and sum(GOI) == 7, str(GOI))
+ktra("DNG không qua thư mục tạm, không gửi trạm, giữ nguyên", nd(d3) == b"D3")
 ktra("mọi ảnh renditionIsDone: render hỏng -> false, còn lại true",
-     kq == [True, True, True, False, True], str(kq))
-ktra("xong ảnh này rồi mới render ảnh kế (Lightroom không nhận file chưa retouch xong)",
-     sk == ["render1", "xong1", "render2", "xong2", "render3", "xong3", "render4", "xong4",
-            "render5", "xong5"], str(sk))
+     kq == [True, True, True, False, True, True, True, True, True], str(kq))
+ktra("thư mục render tạm đã dọn (không còn file / thư mục)",
+     not (REN / ".autotone_dang_retouch").exists(), str(list(REN.glob(".autotone_dang_retouch/*"))))
 th = L.globals().THANH[1]
-ktra("thanh tiến độ 'AutoTone: retouch khi xuất' huỷ được, đếm tới 5/5, đóng khi xong",
-     th.title == "AutoTone: retouch khi xuất" and th.huyDuoc and th.phan[5] == "5/5" and th.xong)
+ktra("thanh tiến độ 'AutoTone: retouch khi xuất' huỷ được, đếm tới 9/9, đóng khi xong",
+     th.title == "AutoTone: retouch khi xuất" and th.huyDuoc and th.phan[9] == "9/9" and th.xong)
 ktra("không yêu cầu nào sót lại trong thư mục trạm",
-     not list(THU.glob("yc_*")) and not list(THU.glob("kq_*")) and not list(THU.glob("dang_*")))
+     not any(list(THU.glob(m)) for m in ("yc_*", "kq_*", "dang_*", "cho_*", "san_*")),
+     str([x.name for x in THU.iterdir() if x.name[:3] in ("yc_", "kq_", "dan", "cho", "san")]))
+
+# ---- 1b. Lightroom bỏ qua đường tạm (Export with Previous) -> sửa tại chỗ như bản đầu
+L.execute("BO_QUA_DUONG = true")
+a4 = anh("DSC0004.jpg")
+kq, _ = chay_loc([{"path": a4, "raw": str(RAW / "DSC0004.ARW"), "noi": "A4" + JPEG_DUOI}])
+L.execute("BO_QUA_DUONG = nil")
+log = (PL / "jobs" / "plugin.log").read_text(encoding="utf-8")
+ktra("Lightroom bỏ qua đường tạm -> vẫn retouch (đè tại chỗ), log nói rõ, không sót mục chờ",
+     nd(a4).startswith(b"RT:") and kq == [True] and "KHÔNG hỏi đường render" in log
+     and "render THẲNG đích" in log
+     and not list(THU.glob("cho_*")), nd(a4)[:20])
 
 # ---- 2. chế độ preset (chọn trong hộp Export)
-a6 = anh("DSC0006.jpg", b"A6")
-chay_loc([{"path": a6, "raw": str(RAW / "DSC0006.ARW")}], autotone_rt_muc="preset:Cưới mịn")
+a6 = anh("DSC0016.jpg")
+chay_loc([{"path": a6, "raw": str(RAW / "DSC0016.ARW"), "noi": "A6" + JPEG_DUOI}],
+         autotone_rt_muc="preset:Cưới mịn")
 ktra("chọn 'Preset: Cưới mịn' trong hộp Export -> retouch theo đúng preset đó",
-     a6.read_bytes().startswith(b'RT:{"min_da": 60.0, "vet": 100.0}'), a6.read_bytes()[:45])
+     nd(a6).startswith(b'RT:{"min_da": 60.0, "vet": 100.0}'), nd(a6)[:45])
 
 # ---- 3. tắt trong hộp Export
-a7 = anh("DSC0007.jpg", b"A7")
+a7 = anh("DSC0017.jpg")
 GOI.clear()
-kq, _ = chay_loc([{"path": a7, "raw": str(RAW / "DSC0007.ARW")}], autotone_rt_bat=False)
-ktra("bỏ tích 'Retouch ảnh xuất ra' -> không gửi trạm, ảnh ra nguyên",
-     a7.read_bytes() == b"A7" and not GOI and kq == [True])
+kq, _ = chay_loc([{"path": a7, "raw": str(RAW / "DSC0017.ARW"), "noi": "A7" + JPEG_DUOI}],
+                 autotone_rt_bat=False)
+ktra("bỏ tích 'Retouch ảnh xuất ra' -> render thẳng đích, không gửi trạm",
+     nd(a7) == b"A7\xff\xd9" and not GOI and kq == [True] and TRUOC_VONG == [True])
 
 # ---- 4. trạm không trả lời -> quá giờ: ảnh vẫn ra, cấm trạm đè
 TRAM_BAT[0] = False
 R.CHO_DAU, R.CHO_MOI_ANH = 1, 1
-a8 = anh("DSC0008.jpg", b"A8")
+a8 = anh("DSC0018.jpg")
+huy_cu = set(THU.glob("huy_*.txt"))
 t0 = time.time()
-kq, _ = chay_loc([{"path": a8, "raw": str(RAW / "DSC0008.ARW")}])
-huy = list(THU.glob("huy_*.txt"))
-ktra("quá giờ: ảnh vẫn xuất ra (renditionIsDone true), rút yêu cầu, ghi huy_ cho trạm",
-     kq == [True] and a8.read_bytes() == b"A8" and len(huy) == 1 and not list(THU.glob("yc_*"))
-     and time.time() - t0 < 10, f"{time.time() - t0:.1f} s")
+kq, _ = chay_loc([{"path": a8, "raw": str(RAW / "DSC0018.ARW"), "noi": "A8" + JPEG_DUOI}])
+huy = list(set(THU.glob("huy_*.txt")) - huy_cu)
+ktra("quá giờ: bản Lightroom render vẫn ra đích (chưa retouch), rút mục chờ, ghi huy_",
+     kq == [True] and nd(a8) == b"A8\xff\xd9" and len(huy) == 1
+     and not list(THU.glob("cho_*")) and time.time() - t0 < 10, f"{time.time() - t0:.1f} s")
 TRAM_BAT[0] = True
 TRAM.mot_vong()
-ktra("trạm bật lại sau đó KHÔNG đè ảnh đã quá giờ", a8.read_bytes() == b"A8")
+ktra("trạm bật lại sau đó KHÔNG đè ảnh đã quá giờ", nd(a8) == b"A8\xff\xd9")
 for f in huy:
     f.unlink()
 R.CHO_DAU, R.CHO_MOI_ANH = 240, 180
 
 # ---- 5. bấm ✕ trên thanh: các ảnh còn lại ra không retouch
 L.execute("HUY_SAU = 2")
-b1, b2, b3 = anh("DSC0011.jpg", b"B1"), anh("DSC0012.jpg", b"B2"), anh("DSC0013.jpg", b"B3")
-kq, _ = chay_loc([{"path": b, "raw": str(RAW / (b.stem + ".ARW"))} for b in (b1, b2, b3)])
+b1, b2, b3 = anh("DSC0011.jpg"), anh("DSC0012.jpg"), anh("DSC0013.jpg")
+kq, _ = chay_loc([{"path": b, "raw": str(RAW / (b.stem + ".ARW")), "noi": b.stem + JPEG_DUOI}
+                  for b in (b1, b2, b3)])
 L.execute("HUY_SAU = nil")
-ktra("bấm ✕ sau ảnh 1 -> ảnh 1 retouch, ảnh 2–3 ra KHÔNG retouch, lượt Export vẫn đủ",
-     b1.read_bytes().startswith(b"RT:") and b2.read_bytes() == b"B2" and b3.read_bytes() == b"B3"
-     and kq == [True, True, True])
+TRAM.mot_vong()
+ktra("bấm ✕ sau ảnh 1 -> ảnh 1 retouch, ảnh 2–3 ra bản Lightroom (dù trạm đã làm trước), đủ ảnh",
+     nd(b1).startswith(b"RT:") and nd(b2) == b"DSC0012\xff\xd9" and nd(b3) == b"DSC0013\xff\xd9"
+     and kq == [True, True, True] and not list(REN.glob(".autotone_dang_retouch/.kq_*")),
+     f"{nd(b2)[:12]} {nd(b3)[:12]}")
 
 # ---- 6. không trạm nào chạy -> mở trạm chạy ngầm bằng lệnh app ghi
 for f in THU.glob("tram_*.txt"):
@@ -274,8 +333,9 @@ TRAM_BAT[0] = False
 p = pt()
 L.execute("function boKiemNap() end")
 R.startDialog(p)
-ktra("hộp Export mở, app đang mở mà engine chưa nạp -> ghi xin_nap (app nạp ngay)",
-     (THU / "xin_nap.txt").exists())
+ktra("hộp Export mở -> ghi xin_nap kèm chế độ mức (trạm nạp + hâm nóng mô hình)",
+     (THU / "xin_nap.txt").exists()
+     and "che_do=app" in (THU / "xin_nap.txt").read_text(encoding="utf-8"))
 (THU / "xin_nap.txt").unlink()
 tr.ghi_kv(THU / "tram_app.txt", {"pid": 1, "san_sang": 1, "may": "cuda", "t": int(time.time())})
 p2 = pt()
