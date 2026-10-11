@@ -84,3 +84,6 @@ venv_build/
 #   Internet vinh vien trong lich su git. De lai tren may. ]]
 Claude outputs/
 AutoTone.lrplugin/jobs_dir.txt
+
+#  12/10: may nhan gop y tu tao luc chay (chua khoa chung)
+may_nhan/may_nhan_gop_y.json

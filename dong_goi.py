@@ -77,6 +77,13 @@ LOAI_TRU = [
     "test_bu_sang.py", "test_dong_bo_loat.py", "test_wb_asshot.py",
     "test_giao_dien_gon.py", "test_cap_nhat.py", "test_retouch_cwd.py",
     "kiem_xem_goi.py", "kiem_engine.py",
+    #  9-12/10: bai kiem them chua ke vao day (kiem_dong_goi bao)
+    "kiem_dat_lai_buoi.py", "kiem_den_trang.py", "kiem_grade_trang_thai.py",
+    "kiem_lens_co.py", "kiem_nut_catalog.py", "kiem_plugin_lua51.py",
+    "kiem_tien_do_retouch.py", "test_cho_lightroom.py", "test_chu_the_af.py",
+    "test_chuoi_mau_da.py", "test_gop_y.py", "test_hsl_da.py", "test_hsl_da_cuoi.py",
+    "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
+    "test_phanh_da_wb.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe
@@ -137,7 +144,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #   xem ca luoi): deu import trong ham. ]]
         "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui",
         #  10/10: trạm retouch cho "Retouch khi xuất" của Lightroom (import trong hàm)
-        "tram_retouch"]
+        "tram_retouch",
+        #  12/10: góp dữ liệu buổi đã sửa tay (import trong hàm — autotone_gui, retouch_may)
+        "gop_y"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).

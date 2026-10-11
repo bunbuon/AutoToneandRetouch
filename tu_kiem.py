@@ -337,7 +337,7 @@ def chay(nhanh: bool = False) -> Bao:
                "retouch_muc", "retouch_may",
                #  9/10: lưới to / một ảnh, nguồn RAW, preset Lightroom
                "nguon_xem", "thanh_luoi", "preset_lr", "preset_ui",
-               "tram_retouch"]
+               "tram_retouch", "gop_y"]
         hong = []
         for t in ten:
             try:

@@ -804,6 +804,25 @@ khách (người sát máy −0.6 mờ, mặt tí hon −4.6 ở xa).
   +0.68 +0.01 +0.01 −0.39 (giảm đều khi đôi lại gần đèn); 08370–72 −1.38/+1.59/+1.10
   → −0.39/−0.38/−0.34. Kiểm: `test_chu_the_af.py` (thử ngược: bỏ làm mượt → đỏ).
 
+## Góp dữ liệu người test (12/10) — `gop_y.py` + `may_nhan/`, LUÔN GỬI
+
+User: đẩy app cho nhiều người test, "sau mỗi bộ ảnh họ tự sửa tay thì lưu lại thông tin
+và gửi về để train thêm". Chốt: thu CẢ ảnh nhỏ 384 px (không EXIF) + số đo · máy chủ TẠI
+NHÀ · luôn gửi (báo một lần, tắt ở ⋯ › Góp dữ liệu cải thiện app).
+- Đẩy xong (`_ghi_xong`) → `ghi_lan_day` lưu CẤU HÌNH lúc đẩy (trước đây không lưu — phải
+  dò ngược trần EV). Xuất xong (`retouch_may._ket_thuc_xuat`, tt "xong") → `dong_goi_nen`:
+  nhờ ChupCore chụp catalog (request_chup.txt dòng 2 = thư mục TẠM), chỉ đóng khi ≥ 3 ảnh
+  sửa tay; gói = định dạng `Claude outputs/do/<buổi>` → chấm thẳng bằng `kiem_2ban_quay`.
+- Gửi: POST `https://gopy-ai.saymedia.com.vn/gop-y` (đường hầm `autotone-gopy` → 127.0.0.1:8100,
+  `may_nhan/chay_may_nhan.bat`). MỘT cấp dưới saymedia.com.vn: chứng chỉ miễn phí không phủ
+  hai cấp (gopy.ai.…). Máy nhận tắt → hàng đợi `gop_y/cho/`, 15 phút thử lại. Gom về:
+  `may_nhan/nhan_goi_gop_y.py`.
+- `ly_do_tat()`: tự kiểm / tiến trình con / dữ liệu ở thư mục TẠM → không hộp thoại (chặn bài
+  kiểm giao diện), không đóng gói nền. Xoá gói đã gửi: diệt virus hay giữ file → `_bo` thử
+  lại rồi đổi đuôi `.da_gui` (không gửi trùng).
+Kiểm: `test_gop_y.py` (plugin giả + máy nhận thật cổng ngẫu nhiên; `Image.open(zf.open())`
+giữ zip mở → Windows khoá, đọc vào BytesIO).
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị

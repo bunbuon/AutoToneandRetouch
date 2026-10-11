@@ -283,7 +283,66 @@ class App(ttk.Frame):
         self._soi_khoa()
         self.after(3000, self._soi_xuat)
         self.after(2500, self._mo_tram_retouch)
+        self.after(4000, self._gop_y_khoi_dong)
         self._set_busy(False)
+
+    # ------------------------------------------------------------ góp dữ liệu (12/10)
+    def _gop_y_khoi_dong(self):
+        """Báo MỘT lần (minh bạch) rồi bật luồng gửi nền — xem gop_y.py."""
+        try:
+            import gop_y
+        except Exception:                                    # noqa: BLE001
+            return
+        if gop_y.ly_do_tat():        # bài kiểm / tự kiểm / dữ liệu tạm: không hộp thoại chặn
+            return
+        if gop_y.bat() and not gop_y.doc_cau_hinh().get("da_bao"):
+            try:
+                messagebox.showinfo(
+                    "Góp dữ liệu cải thiện app",
+                    "Bản thử nghiệm: sau mỗi buổi bạn sửa tay rồi bấm Xuất, app gửi về SAY "
+                    "Media số đo từng ảnh, thông số tool đặt và thông số bạn chốt, cùng ảnh "
+                    "nhỏ 384 px (đã xoá EXIF / GPS, đường dẫn thư mục được mã hoá) để dạy "
+                    "tool chỉnh đúng hơn cho nhiều máy ảnh và tình huống.\n\n"
+                    "Tắt bất cứ lúc nào ở ⋯ › Góp dữ liệu cải thiện app.")
+            except Exception:                                # noqa: BLE001
+                pass
+            gop_y.ghi_cau_hinh({"da_bao": True})
+        gop_y.chay_nen()
+
+    def _gop_y_buoi_nay(self):
+        """⋯ › Gửi góp ý buổi này — đóng gói buổi đang mở (nền), báo kết quả ở nhật ký."""
+        try:
+            import gop_y
+        except Exception as ex:                              # noqa: BLE001
+            messagebox.showerror("Góp dữ liệu", f"Không nạp được: {ex}")
+            return
+        f = self.folder()
+        if not f:
+            messagebox.showinfo("Góp dữ liệu", "Chưa mở buổi nào.")
+            return
+        if not gop_y.bat():
+            messagebox.showinfo("Góp dữ liệu", "Đang tắt — bật lại ở ⋯ › Góp dữ liệu cải thiện app.")
+            return
+        gop_y.dong_goi_nen(f)
+        self.status("Đang đóng gói góp ý buổi này (nền) — Lightroom cần đang mở để chụp "
+                    "thông số đã sửa.", gd.MAU["canh"])
+
+    def _gop_y_cai_dat(self):
+        """⋯ › Góp dữ liệu cải thiện app — bật / tắt, xem hàng đợi."""
+        try:
+            import gop_y
+        except Exception as ex:                              # noqa: BLE001
+            messagebox.showerror("Góp dữ liệu", f"Không nạp được: {ex}")
+            return
+        cho = len(list((gop_y.thu() / "cho").glob("*.zip"))) if (gop_y.thu() / "cho").is_dir() else 0
+        da = len(list((gop_y.thu() / "da_gui").glob("*.json"))) if (gop_y.thu() / "da_gui").is_dir() else 0
+        dang = gop_y.bat()
+        hoi = (f"Góp dữ liệu đang {'BẬT' if dang else 'TẮT'}.\n"
+               f"Đã gửi: {da} gói · đang chờ gửi: {cho} gói"
+               + ("" if gop_y.dia_chi() else " (chưa có địa chỉ máy nhận)") + ".\n\n"
+               + ("Tắt góp dữ liệu?" if dang else "Bật lại góp dữ liệu?"))
+        if messagebox.askyesno("Góp dữ liệu cải thiện app", hoi):
+            gop_y.ghi_cau_hinh({"bat": not dang})
 
     # ------------------------------------------------------------ trạm retouch (10/10)
     def _mo_tram_retouch(self):
@@ -2204,6 +2263,9 @@ class App(ttk.Frame):
                            ("Nhật ký plugin", self.show_plugin_log),
                            ("Làm mới trạng thái", self.refresh_job_state),
                            ("Cài plugin…", self.show_plugin_help),
+                           (None, None),
+                           ("Gửi góp ý buổi này", self._gop_y_buoi_nay),
+                           ("Góp dữ liệu cải thiện app…", self._gop_y_cai_dat),
                            (None, None),
                            ("Tải bản tăng tốc GPU…", self.tai_gpu),
                            ("Kiểm tra cập nhật…", self.kiem_cap_nhat)):
@@ -5325,6 +5387,13 @@ class App(ttk.Frame):
         try:
             import trang_thai as tt
             tt.ghi_khau(tt.ten_buoi(root), "day", giay, so_anh=len(self.items))
+        except Exception:                                    # noqa: BLE001
+            pass
+        #[[ 12/10: luu CAU HINH luc day (tran EV, loai buoi, anh sang…) — 11/10 phai do
+        #   nguoc tran EV 3 moi tai hien duoc buoi 1010; goi gop y can no. ]]
+        try:
+            import gop_y
+            gop_y.ghi_lan_day(root, self.cfg, self.items, at.LAST_JOB)
         except Exception:                                    # noqa: BLE001
             pass
         self._fill_table()

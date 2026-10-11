@@ -1714,6 +1714,17 @@ class MayMixin:
         self._dat_tien_do_tt(xong_rt, max(xong_rt, 1), cau, mau)
         self.app.status(cau, mau)
         self._dem()
+        #[[ 12/10 — GOP DU LIEU: xuat xong = nguoi dung da sua tay xong buoi nay, Lightroom
+        #   ranh de chup catalog -> dong goi + gui (luong nen, nhat ky gop_y/nhat_ky.txt).
+        #   Khong sua tay du SUA_TOI_THIEU anh thi gop_y tu bo qua. ]]
+        if tt == "xong":
+            try:
+                import gop_y
+                f = self.app.folder() if hasattr(self.app, "folder") else None
+                if f:
+                    gop_y.dong_goi_nen(f)
+            except Exception:                                # noqa: BLE001
+                pass
 
     def stop(self):
         #[[ Danh dau TRUOC khi giet: khong danh dau thi vong tu chay lai trong
