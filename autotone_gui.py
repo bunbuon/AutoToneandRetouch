@@ -1676,6 +1676,8 @@ class App(ttk.Frame):
             value=bool(at.DEFAULTS.get("dong_bo_loat", True)))
         self.v_mat_sang_nhat = tk.BooleanVar(        # 11/10: at.do_mat_sang_nhat
             value=bool(at.DEFAULTS.get("mat_sang_nhat", True)))
+        self.v_dong_bo_chu_the = tk.BooleanVar(      # 11/10: at.dong_bo_chu_the
+            value=bool(at.DEFAULTS.get("dong_bo_chu_the", True)))
         self.v_burst = tk.BooleanVar(value=False)
         self.v_blink = tk.BooleanVar(value=False)
         self.v_upright = tk.BooleanVar(value=False)
@@ -1982,6 +1984,12 @@ class App(ttk.Frame):
         ct(g_canh, self.v_dong_bo_loat, "Cùng khung + cùng thông số → cùng một mức",
            "Loạt chụp liền tay (cùng máy, cùng khẩu/tốc/ISO, cùng bố cục, "
            "trong 60 giây) nhận đúng MỘT mức sáng và màu.")
+        #[[ 11/10 — user: "cung canh va cung chu the thi phai do cac buc anh
+        #   cung chu the do de chinh cho ra deu sang". Xem at.dong_bo_chu_the. ]]
+        ct(g_canh, self.v_dong_bo_chu_the, "Cùng chủ thể trong chuỗi ảnh liền → da đều nhau",
+           "Chuỗi ảnh liền nhau (cùng máy, cùng thông số, cách ≤ 15 giây) mà máy "
+           "lấy nét vào cùng người: đo da người đó ở từng tấm rồi chỉnh để da ra "
+           "đều nhau — người đi lại gần đèn sáng dần lên thì Exposure giảm dần theo.")
 
         #[[ CANH BAO KHI TAT CA HAI LUAT -> ca buoi la MOT canh. "Dong bo sang
         #   + mau" mac dinh BAT va no san phang moi anh ve trung vi cua canh —
@@ -2024,7 +2032,7 @@ class App(ttk.Frame):
                   self.v_hsl_da, self.v_loai_buoi, self.v_bu_sang, self.v_gap_on, self.v_gap,
                   self.v_gap_can_sig, self.v_scenesig, self.v_level,
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
-                  self.v_upright, self.v_mat_sang_nhat):
+                  self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         self._tom_tat_nhom()
 
@@ -2087,7 +2095,8 @@ class App(ttk.Frame):
         tach = ("Tách cảnh khi " + " hoặc ".join(canh)) if canh else \
             "⚠ Không tách cảnh — cả buổi là một cảnh"
         dong = [t for t, b in (("cảnh", self.v_level),
-                               ("loạt", self.v_dong_bo_loat)) if b.get()]
+                               ("loạt", self.v_dong_bo_loat),
+                               ("chủ thể", self.v_dong_bo_chu_the)) if b.get()]
         loc = [t for t, b in (("trùng khung", self.v_burst), ("mắt", self.v_blink),
                               ("Auto Transform", self.v_upright)) if b.get()]
         loai = dict(LOAI_BUOI).get(self.v_loai_buoi.get(), "cuoi")
@@ -3844,6 +3853,7 @@ class App(ttk.Frame):
                    scene_gap_can_sig=self.v_gap_can_sig.get(),
                    dong_bo_loat=self.v_dong_bo_loat.get(),
                    mat_sang_nhat=self.v_mat_sang_nhat.get(),
+                   dong_bo_chu_the=self.v_dong_bo_chu_the.get(),
                    max_ev_up=self._num(self.v_maxup, 1.0),
                    #[[ Anh sang cua buoi — nguoi dung chon o khau 2.
                    #   Thieu dong nay thi o chon la mot cai nut khong noi vao

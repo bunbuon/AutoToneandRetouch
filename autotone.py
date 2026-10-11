@@ -2740,6 +2740,52 @@ DEFAULTS = {
     "mat_sang_nhat_net": 0.4,
     "mat_sang_nhat_diem": 0.6,
     "mat_sang_nhat_tran": 0.5,
+    #[[ 11/10 chieu — CHU THE THEO AF TREN THAN NGUOI (chu_the_af_than).
+    #   User (buoi 1010, SAY08361-08365 doi di giua tham do, khach hai ben):
+    #   "+2.23 EV ma anh truoc +0.83" — may khoa net vao NGUC doi do (AF 0.5,
+    #   0.54), khong trung o mat nao -> tool do mat KHACH (dung sat may, hoac mat
+    #   ti hon o xa -4.6 EV). AF nam tren than (duoi cam toi af_than_doc lan cao
+    #   mat, lech ngang <= af_than_ngang lan be ngang mat) -> mat do la chu the.
+    #   Toi da af_than_toi_da mat (nhieu hon = dam dong, khong biet ai). Cac mat
+    #   chu the lech <= af_than_chenh EV thi lay trung binh (doi di canh nhau),
+    #   lech hon thi lay mat SANG nhat (nhu luat anh nhom).
+    #   KHAC af_gan_mat (truot cong 29/9): luat do lay mat gan AF theo MOI huong
+    #   (co, toc, ao). Day chi nhan AF nam DUOI mat, trong vung than nguoi.
+    #   Cong (kiem_2ban_quay): TrainTool gan 16 / xa 6, B 0% — QUA; 2609 gan 17 /
+    #   xa 15, sai 0.188 -> 0.185, B 3.5% (62 anh) — xem tan mat ca 8 anh doi
+    #   nhieu nhat: TAT CA tool cu do mat khan gia ti hon (-3 .. -6.5 EV), luat
+    #   moi chon dung nguoi di giua loi (vong AF tren than ho). Anh loai nay user
+    #   SUA tay thi da chu the ra -1.35 (2609) / -1.63 (TrainTool) — dung muc anh
+    #   AF trung mat (-1.22). p95 da: cua phep do cu doi theo (uoc tu mat chu the
+    #   lam TrainTool xa 5/17 — giu nhu cu).
+    #]]
+    "chu_the_af_than": True,
+    "af_than_ngang": 2.5,
+    "af_than_doc": 6.0,
+    "af_than_toi_da": 3,
+    "af_than_chenh": 1.0,
+    #[[ 11/10 chieu — CUNG CHU THE TRONG CHUOI ANH LIEN -> DA DEU (dong_bo_chu_the).
+    #   User: "cung canh va cung chu the thi phai do cac buc anh cung chu the do
+    #   de chinh thong so cho cac buc anh ra deu sang voi nhau".
+    #   Chuoi = cung may, cung thong so (EV100 +-0.05), cach nhau <= chu_the_giay,
+    #   chu the theo AF (trung mat / tren than), co mat chu the doi <= chu_the_co
+    #   lan giua hai tam. Do da chu the tung tam, LAM MUOT trung vi 3 tam lien (bo
+    #   nhieu do, giu xu huong that — doi di lai gan den sang dan len), roi keo
+    #   moi tam ve trung vi "da sau chinh" cua chuoi theo chu_the_muc. Loat cung
+    #   bo cuc (dong_bo_loat) la MOT don vi — van mot so.
+    #   Cong: khong lam muot -> TrainTool gan 35 / xa 55 (sai 0.200 -> 0.216): ep
+    #   da DO DUOC bang nhau la do nhieu do vao Exposure — chinh user trong chuoi
+    #   cung chu the de Exposure lech trung vi 0.09-0.14 EV, da do duoc 0.10-0.25.
+    #   Lam muot 3 tam, muc 1.0: TrainTool 59/58 (0.200 -> 0.206), 2609 81/64
+    #   (0.188 -> 0.184), B 1.4% / 9.8%. Muc 0.5: 51/47 (0.202), 74/42 (0.184),
+    #   B 0% / 6.6%. User yeu cau ro hai lan -> 1.0. 1010 SAY08361-65:
+    #   +0.83/+2.20/+0.87/+1.16/+0.10 -> +2.05/+1.68/+1.40/+0.95/+0.95.
+    #]]
+    "dong_bo_chu_the": True,
+    "chu_the_giay": 15.0,
+    "chu_the_co": 1.6,
+    "chu_the_min": 3,
+    "chu_the_muc": 1.0,
     #[[ MUC 2 — WB THEO DU LIEU MAY + THEO THAN MAY.
     #   wb_theo_may_pull: catalog khong co AsShot -> keo Temp ve nhiet do may
     #     da dung render preview (Sony 0xb021 dat tay, Nikon 0x004F tu do),
@@ -4156,6 +4202,118 @@ def do_mat_theo_anh_sang(items: list, cfg: dict) -> int:
     return len(sua)
 
 
+def mat_af_than(r: dict, cfg: dict) -> list:
+    """Cac mat co diem AF nam tren THAN nguoi (duoi cam) — xem chu_the_af_than.
+    [] khi AF da trung mot o mat (luat cu lo), khong co AF / khong co mat."""
+    fd = r.get("face_debug") or []
+    af = r.get("af_xy")
+    wh = r.get("preview_wh")
+    if not fd or not af or not wh or any(f.get("on_af") for f in fd):
+        return []
+    try:
+        ax, ay = float(af[0]) * float(wh[0]), float(af[1]) * float(wh[1])
+    except (TypeError, ValueError, IndexError):
+        return []
+    ngang = float(cfg.get("af_than_ngang", 2.5) or 0.0)
+    doc = float(cfg.get("af_than_doc", 6.0) or 0.0)
+    diem = float(cfg.get("mat_sang_nhat_diem", 0.6) or 0.0)
+    out = []
+    for f in fd:
+        if f.get("ev") is None or float(f.get("score") or 0.0) < diem:
+            continue
+        x, y, w, h = (float(v) for v in f["box"][:4])
+        if abs(ax - (x + w / 2.0)) <= ngang * w and y + h * 0.6 <= ay <= y + h + doc * h:
+            out.append(f)
+    return out
+
+
+def chuoi_chu_the(items: list, cfg: dict) -> list:
+    """Chuoi anh lien nhau CUNG CHU THE — xem dong_bo_chu_the. Tra ve list chuoi."""
+    gio = float(cfg.get("chu_the_giay", 15.0) or 0.0)
+    co_tl = float(cfg.get("chu_the_co", 1.6) or 1.6)
+    n_min = max(2, int(cfg.get("chu_the_min", 3) or 3))
+
+    def chu_the(r):
+        fd = r.get("face_debug") or []
+        af = [f for f in fd if f.get("on_af")]
+        if af:
+            return af
+        if r.get("chu_the_af"):
+            return mat_af_than(r, cfg)
+        return []
+
+    def co(fs):
+        return float(np.median([float(f["box"][2]) for f in fs]))
+
+    theo_may: dict = {}
+    for r in sorted(items, key=lambda r: r["dt_obj"]):
+        theo_may.setdefault(str(r.get("model") or ""), []).append(r)
+    ds = []
+    for L in theo_may.values():
+        cur, fs_truoc = [], None
+        for r in L:
+            fs = chu_the(r)
+            ok = bool(fs) and r.get("metered_face_ev") is not None \
+                and r.get("delta_ev") is not None and not r.get("giu_nguyen_exposure")
+            e1 = ev100(r)
+            e0 = ev100(cur[-1]) if cur else None
+            if (ok and cur and fs_truoc
+                    and (r["dt_obj"] - cur[-1]["dt_obj"]).total_seconds() <= gio
+                    and e1 is not None and e0 is not None and abs(e1 - e0) <= 0.05
+                    and max(co(fs), co(fs_truoc)) <= co_tl * min(co(fs), co(fs_truoc))):
+                cur.append(r)
+                fs_truoc = fs
+                continue
+            if len(cur) >= n_min:
+                ds.append(cur)
+            cur, fs_truoc = ([r], fs) if ok else ([], None)
+        if len(cur) >= n_min:
+            ds.append(cur)
+    return ds
+
+
+def dong_bo_chu_the(items: list, cfg: dict) -> int:
+    """CUNG CHU THE TRONG CHUOI ANH LIEN -> DA CHU THE DEU NHAU. Tra ve so anh doi.
+
+    Da chu the (metered_face_ev) cua tung don vi (anh le, hoac ca LOAT cung bo
+    cuc) lam muot trung vi 3 don vi lien nhau theo gio chup; dich = trung vi
+    "da lam muot + delta" cua chuoi; delta moi = delta + (dich - da sau chinh)
+    x chu_the_muc, kep tran max_ev / max_ev_up. Xem chu thich o DEFAULTS."""
+    if not cfg.get("dong_bo_chu_the"):
+        return 0
+    muc = float(cfg.get("chu_the_muc", 1.0) or 0.0)
+    if muc <= 0:
+        return 0
+    len_ = float(cfg.get("max_ev_up") or cfg["max_ev"])
+    xuong = float(cfg["max_ev"])
+    n = 0
+    for ch in chuoi_chu_the(items, cfg):
+        don: dict = {}
+        for r in ch:
+            khoa = ("l", r["loat"]) if r.get("loat") is not None else ("a", id(r))
+            don.setdefault(khoa, []).append(r)
+        dv = []
+        for ms in don.values():
+            dv.append((ms,
+                       float(np.median([float(r["metered_face_ev"]) for r in ms])),
+                       float(np.median([float(r["delta_ev"]) for r in ms])),
+                       min(r["dt_obj"] for r in ms)))
+        if len(dv) < 2:
+            continue
+        dv.sort(key=lambda x: x[3])
+        evs = [x[1] for x in dv]
+        muot = [float(np.median(evs[max(0, i - 1):i + 2])) for i in range(len(evs))]
+        dich = float(np.median([muot[i] + dv[i][2] for i in range(len(dv))]))
+        for i, (ms, _ev, de, _t) in enumerate(dv):
+            moi = float(np.clip(de + (dich - (muot[i] + de)) * muc, -xuong, len_))
+            for r in ms:
+                if abs(moi - float(r["delta_ev"])) > 0.005:
+                    r["delta_ev"] = round(moi, 4)
+                    r["notes"] = ";".join([v for v in [r.get("notes", ""), "dong-bo-chu-the"] if v])
+                    n += 1
+    return n
+
+
 def do_mat_sang_nhat(items: list, cfg: dict) -> int:
     """Anh >= 2 mat: phep do mat = mat SANG NHAT trong cac mat NET. Tra ve so anh doi.
 
@@ -4175,12 +4333,34 @@ def do_mat_sang_nhat(items: list, cfg: dict) -> int:
     #   Ghi qua _doi_mat_do nen _tra_mat_goc() tra lai so cu moi lan tinh.
     #]]
     """
+    n = 0
+    if cfg.get("chu_the_af_than"):
+        con = []
+        for r in items:
+            cu = r.get("metered_face_ev")
+            uv = mat_af_than(r, cfg) if cu is not None else []
+            if not uv or len(uv) > int(cfg.get("af_than_toi_da", 3) or 3):
+                con.append(r)
+                continue
+            evs = [float(f["ev"]) for f in uv]
+            if max(evs) - min(evs) > float(cfg.get("af_than_chenh", 1.0) or 1.0):
+                moi = max(evs)
+            else:
+                moi = float(np.mean(evs))
+            r["chu_the_af"] = True
+            if abs(moi - float(cu)) > 0.02:
+                _doi_mat_do(r, moi, "chu-the-af-than")
+                p = r.get("face_p95")
+                if p:
+                    r["face_p95_dong"] = round(float(_lin_to_srgb(min(
+                        _srgb_to_lin_1(float(p)) * 2.0 ** (moi - float(cu)), 1.0))), 5)
+                n += 1
+        items = con
     if not cfg.get("mat_sang_nhat"):
-        return 0
+        return n
     ti_net = float(cfg.get("mat_sang_nhat_net", 0.4) or 0.0)
     diem = float(cfg.get("mat_sang_nhat_diem", 0.6) or 0.0)
     tran = float(cfg.get("mat_sang_nhat_tran", 0.5) or 0.0)
-    n = 0
     for r in items:
         cu = r.get("metered_face_ev")
         fd = r.get("face_debug")
@@ -4215,6 +4395,7 @@ def _tra_mat_goc(items: list) -> None:
             r["metered_face_ev"] = r.pop("metered_face_ev_tho")
             r["metered_ev"] = r.pop("metered_ev_tho")
         r.pop("face_p95_dong", None)
+        r.pop("chu_the_af", None)
 
 
 def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
@@ -6663,6 +6844,7 @@ def decide(items: list, cfg: dict) -> None:
                     r[key] = int(round(cur + (med - cur) * lvl))
 
     dong_bo_loat(items, cfg)
+    dong_bo_chu_the(items, cfg)          # 11/10: cung chu the -> da deu (sau loat)
     if cfg["wb"] in ("asshot", "skin"):
         _wb_theo_asshot(items, cfg)
         _tint_theo_may(items, cfg)

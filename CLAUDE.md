@@ -778,6 +778,32 @@ KN2009 25 (−0.07), TestTool 6 (−0.04). Kiểm: `test_phanh_da_wb.py`.
 Chưa xử lý: khác profile/tone curve giữa JPEG máy và Adobe (không chỉ WB) — chỉ
 phần WB được tính.
 
+## Chủ thể theo AF trên THÂN + đồng bộ da trong chuỗi cùng chủ thể (11/10 chiều) — BẬT
+
+User (1010, 09:14 tái hiện 647/647: max EV 3, trong nhà, bù sáng +0.10):
+"SAY08361-65 cùng 2 người đó mà ánh sáng lệch" (+0.83/+2.20/+0.87/+1.16/+0.10);
+"cùng cảnh cùng chủ thể thì đo các bức cùng chủ thể đó để ra đều sáng".
+Nhìn ảnh: đôi đi giữa thảm đỏ, AF (0.5, 0.54) ở NGỰC họ, không trúng ô mặt → tool đo
+khách (người sát máy −0.6 mờ, mặt tí hon −4.6 ở xa).
+- `mat_af_than()` / `chu_the_af_than` (đầu `do_mat_sang_nhat`): AF dưới cằm tới
+  `af_than_doc` 6 × cao mặt, lệch ngang ≤ `af_than_ngang` 2.5 × bề ngang mặt; ≤ 3 mặt;
+  lệch ≤ 1 EV lấy trung bình, hơn lấy mặt sáng nhất. p95 da = p95 cũ dời theo (ước từ
+  mặt chủ thể làm TrainTool A 5/17 — bỏ). Cổng: TrainTool 16/6 B 0% QUA; 2609 17/15
+  B 3.5% — xem tận mắt 8 ảnh dời nhiều nhất: TẤT CẢ cũ đo khán giả tí hon, mới đúng
+  người giữa lối. Ảnh loại này user SỬA thì da chủ thể −1.35 / −1.63 (như AF trúng mặt).
+- `dong_bo_chu_the()` (ngay sau dong_bo_loat): chuỗi cùng máy, EV100 ±0.05, ≤ 15 s,
+  chủ thể theo AF (trúng mặt / trên thân), cỡ mặt đổi ≤ 1.6× giữa hai tấm. Da chủ thể
+  LÀM MƯỢT trung vị 3 đơn vị (loạt = 1 đơn vị), kéo về trung vị "da sau chỉnh" × 1.0.
+  Ô "Cùng chủ thể trong chuỗi ảnh liền → da đều nhau" (nhóm Gom cảnh).
+  Không làm mượt: TrainTool 35/55, sai 0.200 → 0.216 — ép da ĐO ĐƯỢC bằng nhau là đổ
+  nhiễu đo vào Exposure: chính user trong chuỗi cùng chủ thể để Exposure lệch trung vị
+  0.09–0.14, da đo được 0.10–0.25 (40% chuỗi Exposure y hệt). Code thật (AF thân +
+  chuỗi): TrainTool 79/85 (0.200 → 0.208), 2609 100/93 (0.188 → 0.187), B 2.1% / 9.6%;
+  loạt user đồng bộ lệch > 0.15: 13 → 12, 26 → 21. Mức 0.5: 51/47, 74/42, B 0/6.6%.
+  User yêu cầu rõ hai lần → 1.0. 1010 SAY08361–69: +2.05 +1.68 +1.40 +0.95 +0.95
+  +0.68 +0.01 +0.01 −0.39 (giảm đều khi đôi lại gần đèn); 08370–72 −1.38/+1.59/+1.10
+  → −0.39/−0.38/−0.34. Kiểm: `test_chu_the_af.py` (thử ngược: bỏ làm mượt → đỏ).
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị
