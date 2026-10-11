@@ -192,6 +192,9 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.v_dequy = tk.BooleanVar(value=False)
         #[[ TU RETOUCH ANH MOI (7/10) — xem _bat_theo_doi. Nho qua cac lan mo. ]]
         self.v_tu_moi = tk.BooleanVar(value=bool(self.cf.get("tu_moi", False)))
+        #[[ BO ANH KHONG CO NGUOI (12/10) — retouch.json "bo_khong_nguoi", mac dinh BAT;
+        #   retouch.chay doc thang tu day cho moi duong chay. ]]
+        self.v_bo_khong_nguoi = tk.BooleanVar(value=bool(self.cf.get("bo_khong_nguoi", True)))
         self._theo_doi = None
         self._hen_quet_ma = None
         self.v_nhom = tk.StringVar(value="")
@@ -1047,8 +1050,17 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             "có sẵn lúc bấm Chạy không bị tính là ảnh mới. Bấm Dừng để thôi theo "
             "dõi.",
             lenh=self._doi_tu_moi)
+        self.o_bo_khong_nguoi = ct(
+            g_tm, self.v_bo_khong_nguoi, "Bỏ qua ảnh không có người",
+            "Ảnh không thấy khuôn mặt nào (phong cảnh, đồ vật, trang trí, sân khấu "
+            "trống) thì không chạy retouch — chép nguyên bản, đỡ tốn thời gian. Ảnh "
+            "người quay lưng hoặc ở quá xa (không thấy mặt) cũng bị bỏ qua: cần "
+            "retouch da tay / chân / thân ở những ảnh đó thì tắt ô này.",
+            lenh=lambda: self.rt.ghi_cau_hinh(
+                {"bo_khong_nguoi": bool(self.v_bo_khong_nguoi.get())}))
         #  thứ tự hiện lại khi đổi nguồn (xem _ap_nguon_ui)
         self._dat_cho(self.o_tu_moi, fill="x", anchor="w", pady=2)
+        self._dat_cho(self.o_bo_khong_nguoi, fill="x", anchor="w", pady=2)
         self._dat_cho(self.o_ghide, truoc=self.o_tu_moi, fill="x", anchor="w", pady=(10, 2))
         self._dat_cho(self.o_ra, truoc=self.o_ghide, fill="x", pady=(3, 0))
         self._dat_cho(self.hang_ra, truoc=self.o_ra, fill="x", pady=(6, 0))

@@ -416,6 +416,9 @@ def vong_xem():
                       ghi_de=bool(y.get("ghi_de")))
             if "dung" in _ins.signature(_do.chay).parameters:
                 kw["dung"] = lambda: DUNG[0]
+            #  12/10: bo anh khong co nguoi — engine cu (chua co tham so) thi thoi
+            if "bo_khong_nguoi" in _ins.signature(_do.chay).parameters:
+                kw["bo_khong_nguoi"] = bool(y.get("bo_khong_nguoi", True))
             nk("chay me ma=", ma, "vao=", y.get("vao"), "ra=", y.get("ra"),
                "muc=", y.get("muc"), "ghi_de=", kw["ghi_de"])
             n = _do.chay(y["vao"], y.get("ra") or y["vao"], y.get("muc") or {}, **kw)

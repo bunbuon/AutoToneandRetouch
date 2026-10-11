@@ -1448,7 +1448,8 @@ def lenh(goc: Path, vao: Path, ra: Path, muc: dict,
          may: str = "auto", chat_luong: int = 98,
          de_quy: bool = False, lam_lai: bool = False,
          gioi_han: int = 0, luong: int = LUONG_MAC_DINH,
-         che_do: str = CHE_DO_MAC_DINH, ghi_de: bool = False) -> list:
+         che_do: str = CHE_DO_MAC_DINH, ghi_de: bool = False,
+         bo_khong_nguoi: bool = True) -> list:
     """Dựng dòng lệnh. Tách riêng để test được mà không cần chạy thật.
 
     ghi_de=True: retouch ĐÈ LÊN ảnh gốc, không có thư mục ra.
@@ -1493,6 +1494,10 @@ def lenh(goc: Path, vao: Path, ra: Path, muc: dict,
         tham.append("--de-quy")
     if lam_lai:
         tham.append("--lam-lai")
+    #  12/10: mặc định engine BỎ ảnh không có người — chỉ khi người dùng tắt mới gửi cờ
+    #  (engine cũ chưa biết cờ này: gửi vô cớ là nó báo lỗi tham số)
+    if not bo_khong_nguoi:
+        tham.append("--ca-anh-khong-nguoi")
     if gioi_han:
         tham += ["--gioi-han", str(int(gioi_han))]
     #[[ Duyet theo danh sach saytool DANG co, khong phai danh sach ghi cung.
@@ -1709,8 +1714,15 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, engine=None, **kw):
     sinh dòng, nên vòng tiến độ / tự-chạy-lại ở giao diện không đổi. Không có
     engine (chưa mở được, vừa chết) thì đi đường tiến trình con như cũ.
     """
+    #[[ 12/10 — BO ANH KHONG CO NGUOI (user: "anh khong co nguoi thi mac dinh bo qua, khong
+    #   chay retouch de tiet kiem thoi gian"). Doc retouch.json o DAY de moi duong chay deu
+    #   theo: Retouch thuong, tram Retouch khi xuat, nut Xuat — khong phai sua tung cho goi.
+    #   Engine do mat xong khong thay mat nao -> chep nguyen ban, khong chuan bi buoc nao. ]]
+    if "bo_khong_nguoi" not in kw:
+        kw["bo_khong_nguoi"] = bool(doc_cau_hinh().get("bo_khong_nguoi", True))
     if engine is not None and getattr(engine, "chay_duoc", lambda: False)():
         tham = dict(vao=str(vao), ra=str(ra), muc=dict(muc),
+                    bo_khong_nguoi=bool(kw["bo_khong_nguoi"]),
                     may=kw.get("may", "auto"), chat_luong=kw.get("chat_luong", 98),
                     de_quy=bool(kw.get("de_quy", False)), lam_lai=bool(kw.get("lam_lai", False)),
                     gioi_han=int(kw.get("gioi_han", 0) or 0),

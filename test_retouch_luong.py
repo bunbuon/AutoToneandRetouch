@@ -64,6 +64,40 @@ def main() -> int:
     if "0xC0000005" not in rt.giai_thich_ma(3221225477, "", 1):
         loi.append("Ma 3221225477 khong duoc dich ra ten loi")
 
+    # --- 12/10: bo anh khong co nguoi (retouch.json "bo_khong_nguoi", mac dinh BAT)
+    if "--ca-anh-khong-nguoi" in rt.lenh(Path("C:/tool"), vao, ra, muc):
+        loi.append("Mac dinh (bo anh khong nguoi) ma dong lenh lai gui --ca-anh-khong-nguoi")
+    if "--ca-anh-khong-nguoi" not in rt.lenh(Path("C:/tool"), vao, ra, muc, bo_khong_nguoi=False):
+        loi.append("Tat 'Bo qua anh khong co nguoi' ma dong lenh thieu --ca-anh-khong-nguoi")
+
+    class EngineGia:
+        def __init__(self):
+            self.tham = None
+
+        def chay_duoc(self):
+            return True
+
+        def chay_me(self, tham):
+            self.tham = tham
+            yield ("ma", 0)
+
+    cu_doc = rt.doc_cau_hinh
+    try:
+        for cf, mong in (({}, True), ({"bo_khong_nguoi": False}, False), ({"bo_khong_nguoi": True}, True)):
+            rt.doc_cau_hinh = lambda cf=cf: dict(cf)
+            e = EngineGia()
+            list(rt.chay(Path("C:/tool"), vao, ra, muc, engine=e))
+            if not e.tham or e.tham.get("bo_khong_nguoi") is not mong:
+                loi.append(f"retouch.json {cf} -> engine phai nhan bo_khong_nguoi={mong}, "
+                           f"dang {None if not e.tham else e.tham.get('bo_khong_nguoi')}")
+        rt.doc_cau_hinh = lambda: {"bo_khong_nguoi": False}
+        e = EngineGia()
+        list(rt.chay(Path("C:/tool"), vao, ra, muc, engine=e, bo_khong_nguoi=True))
+        if e.tham.get("bo_khong_nguoi") is not True:
+            loi.append("Ben goi truyen bo_khong_nguoi=True thi phai thang retouch.json")
+    finally:
+        rt.doc_cau_hinh = cu_doc
+
     for m in loi:
         print("  [!]", m)
     print("TAT CA DAT" if not loi else f"{len(loi)} LOI")
