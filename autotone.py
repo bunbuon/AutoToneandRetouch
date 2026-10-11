@@ -2477,6 +2477,23 @@ DEFAULTS = {
     #   0 = tat phanh nay.
     #]]
     "skin_hard_p95": 232.0,
+    #[[ 11/10 — PHANH DA THEO WB LIGHTROOM (user: "WB -> Tone -> HSL -> CG, moi
+    #   buoc check lai tinh trang da roi moi quyet buoc sau").
+    #   face_p95 do tren PREVIEW cua may = render o WB MAY. Lightroom render o WB
+    #   preset + phan tool keo -> kenh lon nhat cua da (R) khac preview: WB am
+    #   hon thi R cao hon (de chay hon tool tuong), lanh hon thi thap hon. Ca da
+    #   gap: ky yeu raw 19.4 duoi den am, preview R 251-252, Lightroom 4000 K chi
+    #   218 — phanh ghim 0 oan, phai va bang phanh_da_san_ky_yeu.
+    #   phanh_da_theo_wb    : chang 1 (trong phanh) doi da sang WB PRESET; chang 2
+    #                         (phanh_da_sau_wb, sau khi WB chot) kiem lai o WB CUOI,
+    #                         chi HA, chi phan do WB gay ra. False = nhu cu.
+    #   phanh_da_wb_nha     : chang 1 duoc NOI phanh khi WB preset lam da toi di —
+    #                         chi khi preview chua bao hoa (p95 < phanh_da_wb_bao_hoa):
+    #                         bao hoa thi khong biet da chay sau bao nhieu.
+    #]]
+    "phanh_da_theo_wb": True,
+    "phanh_da_wb_nha": True,
+    "phanh_da_wb_bao_hoa": 250.0,
     #[[ DO SANG THEO VUNG DA SANG khi vung do du lon.
     #
     #   hl_da_muc   : tu muc sRGB nay tro len coi la "da sang" (0-255)
@@ -3730,6 +3747,101 @@ def _nhan_ngoai(r: dict, cfg: dict) -> bool:
     if "ngoai_troi" in r:
         return bool(r["ngoai_troi"])
     return ngoai_troi(r, cfg)
+
+
+def he_so_da_wb(r: dict, cfg: dict, p95_255: float, wb: tuple | None = None) -> float:
+    """Vung sang cua da (tuyen tinh, kenh lon nhat) nhan bao nhieu khi Lightroom
+    render o WB `wb` thay vi WB may cua preview. wb=None: WB PRESET (r["_da_lr"],
+    du doan o dau decide). 1.0 = khong biet / khong doi.
+
+    doi_wb la phep nhan ma tran (Bradford) nen tuyen tinh: diem anh sang nhat
+    cua da coi nhu cung sac voi da trung binh (face_rgb) — ti so kenh lon nhat
+    cua da trung binh truoc/sau doi WB la he so cho ca vung sang."""
+    if not cfg.get("phanh_da_theo_wb"):
+        return 1.0
+    f = r.get("face_rgb")
+    if not f or max(float(x) for x in f) <= 1e-9:
+        return 1.0
+    if wb is None:
+        d = r.get("_da_lr")
+        if not d:
+            return 1.0
+    else:
+        may = wb_may_adobe(r, cfg)
+        if may is None or float(wb[0]) <= 0:
+            return 1.0
+        d = doi_wb(f, may, (float(wb[0]), float(wb[1])))
+    k = float(max(float(x) for x in d)) / float(max(float(x) for x in f))
+    k = min(max(k, 0.5), 2.0)
+    if k < 1.0 and (not cfg.get("phanh_da_wb_nha")
+                    or p95_255 >= float(cfg.get("phanh_da_wb_bao_hoa") or 250.0)):
+        return 1.0
+    return k
+
+
+def phanh_da_sau_wb(items: list, cfg: dict) -> int:
+    """CHANG 2 — WB da CHOT (preset + temp_adj/tint_adj, nhu compute_values ghi)
+    -> kiem lai da: WB cuoi lam vung sang cua da vuot tran_da thi HA Exposure,
+    nhung chi phan do WB gay ra (toi da log2 he so) — khong sua lai cac quyet
+    dinh khac (san phang, dong bo loat). Chi ha, khong xuong duoi 0 (nhu phanh
+    goc), ky yeu ton trong phanh_da_san_ky_yeu. Ca LOAT (dong_bo_loat) ha cung
+    muc thap nhat de loat van mot so. Tra ve so anh bi ha.
+
+    #[[ VI SAO SAU dong_bo_loat VA CAC BUOC WB: temp_adj chi chot o day (san
+    #   phang mau, As Shot, Tint theo may, WB ky yeu deu cong sau vong lap anh).
+    #   TRUOC _bu_sang_canh_am / _bu_sang_ca_buoi: hai buoc do la user CHU Y lam
+    #   sang ca buoi (su kien / ky yeu), da duyet tren anh that — khong chan. ]]
+    """
+    if not cfg.get("phanh_da_theo_wb") or cfg.get("wb") == "off":
+        return 0
+    moi: dict = {}
+    for r in items:
+        if (r.get("bw") or r.get("giu_nguyen_exposure") or not r.get("faces_n")
+                or r.get("delta_ev") is None):
+            continue
+        delta = float(r["delta_ev"])
+        p95 = r.get("face_p95_dong") or r.get("face_p95")
+        tran = tran_da(r, cfg)
+        t0 = preset_val(r, "Temperature")
+        if delta <= 0 or not p95 or tran <= 0 or t0 <= 0:
+            continue
+        wb = (float(np.clip(t0 + float(r.get("temp_adj", 0.0)), 2000, 50000)),
+              float(np.clip(preset_val(r, "Tint") + float(r.get("tint_adj", 0.0)), -150, 150)))
+        k = he_so_da_wb(r, cfg, float(p95) * 255.0, wb)
+        if k <= 1.0 + 1e-6:
+            continue
+        lin = _srgb_to_lin_1(float(p95)) * k
+        cho_phep = math.log2(max(_srgb_to_lin_1(tran / 255.0), 1e-6) / max(lin, 1e-9))
+        cat = min(delta - cho_phep, math.log2(k))
+        if cat <= 0.02:
+            continue
+        san = 0.0
+        if cfg.get("loai_buoi") == "ky_yeu":
+            san = min(delta, float(cfg.get("phanh_da_san_ky_yeu") or 0.0))
+        d_moi = round(max(delta - cat, 0.0, san), 4)
+        if d_moi < delta - 0.005:
+            moi[id(r)] = d_moi
+    if not moi:
+        return 0
+    theo_loat: dict = {}
+    for r in items:
+        if r.get("loat") is not None:
+            theo_loat.setdefault(r["loat"], []).append(r)
+    for ds in theo_loat.values():
+        cham = [moi[id(r)] for r in ds if id(r) in moi]
+        if cham:
+            thap = min(cham)
+            for r in ds:
+                if r.get("delta_ev") is not None and float(r["delta_ev"]) > thap + 0.005:
+                    moi[id(r)] = thap
+    n = 0
+    for r in items:
+        if id(r) not in moi:
+            continue
+        r["delta_ev"] = moi[id(r)]
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), "ha-vi-da-sau-wb"] if v])
+        n += 1
+    return n
 
 
 def tran_da(r: dict, cfg: dict) -> float:
@@ -6019,6 +6131,12 @@ def decide(items: list, cfg: dict) -> None:
                         if lin > 1e-6:
                             tran_lin = _srgb_to_lin_1(tran / 255.0)
                             con = math.log2(max(tran_lin, 1e-6) / lin)
+                            #  11/10: da o WB PRESET Lightroom se render, khong
+                            #  phai WB may cua preview — xem phanh_da_theo_wb
+                            k_wb = math.log2(he_so_da_wb(r, cfg, p95_255))
+                            if abs(k_wb) >= 0.05 and delta > min(con, con - k_wb):
+                                notes.append(f"da-theo-wb{k_wb:+.2f}")
+                            con -= k_wb
                         if delta > con:
                             #[[ KY YEU: phanh da KHONG giu mat toi duoi dich qua
                             #   phanh_da_san_ky_yeu EV (8/10, v42 tat CG, raw 19.4).
@@ -6550,6 +6668,9 @@ def decide(items: list, cfg: dict) -> None:
         _tint_theo_may(items, cfg)
         _tint_tran_am(items, cfg)
         _wb_ky_yeu(items, cfg)
+    #  WB da chot -> kiem lai da TRUOC hai buoc bu sang chu y (11/10)
+    phanh_da_sau_wb(items, cfg)
+    if cfg["wb"] in ("asshot", "skin"):
         _bu_sang_canh_am(items, cfg)
     _bu_sang_ca_buoi(items, cfg)
 

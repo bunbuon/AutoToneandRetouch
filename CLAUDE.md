@@ -758,6 +758,26 @@ tối đi thì kéo Highlights ít hơn). Nét 0.4 tốt hơn 0 và 0.6; chặn 
 - Thợ chụp đặt WB TAY trên máy (wb_may_che_do "tay" ở cả 4 buổi gần nhất) — đổi
   Kelvin trên máy = họ thấy nguồn sáng đổi. Chưa dùng làm luật cắt cảnh.
 
+## Phanh da theo WB Lightroom (11/10) — `phanh_da_theo_wb` + `phanh_da_wb_nha`, BẬT
+
+User 11/10: "WB → Tone → HSL → CG, mỗi bước check lại tình trạng da". Phanh da so
+`face_p95` (kênh lớn nhất, đo trên PREVIEW = WB máy) với `tran_da`; Lightroom render
+ở WB khác nên R của da khác. `he_so_da_wb()`: tỉ số kênh lớn nhất của `face_rgb`
+trước/sau `doi_wb` (Bradford, tuyến tính — đúng cho cả vùng sáng cùng sắc).
+- Chặng 1 (trong phanh, vòng ảnh của decide): WB PRESET (`_da_lr`, chỉ catalog +
+  preset đặt WB). Siết khi preset ấm hơn máy; NỚI khi lạnh hơn, trừ khi preview
+  bão hoà (p95 ≥ `phanh_da_wb_bao_hoa` 250). Cờ `da-theo-wb±x`.
+- Chặng 2 `phanh_da_sau_wb()`: sau dong_bo_loat + các bước WB, TRƯỚC
+  `_bu_sang_canh_am` / `_bu_sang_ca_buoi` (sáng chủ ý của user). WB CUỐI = preset +
+  temp_adj/tint_adj như compute_values. Chỉ hạ, tối đa log2(hệ số), không dưới 0,
+  sàn kỷ yếu giữ; cả loạt về mức thấp nhất. Cờ `ha-vi-da-sau-wb`.
+Cổng: 2609 A 95/59 (0.190 → 0.188), TrainTool 58/35 (0.205 → 0.200), B **0%** cả
+hai — QUA. Không nới: 29/6 và 24/17 (TrainTool sai 0.206, kém hơn). Buổi gần đây
+(preset trống WB nên chỉ chặng 2): 1010 hạ 47 ảnh (trung vị −0.05, tối đa −0.09),
+KN2009 25 (−0.07), TestTool 6 (−0.04). Kiểm: `test_phanh_da_wb.py`.
+Chưa xử lý: khác profile/tone curve giữa JPEG máy và Adobe (không chỉ WB) — chỉ
+phần WB được tính.
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị
