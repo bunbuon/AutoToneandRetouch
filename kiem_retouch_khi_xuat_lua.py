@@ -96,6 +96,9 @@ def ngu(_s):
 
 DA_CHAY = []
 L = lua51.LuaRuntime(unpack_returned_tuples=True)
+#  Giả đúng sandbox Lua của Lightroom: KHÔNG có os.rename / os.remove (Diagnose.lua 31/8).
+#  Lua chuẩn có hai hàm đó -> v67 dùng os.rename vẫn đạt kiểm mà hỏng trong Lightroom thật.
+L.execute("os.rename = nil; os.remove = nil; os.execute = nil; os.exit = nil")
 g = L.globals()
 g.py_ngu = ngu
 g.py_chay = lambda c: DA_CHAY.append(str(c)) or 0
@@ -284,6 +287,15 @@ kq, _ = chay_loc([{"path": a7, "raw": str(RAW / "DSC0017.ARW"), "noi": "A7" + JP
                  autotone_rt_bat=False)
 ktra("bỏ tích 'Retouch ảnh xuất ra' -> render thẳng đích, không gửi trạm",
      nd(a7) == b"A7\xff\xd9" and not GOI and kq == [True] and TRUOC_VONG == [True])
+
+# ---- 3b. tắt "Retouch song song" (11/10 — user: "hoặc thêm option bật tắt chạy song song")
+a8 = anh("DSC0018.jpg")
+kq, _ = chay_loc([{"path": a8, "raw": str(RAW / "DSC0018.ARW"), "noi": "A8" + JPEG_DUOI}],
+                 autotone_rt_song_song=False)
+log = (PL / "jobs" / "plugin.log").read_text(encoding="utf-8")
+ktra("bỏ tích 'Retouch song song' -> không qua thư mục tạm, vẫn retouch tại chỗ, log nói rõ",
+     nd(a8).startswith(b"RT:") and kq == [True] and "song song TẮT" in log
+     and not list(THU.glob("cho_*")), nd(a8)[:20])
 
 # ---- 4. trạm không trả lời -> quá giờ: ảnh vẫn ra, cấm trạm đè
 TRAM_BAT[0] = False

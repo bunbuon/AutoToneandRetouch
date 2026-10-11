@@ -148,7 +148,8 @@ if goc and rt.hop_le(goc):
         src = chuan_bi(t)
         shutil.move(str(src), str(TAMX / t))
         tr.ghi_kv(THU / f"cho_x{i}.txt", {"anh": TAMX / t, "dich": XUAT / t,
-                                          "goc": RAW / (Path(t).stem + ".ARW"), "che_do": "app"})
+                                          "goc": RAW / (Path(t).stem + ".ARW"), "che_do": "app",
+                                          "het": 1})
     lan_dau, thay_bo = [], False
     t0 = time.monotonic()
     for i, t in enumerate(ten, 1):           # vòng của plugin: tới ảnh nào báo san_ ảnh đó

@@ -284,7 +284,8 @@ def cho(id_, ten, noi=b"R\xff\xd9", goc=None):
     tam = TAMX / ten
     tam.write_bytes(noi)
     tr.ghi_kv(THU / f"cho_{id_}.txt", {"anh": tam, "dich": XUAT / ten,
-                                       "goc": goc or RAW / (Path(ten).stem + ".ARW"), "che_do": "app"})
+                                       "goc": goc or RAW / (Path(ten).stem + ".ARW"), "che_do": "app",
+                                       "het": 1})
     return tam, XUAT / ten
 
 
@@ -444,6 +445,45 @@ iss = (Path(__file__).resolve().parent / "installer_win.iss").read_text(encoding
 ktra("installer: PrepareToInstall + InitializeUninstall dừng tiến trình nền --say- (không đụng cửa sổ app)",
      "function PrepareToInstall" in iss and "function InitializeUninstall" in iss
      and "dung_tram.txt" in iss and "--say-" in iss and "Stop-Process" in iss)
+
+# ---------------------------------------------------------------- 15. (11/10) lời báo trước ghi THẲNG
+#  Lua của Lightroom KHÔNG có os.rename / os.remove: v67 ghi cho_ bằng .part + os.rename -> hỏng
+#  ở mọi lượt thật (user: "vẫn chờ xuất xong mới retouch", 22 file cho_*.txt.part). Nay plugin ghi
+#  thẳng, dòng cuối het=1 = ghi trọn.
+import re as _re
+for f in THU.glob("*.txt"):
+    f.unlink()
+rt.ghi_muc_anh(str(RAW), {}, {"vet": 30})
+tq = tram_moi()
+tam_h = TAMX / "DSC0901.jpg"
+tam_h.write_bytes(b"R\xff\xd9")
+(THU / "cho_h1.txt").write_text(f"anh={tam_h}\ndich={XUAT / 'DSC0901.jpg'}\ngoc={RAW / 'DSC0901.ARW'}\n"
+                                "che_do=app\n", encoding="utf-8")
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+GOI.clear()
+tq.mot_vong()
+ktra("lời báo trước CHƯA có dòng het=1 (plugin đang ghi dở) -> chưa nhận",
+     not GOI and (THU / "cho_h1.txt").exists())
+with open(THU / "cho_h1.txt", "a", encoding="utf-8") as fh:
+    fh.write("het=1\n")
+tq.mot_vong()                       # thấy file render lần đầu
+time.sleep(tr.ON_DINH_GIAY + 0.1)
+tq.mot_vong()                       # đứng yên đủ lâu -> nhận
+ktra("có dòng het=1 -> nhận, retouch sớm", len(GOI) == 1, str(GOI_SO))
+cu_part = THU / "cho_v67.txt.part"
+cu_part.write_text("x", encoding="utf-8")
+os.utime(cu_part, (time.time() - 7200, time.time() - 7200))
+tq._t_don = 0.0
+tq.nhan()
+ktra("file .part bỏ dở quá 1 giờ (v67 để lại) -> trạm dọn", not cu_part.exists())
+lua_loi = []
+for p_ in sorted((Path(__file__).resolve().parent / "AutoTone.lrplugin").glob("*.lua")):
+    for i_, dong in enumerate(p_.read_text(encoding="utf-8").splitlines(), 1):
+        if _re.search(r"os\.(rename|remove|execute|exit)\s*\(", dong.split("--", 1)[0]):
+            lua_loi.append(f"{p_.name}:{i_}")
+ktra("plugin Lua KHÔNG gọi os.rename/os.remove/os.execute (Lightroom không có các hàm đó)",
+     not lua_loi, str(lua_loi))
+rt.chay = chay_gia
 
 # ---------------------------------------------------------------- 10. lệnh mở trạm / điều kiện mở
 l = tr.lenh_mo_tram(THU)

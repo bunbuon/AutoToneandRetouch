@@ -732,11 +732,27 @@ class Tram:
             return True
         return False
 
+    def _don_part(self) -> None:
+        """Xoá file .part bỏ dở quá 1 giờ (v67 để lại cho_*.txt.part — xem RetouchKhiXuat.lua)."""
+        if time.time() - getattr(self, "_t_don", 0.0) < 300:
+            return
+        self._t_don = time.time()
+        try:
+            for p in self.thu.glob("*.part"):
+                try:
+                    if time.time() - p.stat().st_mtime > 3600:
+                        p.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
     def nhan(self) -> list:
         """Giành (đổi tên nguyên tử) các ảnh đã render xong -> [yêu cầu].
         cho_: render vào thư mục tạm — nhận khi file ghi trọn hoặc plugin đã báo san_.
         yc_: sửa tại chỗ (Lightroom bỏ qua đường tạm)."""
         ra = []
+        self._don_part()
         try:
             ds_cho = sorted(self.thu.glob("cho_*.txt"))
         except OSError:
@@ -755,7 +771,9 @@ class Tram:
                 continue
             d = doc_kv(f) or {}
             tam = d.get("anh") or ""
-            if not tam or not d.get("dich"):
+            #  plugin ghi thẳng file (Lua của Lightroom không có os.rename) — dòng cuối
+            #  het=1 mới là ghi trọn
+            if not tam or not d.get("dich") or d.get("het") != "1":
                 continue
             if not ((self.thu / f"san_{id_}.txt").exists() or file_xong(Path(tam), self._kich, id_)):
                 continue

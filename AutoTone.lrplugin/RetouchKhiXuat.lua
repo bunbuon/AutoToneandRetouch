@@ -245,6 +245,7 @@ end
 M.exportPresetFields = {
     { key = "autotone_rt_bat", default = true },
     { key = "autotone_rt_muc", default = "app" },
+    { key = "autotone_rt_song_song", default = true },
 }
 
 local function dsPreset()
@@ -309,6 +310,10 @@ function M.sectionForFilterInDialog(fv, pt)
             fv:popup_menu { items = items, value = bind "autotone_rt_muc",
                             enabled = bind "autotone_rt_bat" },
         },
+        fv:row {
+            fv:checkbox { title = "Retouch song song khi Lightroom đang xuất (ảnh render xong là retouch ngay)",
+                          value = bind "autotone_rt_song_song", enabled = bind "autotone_rt_bat" },
+        },
         fv:static_text { title = bind "autotone_rt_trang_thai", fill_horizontal = 1 },
         fv:static_text {
             title = "Chỉ áp cho ảnh JPEG / TIFF / PNG. Ảnh lỗi vẫn xuất ra (chưa retouch) — xem plugin.log.",
@@ -318,16 +323,20 @@ function M.sectionForFilterInDialog(fv, pt)
 end
 
 -- ------------------------------------------------------------ lượt Export
---[[ Ghi .part rồi os.rename (hàm C, không yield) — dùng được cả trong filterSettings,
-     nơi không chắc lời gọi SDK có được yield không. ]]
+--[[ Ghi THẲNG file đích, dòng cuối "het=1" = đã ghi trọn (trạm chỉ nhận file có dòng đó).
+     Chỉ io (không gọi SDK) — dùng được cả trong filterSettings, nơi không chắc lời gọi
+     SDK có được yield không.
+     KHÔNG dùng os.rename / os.remove: Lua của Lightroom KHÔNG CÓ hai hàm đó (Diagnose.lua,
+     31/8). v67 dùng chúng -> lời báo trước hỏng ở MỌI lượt, pcall nuốt lỗi, retouch song
+     song chưa từng chạy trong Lightroom thật (user 11/10: "vẫn chờ xuất xong mới retouch",
+     để lại 22 file cho_*.txt.part). ]]
 local function ghiNhanh(path, text)
-    local tmp = path .. ".part"
-    local fh = io.open(tmp, "w")
+    local fh = io.open(path, "w")
     if not fh then return false end
     fh:write(text)
+    fh:write("het=1\n")
     fh:close()
-    os.remove(path)
-    return os.rename(tmp, path) and true or false
+    return true
 end
 
 --[[ Chuyển bản Lightroom render (chưa retouch) sang đích — đường lùi của mọi lỗi. ]]
@@ -340,6 +349,7 @@ end
 function M.postProcessRenderedPhotos(functionContext, filterContext)
     local pt = filterContext.propertyTable or {}
     local bat = pt.autotone_rt_bat ~= false
+    local songSong = pt.autotone_rt_song_song ~= false
     local cheDo = pt.autotone_rt_muc or "app"
     if cheDo == "" then cheDo = "app" end
     local ds = filterContext.renditionsToSatisfy or {}
@@ -376,7 +386,8 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
     local phien = string.format("%d%04d", os.time(), math.random(0, 9999))
     local n, idCua, tamCua = 0, {}, {}
     local tuyChon = {}
-    if bat then
+    local loiDuong = nil
+    if bat and songSong then
         tuyChon.filterSettings = function(renditionToSatisfy, _exportSettings)
             local ok, kq = pcall(function()
                 local dich = renditionToSatisfy.destinationPath
@@ -397,6 +408,11 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
                 return tam
             end)
             if ok then return kq end
+            --  KHÔNG nuốt im: lỗi ở đây là mất retouch song song cả lượt (v67)
+            if not loiDuong then
+                loiDuong = tostring(kq)
+                log("lỗi lúc định đường render tạm (về sửa tại chỗ): " .. loiDuong)
+            end
             return nil
         end
     end
@@ -423,8 +439,10 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
             end
             if i == 1 and bat then
                 log("ảnh đầu: render " .. tostring(duong) .. " · đích " .. tostring(dich)
-                    .. (id and (duong == tam and " · qua thư mục tạm"
+                    .. (id and (duong == tam and " · qua thư mục tạm (retouch song song)"
                                 or " · Lightroom BỎ QUA đường tạm — sửa tại chỗ")
+                        or (not songSong and " · song song TẮT — sửa từng ảnh sau khi render")
+                        or (loiDuong and (" · lỗi đường tạm: " .. loiDuong))
                         or (duoiNhan(duong) and " · Lightroom KHÔNG hỏi đường render (Export with Previous?) — sửa tại chỗ" or "")))
             end
             local kq = nil
