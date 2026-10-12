@@ -4334,7 +4334,8 @@ class App(ttk.Frame):
         self._bat_dau_soi_xuat()
 
     def _gui_yeu_cau_xuat(self, f, dest: str, va_cham: str, bo_sao: int = 1,
-                          chat: float | None = None, lo: int | None = None) -> bool:
+                          chat: float | None = None, lo: int | None = None,
+                          chi_anh: list | None = None) -> bool:
         """MỘT chỗ gửi yêu cầu xuất: đọc thông số Lightroom, ÉP (thư mục đích,
         trùng tên, không hộp thoại, chất lượng nếu người dùng chọn) rồi gửi.
         kiem_xuat_lr.py canh: mọi chỗ gọi yeu_cau_xuat đều phải đi qua tl.ep."""
@@ -4349,7 +4350,7 @@ class App(ttk.Frame):
             import thongso_lr as tl
             import xuat_lr
             st = tl.ep(st, dest, va_cham, chat=chat)
-            xuat_lr.yeu_cau_xuat(f, dest, st, bo_sao=bo_sao, lo=lo)
+            xuat_lr.yeu_cau_xuat(f, dest, st, bo_sao=bo_sao, lo=lo, chi_anh=chi_anh)
         except (OSError, ValueError) as ex:
             messagebox.showerror("Không gửi được yêu cầu", str(ex))
             return False
@@ -4424,8 +4425,12 @@ class App(ttk.Frame):
             self.after(1200, self._soi_xuat_anh)
 
     # ------------------------------------------------- Xuất một thao tác (9/10)
-    def do_xuat_hop(self):
+    def do_xuat_hop(self, chi_anh: list | None = None, giu_giao_dien: bool = False):
         """Nút “3 · Xuất”: hộp thoại cài đặt -> Lightroom xuất -> Retouch.
+
+        chi_anh (12/10): chỉ xuất đúng những ảnh này (Retouch chế độ RAW — ảnh đang
+        chọn ở dải ảnh). giu_giao_dien: lượt xuất chạy TÁCH khỏi trang Retouch —
+        trang đứng yên (vẫn nguồn Ảnh RAW), chỉ thanh tiến độ chạy.
 
         #[[ User 9/10: "Thay doi Flow lon nay de chay 1 thao tac khi bam xuat anh.
         #   May vua xuat anh tu Lightroom vua chay Retouch nen can kiem tra moi
@@ -4492,10 +4497,14 @@ class App(ttk.Frame):
         d = xuat_ui.XuatDialog(self, buoi=f.name, thu_muc_goi_y=goi_y, thong_so_lr=st,
                                luc_lr=luc, ds_preset=ds_preset, muc_dang=muc_dang,
                                so_da_loc=so_da_loc, preset_md=preset_md,
-                               ten_anh_buoi=ten_anh)
+                               ten_anh_buoi=ten_anh, so_chon=len(chi_anh or []))
         self.wait_window(d)
         if d.ket_qua:
-            self.bat_dau_xuat(d.ket_qua)
+            kq = dict(d.ket_qua)
+            if chi_anh:
+                kq["chi_anh"] = [str(p) for p in chi_anh]
+            kq["giu_giao_dien"] = bool(giu_giao_dien)
+            self.bat_dau_xuat(kq)
 
     def bat_dau_xuat(self, kq: dict) -> bool:
         """Bắt đầu lượt xuất theo kết quả hộp thoại (xuat_ui.XuatDialog.ket_qua)."""
@@ -4530,7 +4539,8 @@ class App(ttk.Frame):
         if not self._gui_yeu_cau_xuat(f, dest, kq.get("va_cham") or "overwrite",
                                       bo_sao=int(kq["bo_sao"]) if "bo_sao" in kq
                                       else (1 if kq.get("bo_sao1", True) else 0),
-                                      chat=float(kq.get("chat") or 80) / 100.0):
+                                      chat=float(kq.get("chat") or 80) / 100.0,
+                                      chi_anh=kq.get("chi_anh") or None):
             return False
         try:
             import trang_thai as tt
@@ -4558,7 +4568,8 @@ class App(ttk.Frame):
                     ghi_de=kq.get("retouch_ra") == "ghi_de", muc=muc,
                     song_song=bool(kq.get("song_song")), preset=kq.get("preset") or "",
                     ly_do_tuan_tu=kq.get("ly_do_tuan_tu") or [],
-                    rieng_ten=goi.get("rieng_ten") or {})
+                    rieng_ten=goi.get("rieng_ten") or {},
+                    giu_giao_dien=bool(kq.get("giu_giao_dien")))
             except Exception:                                # noqa: BLE001
                 traceback.print_exc()
         #  ghim SAU bat_dau_theo_xuat: nó dừng lượt theo dõi cũ = trả CPU về như cũ

@@ -406,7 +406,7 @@ class XuatDialog(tk.Toplevel):
                  thong_so_lr: dict | None = None, luc_lr=None,
                  ds_preset: list | None = None, muc_dang: dict | None = None,
                  so_da_loc: int = 0, preset_md: str | None = None,
-                 ten_anh_buoi: set | None = None):
+                 ten_anh_buoi: set | None = None, so_chon: int = 0):
         super().__init__(cha)
         self._ten_buoi = buoi
         self._ten_anh_buoi = {str(x).lower() for x in (ten_anh_buoi or ())}
@@ -476,6 +476,13 @@ class XuatDialog(tk.Toplevel):
 
         ttk.Label(frm, justify="left", wraplength=WRAP, text=(
             f"Buổi: {buoi}" if buoi else "Xuất ảnh của buổi đang mở")).pack(anchor="w")
+        #  12/10: mở từ Retouch (ảnh RAW) — chỉ xuất ảnh đang chọn, không lọc sao
+        self._so_chon = int(so_chon or 0)
+        if self._so_chon:
+            ttk.Label(frm, justify="left", wraplength=WRAP, style="Canh.TLabel",
+                      text=f"Chỉ xuất {self._so_chon} ảnh đang chọn ở Retouch — "
+                           "chọn ảnh nào xuất ảnh đó (bỏ qua lọc sao ở mục 2).").pack(
+                anchor="w", pady=(2, 0))
         mo("Một thao tác: Lightroom xuất ảnh cỡ gốc → app retouch (ngay trong lúc "
            "xuất, hoặc sau khi xuất xong). Kích thước, không gian màu, metadata, "
            "quy tắc đặt tên vẫn theo thông số Export của Lightroom.")

@@ -975,6 +975,15 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   "Toàn bộ" — chỉ Giữ thì ảnh Loại KHÔNG gửi (không đổi thông số, không gắn 1★).
   Đổi chip / cảnh khi đang mở ảnh lớn → `_doi_loc` về lưới. Bấm đúp thanh Bù sáng /
   K / Tint → 0 (`mac_dinh="0"`; trước về giá trị lúc dựng, vd. −0,10 của Sự kiện).
+- v81 (user, Retouch nguồn Ảnh RAW, chọn 3 ảnh bấm "Xuất & retouch"): (1) CHỈ xuất ảnh
+  đang chọn — `start()` RAW gửi `do_xuat_hop(chi_anh=ds_chon, giu_giao_dien=True)` →
+  `xuat_lr.yeu_cau_xuat(chi_anh=)` thêm dòng `anh=<đường dẫn>`; XuatCore.lua `docDong`
+  gom thành `opts.anh`, `locTheoDs` lọc (không phân biệt hoa thường / dấu gạch) và BỎ lọc
+  sao. Plugin cũ bỏ qua dòng lạ → xuất cả buổi: phải mở lại Lightroom sau khi cập nhật.
+  (2) KHÔNG nhảy sang "Ảnh đã xuất": `_bat_dau_xuat_tach` — lượt mang thư mục / mức chung /
+  mức riêng theo tên RAW của riêng nó (td["giu_gd"]), bảng mức thư mục xuất ghi GỘP trên
+  đĩa, trang Retouch đứng yên (không mở ảnh xuất lên ảnh lớn), chỉ tiến độ ở thanh đáy +
+  trang 5. Nút "Xuất ảnh…" ở Cân sáng vẫn xuất cả buổi và mượn trang Retouch như cũ.
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 

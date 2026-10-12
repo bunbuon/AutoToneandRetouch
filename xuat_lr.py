@@ -144,7 +144,8 @@ def _dong_thongso(thong_so: dict) -> list[str]:
 
 
 def yeu_cau_xuat(folder, dest, thong_so: dict, bo_sao: int | None = 1,
-                 lo: int | None = None, job_dir: Path | None = None) -> Path:
+                 lo: int | None = None, job_dir: Path | None = None,
+                 chi_anh: list | None = None) -> Path:
     """Đặt yêu cầu để plugin chạy một lượt Export. Trả về đường dẫn file yêu cầu.
 
     bo_sao: 0 / None = xuất hết · N > 0 = bỏ ảnh đúng N sao · -1 = chỉ xuất ảnh
@@ -158,6 +159,10 @@ def yeu_cau_xuat(folder, dest, thong_so: dict, bo_sao: int | None = 1,
         dong.append(f"bo_sao={int(bo_sao)}")
     if lo:
         dong.append(f"lo={int(lo)}")
+    #  12/10: chỉ xuất đúng những ảnh này (Retouch chế độ RAW — ảnh đang chọn);
+    #  plugin bỏ bộ lọc sao khi có danh sách
+    for p in (chi_anh or []):
+        dong.append(f"anh={Path(str(p))}")
     dong += _dong_thongso(thong_so)
     #[[ 9/10: XOA VET LUOT TRUOC truoc khi gui — tien do, bang anh, co dung.
     #   Khong xoa thi vong theo doi doc ngay "trang_thai=xong" cua lan truoc

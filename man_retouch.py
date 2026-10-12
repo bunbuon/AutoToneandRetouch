@@ -867,7 +867,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             n = 0
         chu = f"Chạy retouch  ·  {n} ảnh" if n else "Chạy retouch"
         if self._la_raw_mode():
-            chu = "Xuất & retouch…"        # 9/10: RAW — Lightroom xuất rồi retouch
+            #  9/10: RAW — Lightroom xuất rồi retouch; 12/10: chỉ ảnh đang chọn
+            chu = f"Xuất & retouch  ·  {n} ảnh…" if n else "Xuất & retouch…"
         if btn.cget("text") != chu:
             btn.configure(text=chu)
 

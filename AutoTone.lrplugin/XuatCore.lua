@@ -128,11 +128,38 @@ function M.docDong(dong)
                 end
             else
                 local k, v = string.match(d, "^%s*([%w_]+)%s*=%s*(.-)%s*$")
-                if k then opts[k] = v end
+                if k == "anh" then
+                    --[[ 12/10: nhieu dong "anh=<duong dan>" = CHI xuat dung nhung
+                         anh do (Retouch che do anh RAW: chon anh nao xuat anh do). ]]
+                    opts.anh = opts.anh or {}
+                    opts.anh[#opts.anh + 1] = v
+                elseif k then
+                    opts[k] = v
+                end
             end
         end
     end
     return folder, opts, ts
+end
+
+--[[ 12/10: so duong dan khong phan biet hoa thuong / dau gach (Windows). ]]
+function M.chuanDuong(p)
+    local s = string.lower(tostring(p or ""))
+    s = string.gsub(s, "/", "\\")
+    return s
+end
+
+--[[ Ham THUAN: giu lai anh co duong dan nam trong ds (ds rong -> giu het).
+     layDuong(photo) -> duong dan (bai kiem truyen ham gia, khong can Lightroom). ]]
+function M.locTheoDs(photos, ds, layDuong)
+    if type(ds) ~= "table" or #ds == 0 then return photos end
+    local muon = {}
+    for i = 1, #ds do muon[M.chuanDuong(ds[i])] = true end
+    local ra = {}
+    for i = 1, #photos do
+        if muon[M.chuanDuong(layDuong(photos[i]))] then ra[#ra + 1] = photos[i] end
+    end
+    return ra
 end
 
 -- ----------------------------------------------------------------- xuất ảnh
@@ -385,9 +412,19 @@ function M.runRequest()
          xuat, khong retouch. Viet lai o day la mo duong cho hai quy uoc lech
          nhau. DuyetCore co the vang mat (ban plugin cu) nen phai kiem. ]]
     local boSao = 0
-    local okD, Duyet = pcall(require, "DuyetCore")
-    if okD and type(Duyet.locSao) == "function" then
-        photos, boSao = Duyet.locSao(photos, opts.bo_sao)
+    if type(opts.anh) == "table" and #opts.anh > 0 then
+        --[[ 12/10: app chi dinh DUNG nhung anh can xuat (nguoi dung da chon tay)
+             -> khong loc sao nua: chon anh nao xuat anh do. ]]
+        local loc = Core.try("locAnhChon", function()
+            return M.locTheoDs(photos, opts.anh,
+                               function(ph) return ph:getRawMetadata("path") end)
+        end)
+        if type(loc) == "table" then photos = loc end
+    else
+        local okD, Duyet = pcall(require, "DuyetCore")
+        if okD and type(Duyet.locSao) == "function" then
+            photos, boSao = Duyet.locSao(photos, opts.bo_sao)
+        end
     end
     if #photos == 0 then
         M.ghiTienDo({ trang_thai = "loi", thong_bao = "loc xong khong con anh nao" })

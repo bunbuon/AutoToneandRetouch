@@ -202,6 +202,22 @@ X.xoaBang()
 ktra("xoaBang xoa file bang", not (jobs / xuat_lr.TEN_BANG_XUAT).exists())
 f_, o_, ts_ = X.docDong(L.table("F:/Buoi", "dest=F:/Giao", "lo=10", "ts	n	LR_jpeg_quality	0.92"))
 ktra("docDong: chat luong so, lo doc duoc", ts_["LR_jpeg_quality"] == 0.92 and o_["lo"] == "10")
+#  12/10: dòng "anh=<đường dẫn>" -> chỉ xuất đúng những ảnh đó (Retouch chế độ RAW)
+f_, o_, ts_ = X.docDong(L.table("F:/Buoi", "dest=F:/Giao", r"anh=G:\Buoi\DSC01.ARW",
+                                r"anh=G:\Buoi\DSC 03.ARW", "ts	s	LR_format	JPEG"))
+ds_anh = [o_["anh"][i] for i in range(1, 3)] if o_["anh"] else []
+ktra("docDong: nhiều dòng anh= gom thành danh sách",
+     ds_anh == [r"G:\Buoi\DSC01.ARW", r"G:\Buoi\DSC 03.ARW"], str(ds_anh))
+ph = L.table("g:/buoi/dsc01.arw", r"G:\Buoi\DSC02.ARW", r"G:\Buoi\DSC 03.ARW")
+loc = X.locTheoDs(ph, o_["anh"], L.eval("function(p) return p end"))
+ktra("locTheoDs: giữ đúng ảnh chọn, không phân biệt hoa thường / dấu gạch",
+     [loc[i] for i in range(1, len(loc) + 1)] == ["g:/buoi/dsc01.arw", r"G:\Buoi\DSC 03.ARW"],
+     str([loc[i] for i in range(1, len(loc) + 1)]))
+loc0 = X.locTheoDs(ph, L.table(), L.eval("function(p) return p end"))
+ktra("locTheoDs: danh sách rỗng -> giữ hết", len(loc0) == 3)
+ktra("runRequest: có danh sách ảnh thì KHÔNG lọc sao",
+     "locTheoDs(photos, opts.anh" in src_x if "src_x" in dir() else
+     "locTheoDs(photos, opts.anh" in (GOC / "XuatCore.lua").read_text(encoding="utf-8"))
 src_x = (GOC / "XuatCore.lua").read_text(encoding="utf-8")
 ktra("M.xuat ghi nhip kem buoc 'xuất ảnh a/b' sau moi lo", "Core.ghiNhip(nil, 0" in src_x and "xuất ảnh %d/%d" in src_x)
 

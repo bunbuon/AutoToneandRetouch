@@ -1537,9 +1537,16 @@ def main() -> int:
          not w.o_ghide.winfo_manager() and not w.o_tu_moi.winfo_manager()
          and "Xuất & retouch" in str(w.btn_run.cget("text")), str(w.btn_run.cget("text")))
     goi_xuat = []
-    app.do_xuat_hop = lambda: goi_xuat.append(1)
+    app.do_xuat_hop = lambda **kw: goi_xuat.append(kw)
+    w.luoi.chon(str(raw_dir / "R0.ARW"), cuon_toi=False)
+    w.luoi.chon_het()
+    chay(2)
     w.start()
-    ktra("RAW: bấm chạy -> mở hộp Xuất (không retouch thẳng RAW)", goi_xuat == [1])
+    #  12/10 (user): chỉ xuất ẢNH ĐANG CHỌN, lượt xuất không đổi giao diện trang này
+    ktra("RAW: bấm chạy -> mở hộp Xuất với ĐÚNG ảnh đang chọn, giữ giao diện",
+         len(goi_xuat) == 1 and sorted(Path(p).name for p in goi_xuat[0].get("chi_anh", []))
+         == ["R0.ARW", "R1.ARW", "R2.ARW"] and goi_xuat[0].get("giu_giao_dien") is True,
+         str(goi_xuat))
     r1 = str(raw_dir / "R1.ARW")
     w._mo_mot(r1)
     cho_anh()
@@ -1560,6 +1567,26 @@ def main() -> int:
         Image.new("RGB", (300, 200), (10, 10, 10)).save(xuat_dir / f"R{i}.jpg")
     bat = []
     w._chay_viec = lambda **kw: bat.append(kw)
+    #  12/10: lượt xuất TÁCH (từ ảnh RAW) — trang đứng yên, mức theo lượt
+    w.bat_dau_theo_xuat(vao=str(xuat_dir), ra="", ghi_de=True, muc={"vet": 10},
+                        song_song=True, rieng_ten=goi["rieng_ten"], giu_giao_dien=True)
+    ktra("Xuất ảnh RAW (giữ giao diện): trang vẫn nguồn Ảnh RAW, thư mục Vào giữ nguyên",
+         w.v_nguon.get() == "raw" and w._vao_hien() == str(raw_dir),
+         f"{w.v_nguon.get()} · {w._vao_hien()}")
+    w._chay_anh_moi([str(xuat_dir / "R0.jpg"), str(xuat_dir / "R1.jpg"), str(xuat_dir / "R2.jpg")])
+    viec_t = bat[-1]["viec"] if bat else []
+    nhom_t = sorted((m.get("vet"), sorted(Path(a).name for a in ds)) for m, ds, _l in viec_t)
+    ktra("…lượt tách: R1 theo mức riêng (40), R0/R2 mức chung (10)",
+         nhom_t == [(10, ["R0.jpg", "R2.jpg"]), (40, ["R1.jpg"])], str(nhom_t))
+    bang_x = rt.doc_muc_anh(str(xuat_dir))
+    ktra("…lượt tách: mức riêng ghi vào bảng của THƯ MỤC XUẤT trên đĩa, bảng trang RAW không đổi",
+         (bang_x.get(rt.khoa_anh(str(xuat_dir / "R1.jpg"), str(xuat_dir), False)) or {}).get("vet") == 40
+         and not any(str(k).lower().endswith(".jpg") for k in w._muc_anh), str(bang_x)[:120])
+    try:
+        w._dung_theo_doi("kiểm lượt tách xong")
+    except Exception:                                        # noqa: BLE001
+        pass
+    bat.clear()
     w.bat_dau_theo_xuat(vao=str(xuat_dir), ra="", ghi_de=True, muc={"vet": 10},
                         song_song=True, rieng_ten=goi["rieng_ten"])
     ktra("bắt đầu Xuất: Retouch chuyển nguồn “Ảnh đã xuất”", w.v_nguon.get() == "xuat")
