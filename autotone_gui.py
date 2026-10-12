@@ -2206,6 +2206,8 @@ class App(ttk.Frame):
         self.v_hsl_da = tk.BooleanVar(value=False)    # 9/10: HSL mau da anh cuoi
         self.v_curve = tk.BooleanVar(value=True)
         self.v_scenesig = tk.BooleanVar(value=True)
+        self.v_canh_may = tk.BooleanVar(             # 12/10: at.group_scenes theo_may
+            value=bool(at.DEFAULTS.get("canh_theo_may", True)))
         self.v_level = tk.BooleanVar(value=True)
         self.v_dong_bo_loat = tk.BooleanVar(
             value=bool(at.DEFAULTS.get("dong_bo_loat", True)))
@@ -2569,6 +2571,12 @@ class App(ttk.Frame):
         ct(g_canh, self.v_scenesig, "Tách cảnh theo bối cảnh khung hình",
            "So chữ ký bố cục của từng khung; đổi phông / đổi chỗ đứng thì "
            "sang cảnh mới dù chụp liền tay.")
+        #[[ 12/10 (user): nhieu may chup xen nhau -> gom canh tren TUNG MAY, theo
+        #   ten file — xem at.group_scenes(theo_may). ]]
+        ct(g_canh, self.v_canh_may, "Gom cảnh theo từng máy (xếp theo tên file)",
+           "Buổi nhiều máy chụp cùng lúc: ảnh mỗi máy xếp theo tên file và gom cảnh "
+           "riêng — ảnh máy này không chen vào cảnh của máy kia làm vụn cảnh. Lưới "
+           "ảnh cũng hiện theo thứ tự đó.")
         ct(g_canh, self.v_level, "Đồng bộ sáng + màu trong cùng bối cảnh",
            "Trong một cảnh, đưa mọi tấm về cùng độ sáng và màu SAU chỉnh — "
            "xem liền một dải ảnh không bị nhấp nháy.")
@@ -2623,7 +2631,7 @@ class App(ttk.Frame):
                   self.v_blend, self.v_che_do_sang, self.v_maxev, self.v_maxup,
                   self.v_gain, self.v_hl, self.v_sh, self.v_grade, self.v_curve,
                   self.v_hsl_da, self.v_loai_buoi, self.v_bu_sang, self.v_gap_on, self.v_gap,
-                  self.v_gap_can_sig, self.v_scenesig, self.v_level,
+                  self.v_gap_can_sig, self.v_scenesig, self.v_canh_may, self.v_level,
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
                   self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
                   self.v_ngoai_toi, self.v_bu_k, self.v_bu_tint, self.v_mau_da):
@@ -3319,7 +3327,7 @@ class App(ttk.Frame):
         if self.items:
             ds += thieu                 # bảng đang sắp thế nào thì giữ thế ấy
         else:
-            ds = sorted(ds + thieu, key=lambda o: o["path"])
+            ds = sorted(ds + thieu, key=lambda o: at._ten_tu_nhien(o["path"]))
         #[[ 12/10 (giao dien moi): CHIP LOC Giu / Loai 1★ / Can xem + CANH dang
         #   chon o cot trai — so dem tren CA buoi. Chua phan tich thi chua co
         #   nhan: chi "Tat ca" co so, loc khong tac dung. ]]
@@ -3820,9 +3828,17 @@ class App(ttk.Frame):
                 h.pack(fill="x", pady=(0, 4))
                 h.duong_dan = None
                 self._hang_canh[None] = h
+            #  12/10: cảnh gom theo từng thiết bị (máy + tiền tố tên file) — buổi
+            #  nhiều thiết bị thì ghi rõ cảnh của thiết bị nào
+            nhieu_may = len({at.khoa_thiet_bi(r) for r in self.items or []}) > 1
             for s, ds in sorted(nhom.items(), key=lambda x: x[0]):
                 gio = [r.get("dt_obj") for r in ds if r.get("dt_obj")]
                 phu = (f"{min(gio):%H:%M} – {max(gio):%H:%M}" if gio else "")
+                if nhieu_may:
+                    may, tien_to = at.khoa_thiet_bi(ds[0])
+                    tb = " ".join(x for x in (may.replace("ILCE-", "A"), tien_to.strip("_"))
+                                  if x) or "?"
+                    phu = f"{phu} · {tb}" if phu else tb
                 try:
                     ten = f"Cảnh {int(s):02d}"
                 except (TypeError, ValueError):
@@ -5089,6 +5105,7 @@ class App(ttk.Frame):
                    scene_sig_thresh=(at.DEFAULTS["scene_sig_thresh"]
                                      if self.v_scenesig.get() else 0.0),
                    scene_gap_can_sig=self.v_gap_can_sig.get(),
+                   canh_theo_may=self.v_canh_may.get(),
                    dong_bo_loat=self.v_dong_bo_loat.get(),
                    mat_sang_nhat=self.v_mat_sang_nhat.get(),
                    dong_bo_chu_the=self.v_dong_bo_chu_the.get(),

@@ -956,6 +956,19 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   GoiY tắt khi <Unmap> + `GoiY.an_het()` lúc đổi trang; widget mới gắn sự kiện chuột
   luôn `add="+"` (gắn đè <Leave> là chú thích kẹt). "Tự retouch ảnh mới" luôn TẮT khi
   mở app (không nạp `tu_moi` từ retouch.json).
+- v79: hộp Xuất — "Retouch ngay trong lúc xuất (song song)" mặc định TẮT và hộp mở lên
+  LUÔN tắt (tắt = Lightroom xuất xong rồi retouch); nội dung trong `gd.Cuon` cao tối đa
+  82% màn hình, nút Huỷ / Bắt đầu ghim đáy (hộp cũ cao hơn màn 1080p); BỎ mục 6 "An toàn
+  máy" — an toàn CPU tự theo microcode, bấm Bắt đầu xuất ghi `an_toan_cpu: None`.
+- **Gom cảnh theo máy** (`canh_theo_may`, mặc định BẬT, công tắc trong "Gom cảnh & đồng
+  bộ"): `group_scenes(theo_may=True)` xếp theo (`khoa_thiet_bi` = tên máy + tiền tố tên
+  file trước chữ số, `_ten_tu_nhien` đường dẫn) thay vì giờ; đổi thiết bị = cảnh mới
+  ("doi-may"); cùng thiết bị mà giờ LÙI quá ngưỡng nghỉ = cảnh mới. Lý do (user, BVDay3 hai
+  người chụp xen nhau): xếp theo giờ thì bối cảnh đổi qua lại mỗi vài tấm → 164 cảnh vụn
+  trùng giờ; theo máy 121 cảnh, máy sân khấu (7M4 "DC_") gom trọn 178 ảnh một cảnh. Tắt
+  cả hai luật cảnh thì cũng không tách theo máy. Thứ tự `items` sau plan = thứ tự này →
+  lưới hiện theo máy / tên file; cột Cảnh ghi "A7M4 DC" khi buổi nhiều thiết bị.
+  test_wb_asshot mục 6 đổi tiền đề: hai máy xen kẽ → mỗi máy MỘT cảnh riêng.
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 

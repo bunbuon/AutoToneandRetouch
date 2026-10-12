@@ -16,8 +16,8 @@ Mục kiểm (mỗi nhóm một cảnh riêng; so cùng items khi TẮT wb_theo_
      3. ILCE-7M5 ngày, K 5600 -> As Shot 5317, kéo +23K < 50K -> đứng yên.
      4. ILCE-7M4 đèn, K 4800 -> ảnh đèn kéo lạnh được.
      5. ILCE-7M4 đèn, K 6250 -> kéo ẤM ảnh đèn bị chặn -> đứng yên.
-     6. Một cảnh hai máy xen kẽ (Z 8 6670 + 7M5 5600) -> mỗi máy As Shot của
-        mình: Z 8 kéo như mục 1, 7M5 đứng yên (không ăn As Shot của Z 8).
+     6. Hai máy chụp xen kẽ (Z 8 6670 + 7M5 5600) -> mỗi máy MỘT cảnh riêng (12/10:
+        gom cảnh theo máy) và As Shot của mình: Z 8 kéo như mục 1, 7M5 đứng yên.
      7. Máy đổi K giữa cảnh (5880 -> 5560) -> trung vị (cảnh, máy): cùng Temp.
      8. As Shot THẬT trong catalog (WhiteBalance "As Shot", Temperature 6050)
         được ưu tiên hơn K máy.
@@ -169,8 +169,13 @@ def main() -> int:
     for tien, ngoai in (("NGAYZ8_", True), ("DENLANH_", False), ("DENAM_", False)):
         if any(bool(bat[k].get("ngoai_troi")) != ngoai for k in nhom_k(tien)):
             loi.append(f"Dung bai: nhom {tien} phai la anh {'ngay' if ngoai else 'den'}")
-    if len({bat[k].get("scene") for k in nhom_k("TRON")}) != 1:
-        loi.append("Dung bai: hai may xen ke phai CUNG mot canh")
+    #  12/10: gom cảnh THEO MÁY (canh_theo_may, mặc định bật) — hai máy chụp xen
+    #  kẽ không còn chung một cảnh: mỗi máy gom trọn trong MỘT cảnh của riêng nó.
+    #  Mục 6 (mỗi máy dùng As Shot của mình) vẫn kiểm y như cũ bên dưới.
+    canh_z8 = {bat[k].get("scene") for k in nhom_k("TRONZ8_")}
+    canh_7m5 = {bat[k].get("scene") for k in nhom_k("TRON7M5_")}
+    if len(canh_z8) != 1 or len(canh_7m5) != 1 or canh_z8 == canh_7m5:
+        loi.append(f"Dung bai: hai may xen ke -> moi may MOT canh rieng ({canh_z8} / {canh_7m5})")
 
     # 1
     a = as_shot(6670, bang["NIKON Z 8"])

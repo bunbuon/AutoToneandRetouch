@@ -47,7 +47,7 @@ MAC_DINH = {
     "chi_chua_sao": None,
     "retouch_ra": "rieng",      # rieng = <xuất>_retouch · ghi_de = đè lên ảnh xuất
     "cache_mb": 2048,           # cache xem trước (cache_xem)
-    "tu_retouch": True,         # retouch ngay trong lúc xuất
+    "tu_retouch": False,        # retouch ngay trong lúc xuất (song song) — 12/10: mặc định TẮT
     "preset": "",               # preset retouch dùng cho lượt này ("" = mức đang đặt)
     "ep_song_song": False,      # máy yếu vẫn ép chạy song song
     "thu_muc": "",              # thư mục xuất lần trước — Retouch mặc định mở nó (9/10)
@@ -433,15 +433,19 @@ class XuatDialog(tk.Toplevel):
         self.v_chi_chua_sao = tk.BooleanVar(value=(self._so_da_loc > 0) if ccs is None else bool(ccs))
         self.v_retouch_ra = tk.StringVar(value=cd["retouch_ra"])
         self.v_cache_gb = tk.StringVar(value=f"{cd['cache_mb'] / 1024.0:.1f}".rstrip("0").rstrip("."))
-        self.v_tu_retouch = tk.BooleanVar(value=bool(cd["tu_retouch"]))
+        #[[ 12/10 (user: "mac dinh se tat tinh nang retouch song song"): hop mo len
+        #   LUON tat — tat = Lightroom xuat xong roi moi retouch (tuan tu). Khong nap
+        #   lai lua chon cu: vua xuat vua retouch phai la viec chon cho tung luot. ]]
+        self.v_tu_retouch = tk.BooleanVar(value=False)
         #  9/10: mặc định theo preset đang chọn ở Retouch ("" = Tuỳ chỉnh)
         self.v_preset = tk.StringVar(value=(preset_md if preset_md is not None
                                             else cd.get("preset")) or "")
         self.v_ep = tk.BooleanVar(value=bool(cd["ep_song_song"]))
+        #[[ 12/10 (user: "bo muc 6"): khong con o "Chi dung nhan E" — an toan CPU
+        #   TU QUYET theo microcode (de_xuat_an_toan: Intel 13/14 chua va 0x12B moi
+        #   ghim nhan E). Gia tri luu cung cua ban cu bi xoa khi bam Bat dau xuat. ]]
         self._nhan_e = nhan_e()
-        at_md = cd.get("an_toan_cpu")
-        self.v_an_toan = tk.BooleanVar(value=bool(self._nhan_e) and (
-            de_xuat_an_toan(e=self._nhan_e) if at_md is None else bool(at_md)))
+        self._an_toan = bool(self._nhan_e) and de_xuat_an_toan(e=self._nhan_e)
         self._tn: dict = {}
         self._du_suc = True
 
@@ -450,8 +454,17 @@ class XuatDialog(tk.Toplevel):
             self.configure(background=m["nen"])
         except tk.TclError:
             pass
-        frm = ttk.Frame(self, padding=14)
-        frm.pack(fill="both", expand=True)
+        #[[ 12/10 (user chup "giao dien bi tran vien"): hop cao hon man hinh — nut
+        #   Bat dau xuat roi xuong duoi taskbar. Noi dung nam trong vung CUON, cao toi
+        #   da ~82% man hinh; nut Huy / Bat dau ghim o day, luon thay. ]]
+        self._nut_day = ttk.Frame(self, padding=(14, 10, 14, 14))
+        self._nut_day.pack(side="bottom", fill="x")
+        tk.Frame(self, height=1, background=m["vien"]).pack(side="bottom", fill="x")
+        self._cuon = gd.Cuon(self, nen=m["nen"])
+        self._cuon.theo_noi_dung()
+        self._cuon.pack(fill="both", expand=True)
+        frm = self._cuon.trong
+        frm.configure(padding=(14, 14, 18, 6))
         WRAP = 540
 
         def tieu_de(chu, pady=(14, 4)):
@@ -567,32 +580,8 @@ class XuatDialog(tk.Toplevel):
         ttk.Label(o7, text="Vẫn chạy song song dù máy không đủ sức (tự chịu chậm / treo)").pack(side="left")
         self.o_ep = o7
 
-        # ---- 6. an toàn CPU
-        tieu_de("6 · An toàn máy")
-        o8 = ttk.Frame(frm)
-        o8.pack(fill="x")
-        ct_at = gd.CongTac(o8, self.v_an_toan)
-        ct_at.pack(side="right")
-        ttk.Label(o8, text="Chỉ dùng nhân E khi xuất (Lightroom + retouch)").pack(side="left")
-        if self._nhan_e:
-            ma = vi_ma_cpu()
-            ve_ma = (f"Microcode CPU 0x{ma:X} — "
-                     + ("ĐÃ có bản vá Intel (0x12B trở lên), mặc định tắt."
-                        if ma >= MICROCODE_DA_VA else "CHƯA có bản vá Intel 0x12B, mặc định bật.")
-                     if ma else "Không đọc được microcode — mặc định bật nếu là Intel 13/14.")
-            mo(f"Máy có {len(self._nhan_e)} luồng nhân E ({ten_cpu() or 'CPU lai'}). Bật: trong lúc "
-               "xuất, Lightroom và retouch chỉ chạy trên nhân E — chậm hơn nhưng không "
-               "dùng nhân P. Intel thế hệ 13/14 chưa cập nhật BIOS dễ SẬP MÁY (màn hình "
-               "xanh) khi nhân P chạy nặng — máy này đã sập như vậy. Xuất xong app trả "
-               "lại như cũ. Sửa tận gốc: cập nhật BIOS mainboard. " + ve_ma)
-        else:
-            ct_at.configure(state="disabled")
-            self.v_an_toan.set(False)
-            mo("CPU này không có nhân E — không áp dụng.")
-
-        # ---- nút
-        nut_ = ttk.Frame(frm)
-        nut_.pack(fill="x", pady=(14, 0))
+        # ---- nút (ghim đáy hộp, ngoài vùng cuộn)
+        nut_ = self._nut_day
         self.btn_bat_dau = gd.NutTron(nut_, "Bắt đầu xuất", kieu="chinh", command=self._bat_dau)
         self.btn_bat_dau.pack(side="right")
         gd.NutTron(nut_, "Huỷ", kieu="phu", command=self._huy).pack(side="right", padx=(0, 8))
@@ -607,8 +596,14 @@ class XuatDialog(tk.Toplevel):
         self.after(50, self._do_tai_nguyen)
         try:
             self.update_idletasks()
+            cao_nd = self._cuon.trong.winfo_reqheight()
+            cao_max = int(self.winfo_screenheight() * 0.82) - self._nut_day.winfo_reqheight()
+            self._cuon.canvas.configure(height=max(200, min(cao_nd, cao_max)))
+            self.update_idletasks()
             x = cha.winfo_rootx() + max(0, (cha.winfo_width() - self.winfo_reqwidth()) // 2)
-            y = cha.winfo_rooty() + max(0, (cha.winfo_height() - self.winfo_reqheight()) // 3)
+            y = max(0, min(cha.winfo_rooty() + max(0, (cha.winfo_height()
+                                                       - self.winfo_reqheight()) // 3),
+                           self.winfo_screenheight() - self.winfo_reqheight() - 60))
             self.geometry(f"+{x}+{y}")
         except tk.TclError:
             pass
@@ -816,18 +811,15 @@ class XuatDialog(tk.Toplevel):
                 + ".\n\nVẫn chạy song song? Có thể rất chậm hoặc hết bộ nhớ.", parent=self):
             return
         preset = self._ten_preset()
-        an_toan = bool(self.v_an_toan.get()) and bool(self._nhan_e)
+        an_toan = bool(self._an_toan)
         chi_chua = bool(self.v_chi_chua_sao.get())
         ghi_cai_dat({"chi_chua_sao": chi_chua, "chat": chat, "va_cham": self.v_va_cham.get(),
                      "bo_sao1": bool(self.v_bo_sao1.get()),
                      "retouch_ra": self.v_retouch_ra.get(), "cache_mb": cache_mb,
                      "tu_retouch": tu, "preset": preset, "ep_song_song": bool(self.v_ep.get()),
                      "thu_muc": tm,
-                     #  12/10: chỉ lưu CỨNG khi người dùng chọn KHÁC đề xuất — để None thì
-                     #  cập nhật BIOS / đổi máy xong app tự theo microcode mới.
-                     "an_toan_cpu": (None if not self._nhan_e
-                                     or an_toan == de_xuat_an_toan(e=self._nhan_e)
-                                     else an_toan)})
+                     #  12/10: không còn ô chọn -> luôn tự quyết theo microcode
+                     "an_toan_cpu": None})
         try:
             import cache_xem
             cache_xem.lay_chung().dat_gioi_han_mb(cache_mb)

@@ -147,9 +147,10 @@ def phan_preset():
 def phan_cai_dat():
     import xuat_ui
     cd = xuat_ui.doc_cai_dat()
-    ktra("mặc định: 80 / overwrite / thư mục riêng / 2 GB / retouch ngay",
+    #  12/10 (user): retouch SONG SONG mặc định TẮT (xuất xong rồi mới retouch)
+    ktra("mặc định: 80 / overwrite / thư mục riêng / 2 GB / song song TẮT",
          cd["chat"] == 80 and cd["va_cham"] == "overwrite" and cd["retouch_ra"] == "rieng"
-         and cd["cache_mb"] == 2048 and cd["tu_retouch"] is True)
+         and cd["cache_mb"] == 2048 and cd["tu_retouch"] is False)
     xuat_ui.ghi_cai_dat({"chat": 95, "va_cham": "skip", "retouch_ra": "ghi_de", "cache_mb": 512,
                          "tu_retouch": False, "preset": "P", "rac": 1})
     cd = xuat_ui.doc_cai_dat()

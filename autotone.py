@@ -2671,6 +2671,12 @@ DEFAULTS = {
     #   Chi co tac dung khi scene_sig_thresh > 0. Xem group_scenes().
     #]]
     "scene_gap_can_sig": True,
+    #[[ 12/10 (user, buoi BVDay3 hai may chup xen nhau: "gom cac canh dang bi gom
+    #   nhieu canh trung nhau do preview sort files. Hay load preview theo sort name
+    #   ... neu su dung nhieu thiet bi thi gom canh theo thiet bi cac files se khong
+    #   bi ngat quang"): gom canh tren TUNG MAY — xep theo (may, tien to ten file,
+    #   ten file tu nhien), doi may la canh moi. Xem group_scenes(). ]]
+    "canh_theo_may": True,
     #[[ San phang KET QUA trong cung mot canh (0 = tat, 1 = san hoan toan).
     #
     #   Khac voi viec nham chung mot muc dich: nhieu anh bi chan giua chung
@@ -4544,9 +4550,35 @@ def _tra_mat_goc(items: list) -> None:
         r.pop("chu_the_af", None)
 
 
+def _ten_tu_nhien(path) -> tuple:
+    """Khoá sắp xếp tên file TỰ NHIÊN (DSC9 < DSC10), theo cả đường dẫn."""
+    s = str(path or "").replace("\\", "/").lower()
+    return tuple((1, int(t)) if t.isdigit() else (0, t)
+                 for t in re.split(r"(\d+)", s) if t)
+
+
+def khoa_thiet_bi(r: dict) -> tuple:
+    """Một THIẾT BỊ = (tên máy, tiền tố tên file trước chữ số đầu: "DSC_", "SAY",
+    "_DSC"…). Hai người chụp cùng đời máy mà đặt tiền tố khác nhau vẫn tách được."""
+    may = " ".join(str(r.get("model") or "").split()).upper()
+    ten = Path(str(r.get("path") or "")).stem
+    m = re.match(r"\D*", ten)
+    return (may, (m.group(0) if m else "").upper())
+
+
 def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
-                 sig_min_shots: int = 3, can_sig: bool = True) -> None:
+                 sig_min_shots: int = 3, can_sig: bool = True,
+                 theo_may: bool = False) -> None:
     """Gán scene id theo thời gian, và (tuỳ chọn) theo BỐI CẢNH khung hình.
+
+    THEO MÁY (theo_may=True, 12/10 — mặc định của plan qua cfg "canh_theo_may")
+        Buổi nhiều máy chụp xen nhau (một máy sân khấu, một máy bàn tiệc): xếp
+        theo GIỜ thì bối cảnh đổi qua lại mỗi vài tấm -> cắt vụn thành hàng trăm
+        cảnh 3–8 ảnh trùng giờ (BVDay3: 164 cảnh / 1813 ảnh). Nên xếp theo
+        (thiết bị, tên file tự nhiên) — đúng thứ tự Lightroom sắp theo tên — và
+        ĐỔI THIẾT BỊ là cảnh mới; giờ nhảy LÙI quá ngưỡng nghỉ (hai thân máy cùng
+        đời, cùng tiền tố) cũng là cảnh mới. Trong một máy, tên file tăng theo
+        giờ nên luật nghỉ / bối cảnh giữ nguyên nghĩa.
 
     HAI LUẬT, MỖI LUẬT TẮT ĐƯỢC RIÊNG
         gap_minutes <= 0  ->  KHÔNG tách theo thời gian
@@ -4573,10 +4605,17 @@ def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
         và nó không sập, không báo gì: chỉ ra 1464 cảnh thay vì 132, rồi mọi
         phép trung vị theo cảnh mất nghĩa. Nên số 0 phải được hiểu là TẮT.
     """
-    items.sort(key=lambda r: r["dt_obj"])
+    #  tắt CẢ HAI luật (cả buổi một cảnh) thì cũng không tách theo máy
+    theo_may = bool(theo_may) and (gap_minutes > 0 or sig_thresh > 0)
+    if theo_may:
+        items.sort(key=lambda r: (khoa_thiet_bi(r), _ten_tu_nhien(r.get("path")),
+                                  r["dt_obj"]))
+    else:
+        items.sort(key=lambda r: r["dt_obj"])
     theo_gio = gap_minutes > 0
     gap = timedelta(minutes=gap_minutes) if theo_gio else None
     sid, prev = 0, None
+    prev_tb = None
     ref = None          # chữ ký trung bình của cảnh đang mở
     nref = 0
     pending = 0         # số khung liên tiếp đang lệch khỏi cảnh hiện tại
@@ -4585,6 +4624,13 @@ def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
     prev_ngoai = None
     for r in items:
         cut_gio = bool(theo_gio and prev is not None and r["dt_obj"] - prev > gap)
+        tb = khoa_thiet_bi(r) if theo_may else None
+        cut_may = prev_tb is not None and tb != prev_tb
+        #  cùng thiết bị mà giờ LÙI quá ngưỡng: thân máy khác cùng đời / cùng tiền tố
+        if theo_may and not cut_may and prev is not None and theo_gio \
+                and prev - r["dt_obj"] > gap:
+            cut_gio = True
+        prev_tb = tb
 
         #[[ TRONG NHA VA NGOAI TROI KHONG BAO GIO CHUNG MOT CANH.
         #
@@ -4643,9 +4689,11 @@ def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
         #   ngoai troi. Da mac dung the: gop truoc veto thi cut bi nuot, hai
         #   nhom van ve chung mot canh va buoc san phang xoa mat viec phan loai.
         #]]
-        cut = cut_gio or cut_moi_truong
+        cut = cut_gio or cut_moi_truong or cut_may
         if cut_moi_truong and not cut_gio:
             r["scene_cut"] = "doi-trong-ngoai"
+        if cut_may:
+            r["scene_cut"] = "doi-may"
 
         if s is not None:
             if cut or ref is None:
@@ -4727,7 +4775,8 @@ def group_scenes(items: list, gap_minutes: float, sig_thresh: float = 0.0,
                 #   trong khi chu ky lech 0 va nhat cat that ra do EV100 cua MOT
                 #   tam vuot nguong ev_ngoai_troi. Doc bao cao la di tim sai cho.
                 #]]
-                r["scene_cut"] = ("gio" if cut_gio else
+                r["scene_cut"] = ("doi-may" if cut_may else
+                                  "gio" if cut_gio else
                                   "doi-trong-ngoai" if cut_moi_truong else
                                   "boi-canh")
             cho = []
@@ -8906,7 +8955,8 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
     group_scenes(items, cfg["gap_minutes"],
                  float(cfg.get("scene_sig_thresh", 0.0)),
                  int(cfg.get("scene_sig_min_shots", 3)),
-                 bool(cfg.get("scene_gap_can_sig", True)))
+                 bool(cfg.get("scene_gap_can_sig", True)),
+                 theo_may=bool(cfg.get("canh_theo_may", True)))
 
     # decide() cần AsShotTemperature ở mức cả cảnh nên phải nạp thông số trước
     if cfg.get("source") == "catalog":
