@@ -148,7 +148,10 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #  12/10: góp dữ liệu buổi đã sửa tay (import trong hàm — autotone_gui, retouch_may)
         "gop_y",
         #  12/10 giao diện mới: trang 5 · Xử lý & xuất (import trong App._build_xu_ly)
-        "xu_ly_ui"]
+        "xu_ly_ui",
+        #  13/10: nút Xử lý ảnh (mixin của App), mô phỏng thông số lên ảnh xem trước,
+        #  cột Thư mục kiểu Lightroom — autotone_gui.pyd import, PyInstaller không thấy
+        "xu_ly_anh_ui", "mo_phong_anh", "cot_thu_muc"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).

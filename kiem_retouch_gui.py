@@ -103,6 +103,10 @@ def main() -> int:
     root = tk.Tk()
     root.geometry("1660x940")
     gd.dat_theme(root)
+    #[[ 13/10: hop ban quyen gio la cua so MODAL (grab) — thu muc du lieu tam khong
+    #   co key thi no chan moi cu bam gia lap cua bai nay. Tat vong kiem han (nhu
+    #   chup_app); hop ban quyen co bai rieng (kiem_bq_giao_dien). ]]
+    ag.App._soi_khoa = lambda self: None
     app = ag.App(root)
     app.grid(row=0, column=0, sticky="nsew")
     #[[ 7/10: nut Chay retouch va vong tu retouch anh moi di qua chot ban quyen
@@ -576,7 +580,7 @@ def main() -> int:
          and not any("Xem trước" in t for t in chu_cc) and not hasattr(w, "btn_xem"),
          " · ".join(t for t in chu_cc if t) or "—")
     ktra("đang ở Retouch thì nút của Cân tone ẩn đi",
-         not app.btn_analyze.winfo_ismapped() and not app.btn_ghi3.winfo_ismapped()
+         not app.btn_xu_ly.winfo_ismapped() and not app.btn_xuat_anh.winfo_ismapped()
          and not app.lbl_job.winfo_ismapped())
     rong_rt = app.ben_phai.winfo_width()
     ktra("tuỳ chọn Retouch nằm ở bảng điều khiển phải",
@@ -1428,7 +1432,7 @@ def main() -> int:
         root.update()
     rong_tone = app.ben_phai.winfo_width()
     ktra("đổi mô-đun thì bảng điều khiển không đổi bề ngang",
-         rong_tone == rong_rt and app.btn_analyze.winfo_ismapped()
+         rong_tone == rong_rt and app.btn_xu_ly.winfo_ismapped()
          and not w.btn_run.winfo_ismapped(), f"Cân tone {rong_tone} px · Retouch {rong_rt} px")
 
     #[[ NUT RESET VE 0 (5/10) — dat o CUOI de khong lam lech trinh tu test tren.

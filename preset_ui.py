@@ -305,7 +305,7 @@ class DieuPhoiPreset:
         if self.loai == "ap":
             self.bao_xong = (f"Đã áp “{(self.p or {}).get('ten', '')}” vào Lightroom: {n} ảnh"
                              + (f" · ⚠ {lech} ảnh khác preset (xem Nhật ký plugin)" if lech else "")
-                             + " — chạy lại 1 · Phân tích để tool tính trên preset mới")
+                             + " — bấm lại Xử lý ảnh để tool tính trên preset mới")
         else:
             self.bao_xong = (f"Đã hoàn tác lần áp: {n} ảnh về như trước"
                              + (f" · ⚠ {lech} ảnh trả lại chưa khớp" if lech else ""))
@@ -852,7 +852,7 @@ class BangPresetLR(tk.Toplevel):
                 "preset có (WB, sáng, HSL…) thay số đang có; thông số khác giữ nguyên. (Khác "
                 "lệnh Sync Settings — lệnh đó chép TOÀN BỘ thông số của một ảnh.)\n\n"
                 "• Chỉnh WB / tone tool đã ghi sẽ bị preset ghi đè ở các khoá preset có → "
-                "chạy lại 1 · Phân tích rồi 2 · Ghi.\n"
+                "bấm lại Xử lý ảnh.\n"
                 "• App giữ sổ hoàn tác: bấm “Hoàn tác lần áp” để trả về như trước.\n"
                 "• Ảnh không có trong catalog thì bỏ qua."):
             return

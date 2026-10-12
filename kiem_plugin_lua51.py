@@ -389,6 +389,141 @@ ktra("runRequest bao app 'da huy tren thanh tien do Lightroom'",
      "da huy tren thanh tien do Lightroom" in src_x3 and "res.huy_lr" in src_x3)
 shutil.rmtree(tam2, ignore_errors=True)
 
+# ---- 7. DanhSachCore (13/10): danh sach anh cua buoi trong catalog -> luoi app
+import autotone as at_
+DS = L.eval('require("DanhSachCore")')
+L.execute('''
+DS_ANH = {}
+local function anh(p) return { p = p, getRawMetadata = function(self, k) return self.p end } end
+DS_THEM = function(p) DS_ANH[#DS_ANH + 1] = anh(p) end
+DS_BO = function(i) table.remove(DS_ANH, i) end
+DS_CO_THU_MUC = true
+local cat = { getFolderByPath = function(self, p)
+                  if not DS_CO_THU_MUC then return nil end
+                  return { getPhotos = function(self, con)
+                      local t = {} for i = 1, #DS_ANH do t[i] = DS_ANH[i] end return t end }
+              end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat end
+''')
+for p in ("G:/BuoiX/DSC02.ARW", "G:/BuoiX/DSC01.ARW", "G:/BuoiX/DSC03.ARW"):
+    L.globals().DS_THEM(p)
+at_.theo_doi_ds_lr("G:/BuoiX", True, job_dir=jobs)
+ktra("theo_doi_ds_lr: lan hai cung noi dung -> khong ghi lai",
+     at_.theo_doi_ds_lr("G:/BuoiX", True, job_dir=jobs) is False)
+ghi1 = DS.runTheoDoi(True)
+kq1 = at_.doc_ds_lr("G:/BuoiX", job_dir=jobs)
+ktra("DanhSach: ghi ds_catalog.tsv, app doc ra du 3 anh (khong phan biet hoa thuong)",
+     ghi1 is True and kq1 is not None and len(kq1[0]) == 3
+     and at_.khoa_duong_dan("g:/buoix/dsc01.arw") in kq1[0], str(kq1 and sorted(kq1[0])))
+ktra("DanhSach: khong doi gi -> khong ghi lai", DS.runTheoDoi(True) is False)
+L.globals().DS_BO(1)
+os.utime(jobs / "ds_catalog.tsv", (1, 1))          # mtime khac han -> app doc lai
+ghi2 = DS.runTheoDoi(True)
+kq2 = at_.doc_ds_lr("G:/BuoiX", job_dir=jobs)
+ktra("DanhSach: Lightroom xoa 1 anh -> file con 2 anh",
+     ghi2 is True and kq2 is not None and len(kq2[0]) == 2
+     and at_.khoa_duong_dan("G:/BuoiX/DSC02.ARW") not in kq2[0], str(kq2 and sorted(kq2[0])))
+ktra("doc_ds_lr: file cua buoi KHAC -> None (khong loc nham)",
+     at_.doc_ds_lr("G:/BuoiKhac", job_dir=jobs) is None)
+L.globals().DS_CO_THU_MUC = False
+DS.runTheoDoi(True)
+ktra("DanhSach: thu muc chua import vao catalog -> trong_catalog=0 -> app khong loc (None)",
+     "#trong_catalog=0" in (jobs / "ds_catalog.tsv").read_text(encoding="utf-8")
+     and at_.doc_ds_lr("G:/BuoiX", job_dir=jobs) is None)
+(jobs / at_.TEN_THEO_DOI_DS).unlink()
+ktra("DanhSach: khong co yeu cau theo doi -> khong lam gi", DS.runTheoDoi(True) is False)
+#  7b. cay thu muc cua catalog (cot Thu muc)
+L.execute('''
+local function tm(p, n, con) return { p = p, n = n, con = con or {},
+    getPath = function(self) return self.p end,
+    getPhotos = function(self, gom) local t = {} for i = 1, self.n do t[i] = i end return t end,
+    getChildren = function(self) return self.con end } end
+TM_GOC = { tm([[G:\\]], 0, { tm([[G:\\BVDay3]], 1813), tm([[G:\\Quyen]], 1, { tm([[G:\\Quyen\\Ngay1]], 935) }) }) }
+local cat = { getFolders = function(self) return TM_GOC end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat end
+''')
+ktra("ThuMuc: chua co yeu cau -> khong lam gi", DS.runThuMuc(True) is False)
+at_.theo_doi_thu_muc_lr(job_dir=jobs)
+ktra("ThuMuc: co yeu cau -> ghi thu_muc_catalog.tsv", DS.runThuMuc(True) is True)
+kq_tm = at_.doc_thu_muc_lr(job_dir=jobs)
+ktra("ThuMuc: app doc du 4 thu muc, cha / so anh rieng dung",
+     kq_tm is not None and kq_tm[0] == [("G:\\", "", 0), ("G:\\BVDay3", "G:\\", 1813),
+                                        ("G:\\Quyen", "G:\\", 1),
+                                        ("G:\\Quyen\\Ngay1", "G:\\Quyen", 935)],
+     str(kq_tm and kq_tm[0]))
+ktra("ThuMuc: khong doi gi -> khong ghi lai", DS.runThuMuc(True) is False)
+
+# ---- 8. DenoiseCore (13/10): bat Denoise tung anh trong Develop
+L.execute('''
+DN = { trangThai = {}, chon = nil, module = "library", vao = {}, goi = 0 }
+local function anh(i, p) return { localIdentifier = i, p = p,
+    getFormattedMetadata = function(self) return self.p end } end
+DN.ds = { ["G:/B/A1.ARW"] = anh(1, "A1"), ["G:/B/A2.ARW"] = anh(2, "A2") }
+DN.trangThai[2] = true                        -- A2 da bat Denoise tu truoc
+DC_GIA = {
+  getEnhancePanelState = function()
+    return { denoiseEnabled = true, denoiseState = DN.trangThai[DN.chon and DN.chon.localIdentifier] or false }
+  end,
+  setEnhance = function(ten, v) DN.goi = DN.goi + 1; DN.trangThai[DN.chon.localIdentifier] = v end,
+}
+AV_GIA = { getCurrentModuleName = function() return DN.module end,
+           switchToModule = function(m) DN.module = m; DN.vao[#DN.vao + 1] = m end }
+local cat = { findPhotoByPath = function(self, p) return DN.ds[p] end,
+              setSelectedPhotos = function(self, a, ds) DN.chon = a end,
+              getTargetPhoto = function(self) return DN.chon end,
+              getTargetPhotos = function(self) return {} end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat end
+local cu = import
+function import(n)
+  if n == "LrDevelopController" then return DC_GIA end
+  if n == "LrApplicationView" then return AV_GIA end
+  return cu(n)
+end
+''')
+DN = L.eval('require("DenoiseCore")')
+ma_, ds_ = DN.phanTich("#ma=m7\nG:/B/A1.ARW\n\n G:/B/A2.ARW \n#x\n")
+ktra("DenoiseCore.phanTich: ma + danh sach (bo dong trong / chu thich)",
+     ma_ == "m7" and [ds_[i] for i in range(1, len(ds_) + 1)] == ["G:/B/A1.ARW", "G:/B/A2.ARW"])
+ktra("DenoiseCore.coHam: thieu ham -> false, co setEnhance -> true",
+     DN.coHam(L.eval("{}")) is False and DN.coHam(L.eval("DC_GIA")) is True)
+ktra("DenoiseCore.dangBat: true / 'on' / false",
+     DN.dangBat(L.eval("{ denoiseState = true }")) and DN.dangBat(L.eval("{ denoiseState = 'on' }"))
+     and not DN.dangBat(L.eval("{ denoiseState = false }")) and not DN.dangBat(None))
+items_dn = [{"path": "G:/B/A1.ARW", "iso": 3200}, {"path": "G:/B/A2.ARW", "iso": 2000},
+            {"path": "G:/B/A3.ARW", "iso": 6400}, {"path": "G:/B/A4.ARW", "iso": 800},
+            {"path": "G:/B/A5.ARW", "iso": 4000, "ngoai_xuat": True}]
+chon_dn = at_.anh_can_denoise(items_dn, {"denoise": True, "denoise_iso": 2000})
+ktra("anh_can_denoise: ISO >= 2000, bo anh ngoai ban xuat / ISO thap",
+     chon_dn == ["G:/B/A1.ARW", "G:/B/A2.ARW", "G:/B/A3.ARW"], str(chon_dn))
+ktra("anh_can_denoise: tat Denoise -> khong anh nao",
+     at_.anh_can_denoise(items_dn, {"denoise": False, "denoise_iso": 2000}) == [])
+at_.yeu_cau_denoise(chon_dn, "m8", job_dir=jobs)
+ktra("tien_do_denoise: truoc khi plugin nhan -> cho, chua co ket qua",
+     at_.tien_do_denoise("m8", job_dir=jobs)["cho"] is True)
+DN.runRequest()
+td_dn = at_.tien_do_denoise("m8", job_dir=jobs)
+kq_dn = td_dn["ket_qua"] or {}
+G = L.globals().DN
+ktra("Denoise: bat A1, A2 da co, A3 khong co trong catalog",
+     kq_dn.get("bat") == "1" and kq_dn.get("da_co") == "1" and kq_dn.get("khong_thay") == "1"
+     and G.goi == 1 and G.trangThai[1] is True, str(kq_dn))
+ktra("Denoise: vao Develop roi tra ve module cu (library); tien do 2/2; yeu cau da duoc nhan",
+     G.module == "library" and G.vao[1] == "develop" and td_dn["xong"] == 2 and td_dn["tong"] == 2
+     and td_dn["cho"] is False, f"{G.module} · {td_dn}")
+ktra("tien_do_denoise: ma luot khac -> khong lan ket qua",
+     at_.tien_do_denoise("m-khac", job_dir=jobs)["ket_qua"] is None)
+L.execute('DC_GIA.setEnhance = nil; DC_GIA.toggleEnhance = nil')
+at_.yeu_cau_denoise(["G:/B/A1.ARW"], "m9", job_dir=jobs)
+DN.runRequest()
+ktra("Denoise: Lightroom cu (khong co setEnhance) -> ly_do lightroom-chua-ho-tro",
+     (at_.tien_do_denoise("m9", job_dir=jobs)["ket_qua"] or {}).get("ly_do") == "lightroom-chua-ho-tro")
+src_init = (GOC / "Init.lua").read_text(encoding="utf-8")
+ktra("Init.lua goi DanhSach.runTheoDoi + Denoise.runRequest (Denoise chi khi autoApply)",
+     "DanhSach.runTheoDoi" in src_init and "Denoise and prefs.autoApply" in src_init)
+
 shutil.rmtree(tam, ignore_errors=True)
 print("TAT CA DAT" if not LOI else f"{len(LOI)} LOI")
 sys.exit(1 if LOI else 0)

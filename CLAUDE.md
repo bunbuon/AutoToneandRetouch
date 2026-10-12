@@ -987,6 +987,42 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
 - v82 (user thử v81): nút Phân tích khi đã có kết quả GIỮ CHỮ "Phân tích lại" (bản trước
   chỉ còn biểu tượng → khó tìm). Bảng phải Cân sáng MẶC ĐỊNH là "Thiết lập cân sáng"
   (`_xem_thiet_lap = True` lúc dựng); nút ⚙ / X mới về chi tiết ảnh.
+- v83 (13/10, 6 yêu cầu của user):
+  1. **Lưới theo Lightroom**: `DanhSachCore.lua` (plugin) — app ghi `jobs/theo_doi_ds.txt`
+     (thư mục + con=), plugin ~4 giây đọc ảnh của thư mục trong catalog (GỒM ảnh 1★, khác
+     bản xuất thông số) và CHỈ ghi `ds_catalog.tsv` khi đổi; `#trong_catalog=0` = thư mục
+     chưa import → app KHÔNG lọc. App: `at.theo_doi_ds_lr` / `at.doc_ds_lr` → `self._ds_lr`,
+     `_trong_lr()`; lọc lưới (`_cap_nhat_luoi`, ảnh thêm lại sau khi phân tích hiện "chưa phân
+     tích"), cảnh, số đếm, ảnh đem đo (start_analyze) và ảnh đem áp (do_apply); `_soi_xuat`
+     3 giây đọc lại. Plugin cũ không có module → không có file → không lọc.
+  2. **Nút "Xử lý ảnh"** (`xu_ly_anh_ui.py`: `XuLyAnhMixin` + `HopXuLy`) thay Phân tích + Áp:
+     `start_analyze(chuoi=True, dung_kho=True)` — CHỈ đo ảnh chưa có kết quả lưu
+     (`nap_ket_qua_do(mot_phan)`; đủ hết thì chờ bản xuất Lightroom ≤20 s rồi plan) → `_on_analyzed`
+     → `_xl_sau_do` (dừng nếu CANH_BAO_XUAT / CANH_BAO_PLUGIN) → `do_apply(tu_dong=True)` (không
+     hộp; ảnh Loại theo Thiết lập › Lọc ảnh "Áp cả ảnh Loại 1★", mặc định bật) → `_watch_job`
+     báo `_xl_job` (tiến độ từ `plugin_buoc`) → .done = xong (`_da_ap_lr`) → Denoise → hộp
+     hiện lại thành tổng kết + chuông. Đo lại cả buổi: ⋯ → "Phân tích lại cả buổi".
+  3. **Mô phỏng thông số lên ảnh xem trước** (`mo_phong_anh.py`): ảnh nhúng ≈ Lightroom Exposure 0 +
+     WB máy → áp `new_exposure` + Bradford WB máy → (new_temp, new_tint) ("tuyet_doi"); ảnh preset
+     / duyệt chỉ áp phần đổi ("tuong_doi"). Gỡ vai sáng trước khi nhân 2^EV (EV 0 = y nguyên).
+     Lưới: `o["mp"]` trong khoá `_anh_tk`; bảng chi tiết + histogram "sau"; ảnh lớn
+     `KhungAnh.mo(bien_doi=)`, Trước = chính file đó; `_lam_moi_anh_lon` sau mỗi refresh_plan.
+  4. **Denoise** (Thiết lập › Ghìm & bảo vệ — nhóm thứ 8 làm bảng không vừa 1180x680): tắt, ISO
+     2000, ô ISO khoá khi tắt. Lightroom 15.5 có `LrDevelopController.setEnhance("denoise", true)`
+     / `toggleEnhance` / `getEnhancePanelState` (đọc chuỗi trong Develop.lrmodule — CHƯA thử
+     Lightroom thật). `DenoiseCore.lua` = yêu cầu RIÊNG `request_denoise.txt` sau khi job áp xong
+     (bài học applyJob: tính năng chưa thử không vào đường áp chính): mở Develop, chọn từng ảnh,
+     bật, trả module / vùng chọn cũ; `denoise_tien_do.txt`, `ketqua_denoise.txt` (ma lượt). Chỉ
+     chạy khi autoApply bật. App rút yêu cầu sau 90 s không ai nhận (plugin cũ).
+  5. **Cột Thư mục** (`cot_thu_muc.py`) ngoài cùng trái, cột Cảnh lùi vào: plugin
+     `DanhSachCore.runThuMuc` ghi `thu_muc_catalog.tsv` (getFolders → getChildren, số ảnh riêng)
+     ~2 phút / khi app ghi lại `theo_doi_thu_muc.txt`; app gộp số con, nhóm theo ổ (nhãn ổ + còn
+     trống / tổng), thêm buổi đã mở trong tool (thanh_luoi "thu_muc_da_mo") mà Lightroom không
+     có; bấm = mở buổi. Hiện khi thân ≥ 105 đơn vị (~1700 px; Cảnh ≥ 72).
+  6. **Hộp bản quyền**: lớp phủ cũ grid hàng 1–2 bị thân app (hàng 3, giao diện 12/10) đè →
+     nay Toplevel transient + grab + màn tối che cả app, nổi lên khi cửa sổ chính được focus,
+     đóng = thoát app; bỏ nút CSV / Khôi phục trên hộp (user: không cho dùng khi chưa có key).
+  Bài kiểm mới: test_xu_ly_anh.py (đầu-cuối), kiem_plugin_lua51 mục 7–8, kiem_bq_giao_dien.
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 

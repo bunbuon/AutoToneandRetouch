@@ -78,6 +78,16 @@ def main() -> int:
 
     # 2. Nhan dung: o nhap va nut phai co
     ket("lớp khoá có ô nhập key", hasattr(app, "v_ma"))
+    #[[ 13/10 (user): hop nhap key bi AN SAU giao dien app (lop phu cu o hang luoi 1–2
+    #   cua bo cuc truoc 12/10). Nay la cua so rieng tren app, che ca app, dong = thoat. ]]
+    lop = getattr(app, "_lop_khoa", None)
+    ket("hộp khoá là cửa sổ riêng nằm trên app (Toplevel transient của cửa sổ chính)",
+        isinstance(lop, tk.Toplevel) and str(lop.transient()) == str(goc), repr(lop))
+    nen = getattr(app, "_man_khoa", None)
+    ket("màn tối che CẢ app phía sau (mọi hàng)",
+        nen is not None and int(nen.grid_info().get("rowspan", 1)) >= 5)
+    ket("đóng hộp khoá = thoát app",
+        lop is not None and "_thoat_vi_khoa" in str(lop.protocol("WM_DELETE_WINDOW")))
 
     # 3. Nhap KEY BAN QUYEN that vao o that, bam nut that
     key = cap_key.tao_key(4242, 365)
@@ -101,7 +111,7 @@ def main() -> int:
         if getattr(app, "_lop_khoa", None) is None:
             break
     ket("lớp khoá tự gỡ sau khi kích hoạt",
-        getattr(app, "_lop_khoa", None) is None)
+        getattr(app, "_lop_khoa", None) is None and getattr(app, "_man_khoa", None) is None)
 
     # 5. Thanh trang thai hien dung ban quyen, khong con "dung thu"
     txt = app.lbl_han.cget("text")

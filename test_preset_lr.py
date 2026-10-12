@@ -271,9 +271,9 @@ if root is not None:
     app.status = lambda chu, *a, **k: goi_status.append(chu)
     dp._soi()
     chay(3)
-    ktra("áp xong: bỏ kho preset KHÁC (trạng thái cũ), giữ kho preset vừa áp, báo chạy lại Phân tích",
+    ktra("áp xong: bỏ kho preset KHÁC (trạng thái cũ), giữ kho preset vừa áp, báo bấm lại Xử lý ảnh",
          not kho2.exists() and preset_lr.thu_muc_kho(buoi, P).exists()
-         and any("Phân tích" in x for x in goi_status), str(goi_status[-1:]))
+         and any("Xử lý ảnh" in x for x in goi_status), str(goi_status[-1:]))
     ktra("áp xong: lưới dựng tiếp theo preset (lượt xem mới)", dp.loai == "xem")
     ktra("có sổ -> nút Hoàn tác dùng được", dp.co_hoan_tac())
     ok_ht = dp.hoan_tac()

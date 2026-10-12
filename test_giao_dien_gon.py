@@ -230,10 +230,10 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
             "Thiết lập": app.btn_thiet_lap}
     vang = [k for k, w in tren.items()
             if not (la_con_cua(w, cc) and w.winfo_ismapped())]
-    duoi = {"Phân tích": app.btn_analyze, "Áp": app.btn_ghi3}
+    duoi = {"Xuất ảnh": app.btn_xuat_anh, "Xử lý ảnh": app.btn_xu_ly}
     vang += [k for k, w in duoi.items()
              if not (la_con_cua(w, app.thanh_tt) and w.winfo_ismapped())]
-    ktra("thanh trên: buổi ▾ · lần gửi · ⋯ · Thiết lập; thanh dưới: Phân tích · Áp",
+    ktra("thanh trên: buổi ▾ · lần gửi · ⋯ · Thiết lập; thanh dưới: Xuất ảnh · Xử lý ảnh",
          not vang, f"thiếu {vang}" if vang else "như bản thiết kế")
     ktra("hạn dùng luôn hiện ở thanh trạng thái",
          la_con_cua(app.lbl_han, app.thanh_tt) and app.lbl_han.winfo_ismapped()
@@ -279,10 +279,11 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          app.nut_ve.cget("text"))
 
     # ------------------------------------------------ 2. nút Ghi
-    chu_ap = str(app.btn_ghi3.cget("text"))
-    ktra("nút Áp vào Lightroom ở thanh dưới, nhìn thấy được",
-         la_con_cua(app.btn_ghi3, app.thanh_tt) and app.btn_ghi3.winfo_ismapped()
-         and ("Áp" in chu_ap or "Ghi" in chu_ap), chu_ap)
+    chu_ap = str(app.btn_xu_ly.cget("text"))
+    #  13/10 (user): Phân tích + Áp gộp thành MỘT nút "Xử lý ảnh"
+    ktra("nút Xử lý ảnh ở thanh dưới, nhìn thấy được",
+         la_con_cua(app.btn_xu_ly, app.thanh_tt) and app.btn_xu_ly.winfo_ismapped()
+         and chu_ap == "Xử lý ảnh", chu_ap)
     #[[ Dong lan gui o giua THANH TREN, mot hang voi ten buoi — thay ngay "da
     #   ap / dang cho" o moi luc nhin len. ]]
     lj = app.lbl_job
@@ -306,18 +307,19 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
             lenh = w.cget("command")
         except (tk.TclError, ValueError, AttributeError):
             lenh = None
-        if lenh is not None and (lenh == app.do_apply or str(lenh).endswith("do_apply")):
+        if lenh is not None and (lenh in (app.do_apply, app.xu_ly_anh)
+                                 or str(lenh).endswith(("do_apply", "xu_ly_anh"))):
             goi_ghi.append(w)
         if w.winfo_class() == "Menu":
             cuoi = w.index("end")
             for i in range(0 if cuoi is None else cuoi + 1):
                 try:
-                    if str(w.entrycget(i, "command")).endswith("do_apply"):
+                    if str(w.entrycget(i, "command")).endswith(("do_apply", "xu_ly_anh")):
                         goi_ghi.append((w, i))
                 except tk.TclError:
                     pass
-    ktra("cả app chỉ có MỘT widget gọi do_apply",
-         goi_ghi == [app.btn_ghi3], f"{len(goi_ghi)} widget / mục menu")
+    ktra("cả app chỉ có MỘT widget áp vào Lightroom (nút Xử lý ảnh)",
+         goi_ghi == [app.btn_xu_ly], f"{len(goi_ghi)} widget / mục menu")
 
     # ---- lbl_job chỉ nói về job của đúng buổi
     at.LR_JOB_DIR = tam / "jobs"
@@ -358,7 +360,7 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     app.scan_folder()
     chay(3)
     cao_cc = cc.winfo_height()
-    vang_luc_trong = (app.btn_analyze.cget("kieu"), app.btn_ghi3.cget("kieu"))
+    vang_luc_trong = app.btn_xu_ly.cget("kieu")
     app.v_folder.set(str(buoi2))
     app.scan_folder()
     chay(6)
@@ -375,16 +377,15 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          and app.lbl_tong.cget("text").startswith("6 ảnh RAW"),
          f"{len(app.luoi.ds)} ô · thiếu {thieu} · “{app.lbl_tong.cget('text')}”")
     ktra("nút vàng là việc kế tiếp",
-         vang_luc_trong == ("phu", "phu") and app.btn_analyze.cget("kieu") == "chinh"
-         and app.btn_ghi3.cget("kieu") == "phu",
-         "chưa có buổi: không nút nào vàng · có ảnh: Phân tích vàng")
+         vang_luc_trong == "phu" and app.btn_xu_ly.cget("kieu") == "chinh",
+         "chưa có buổi: không nút nào vàng · có ảnh: Xử lý ảnh vàng")
     app.items = [{"path": "gia"}]
     app._set_busy(False)
-    vang_co_kq = (app.btn_analyze.cget("kieu"), app.btn_ghi3.cget("kieu"))
+    vang_co_kq = app.btn_xu_ly.cget("kieu")
     app.items = []
     app._set_busy(False)
     ktra("có kết quả thì nút Ghi vàng, Phân tích lùi về nút phụ",
-         vang_co_kq == ("phu", "chinh"), f"{vang_co_kq}")
+         vang_co_kq == "chinh", f"{vang_co_kq}")
     app._bam_buoc("retouch")
     chay(3)
     an_o_rt = not dq.dang_hien()
@@ -438,7 +439,19 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          and app.cuon_phai.winfo_ismapped() and not app.bang_anh.winfo_ismapped(),
          f"mặc định Thiết lập={mac_dinh_tl} · bấm → chi tiết={sang_ct}")
     nhom = app._nhom_tuy_chon
+    #  13/10: Denoise nằm trong nhóm "Ghìm & bảo vệ" (8 nhóm thì bảng không vừa 1180x680)
     ktra("bảy nhóm tuỳ chọn", len(nhom) == 7, " · ".join(n.tieu_de for n in nhom.values()))
+    ktra("Denoise mặc định TẮT, ngưỡng ISO 2000, ô ISO chỉ chỉnh được khi bật",
+         app.v_denoise.get() is False and app.v_denoise_iso.get() == "2000"
+         and app.sp_denoise_iso.trang_thai() == "disabled",
+         f"{app.v_denoise.get()} · {app.v_denoise_iso.get()} · {app.sp_denoise_iso.trang_thai()}")
+    app.v_denoise.set(True)
+    chay(1)
+    bat_dn = app.sp_denoise_iso.trang_thai()
+    app.v_denoise.set(False)
+    chay(1)
+    ktra("bật Denoise -> ô ISO mở; tắt -> khoá lại",
+         bat_dn == "normal" and app.sp_denoise_iso.trang_thai() == "disabled", bat_dn)
     ktra("mở app lên thì nhóm nào cũng đóng, có dòng tóm tắt",
          all(not n.dang_mo and not n.than.winfo_ismapped()
              and n.l_tom.winfo_ismapped() and n.l_tom.cget("text")

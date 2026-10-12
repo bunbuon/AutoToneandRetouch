@@ -645,7 +645,7 @@ class LuoiAnh(tk.Frame):
             #   ve bang canvas. Nen o dat tag "o" de bai kiem van dem duoc. ]]
             c.create_rectangle(x + bo_g, y + bo_g, x + ow - bo_g, y + ah - bo_g,
                                fill=self.NEN_O, outline="", width=0, tags=("o",))
-            a = self._anh_cho(o["path"], ow, ah, mo=bool(bo), phu=phu)
+            a = self._anh_cho(o["path"], ow, ah, mo=bool(bo), phu=phu, mp=o.get("mp"))
             if a is not None:
                 c.create_image(x, y, image=a, anchor="nw", tags=("o",))
             else:
@@ -771,10 +771,14 @@ class LuoiAnh(tk.Frame):
         """Bán kính bo góc ô ảnh — theo cỡ ô, ~10 px ở cỡ mặc định."""
         return max(4, min(12, round(ow / 22)))
 
-    def _anh_cho(self, path, w, h, mo: bool = False, phu: bool = False):
+    def _anh_cho(self, path, w, h, mo: bool = False, phu: bool = False, mp=None):
         """PhotoImage đúng cỡ ô (w×h), BO GÓC, ảnh nằm giữa nền ô — None nếu
-        chưa đọc xong. mo=True: tối hẳn đi (ảnh sẽ không được ghi)."""
-        key = (path, w, h, mo, phu)
+        chưa đọc xong. mo=True: tối hẳn đi (ảnh sẽ không được ghi).
+
+        mp (13/10): thông số mô phỏng (ev, wb) của mo_phong_anh — ảnh nhỏ hiện
+        theo Exposure / WB SẼ ÁP, kéo Bù sáng / K / Tint là ảnh đổi theo. Nằm
+        trong khoá: đổi thông số = PhotoImage mới, ảnh gốc (_anh_pil) giữ nguyên."""
+        key = (path, w, h, mo, phu, mp)
         a = self._anh_tk.get(key)
         if a is not None:
             self._anh_tk.move_to_end(key)
@@ -784,6 +788,12 @@ class LuoiAnh(tk.Frame):
             return None
         anh = im.copy()
         anh.thumbnail((w, h), Image.BILINEAR)
+        if mp is not None:
+            try:
+                import mo_phong_anh
+                anh = mo_phong_anh.ap(anh, mp)
+            except Exception:                                # noqa: BLE001
+                pass
         if mo:
             anh = anh.point(lambda v: int(v * 0.32))
         o = Image.new("RGB", (w, h), self.NEN_O_CHON if phu else self.NEN_O)

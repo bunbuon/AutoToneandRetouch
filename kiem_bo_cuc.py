@@ -230,10 +230,15 @@ def main() -> int:
                         and isinstance(k.value.value, ast.Name) \
                         and k.value.value.id == "self":
                     goi_ghi.append(n.lineno)
-    ktra("cả app chỉ có MỘT chỗ gọi do_apply", len(goi_ghi) == 1,
-         f"{len(goi_ghi)} chỗ (dòng {goi_ghi}) — nút vàng trên thanh công cụ")
-    ktra("nút Áp vào Lightroom là nút vẽ tay ở thanh dưới",
-         "self.btn_ghi3 = gd.NutTron(cha" in gh and "self._build_ghi(self.thanh_lam)" in src,
+    #[[ 13/10 (user): Phan tich + Ap gop thanh MOT nut "Xu ly anh" — do_apply chi
+    #   con duoc goi tu chuoi (xu_ly_anh_ui), khong nut nao truyen thang. ]]
+    goi_xl = [n.lineno for n in ast.walk(lop_app) if isinstance(n, ast.Call)
+              for k in n.keywords if k.arg == "command" and isinstance(k.value, ast.Attribute)
+              and k.value.attr == "xu_ly_anh"]
+    ktra("cả app chỉ có MỘT nút Xử lý ảnh, không nút nào gọi thẳng do_apply",
+         len(goi_xl) == 1 and not goi_ghi, f"xu_ly_anh {goi_xl} · do_apply {goi_ghi}")
+    ktra("nút Xử lý ảnh là nút vẽ tay ở thanh dưới",
+         "self.btn_xu_ly = gd.NutTron(cha" in gh and "self._build_ghi(self.thanh_lam)" in src,
          "góc phải thanh dưới, như bản thiết kế")
     nut_cc = []
     for n in ast.walk(ast.parse(ac)):
@@ -242,8 +247,8 @@ def main() -> int:
             for k in n.keywords:
                 if k.arg == "command" and isinstance(k.value, ast.Attribute):
                     nut_cc.append(k.value.attr)
-    ktra("_build_actions chỉ dựng hai nút: Phân tích và Dừng",
-         sorted(nut_cc) == ["do_cancel", "start_analyze"], f"{sorted(nut_cc)}")
+    ktra("_build_actions chỉ dựng nút Dừng (Phân tích gộp vào Xử lý ảnh)",
+         sorted(nut_cc) == ["do_cancel"], f"{sorted(nut_cc)}")
     ktra("Xuất CSV, Duyệt nhanh nằm trong menu ⋯ cạnh nút Ghi",
          "self.do_csv" in gh and "Xuất báo cáo CSV" in gh
          and '_chon_khau("day")' in gh, "việc phụ không chiếm thanh công cụ")
@@ -267,9 +272,8 @@ def main() -> int:
     #   dung getattr — khong thi app chet ngay luc mo. ]]
     ktra("_set_busy dùng getattr cho nút Ghi", "getattr(self" in sb,
          "_set_busy chạy trước khi nút Ghi dựng xong")
-    ktra("nút vàng là việc kế tiếp (Phân tích ↔ Ghi)",
-         'kieu="chinh" if (co_anh and not co_kq) else "phu"' in sb
-         and 'kieu="chinh" if co_kq else "phu"' in sb, "như nút Export của Evoto")
+    ktra("nút vàng là việc kế tiếp (Xử lý ảnh khi đã có buổi)",
+         'kieu="chinh" if co_anh else "phu"' in sb, "như nút Export của Evoto")
 
     # ---------------- 4b. lưới ảnh
     lu = than("_cap_nhat_luoi", src, cay)
@@ -323,6 +327,10 @@ def main() -> int:
     #[[ Moi command= tro toi mot phuong thuc CO THAT. Sai ten thi khong no luc
     #   import, chi no khi bam — dung kieu loi kho doan nhat. Soi CA lop App. ]]
     co = {c.name for c in lop_app.body if isinstance(c, ast.FunctionDef)}
+    #  13/10: luồng Xử lý ảnh nằm ở mixin (xu_ly_anh_ui.XuLyAnhMixin)
+    for lop_mx in ast.parse((GOC / "xu_ly_anh_ui.py").read_text(encoding="utf-8")).body:
+        if isinstance(lop_mx, ast.ClassDef) and lop_mx.name == "XuLyAnhMixin":
+            co |= {c.name for c in lop_mx.body if isinstance(c, ast.FunctionDef)}
     thieu = set()
     for n2 in ast.walk(lop_app):
         if isinstance(n2, ast.Call):

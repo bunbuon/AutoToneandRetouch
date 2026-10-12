@@ -104,6 +104,26 @@ elseif type(XemPreset.runRequest) ~= "function" then
     XemPreset = nil
 end
 
+--[[ DanhSachCore (13/10): danh sách ảnh của buổi trong catalog -> lưới của app
+     chỉ hiện ảnh Lightroom đang có. Nạp riêng, cùng lý do các module trên. ]]
+local okDS, DanhSach = pcall(require, "DanhSachCore")
+if not okDS then
+    rawLog("khong nap duoc DanhSachCore -> " .. tostring(DanhSach))
+    DanhSach = nil
+elseif type(DanhSach.runTheoDoi) ~= "function" then
+    DanhSach = nil
+end
+
+--[[ DenoiseCore (13/10): bật Denoise của Lightroom cho ảnh ISO cao — yêu cầu
+     RIÊNG app gửi sau khi job áp xong. Nạp riêng, cùng lý do các module trên. ]]
+local okDN, Denoise = pcall(require, "DenoiseCore")
+if not okDN then
+    rawLog("khong nap duoc DenoiseCore -> " .. tostring(Denoise))
+    Denoise = nil
+elseif type(Denoise.runRequest) ~= "function" then
+    Denoise = nil
+end
+
 --[[ 2 giây (trước 5): mỗi vòng chỉ là vài lệnh kiểm file có tồn tại không. App
      nhờ xuất thì người dùng đang ngồi chờ — 5 giây là quá nửa thời gian chờ. ]]
 local POLL_SECONDS = 2
@@ -193,6 +213,24 @@ LrTasks.startAsyncTask(function()
         if XemPreset then
             local _, errP = Core.try("autoXemPreset", XemPreset.runRequest)
             if errP then Core.log("LOI xem preset: " .. tostring(errP)) end
+        end
+        --[[ 13/10: danh sách ảnh của buổi trong catalog (~4 giây một lần, chỉ ghi
+             khi đổi). Chiều ĐỌC, chạy bất kể autoApply. ]]
+        if DanhSach then
+            local _, errDS = Core.try("autoDanhSach", DanhSach.runTheoDoi)
+            if errDS then Core.log("LOI danh sach catalog: " .. tostring(errDS)) end
+            --  13/10: cây thư mục của catalog -> cột Thư mục của app (~2 phút, hoặc ngay khi app xin)
+            if type(DanhSach.runThuMuc) == "function" then
+                local _, errTM = Core.try("autoThuMuc", DanhSach.runThuMuc)
+                if errTM then Core.log("LOI cay thu muc: " .. tostring(errTM)) end
+            end
+        end
+        --[[ 13/10: Denoise ảnh ISO cao (jobs/request_denoise.txt). ĐỔI việc ảnh
+             (thay module / vùng chọn của người dùng) nên chỉ chạy khi autoApply
+             bật — tắt tự áp là người dùng không muốn plugin đụng vào ảnh. ]]
+        if Denoise and prefs.autoApply then
+            local _, errDN = Core.try("autoDenoise", Denoise.runRequest)
+            if errDN then Core.log("LOI denoise: " .. tostring(errDN)) end
         end
         --[[ 10/10: ngủ từng nhịp 0,2 s, thức NGAY khi app xin xem preset (người
              dùng vừa bấm chọn preset / mở ảnh — đang ngồi chờ màu đổi); đang dở

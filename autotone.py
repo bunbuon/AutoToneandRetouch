@@ -2677,6 +2677,13 @@ DEFAULTS = {
     #   bi ngat quang"): gom canh tren TUNG MAY — xep theo (may, tien to ten file,
     #   ten file tu nhien), doi may la canh moi. Xem group_scenes(). ]]
     "canh_theo_may": True,
+    #[[ 13/10 (user): Denoise cua Lightroom cho anh ISO cao — mac dinh TAT, nguong
+    #   ISO 2000. Plugin bat SAU khi ap thong so (yeu cau rieng request_denoise.txt,
+    #   xem AutoTone.lrplugin/DenoiseCore.lua) — hong thi chi hong Denoise. ]]
+    "denoise": False,
+    "denoise_iso": 2000,
+    #  13/10: nut "Xu ly anh" ap ca anh Loai 1★ (gan 1★) hay chi anh Giu
+    "ap_anh_loai": True,
     #[[ San phang KET QUA trong cung mot canh (0 = tat, 1 = san hoan toan).
     #
     #   Khac voi viec nham chung mot muc dich: nhieu anh bi chan giua chung
@@ -9432,6 +9439,189 @@ def request_export(folder: Path, job_dir: Path | None = None,
     tmp.write_text("\n".join(body) + "\n", encoding="utf-8")
     os.replace(tmp, dest)          # doi ten: plugin khong doc phai file dang ghi
     return dest
+
+
+#[[ DANH SACH ANH CUA BUOI TRONG CATALOG (13/10) — xem AutoTone.lrplugin/
+#   DanhSachCore.lua. User: "chi load cac anh ma trong lightroom dang hien thi
+#   … xoa 10 anh thi preview cung chi hien 990 … va nguoc lai". App ghi
+#   theo_doi_ds.txt MOT lan (doi buoi moi ghi lai); plugin ~4 giay doc lai danh
+#   sach anh cua thu muc trong catalog, chi ghi ds_catalog.tsv khi doi. ]]
+TEN_THEO_DOI_DS = "theo_doi_ds.txt"
+TEN_DS_CATALOG = "ds_catalog.tsv"
+_DS_LR_DEM: dict = {}
+
+
+def theo_doi_ds_lr(folder, gom_con: bool = True, job_dir: Path | None = None) -> bool:
+    """Nhờ plugin theo dõi danh sách ảnh của `folder` trong catalog. Chỉ ghi khi
+    khác yêu cầu đang có. -> True nếu vừa ghi."""
+    d = Path(job_dir or LR_JOB_DIR)
+    dest = d / TEN_THEO_DOI_DS
+    body = f"{Path(folder).resolve()}\ncon={1 if gom_con else 0}\n"
+    try:
+        if dest.is_file() and dest.read_text(encoding="utf-8") == body:
+            return False
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = d / (TEN_THEO_DOI_DS + ".part")
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, dest)
+        return True
+    except OSError:
+        return False
+
+
+def ngung_theo_doi_ds(job_dir: Path | None = None) -> None:
+    """Thôi theo dõi (đổi sang nguồn .xmp / đóng app)."""
+    try:
+        (Path(job_dir or LR_JOB_DIR) / TEN_THEO_DOI_DS).unlink()
+    except OSError:
+        pass
+
+
+def doc_ds_lr(folder, job_dir: Path | None = None):
+    """-> (tập khoá đường dẫn của ảnh đang có trong catalog, mtime file) cho
+    `folder`; None khi CHƯA BIẾT: chưa có file, file của buổi khác, hoặc thư
+    mục chưa import vào catalog (lúc đó app không lọc gì)."""
+    f = Path(job_dir or LR_JOB_DIR) / TEN_DS_CATALOG
+    try:
+        st = f.stat()
+    except OSError:
+        return None
+    dau = (st.st_mtime_ns, st.st_size)
+    kq = _DS_LR_DEM.get(str(f))
+    if kq is None or kq[0] != dau:
+        thu_muc, trong, ds = "", False, set()
+        try:
+            for dong in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if dong.startswith("#thu_muc="):
+                    thu_muc = dong[len("#thu_muc="):].strip()
+                elif dong.startswith("#trong_catalog="):
+                    trong = dong[len("#trong_catalog="):].strip() == "1"
+                elif dong.startswith("#"):
+                    continue
+                elif dong.strip():
+                    ds.add(khoa_duong_dan(dong.strip()))
+        except OSError:
+            return None
+        kq = (dau, thu_muc, trong, ds)
+        _DS_LR_DEM[str(f)] = kq
+    _dau, thu_muc, trong, ds = kq
+    try:
+        cung = khoa_duong_dan(Path(thu_muc).resolve()) == khoa_duong_dan(Path(folder).resolve())
+    except (OSError, ValueError):
+        cung = False
+    if not thu_muc or not cung or not trong:
+        return None
+    return ds, st.st_mtime_ns
+
+
+#[[ DENOISE (13/10) — yeu cau RIENG sau khi job ap xong. Lightroom Classic 14.4+
+#   cho bat AI Denoise ngay tren anh (khong tao DNG); SDK co
+#   LrDevelopController.setEnhance("denoise", true) — chi chay o module Develop,
+#   tren anh dang chon. Plugin chon lan luot tung anh. CHUA THU tren Lightroom
+#   that (12/10 khong co may de thu) -> tach khoi duong ap thong so: hong o day
+#   thi mau van da ap du. ]]
+TEN_YC_DENOISE = "request_denoise.txt"
+TEN_TD_DENOISE = "denoise_tien_do.txt"
+TEN_KQ_DENOISE = "ketqua_denoise.txt"
+
+
+def anh_can_denoise(items: list, cfg: dict) -> list:
+    """Ảnh sẽ Denoise: bật Denoise, ISO >= ngưỡng, có trong catalog (không ngoài
+    bản xuất), không lỗi đo. -> danh sách đường dẫn (ưu tiên đường dẫn Lightroom)."""
+    if not cfg.get("denoise"):
+        return []
+    nguong = float(cfg.get("denoise_iso") or DEFAULTS.get("denoise_iso", 2000))
+    ra = []
+    for r in items or []:
+        iso = _so(r.get("iso"))
+        if iso is None or iso < nguong or r.get("ngoai_xuat") or r.get("error"):
+            continue
+        ra.append(str(r.get("lr_path") or r["path"]))
+    return ra
+
+
+def yeu_cau_denoise(paths: list, ma: str, job_dir: Path | None = None) -> Path:
+    """Nhờ plugin bật Denoise cho các ảnh này. ma = mã lượt (plugin ghi lại vào file
+    tiến độ / kết quả, app phân biệt lượt cũ)."""
+    d = Path(job_dir or LR_JOB_DIR)
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / TEN_YC_DENOISE
+    tmp = d / (TEN_YC_DENOISE + ".part")
+    tmp.write_text(f"#ma={ma}\n" + "".join(f"{p}\n" for p in paths), encoding="utf-8")
+    os.replace(tmp, dest)
+    return dest
+
+
+def _doc_kv(f: Path) -> dict:
+    try:
+        return {k.strip(): v.strip() for k, _, v in
+                (dong.partition("=") for dong in
+                 f.read_text(encoding="utf-8", errors="replace").splitlines()) if k.strip()}
+    except OSError:
+        return {}
+
+
+def tien_do_denoise(ma: str, job_dir: Path | None = None) -> dict:
+    """{xong, tong, cho (yêu cầu chưa được nhận), ket_qua (dict khi xong)} của lượt `ma`."""
+    d = Path(job_dir or LR_JOB_DIR)
+    kq = _doc_kv(d / TEN_KQ_DENOISE)
+    td = _doc_kv(d / TEN_TD_DENOISE)
+    ra = {"cho": (d / TEN_YC_DENOISE).is_file(), "xong": 0, "tong": 0, "ket_qua": None}
+    if td.get("ma") == ma:
+        ra["xong"] = int(_so(td.get("xong")) or 0)
+        ra["tong"] = int(_so(td.get("tong")) or 0)
+    if kq.get("ma") == ma:
+        ra["ket_qua"] = kq
+    return ra
+
+
+#[[ CAY THU MUC CUA CATALOG (13/10) — cot Thu muc cua app, nhu panel Folders cua
+#   Lightroom. Xem DanhSachCore.runThuMuc. ]]
+TEN_THEO_DOI_THU_MUC = "theo_doi_thu_muc.txt"
+TEN_THU_MUC_CATALOG = "thu_muc_catalog.tsv"
+_THU_MUC_DEM: dict = {}
+
+
+def theo_doi_thu_muc_lr(lam_moi: bool = False, job_dir: Path | None = None) -> None:
+    """Nhờ plugin ghi cây thư mục catalog. lam_moi=True: ghi lại file yêu cầu (đổi
+    giờ sửa) -> plugin làm ngay, không đợi nhịp 30 giây."""
+    d = Path(job_dir or LR_JOB_DIR)
+    f = d / TEN_THEO_DOI_THU_MUC
+    try:
+        if lam_moi or not f.is_file():
+            d.mkdir(parents=True, exist_ok=True)
+            f.write_text(f"{time.time():.3f}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def doc_thu_muc_lr(job_dir: Path | None = None):
+    """-> ([(đường dẫn, cha, số ảnh riêng)], mtime) từ plugin; None nếu chưa có."""
+    f = Path(job_dir or LR_JOB_DIR) / TEN_THU_MUC_CATALOG
+    try:
+        st = f.stat()
+    except OSError:
+        return None
+    dau = (st.st_mtime_ns, st.st_size)
+    kq = _THU_MUC_DEM.get(str(f))
+    if kq is None or kq[0] != dau:
+        ds = []
+        try:
+            for dong in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not dong or dong.startswith("#"):
+                    continue
+                o = dong.split("\t")
+                if len(o) >= 3:
+                    try:
+                        n = int(float(o[2] or 0))
+                    except ValueError:
+                        n = 0
+                    ds.append((o[0], o[1], n))
+        except OSError:
+            return None
+        kq = (dau, ds)
+        _THU_MUC_DEM[str(f)] = kq
+    return kq[1], st.st_mtime_ns
 
 
 def export_request_pending(job_dir: Path | None = None) -> bool:

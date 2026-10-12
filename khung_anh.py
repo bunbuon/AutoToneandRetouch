@@ -130,7 +130,18 @@ def kich_thuoc(p) -> tuple[int, int]:
     return (h, w) if o in (5, 6, 7, 8) else (w, h)
 
 
-def nap_nhap(p, canh: int = CANH_NHAP) -> Thap:
+def _bd(im, bien_doi):
+    """13/10: áp phép biến đổi ảnh (mô phỏng thông số sẽ áp) — hỏng thì ảnh gốc."""
+    if bien_doi is None:
+        return im
+    try:
+        ra = bien_doi(im)
+        return ra if ra is not None else im
+    except Exception:                                        # noqa: BLE001
+        return im
+
+
+def nap_nhap(p, canh: int = CANH_NHAP, bien_doi=None) -> Thap:
     """Bản nháp ~canh px. JPEG thì draft: giải mã thẳng ở 1/2, 1/4, 1/8 — nhanh
     hơn giải mã đủ rồi thu nhỏ cả chục lần."""
     im = Image.open(p)
@@ -148,14 +159,14 @@ def nap_nhap(p, canh: int = CANH_NHAP) -> Thap:
     k = int(max(a.size) // canh)
     if k >= 2:                         # không phải JPEG (draft không có tác dụng)
         a = a.reduce(k)
-    return thap_tu_anh(a, W, H)
+    return thap_tu_anh(_bd(a, bien_doi), W, H)
 
 
-def nap_day_du(p) -> Thap:
+def nap_day_du(p, bien_doi=None) -> Thap:
     im = Image.open(p)
     o = _huong(im)
     im.load()
-    return thap_tu_anh(_xoay(_rgb(im), o))
+    return thap_tu_anh(_bd(_xoay(_rgb(im), o), bien_doi))
 
 
 _DET = threading.local()
@@ -216,11 +227,12 @@ class _BoNap:
         self._luong = threading.Thread(target=self._chay, daemon=True)
         self._luong.start()
 
-    def nap(self, ma: int, viec: list, tim_mat_tren: str | None) -> None:
-        """viec = [(vai, đường dẫn)] — vai "sau" (ảnh chính) / "truoc" (gốc)."""
+    def nap(self, ma: int, viec: list, tim_mat_tren: str | None, bien_doi=None) -> None:
+        """viec = [(vai, đường dẫn)] — vai "sau" (ảnh chính) / "truoc" (gốc).
+        bien_doi (13/10): hàm PIL -> PIL áp lên ảnh "sau" (mô phỏng thông số)."""
         with self._cv:
             self._ma = ma
-            self._viec = (ma, viec, tim_mat_tren)
+            self._viec = (ma, viec, tim_mat_tren, bien_doi)
             self._cv.notify_all()
 
     def huy(self) -> None:
@@ -266,23 +278,23 @@ class _BoNap:
                     self._cv.wait(0.5)
                 if self._dung:
                     return
-                ma, viec, tim = self._viec
+                ma, viec, tim, bd = self._viec
                 self._viec = None
                 self._dang = True
             try:
-                self._lam(ma, viec, tim)
+                self._lam(ma, viec, tim, bd)
             finally:
                 with self._cv:
                     self._dang = False
                 self._dua(ma, "het", "", None)
 
-    def _lam(self, ma, viec, tim):
+    def _lam(self, ma, viec, tim, bd=None):
         nhap = {}
         for vai, p in viec:
             if not self._moi(ma):
                 return
             try:
-                th = nap_nhap(p)
+                th = nap_nhap(p, bien_doi=bd if vai == "sau" else None)
             except Exception as ex:                          # noqa: BLE001
                 self._dua(ma, "loi", vai, f"{type(ex).__name__}: {ex}")
                 continue
@@ -299,7 +311,7 @@ class _BoNap:
             if nhap[vai].day_du:
                 continue                     # ảnh nhỏ: bản nháp đã là bản đủ
             try:
-                self._dua(ma, "du", vai, nap_day_du(p))
+                self._dua(ma, "du", vai, nap_day_du(p, bd if vai == "sau" else None))
             except Exception as ex:                          # noqa: BLE001
                 self._dua(ma, "loi_du", vai, f"{type(ex).__name__}: {ex}")
 
@@ -593,9 +605,11 @@ class KhungAnh(tk.Frame):
 
     # ================================================================ nạp ảnh
     def mo(self, sau, truoc=None, tam=None, giu_khung: bool = False,
-           tim_mat_anh: bool = True) -> None:
+           tim_mat_anh: bool = True, bien_doi=None) -> None:
         """Mở ảnh từ đĩa. sau = ảnh chính; truoc = bản gốc để so (None: không
-        so); tam = ảnh PIL nhỏ có sẵn (ảnh của dải) để hiện NGAY trong lúc chờ."""
+        so); tam = ảnh PIL nhỏ có sẵn (ảnh của dải) để hiện NGAY trong lúc chờ.
+        bien_doi (13/10): PIL -> PIL áp lên ảnh chính (Cân sáng: mô phỏng
+        Exposure / WB sẽ áp) — `truoc` có thể là CHÍNH file đó, không biến đổi."""
         self._ma += 1
         ma = self._ma
         self._an_trong()
@@ -614,7 +628,7 @@ class KhungAnh(tk.Frame):
             return
         if tam is not None:
             try:
-                t = _rgb(tam)
+                t = _bd(_rgb(tam), bien_doi)
                 self._sau = Thap(W, H, [(W / t.width, H / t.height, t)], tam=True)
             except Exception:                                # noqa: BLE001
                 self._sau = None
@@ -630,7 +644,7 @@ class KhungAnh(tk.Frame):
         if self._bo_nap is None:
             self._bo_nap = _BoNap()
         viec = [("sau", str(sau))] + ([("truoc", str(truoc))] if truoc else [])
-        self._bo_nap.nap(ma, viec, "sau" if tim_mat_anh else None)
+        self._bo_nap.nap(ma, viec, "sau" if tim_mat_anh else None, bien_doi)
         self._hen_bom_nap()
         self._ve()
         self._bao()

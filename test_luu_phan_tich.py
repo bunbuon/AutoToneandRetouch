@@ -229,7 +229,7 @@ def main() -> int:
         ktra("dong trang thai noi da nap", "Đã nạp kết quả phân tích" in app.lbl_status.cget("text"),
              app.lbl_status.cget("text")[:80])
         ktra("bang so co du dong", len(app.tree.get_children()) == 6)
-        ktra("nut Ghi mo duoc", str(app.btn_ghi3.cget("state")) == "normal")
+        ktra("nut Xu ly anh mo duoc", str(app.btn_xu_ly.cget("state")) == "normal")
 
         # 7b. che do catalog: ban xuat app nho Lightroom lam luc mo buoi ve SAU khi nap
         yc = at.LR_JOB_DIR / "request_export.txt"

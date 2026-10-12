@@ -96,9 +96,10 @@ def main() -> int:
         vong(8)
         app.v_folder.set(str(buoi))
         app.items = [{"path": str(buoi / "DC_1.ARW")}]      # co ket qua -> nut Ghi duoc mo
+        app.pairs = [(buoi / "DC_1.ARW", None)]              # 13/10: nut Xu ly anh can buoi co anh
         app._set_busy(False)
-        ktra("Dung bai: co ket qua, khong cho job -> nut Ghi mo",
-             str(app.btn_ghi3.cget("state")) == "normal")
+        ktra("Dung bai: co ket qua, khong cho job -> nut Xu ly anh mo",
+             str(app.btn_xu_ly.cget("state")) == "normal")
 
         # 3. gui xong, Lightroom chua nhan (khong co nhip plugin)
         j3 = jobs / f"apply_20261008_214000_{ten}.tsv"
@@ -106,7 +107,7 @@ def main() -> int:
         app._dang_cho_lr = True
         app._watch_job(j3)
         vong()
-        ktra("job cho -> nut Ghi KHOA", str(app.btn_ghi3.cget("state")) == "disabled")
+        ktra("job cho -> nut Xu ly anh KHOA", str(app.btn_xu_ly.cget("state")) == "disabled")
         ktra("job cho -> 'Huy gui' hien", bool(app.btn_huy_gui.winfo_manager()))
         chu = str(app.lbl_job.cget("text"))
         ktra("dong trang thai noi Lightroom CHUA nhan, plugin khong chay",
@@ -132,7 +133,7 @@ def main() -> int:
              j3.with_suffix(".huy").exists() and j4.with_suffix(".huy").exists()
              and not j3.exists() and not j4.exists())
         ktra("Huy gui -> nut Ghi mo, 'Huy gui' an",
-             str(app.btn_ghi3.cget("state")) == "normal" and not app.btn_huy_gui.winfo_manager()
+             str(app.btn_xu_ly.cget("state")) == "normal" and not app.btn_huy_gui.winfo_manager()
              and not app._dang_cho_lr)
 
         # 6. plugin da gianh job -> khong huy duoc; xong -> mo khoa
@@ -149,7 +150,7 @@ def main() -> int:
         app._watch_job(j5)
         vong()
         ktra("plugin da gianh -> 'Huy gui' an, nut Ghi van khoa",
-             not app.btn_huy_gui.winfo_manager() and str(app.btn_ghi3.cget("state")) == "disabled",
+             not app.btn_huy_gui.winfo_manager() and str(app.btn_xu_ly.cget("state")) == "disabled",
              str(app.lbl_job.cget("text"))[:70])
         app.huy_gui()
         ktra("Huy khi Lightroom dang ap -> khong huy, van theo doi",
@@ -177,7 +178,7 @@ def main() -> int:
         app._watch_job(j5)
         vong()
         ktra("Lightroom ap xong -> nut Ghi mo lai",
-             str(app.btn_ghi3.cget("state")) == "normal" and not app._dang_cho_lr)
+             str(app.btn_xu_ly.cget("state")) == "normal" and not app._dang_cho_lr)
     finally:
         at.LR_JOB_DIR = job_cu
         try:
