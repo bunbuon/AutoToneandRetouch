@@ -119,6 +119,8 @@ T_FNUMBER          = 0x829D
 T_EXPBIAS          = 0x9204
 #  Flash (EXIF 0x9209): bit 0 = đèn ĐÃ NỔ. 0x10 / 0x18 = có đèn nhưng tắt/không nổ.
 T_FLASH            = 0x9209
+#  Tên ống kính (EXIF 0xA434 LensModel) — bộ lọc máy / ống kính trước Phân tích (12/10)
+T_LENS_MODEL       = 0xA434
 
 
 def _entry_value(data, e, typ, cnt, valoff, size):
@@ -266,7 +268,8 @@ def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
         return _entry_value(data, e, *ent[tag])
 
     for tag, key in ((T_DATETIME, "datetime"), (T_DATETIME_ORIG, "datetime_original"),
-                     (T_SUBSEC_ORIG, "subsec"), (T_MAKE, "make"), (T_MODEL, "model")):
+                     (T_SUBSEC_ORIG, "subsec"), (T_MAKE, "make"), (T_MODEL, "model"),
+                     (T_LENS_MODEL, "lens")):
         if tag in ent and key not in tags:
             v = get(tag)
             if v:
@@ -499,6 +502,45 @@ def read_raw(path: Path):
                 except Exception:                            # noqa: BLE001
                     pass
             return blob, tags
+
+
+def doc_the(path) -> dict:
+    """CHỈ đọc tag EXIF (không tách preview, không quét 16 MB đầu file như read_raw) —
+    cho bộ lọc máy / ống kính trước khi Phân tích. {} nếu không đọc được."""
+    tags: dict = {}
+    try:
+        with open(path, "rb") as fh:
+            with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                if mm[:2] in (b"II", b"MM"):
+                    e = "<" if mm[:2] == b"II" else ">"
+                    _parse_ifd(mm, struct.unpack_from(e + "I", mm, 4)[0], e, set(), [], tags)
+                else:
+                    kh = _tiff_trong_jpeg(mm)
+                    if kh and kh[:2] in (b"II", b"MM"):
+                        e = "<" if kh[:2] == b"II" else ">"
+                        _parse_ifd(kh, struct.unpack_from(e + "I", kh, 4)[0], e, set(), [], tags)
+    except (OSError, ValueError, struct.error, IndexError):
+        pass
+    return tags
+
+
+def ten_lens(v) -> str:
+    """Tên ống kính gọn; "" khi máy không ghi (lens cơ, ngàm chuyển ghi "----")."""
+    s = " ".join(str(v or "").split())
+    return "" if not s.strip("- 0") else s
+
+
+def may_lens(pairs, jobs: int = 8) -> dict:
+    """{đường dẫn: (máy, ống kính)} cho cả buổi — đọc song song (việc chủ yếu là I/O)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def mot(p):
+        t = doc_the(p)
+        return str(p), (" ".join(str(t.get("model") or "").split()), ten_lens(t.get("lens")))
+
+    ds = [p for p, _ in pairs]
+    with ThreadPoolExecutor(max(1, min(jobs, 16))) as ex:
+        return dict(ex.map(mot, ds))
 
 
 _DUOI_ANH_THUONG = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -2101,6 +2143,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             fnumber=_rat(tags.get("fnumber")),
             ev_sang=ev_anh_sang(tags),
             model=tags.get("model", ""),
+            lens=ten_lens(tags.get("lens")),
             # WB may da dung de render preview — xem T_SONY_WB_MODE
             wb_may_che_do=tags.get("wb_may_che_do"),
             wb_may_K=tags.get("wb_may_K"),
@@ -2360,6 +2403,17 @@ DEFAULTS = {
     #]]
     "bu_sang_ca_buoi": 0.0,
     "bu_sang_su_kien": 0.30,
+    #[[ 12/10 user: "them option bu / giam K va Tint nhu bu sang ca buoi". Cong vao
+    #   delta WB CUOI cua moi anh (khong ap anh den trang, WB "Tat" thi khong ghi WB) —
+    #   sau moi buoc WB tu dong (ke ca chan "ngoai troi toi": nguoi dung chon thi nguoi
+    #   dung thang), TRUOC phanh_da_sau_wb (phanh da can WB cuoi). Xem _wb_bu_ca_buoi. ]]
+    "bu_k_ca_buoi": 0.0,
+    "bu_tint_ca_buoi": 0.0,
+    #[[ 12/10 user: "mau da dich cho tung buoi ... cho ho chon mau da qua anh ma ho da
+    #   sua san" — {"ten", "trong": [r,g,b], "ngoai": [r,g,b]} sRGB 0-255 do tu anh da
+    #   sua (mau_da_tu_anh). None = dich mac dinh. Thang moi dich khac (dich_da /
+    #   dich_da_cuoi): WB, HSL kenh da va Color Grading cung nham vao no. ]]
+    "mau_da_dich": None,
     #[[ LOAI BUOI "KY YEU" (8/10) — hoc tu 564 anh nguoi dung tu sua (AnhKyTest)
     #   so voi CHINH anh Lightroom ve ban v41 (1088 preview 2048px, buoi raw 19.4):
     #     mat anh duyet sang hon LR: trong nha +0.24, ngoai troi +0.29 EV
@@ -5462,6 +5516,9 @@ def dich_da(cfg: dict) -> tuple:
     #   (chinh_mau_da): dich thuong + wb_bu_ky_yeu (do tren pixel trung tinh, v43
     #   -> v44), con phan da lech thi HSL roi Color Grading xu ly noi tiep. Bat
     #   Color Grading ma WB cung doi dich thi hai buoc lai de len nhau. ]]
+    md = cfg.get("mau_da_dich")
+    if md and md.get("trong"):              # 12/10: mau da hoc tu anh nguoi dung da sua
+        return list(md["trong"]), list(md.get("ngoai") or md["trong"])
     if (cfg.get("grade") or cfg.get("da_trang_hong")) and cfg.get("loai_buoi") != "ky_yeu":
         trong = cfg.get("skin_ref_rgb_hong") or cfg["skin_ref_rgb"]
         return trong, cfg.get("skin_ref_rgb_hong_ngoai") or trong
@@ -5471,11 +5528,56 @@ def dich_da(cfg: dict) -> tuple:
 def dich_da_cuoi(cfg: dict) -> tuple:
     """Màu da CUỐI muốn thấy (trong, ngoài) — HSL kênh da và Color Grading cùng nhắm
     vào đây (một đích cho cả chuỗi, xem chinh_mau_da). Kỷ yếu / bật trắng hồng:
-    màu da ảnh duyệt (skin_dich_hong[_ngoai]); không thì như dich_da."""
+    màu da ảnh duyệt (skin_dich_hong[_ngoai]); không thì như dich_da.
+    Màu da đích của buổi (mau_da_dich, 12/10) thắng cả hai."""
+    if (cfg.get("mau_da_dich") or {}).get("trong"):
+        return dich_da(cfg)
     if cfg.get("grade") or cfg.get("da_trang_hong") or cfg.get("loai_buoi") == "ky_yeu":
         trong = cfg.get("skin_dich_hong") or dich_da(cfg)[0]
         return trong, cfg.get("skin_dich_hong_ngoai") or trong
     return dich_da(cfg)
+
+
+def mau_da_tu_anh(paths, cfg: dict, progress=None) -> dict:
+    """Màu da ĐÍCH học từ ảnh người dùng đã sửa (JPEG / TIFF xuất từ Lightroom, hoặc ảnh
+    bất kỳ đã hoàn thiện theo gu của họ).
+
+    Đo da bằng CHÍNH measure() — cùng lọc mặt, mặt nạ da, chọn chủ thể như ảnh RAW — rồi
+    lấy trung vị theo nhóm ánh sáng (EV100 từ EXIF của ảnh, ngưỡng ev_ngoai_troi). Ảnh
+    không có EXIF tính cho cả hai nhóm; nhóm nào không có ảnh thì dùng nhóm kia. Ảnh đen
+    trắng / không thấy da bỏ qua.
+    -> {"trong", "ngoai": [r, g, b] sRGB 0-255 (cùng độ sáng, chỉ màu có nghĩa),
+        "n_trong", "n_ngoai", "n_anh", "bo": [tên ảnh bỏ qua]}.
+    ValueError khi không ảnh nào đo được da."""
+    tham = cau_hinh_do(dict(cfg, canh_p365=False))
+    ng = float(cfg.get("ev_ngoai_troi") or 8.5)
+    nhom: dict = {"trong": [], "ngoai": [], "chung": []}
+    bo = []
+    ds = [Path(p) for p in paths]
+    for i, p in enumerate(ds, 1):
+        r = measure(p, *tham)
+        f = r.get("face_rgb") if r.get("ok") and not r.get("bw") else None
+        if not f:
+            bo.append(p.name)
+        else:
+            ev = ev100(r)
+            nhom["chung" if ev is None else ("ngoai" if ev >= ng else "trong")].append(
+                np.asarray(f, dtype=np.float64))
+        if progress is not None:
+            progress(i, len(ds))
+    trong, ngoai = nhom["trong"] + nhom["chung"], nhom["ngoai"] + nhom["chung"]
+    if not trong and not ngoai:
+        raise ValueError("không ảnh nào thấy da mặt")
+
+    def mau(mau_ds):
+        lin = np.maximum(np.median(np.vstack(mau_ds), axis=0), 1e-6)
+        lin = lin * (0.85 / float(lin.max()))          # chỉ giữ MÀU, độ sáng chuẩn hoá
+        return [int(round(255 * _lin_to_srgb(v))) for v in lin]
+
+    t = mau(trong) if trong else mau(ngoai)
+    n = mau(ngoai) if ngoai else t
+    return {"trong": t, "ngoai": n, "n_trong": len(trong), "n_ngoai": len(ngoai),
+            "n_anh": len(ds) - len(bo), "bo": bo}
 
 
 #: Bon o Color Grading tool ghi (cong vecto vao so goc cua preset).
@@ -6990,6 +7092,7 @@ def decide(items: list, cfg: dict) -> None:
         _tint_tran_am(items, cfg)
         _wb_ky_yeu(items, cfg)
         _wb_ngoai_toi(items, cfg)        # 12/10: ngoai troi buoi toi khong ha K
+    _wb_bu_ca_buoi(items, cfg)           # 12/10: o "Bu K / Tint ca buoi" — sau moi buoc WB tu dong
     #  WB da chot -> kiem lai da TRUOC hai buoc bu sang chu y (11/10)
     phanh_da_sau_wb(items, cfg)
     if cfg["wb"] in ("asshot", "skin"):
@@ -7202,6 +7305,25 @@ def _wb_ngoai_toi(items: list, cfg: dict) -> int:
             ghi = f"ngoai-toi-giu-am{-ta:+.0f}"
             n += 1
         r["notes"] = ";".join([v for v in [r.get("notes", ""), ghi] if v])
+    return n
+
+
+def _wb_bu_ca_buoi(items: list, cfg: dict) -> int:
+    """Ô "Bù nhiệt độ / Tint cả buổi": cộng bu_k_ca_buoi K, bu_tint_ca_buoi vào ΔK / ΔTint
+    CUỐI của mọi ảnh (trừ ảnh đen trắng). WB "Tắt" thì compute_values không ghi WB nên
+    cũng không cộng. Trả về số ảnh được cộng."""
+    k = float(cfg.get("bu_k_ca_buoi") or 0.0)
+    ti = float(cfg.get("bu_tint_ca_buoi") or 0.0)
+    if not (k or ti) or cfg.get("wb") == "off":
+        return 0
+    n = 0
+    for r in items:
+        if r.get("bw"):
+            continue
+        r["temp_adj"] = float(r.get("temp_adj", 0.0) or 0.0) + k
+        r["tint_adj"] = float(r.get("tint_adj", 0.0) or 0.0) + ti
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), f"bu-wb{k:+.0f}K{ti:+.0f}"] if v])
+        n += 1
     return n
 
 
@@ -8656,16 +8778,50 @@ def _chu_ky_anh(path) -> tuple:
         return (-1, -1)
 
 
+def _doc_goi_do(f: Path, cfg: dict):
+    """Gói kết quả đo đã lưu nếu CÙNG bản engine + cùng cách đo, không thì (None, lý do)."""
+    import pickle
+    import zlib
+    if not f.is_file():
+        return None, ""
+    try:
+        goi = pickle.loads(zlib.decompress(f.read_bytes()))
+    except Exception:                                        # noqa: BLE001
+        return None, "file kết quả cũ hỏng"
+    if not isinstance(goi, dict) or goi.get("dang") != 1:
+        return None, "kết quả cũ là định dạng khác"
+    if goi.get("engine") != dau_engine():
+        return None, "kết quả cũ đo bằng bản app khác"
+    if tuple(goi.get("cau_hinh") or ()) != cau_hinh_do(cfg):
+        return None, "cách đo đã đổi so với lần trước"
+    return goi, ""
+
+
 def luu_ket_qua_do(thu_muc, cfg: dict, pairs, items: list, failed: list) -> Path | None:
     """Ghi kết quả đo của buổi (gọi NGAY sau analyze(), trước khi plan() đụng vào
-    items). Hỏng thì trả None — không lưu được không phải lý do làm hỏng lượt đo."""
+    items). Hỏng thì trả None — không lưu được không phải lý do làm hỏng lượt đo.
+
+    #[[ 12/10 PHAN TICH MOT PHAN (loc may / ong kinh): GOP vao lan do cu cung engine +
+    #   cung cach do — anh vua do de len, anh cu con nguyen (cung kich thuoc, gio sua)
+    #   giu lai. Khong gop thi do may A roi do may B la mat ket qua may A. ]]"""
     import pickle
     import zlib
     f = file_ket_qua_do(thu_muc)
+    moi = {str(p) for p, _ in pairs}
+    anh = {str(p): _chu_ky_anh(p) for p, _ in pairs}
+    items, failed = list(items), list(failed or [])
+    cu, _ = _doc_goi_do(f, cfg)
+    if cu:
+        for p, ck in (cu.get("anh") or {}).items():
+            if p not in moi and tuple(ck) == _chu_ky_anh(p):
+                anh[p] = tuple(ck)
+        items += [it for it in cu.get("items") or [] if str(it.get("path")) in anh
+                  and str(it.get("path")) not in moi]
+        failed += [r for r in cu.get("failed") or [] if str(r.get("path")) in anh
+                   and str(r.get("path")) not in moi]
     goi = {"dang": 1, "engine": dau_engine(), "thu_muc": str(thu_muc),
-           "cau_hinh": cau_hinh_do(cfg),
-           "anh": {str(p): _chu_ky_anh(p) for p, _ in pairs},
-           "items": items, "failed": list(failed or []), "luc": time.time()}
+           "cau_hinh": cau_hinh_do(cfg), "anh": anh,
+           "items": items, "failed": failed, "luc": time.time()}
     try:
         du_lieu = zlib.compress(pickle.dumps(goi, protocol=4), 3)
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -8685,37 +8841,32 @@ def luu_ket_qua_do(thu_muc, cfg: dict, pairs, items: list, failed: list) -> Path
     return f
 
 
-def nap_ket_qua_do(thu_muc, cfg: dict, pairs) -> tuple:
-    """-> (kết quả, lý do). Kết quả là dict {items, failed, luc, n_bo} khi KHỚP
+def nap_ket_qua_do(thu_muc, cfg: dict, pairs, mot_phan: bool = False) -> tuple:
+    """-> (kết quả, lý do). Kết quả là dict {items, failed, luc, n_bo, thieu} khi KHỚP
     hoàn toàn với lần đo đã lưu, None nếu không — lúc đó `lý do` nói vì sao
-    (chuỗi rỗng = buổi này chưa từng phân tích)."""
-    import pickle
-    import zlib
+    (chuỗi rỗng = buổi này chưa từng phân tích).
+
+    mot_phan (12/10): nạp những ảnh ĐÃ đo và còn nguyên, ảnh mới / đã đổi bỏ ra —
+    `thieu` = số ảnh chưa có kết quả (buổi chỉ phân tích một máy / ống kính)."""
     f = file_ket_qua_do(thu_muc)
-    if not f.is_file():
-        return None, ""
-    try:
-        goi = pickle.loads(zlib.decompress(f.read_bytes()))
-    except Exception:                                        # noqa: BLE001
-        return None, "file kết quả cũ hỏng"
-    if not isinstance(goi, dict) or goi.get("dang") != 1:
-        return None, "kết quả cũ là định dạng khác"
-    if goi.get("engine") != dau_engine():
-        return None, "kết quả cũ đo bằng bản app khác"
-    if tuple(goi.get("cau_hinh") or ()) != cau_hinh_do(cfg):
-        return None, "cách đo đã đổi so với lần trước"
+    goi, ly_do = _doc_goi_do(f, cfg)
+    if goi is None:
+        return None, ly_do
     anh = goi.get("anh") or {}
     moi = doi = 0
-    for p, _ in pairs:
+    con = []
+    for p, sc in pairs:
         ck = anh.get(str(p))
         if ck is None:
             moi += 1
         elif tuple(ck) != _chu_ky_anh(p):
             doi += 1
-    if moi or doi:
+        else:
+            con.append((p, sc))
+    if (moi or doi) and not (mot_phan and con):
         return None, ", ".join(x for x in (f"{moi} ảnh mới" if moi else "",
                                            f"{doi} ảnh đã đổi" if doi else "") if x)
-    co = {str(p): str(sc) for p, sc in pairs}
+    co = {str(p): str(sc) for p, sc in con}
     items = []
     for it in goi.get("items") or []:
         sc = co.get(str(it.get("path")))
@@ -8724,7 +8875,8 @@ def nap_ket_qua_do(thu_muc, cfg: dict, pairs) -> tuple:
             items.append(it)
     failed = [r for r in goi.get("failed") or [] if str(r.get("path")) in co]
     return {"items": items, "failed": failed, "luc": float(goi.get("luc") or 0),
-            "n_bo": len(goi.get("items") or []) - len(items)}, ""
+            "n_bo": len(goi.get("items") or []) - len(items),
+            "thieu": len(pairs) - len(con)}, ""
 
 
 def plan(items: list, cfg: dict, folder: Path | None = None,

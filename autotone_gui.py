@@ -118,6 +118,11 @@ WBS = [("Da trắng hồng  (khuyên dùng)", "skin"),
        ("Không đụng tới", "off"),
        ("Grey-world trên preview", "grey"),
        ("Grey-world, chỉ san trong cảnh", "scene")]
+#[[ MAU DA DICH (12/10) — mau co ten hoc tu anh nguoi dung da sua (at.mau_da_tu_anh),
+#   luu o <du lieu>/mau_da.json: {ten: {"trong", "ngoai", "n_anh", "n_trong", "n_ngoai",
+#   "luc"}}. Muc dau la dich mac dinh cua tool. ]]
+MAU_DA_MAC_DINH = "Mặc định (da trắng hồng · da rám ngoài trời)"
+FILE_MAU_DA = "mau_da.json"
 #[[ LOAI BUOI (3/10) — cuoi va su kien can muc sang mat KHAC nhau. Chon o day
 #   chi dien so vao o "Bu sang ca buoi"; so do moi la thu duoc tinh. Xem chu
 #   thich bu_sang_ca_buoi trong autotone.DEFAULTS. ]]
@@ -284,6 +289,7 @@ class App(ttk.Frame):
         self.after(3000, self._soi_xuat)
         self.after(2500, self._mo_tram_retouch)
         self.after(4000, self._gop_y_khoi_dong)
+        self._nho_mau_da(theo_buoi=False)    # 12/10: mẫu màu da dùng gần nhất (gu)
         self._set_busy(False)
 
     # ------------------------------------------------------------ góp dữ liệu (12/10)
@@ -343,6 +349,162 @@ class App(ttk.Frame):
                + ("Tắt góp dữ liệu?" if dang else "Bật lại góp dữ liệu?"))
         if messagebox.askyesno("Góp dữ liệu cải thiện app", hoi):
             gop_y.ghi_cau_hinh({"bat": not dang})
+
+    # ------------------------------------------------------------ màu da đích (12/10)
+    #[[ Mau co ten trong <du lieu>/mau_da.json. Khoa bat dau "_" la so ghi nho, khong phai
+    #   mau: "_cuoi" = mau dung gan nhat (gu cua nguoi dung, dung cho buoi moi), "_theo_buoi"
+    #   = {thu muc: ten} (mo lai buoi cu thi dung lai dung mau da chon cho buoi do). ]]
+    def _doc_mau_da(self) -> dict:
+        import json
+        try:
+            d = json.loads((dd.goc_du_lieu() / FILE_MAU_DA).read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _ghi_mau_da(self, d: dict) -> None:
+        import json
+        try:
+            dd.ghi_ben(dd.goc_du_lieu() / FILE_MAU_DA, json.dumps(d, ensure_ascii=False, indent=1))
+        except OSError as ex:
+            self.status(f"Không lưu được màu da đích: {ex}", gd.MAU["loi"])
+
+    def _ten_mau_da(self) -> list:
+        return [MAU_DA_MAC_DINH] + sorted(k for k, v in self._doc_mau_da().items()
+                                          if not k.startswith("_") and isinstance(v, dict))
+
+    def _mau_da_dang_chon(self):
+        """cfg["mau_da_dich"] cho mẫu đang chọn; None = đích mặc định của tool."""
+        ten = self.v_mau_da.get()
+        m = self._doc_mau_da().get(ten) if ten != MAU_DA_MAC_DINH else None
+        if not isinstance(m, dict) or not m.get("trong"):
+            return None
+        return {"ten": ten, "trong": list(m["trong"]), "ngoai": list(m.get("ngoai") or m["trong"])}
+
+    def _ve_mau_da(self):
+        cv = getattr(self, "cv_mau_da", None)
+        if cv is None:
+            return
+        md = self._mau_da_dang_chon()
+        t, n = (md["trong"], md["ngoai"]) if md else at.dich_da(dict(at.DEFAULTS))
+        cv.delete("all")
+        for i, c in enumerate((t, n)):
+            x = 8 + i * 22
+            cv.create_oval(x - 7, 1, x + 7, 15, outline=gd.MAU["vien"],
+                           fill="#%02x%02x%02x" % tuple(max(0, min(255, int(v))) for v in c))
+
+    def _dung_menu_mau_da(self):
+        """Menu "Màu da ▾" dựng lại mỗi lần mở: các mẫu (chọn một) · tạo · xoá."""
+        m = self.menu_mau_da
+        m.delete(0, "end")
+        for ten in self._ten_mau_da():
+            m.add_radiobutton(label=ten, value=ten, variable=self.v_mau_da,
+                              command=self._doi_mau_da)
+        m.add_separator()
+        m.add_command(label="Tạo từ ảnh đã sửa…", command=self._tao_mau_da)
+        m.add_command(label="Xoá mẫu đang chọn", command=self._xoa_mau_da,
+                      state="normal" if self._mau_da_dang_chon() else "disabled")
+
+    def _doi_mau_da(self, nho: bool = True):
+        if nho:
+            d = self._doc_mau_da()
+            d["_cuoi"] = self.v_mau_da.get()
+            f = self.folder() if hasattr(self, "v_folder") else None
+            if f:
+                d.setdefault("_theo_buoi", {})[str(f)] = self.v_mau_da.get()
+            self._ghi_mau_da(d)
+        self._ve_mau_da()
+        self.refresh_plan()
+
+    def _nho_mau_da(self, theo_buoi: bool = True):
+        """Đặt ô Màu da đích theo mẫu đã chọn cho buổi đang mở, không có thì mẫu dùng gần
+        nhất (không ghi gì)."""
+        d = self._doc_mau_da()
+        ten = None
+        f = self.folder() if theo_buoi and hasattr(self, "v_folder") else None
+        if f:
+            ten = (d.get("_theo_buoi") or {}).get(str(f))
+        ten = ten or d.get("_cuoi")
+        if ten and (ten == MAU_DA_MAC_DINH or isinstance(d.get(ten), dict)):
+            self.v_mau_da.set(ten)
+        self._ve_mau_da()
+
+    def _tao_mau_da(self):
+        fs = filedialog.askopenfilenames(
+            parent=self, title="Chọn ảnh bạn đã sửa xong (JPEG xuất từ Lightroom)",
+            filetypes=[("Ảnh đã sửa", "*.jpg *.jpeg *.JPG *.tif *.tiff *.png"), ("Tất cả", "*.*")])
+        if not fs:
+            return
+        cfg = self.read_cfg()
+        self.mb_mau_da.state(["disabled"])
+        kq: dict = {}
+
+        def lam():
+            try:
+                kq["mau"] = at.mau_da_tu_anh(list(fs), cfg,
+                                             progress=lambda i, n: kq.__setitem__("tien", (i, n)))
+            except Exception as ex:                          # noqa: BLE001
+                kq["loi"] = ex
+
+        th = threading.Thread(target=lam, daemon=True, name="mau_da")
+        th.start()
+
+        def cho():
+            if th.is_alive():
+                i, n = kq.get("tien", (0, len(fs)))
+                self.status(f"Đang đo màu da trên ảnh đã sửa {i}/{n}…", gd.MAU["canh"])
+                self.after(300, cho)
+                return
+            self.mb_mau_da.state(["!disabled"])
+            if "loi" in kq:
+                self.status("Chưa tạo được màu da đích.", gd.MAU["loi"])
+                messagebox.showerror("Màu da đích", f"Không đo được màu da: {kq['loi']}.\n\n"
+                                     "Chọn ảnh có mặt người nhìn rõ, đã chỉnh xong.", parent=self)
+                return
+            self._luu_mau_da_moi(kq["mau"], fs)
+
+        self.after(300, cho)
+
+    def _luu_mau_da_moi(self, mau: dict, fs) -> None:
+        from tkinter import simpledialog
+        ten = simpledialog.askstring(
+            "Đặt tên màu da đích",
+            f"Đo được da trên {mau['n_anh']}/{len(fs)} ảnh (ánh đèn {mau['n_trong']} · ánh "
+            f"sáng ngày {mau['n_ngoai']}).\nTên mẫu:",
+            initialvalue=Path(fs[0]).parent.name or "Gu của tôi", parent=self)
+        if not ten or not ten.strip():
+            return
+        ten = ten.strip()[:60]
+        if ten == MAU_DA_MAC_DINH or ten.startswith("_"):
+            ten = ten.lstrip("_") + " (riêng)"
+        d = self._doc_mau_da()
+        d[ten] = {"trong": mau["trong"], "ngoai": mau["ngoai"], "n_anh": mau["n_anh"],
+                  "n_trong": mau["n_trong"], "n_ngoai": mau["n_ngoai"],
+                  "luc": datetime.now().isoformat(timespec="seconds"),
+                  "thu_muc": str(Path(fs[0]).parent)}
+        self._ghi_mau_da(d)
+        self.v_mau_da.set(ten)
+        self._doi_mau_da()
+        bo = f" · bỏ {len(mau['bo'])} ảnh không thấy mặt" if mau.get("bo") else ""
+        self.status(f"Đã lưu màu da đích “{ten}” từ {mau['n_anh']} ảnh{bo}.", gd.MAU["xong"])
+
+    def _xoa_mau_da(self):
+        ten = self.v_mau_da.get()
+        d = self._doc_mau_da()
+        if ten not in d or ten.startswith("_"):
+            return
+        if not messagebox.askyesno("Xoá màu da đích", f"Xoá mẫu “{ten}”? Buổi đang mở quay "
+                                   "về màu da mặc định.", parent=self):
+            return
+        d.pop(ten, None)
+        for f, t in list((d.get("_theo_buoi") or {}).items()):
+            if t == ten:
+                d["_theo_buoi"].pop(f)
+        if d.get("_cuoi") == ten:
+            d.pop("_cuoi")
+        self._ghi_mau_da(d)
+        self.v_mau_da.set(MAU_DA_MAC_DINH)
+        self._doi_mau_da(nho=False)
 
     # ------------------------------------------------------------ trạm retouch (10/10)
     def _mo_tram_retouch(self):
@@ -1750,6 +1912,10 @@ class App(ttk.Frame):
         self.v_loai_buoi = tk.StringVar(value=LOAI_BUOI[0][0])
         self.v_bu_sang = tk.StringVar(
             value=f"{float(at.DEFAULTS.get('bu_sang_ca_buoi', 0.0)):.2f}")
+        #  12/10: bù nhiệt độ / Tint cả buổi + màu da đích học từ ảnh đã sửa
+        self.v_bu_k = tk.StringVar(value=f"{float(at.DEFAULTS.get('bu_k_ca_buoi', 0.0)):.0f}")
+        self.v_bu_tint = tk.StringVar(value=f"{float(at.DEFAULTS.get('bu_tint_ca_buoi', 0.0)):.0f}")
+        self.v_mau_da = tk.StringVar(value=MAU_DA_MAC_DINH)
 
         WRAP = 300      # chữ còn in ra (cảnh báo) thì xuống dòng, không bị cắt
 
@@ -1859,14 +2025,35 @@ class App(ttk.Frame):
             [(nhan, NGAN_LB.get(ma, nhan)) for nhan, ma in LOAI_BUOI],
             command=self._doi_loai_buoi)
         self.cb_loai_buoi.pack(side="left", fill="x", expand=True)
-        self.lbl_bu_sang, self.sp_bu_sang = so(
-           g_loai, "Bù sáng cả buổi +", self.v_bu_sang, -1.0, 1.0, 0.05,
-           "EV, cộng sau chống cháy. Cưới 0 · Sự kiện "
-           f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f}. "
-           "Ảnh không có mặt giữ nguyên. "
-           #[[ 4/10: o "Mat sang toi muc" da an — moc nam o day cho nguoi
-           #   dung biet so 0 cua thanh nay nghia la mat sang toi dau. ]]
-           f"Mốc sáng mặt: {float(at.DEFAULTS['face_target_ev']):+.2f} EV.")
+        #[[ 12/10 user: "them option bu / giam K va Tint nhu bu sang ca buoi". Cong SAU
+        #   moi buoc WB tu dong — xem at._wb_bu_ca_buoi. BA o bu (sang · K · Tint) CHUNG
+        #   MOT HANG, nhan ngan, giai thich trong dau ? — kiem_man_hinh: mo het nhom o
+        #   2400x1380 phai vua khong cuon (hai hang rieng du 16 px). ]]
+        hang_bu = ttk.Frame(g_loai)
+        hang_bu.pack(fill="x", pady=(4, 1))
+        self.sp_bu_sang = gd.ThanhTruot(
+            hang_bu, self.v_bu_sang, -1.0, 1.0, 0.05, khi_xong=self.refresh_plan,
+            nhan="Bù sáng +",
+            mo="Bù sáng cả buổi — EV, cộng sau chống cháy. Cưới 0 · Sự kiện "
+               f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f}. "
+               "Ảnh không có mặt giữ nguyên. "
+               #[[ 4/10: o "Mat sang toi muc" da an — moc nam o day cho nguoi
+               #   dung biet so 0 cua thanh nay nghia la mat sang toi dau. ]]
+               f"Mốc sáng mặt: {float(at.DEFAULTS['face_target_ev']):+.2f} EV.")
+        self.sp_bu_sang.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.sp_bu_k = gd.ThanhTruot(
+            hang_bu, self.v_bu_k, -1000, 1000, 50, khi_xong=self.refresh_plan, nhan="K +",
+            mo="Bù nhiệt độ cả buổi (K): cộng vào Temperature của mọi ảnh SAU mọi bước cân "
+               "WB tự động (kể cả “Ngoài trời buổi tối”). Dương = ấm hơn, âm = lạnh hơn. "
+               "Ảnh đen trắng giữ nguyên; Cân bằng trắng “Không đụng tới” thì không áp.")
+        self.sp_bu_k.pack(side="left", fill="x", expand=True, padx=4)
+        self.sp_bu_tint = gd.ThanhTruot(
+            hang_bu, self.v_bu_tint, -30, 30, 1, khi_xong=self.refresh_plan, nhan="Tint +",
+            mo="Bù Tint cả buổi: cộng vào Tint của mọi ảnh như Bù K. Dương = hồng / magenta "
+               "hơn, âm = xanh lá hơn.")
+        self.sp_bu_tint.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.lbl_bu_sang = self.sp_bu_sang.lbl
+        self.lbl_bu_k, self.lbl_bu_tint = self.sp_bu_k.lbl, self.sp_bu_tint.lbl
 
         # ------------------------------------------------ ánh sáng của buổi
         #[[ ANH SANG CUA BUOI — nguoi dung chon, khong doan.
@@ -1934,12 +2121,35 @@ class App(ttk.Frame):
            "sáng nhất — mặt đó không bị cháy, cả nhóm cùng một mức. Ảnh đám "
            "đông không tối đi quá 0.5 EV so với cách đo cũ. Ảnh một người "
            "giữ nguyên.")
-        hop(g_tone, "Cân bằng trắng", self.v_wb, [w[0] for w in WBS],
-            self.refresh_plan,
+        cb_wb = hop(g_tone, "Cân bằng trắng", self.v_wb, [w[0] for w in WBS],
+                    self.refresh_plan,
             "Da trắng hồng: kéo màu da về đích da trắng hồng (đích riêng cho ánh "
             "sáng ngày và ánh đèn), kèm WB người chụp đặt trên máy khi preset để "
             "trống WB.\nTheo nhiệt độ máy đo được: chỉ kéo về WB của máy.\n"
             "Grey-world: cân theo màu trung bình của preview.")
+        #[[ 12/10 user: "mau da dich cho tung buoi ... moi nguoi co mot mau da theo gu cua
+        #   ho -> cho ho chon mau da qua anh ma ho da sua san". Do da tren anh da sua bang
+        #   CHINH measure() (at.mau_da_tu_anh), luu thanh mau co ten — dung lai buoi sau.
+        #   Kiem KN2009 (hoc nua anh xuat, cham nua kia): lech hue da -2.8° -> -1.1°. ]]
+        #  Gon tren CUNG hang nhan "Can bang trang" (khong them chieu cao — kiem_man_hinh).
+        dong_wb = cb_wb.master.winfo_children()[0]
+        self.mb_mau_da = ttk.Menubutton(dong_wb, text="Màu da")   # theme tự vẽ mũi tên
+        self.menu_mau_da = tk.Menu(self.mb_mau_da, tearoff=0,
+                                   postcommand=self._dung_menu_mau_da)
+        self.mb_mau_da["menu"] = self.menu_mau_da
+        self.mb_mau_da.pack(side="right")
+        self.cv_mau_da = tk.Canvas(dong_wb, width=40, height=16, highlightthickness=0,
+                                   bg=gd.MAU["nen"])
+        self.cv_mau_da.pack(side="right", padx=(0, 4))
+        hoi(dong_wb, "MÀU DA ĐÍCH — màu da mà Cân bằng trắng, HSL da và Color Grading cùng "
+                     "nhắm tới. Hai chấm: đích ánh đèn · đích ánh sáng ngày. Mặc định: da "
+                     "trắng hồng (đèn) và da rám (ngày).\n“Màu da › Tạo từ ảnh đã sửa…”: "
+                     "chọn vài ảnh JPEG bạn đã chỉnh xong theo gu của mình (xuất từ "
+                     "Lightroom). Tool đo da trên các mặt trong ảnh — cùng cách đo với ảnh "
+                     "RAW — tách theo ánh sáng ngày / đèn (EXIF), lưu thành mẫu có tên. App "
+                     "nhớ mẫu dùng gần nhất và mẫu riêng của từng buổi."
+            ).pack(side="right", padx=(0, 6))
+        self._ve_mau_da()
         #[[ Hai o nay chi co nghia voi mode absolute/hybrid — _on_mode_change()
         #   bat/tat chung, nen phai giu dung ten bien lbl_target/sp_target/
         #   lbl_blend/sp_blend. De ngay duoi o "Che do" vi chung phu thuoc no. ]]
@@ -2102,7 +2312,7 @@ class App(ttk.Frame):
                   self.v_gap_can_sig, self.v_scenesig, self.v_level,
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
                   self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
-                  self.v_ngoai_toi):
+                  self.v_ngoai_toi, self.v_bu_k, self.v_bu_tint, self.v_mau_da):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         self._tom_tat_nhom()
 
@@ -2152,7 +2362,8 @@ class App(ttk.Frame):
         mode = self.mode_value()
         meter = dict(METERS).get(self.v_meter.get(), "face")
         tone = [self.NGAN_MODE.get(mode, mode), self.NGAN_METER.get(meter, meter),
-                self.NGAN_WB.get(dict(WBS).get(self.v_wb.get(), "skin"), "")]
+                self.NGAN_WB.get(dict(WBS).get(self.v_wb.get(), "skin"), ""),
+                ("da: " + self.v_mau_da.get()) if self.v_mau_da.get() != MAU_DA_MAC_DINH else ""]
         ghim = [t for t, b in (("Highlights", self.v_hl), ("Shadows", self.v_sh),
                                ("HSL da", self.v_hsl_da),
                                ("da trắng hồng", self.v_grade),
@@ -2179,7 +2390,9 @@ class App(ttk.Frame):
                      f"×{so(self.v_gain, 1.0):.2f}"),
             "ghim": ("Tự kéo " + ", ".join(ghim)) if ghim else "Tắt hết",
             "loai_buoi": (f"{ {'su_kien': 'Sự kiện', 'ky_yeu': 'Kỷ yếu'}.get(loai, 'Cưới') } · bù sáng "
-                          f"{so(self.v_bu_sang, 0.0):+.2f} EV"),
+                          f"{so(self.v_bu_sang, 0.0):+.2f} EV"
+                          + (f" · WB {so(self.v_bu_k, 0.0):+.0f} K / Tint {so(self.v_bu_tint, 0.0):+.0f}"
+                             if so(self.v_bu_k, 0.0) or so(self.v_bu_tint, 0.0) else "")),
             "canh": tach + (" · đồng bộ " + " + ".join(dong) if dong else ""),
             "loc": ("Lọc " + ", ".join(loc)) if loc else "Không lọc ảnh",
         }
@@ -3928,6 +4141,10 @@ class App(ttk.Frame):
                    mat_sang_nhat=self.v_mat_sang_nhat.get(),
                    dong_bo_chu_the=self.v_dong_bo_chu_the.get(),
                    wb_ngoai_toi=self.v_ngoai_toi.get(),
+                   #  12/10: bù K / Tint cả buổi + màu da đích học từ ảnh đã sửa
+                   bu_k_ca_buoi=self._num(self.v_bu_k, 0.0),
+                   bu_tint_ca_buoi=self._num(self.v_bu_tint, 0.0),
+                   mau_da_dich=self._mau_da_dang_chon(),
                    max_ev_up=self._num(self.v_maxup, 1.0),
                    #[[ Anh sang cua buoi — nguoi dung chon o khau 2.
                    #   Thieu dong nay thi o chon la mot cai nut khong noi vao
@@ -4086,6 +4303,7 @@ class App(ttk.Frame):
             self.lbl_scan.configure(text=f"{n} ảnh RAW, đủ sidecar .xmp.",
                                     foreground=gd.MAU["xong"])
         self._invalidate_measurements()
+        self._nho_mau_da()                  # 12/10: màu da đích đã chọn cho buổi này
         if nap_cu and n:
             self._nap_ket_qua_cu(root)
         #[[ Dong trang thai lan gui (duoi nut Ghi) la cua BUOI — doi buoi thi
@@ -4106,7 +4324,8 @@ class App(ttk.Frame):
             return False
         try:
             cfg = self.read_cfg()
-            kq, ly_do = at.nap_ket_qua_do(root, cfg, self.pairs)
+            #  12/10: buổi phân tích MỘT PHẦN (lọc máy / ống kính) -> nạp phần đã đo
+            kq, ly_do = at.nap_ket_qua_do(root, cfg, self.pairs, mot_phan=True)
         except Exception:                                    # noqa: BLE001
             return False
         if kq is None or not kq["items"]:
@@ -4125,9 +4344,12 @@ class App(ttk.Frame):
         #  ban xuat app vua nho Lightroom lam (_xin_xuat_nen) chua ve — xem _soi_xuat
         self._cho_xuat_sau_nap = self.source_value() == "catalog"
         luc = datetime.fromtimestamp(kq["luc"]).strftime("%H:%M %d/%m")
-        self.status(f"↺ Đã nạp kết quả phân tích lúc {luc} — không cần đo lại "
-                    f"(bấm “1 · Phân tích” nếu muốn đo lại) · "
-                    + str(self.lbl_status.cget("text")),
+        thieu = int(kq.get("thieu") or 0)
+        phan = (f"{len(kq['items'])}/{len(self.pairs)} ảnh — {thieu} ảnh chưa có kết quả (chưa "
+                f"phân tích, mới thêm hoặc file đã đổi); bấm “1 · Phân tích” để đo" if thieu else "")
+        self.status(f"↺ Đã nạp kết quả phân tích lúc {luc} "
+                    + (phan if phan else "— không cần đo lại (bấm “1 · Phân tích” nếu muốn "
+                       "đo lại)") + " · " + str(self.lbl_status.cget("text")),
                     str(self.lbl_status.cget("foreground")))
         return True
 
@@ -4747,7 +4969,35 @@ class App(ttk.Frame):
             "qua plugin” ở trên: không cần .xmp, không cần Ctrl+S, không cần\n"
             "Read Metadata from File.")
 
-    def start_analyze(self, chuoi: bool = False):
+    def _meta_may_lens(self, root) -> dict:
+        """{đường dẫn: (máy, ống kính)} của self.pairs — đọc một lần cho mỗi danh sách ảnh."""
+        khoa = (str(root), len(self.pairs), str(self.pairs[0][0]) if self.pairs else "")
+        cu = getattr(self, "_meta_cache", None)
+        if cu and cu[0] == khoa:
+            return cu[1]
+        self.status(f"Đang đọc máy / ống kính của {len(self.pairs)} ảnh…", gd.MAU["canh"])
+        self.update_idletasks()
+        try:
+            meta = at.may_lens(self.pairs)
+        except Exception:                                    # noqa: BLE001
+            meta = {}
+        self._meta_cache = (khoa, meta)
+        return meta
+
+    def _sau_chon_loc(self, root, chuoi: bool, kq):
+        """Kết quả hộp LocMayLensDialog -> chạy phân tích (hoặc thôi)."""
+        if kq is None:
+            self.status("Đã huỷ — chưa phân tích.", gd.MAU["mo"])
+            return
+        if not hasattr(self, "_loc_cu"):
+            self._loc_cu = {}
+        if kq == "het":
+            self._loc_cu.pop(str(root), None)
+        else:
+            self._loc_cu[str(root)] = (kq[0], kq[1])
+        self.start_analyze(chuoi, loc=kq)
+
+    def start_analyze(self, chuoi: bool = False, loc=None):
         if self._khoa_chan():
             return
         #[[ Xoa co NGAY DAU. Bam "1 · Phan tich" mot minh la huy moi chuoi con
@@ -4761,6 +5011,26 @@ class App(ttk.Frame):
         self.scan_folder(nap_cu=False)          # sắp đo lại — đừng nạp kết quả cũ
         if not self.pairs:
             return
+        #[[ 12/10 PHAN TICH MOT PHAN theo may / ong kinh (hop_thoai.LocMayLensDialog). Buoi
+        #   chi co MOT may va MOT ong kinh thi khong hoi. Hop KHONG chan: chon xong no goi
+        #   lai start_analyze(loc=...). Do xong luu GOP vao ket qua cu (at.luu_ket_qua_do). ]]
+        if loc is None:
+            meta = self._meta_may_lens(root)
+            if len({m for m, _ in meta.values()}) > 1 or len({ln for _, ln in meta.values()}) > 1:
+                from hop_thoai import LocMayLensDialog
+                LocMayLensDialog(self, meta, (getattr(self, "_loc_cu", {}) or {}).get(str(root)),
+                                 lambda kq: self._sau_chon_loc(root, chuoi, kq))
+                return
+            loc = "het"
+        self._loc_luot = ""
+        chon_pairs = list(self.pairs)       # self.pairs vẫn là CẢ buổi (lưới, bộ đếm...)
+        if loc != "het":
+            may, lens, ds = loc
+            chon_pairs = [pr for pr in self.pairs if str(pr[0]) in ds]
+            if not chon_pairs:
+                return
+            self._loc_luot = (f"{len(chon_pairs)}/{len(self.pairs)} ảnh · "
+                              + ", ".join(sorted(may)) + " · " + ", ".join(sorted(lens)))
 
         cfg = self.read_cfg()
         #[[ Tick loc mat ma chua co ear.csv thi NOI NGAY, dung im lang.
@@ -4806,15 +5076,16 @@ class App(ttk.Frame):
                 self.v_blink.set(False)
         self.cancel_flag = False
 
-        pairs = list(self.pairs)
+        pairs = chon_pairs
+        self._so_anh_luot = len(pairs)
         # Bớt tiến trình khi máy sắp hết RAM. Lightroom mở sẵn dễ chiếm hơn
         # 10 GB, chạy đủ 8 tiến trình lúc đó là MemoryError hàng loạt.
         jobs = 1 if len(pairs) < 12 else at.safe_jobs(min(8, (os.cpu_count() or 4)), cfg)
 
         self._set_busy(True)
-        self.pb.configure(value=0, maximum=len(self.pairs))
+        self.pb.configure(value=0, maximum=len(pairs))
         free = at.free_ram_mb() / 1024
-        self.status(f"Đang đo {len(self.pairs)} ảnh · {jobs} tiến trình · "
+        self.status(f"Đang đo {len(pairs)} ảnh · {jobs} tiến trình · "
                     f"RAM trống {free:.1f} GB")
 
         t_bat_dau = time.monotonic()
@@ -4936,8 +5207,13 @@ class App(ttk.Frame):
                 self.status("Chạy hết: đo xong, đang ghi .xmp...", gd.MAU["canh"])
                 self.after(60, lambda: self.do_apply(hoi=False))
         if self.cancel_flag:   # sau refresh_plan, nếu không sẽ bị ghi đè
-            self.status(f"Đã dừng — mới đo {len(items)}/{len(self.pairs)} ảnh, "
+            tong = int(getattr(self, "_so_anh_luot", 0) or len(self.pairs))
+            self.status(f"Đã dừng — mới đo {len(items)}/{tong} ảnh, "
                         f"bảng dưới chỉ tính trên phần này.", gd.MAU["canh"])
+        elif getattr(self, "_loc_luot", ""):
+            self.status(f"Phân tích một phần: {self._loc_luot} — "
+                        + str(self.lbl_status.cget("text")),
+                        str(self.lbl_status.cget("foreground")))
 
     def refresh_plan(self):
         """Tính lại delta từ số đo có sẵn (không quét lại ảnh) và vẽ bảng."""

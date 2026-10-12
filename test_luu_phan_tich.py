@@ -262,9 +262,12 @@ def main() -> int:
         app.v_folder.set(str(ga))
         app.scan_folder()
         vong()
-        ktra("anh RAW doi: KHONG nap, noi ly do",
-             not app.items and "1 ảnh đã đổi" in app.lbl_status.cget("text"),
-             app.lbl_status.cget("text")[:90])
+        #  12/10: giao dien nap MOT PHAN (loc may / ong kinh) — anh doi bi bo ra, phan con
+        #  nguyen van nap, dong trang thai noi con bao nhieu anh chua co ket qua.
+        ktra("anh RAW doi: nap 5/6 anh con nguyen, noi 1 anh chua co ket qua",
+             len(app.items) == 5 and str(p) not in {r["path"] for r in app.items}
+             and "1 ảnh chưa có kết quả" in app.lbl_status.cget("text"),
+             app.lbl_status.cget("text")[:110])
     finally:
         at.LR_JOB_DIR, at.analyze = job_cu, analyze_cu
         try:

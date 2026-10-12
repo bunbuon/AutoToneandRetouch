@@ -852,6 +852,32 @@ theo da trung hoà sắc cam, nhãn đèn chỉ thêm −117 K (As Shot chỉ k�
   áp: 2609 14h ngoài trời nhãn đèn tool kéo −509 K, user giữ.
 Kiểm: `test_canh_ngoai_toi.py` (thử ngược: bỏ `_wb_ngoai_toi` → đỏ), tu_kiem "Mô hình nhận cảnh".
 
+## Màu da đích theo gu · lọc máy / ống kính · bù K / Tint cả buổi (12/10)
+
+User: "mỗi người có màu da theo gu — chọn qua ảnh họ đã sửa" · "phân loại theo Model máy /
+Lens như filter Metadata của Lightroom, bấm Phân tích thì hỏi phân tích loại nào hay hết" ·
+"bù / giảm K và Tint như bù sáng cả buổi".
+- **Màu da đích:** `mau_da_tu_anh(paths)` đo da trên JPEG đã sửa bằng CHÍNH `measure()`
+  (read_raw đọc được JPEG), trung vị theo EV100 của EXIF (ngày / đèn; thiếu nhóm lấy nhóm kia),
+  chuẩn hoá kênh lớn nhất 0.85 tuyến tính. `cfg["mau_da_dich"]` thắng mọi đích trong `dich_da` /
+  `dich_da_cuoi` (WB + HSL + CG). GUI: nút "Màu da" + hai chấm trên hàng nhãn Cân bằng trắng;
+  `<dữ liệu>/mau_da.json` = mẫu có tên + `_cuoi` (gu) + `_theo_buoi`. Kiểm KN2009 (học nửa ảnh
+  xuất Kuehne+Nagel, chấm nửa kia, 385 ảnh): lệch hue da −2.8° → −1.1°, |lệch| 4.2 → 4.3°
+  (đích mặc định vốn học từ ảnh user). Độ đậm dự đoán cao hơn ảnh xuất ×1.37 — HSL/CG đã bù
+  bằng `hsl_da_chroma_lr` 0.60, đích từ ảnh xuất cùng không gian với `skin_dich_hong`.
+- **Lọc máy / ống kính:** EXIF 0xA434 LensModel → `tags["lens"]`; `doc_the()` chỉ đọc tag
+  (2309 ảnh 1.4 s), `may_lens(pairs)`. Bấm Phân tích, buổi ≥ 2 máy hoặc ≥ 2 ống kính →
+  `hop_thoai.LocMayLensDialog` (KHÔNG chặn — gọi lại `start_analyze(loc=…)`), ảnh phải khớp
+  cả máy lẫn ống kính; nhớ lựa chọn theo buổi. `self.pairs` vẫn là CẢ buổi (lưới, bộ đếm).
+  `luu_ket_qua_do` GỘP vào lần đo cũ cùng engine + cách đo; `nap_ket_qua_do(mot_phan=True)`
+  (giao diện dùng) nạp phần còn nguyên + `thieu` — kể cả ảnh mới / file đã đổi (trước đây bỏ
+  cả buổi; test_luu_phan_tich mục 9 đổi theo).
+- **Bù K / Tint:** `bu_k_ca_buoi`, `bu_tint_ca_buoi` → `_wb_bu_ca_buoi` SAU mọi bước WB tự động
+  (thắng cả chặn ngoài trời tối), TRƯỚC `phanh_da_sau_wb`; bỏ ảnh đen trắng, WB "Không đụng
+  tới" không áp. Ba ô Bù sáng · K · Tint CHUNG MỘT HÀNG — hai hàng riêng làm kiem_man_hinh
+  (mở hết nhóm 2400×1380) dư 16 px.
+Kiểm: `test_loc_may_mau_da.py` (giao diện thật: hộp chọn, đo một phần, gộp, nhớ mẫu).
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị

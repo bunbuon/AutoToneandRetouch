@@ -753,6 +753,94 @@ class LogWindow(tk.Toplevel):
         ttk.Button(bar, text="Đóng", command=self.destroy).pack(side="right")
 
 
+MAY_KHONG_RO = "Không rõ máy"
+LENS_KHONG_RO = "Ống kính không ghi tên (lens cơ / ngàm chuyển)"
+
+
+class LocMayLensDialog(tk.Toplevel):
+    """Phân tích MỘT PHẦN buổi theo máy ảnh / ống kính (12/10) — như bộ lọc Metadata của
+    Lightroom. Không chặn luồng gọi: bấm nút thì gọi `xong(kq)` với kq = None (huỷ),
+    "het" (cả buổi) hoặc (máy đã chọn, ống kính đã chọn, tập đường dẫn ảnh khớp CẢ HAI).
+
+    #[[ User 12/10: "phan loai files theo Model may, hoac Lens nhu filter Metadata cua
+    #   Lightroom. Khi bam phan tich se hoi muon phan tich anh o loai nao hay phan tich
+    #   het — chinh sua 1 phan cua buoi chup thay vi phai phan tich ca buoi". ]]"""
+
+    def __init__(self, app, meta: dict, cu=None, xong=None):
+        super().__init__(app)
+        from collections import Counter
+        self.meta, self.cb_xong = meta, xong
+        self.title("Phân tích ảnh nào?")
+        self.transient(app.master)
+        self.resizable(False, False)
+        may = Counter(m or MAY_KHONG_RO for m, _ in meta.values())
+        lens = Counter(ln or LENS_KHONG_RO for _, ln in meta.values())
+        frm = ttk.Frame(self, padding=14)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, wraplength=600, justify="left",
+                  text=f"Buổi có {len(meta)} ảnh từ {len(may)} máy và {len(lens)} ống kính. "
+                       "Bỏ tick phần không muốn làm lần này — ảnh phải khớp CẢ máy lẫn ống "
+                       "kính đã tick. Kết quả đo được gộp với lần phân tích trước của "
+                       "buổi.").pack(anchor="w")
+        cot = ttk.Frame(frm)
+        cot.pack(fill="x", pady=(10, 6))
+        self.v_may: dict = {}
+        self.v_lens: dict = {}
+        for i, (tieu, dem, bien, chon_cu) in enumerate((
+                ("Máy ảnh", may, self.v_may, cu[0] if cu else None),
+                ("Ống kính", lens, self.v_lens, cu[1] if cu else None))):
+            k = ttk.LabelFrame(cot, text=tieu, padding=8)
+            k.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
+            for ten, n in dem.most_common():
+                v = tk.BooleanVar(value=(ten in chon_cu) if chon_cu is not None else True)
+                bien[ten] = v
+                ttk.Checkbutton(k, text=f"{ten}   ·   {n} ảnh", variable=v,
+                                command=self._dem).pack(anchor="w", pady=1)
+        self.lbl = ttk.Label(frm)
+        self.lbl.pack(anchor="w", pady=(4, 10))
+        bar = ttk.Frame(frm)
+        bar.pack(fill="x")
+        self.btn_chon = ttk.Button(bar, command=self._chon)
+        self.btn_chon.pack(side="right")
+        ttk.Button(bar, text=f"Phân tích hết {len(meta)} ảnh",
+                   command=lambda: self._xong("het")).pack(side="right", padx=(0, 6))
+        ttk.Button(bar, text="Huỷ", command=lambda: self._xong(None)).pack(side="left")
+        self.protocol("WM_DELETE_WINDOW", lambda: self._xong(None))
+        self.bind("<Escape>", lambda _e: self._xong(None))
+        self._dem()
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
+
+    def tap_chon(self) -> tuple:
+        may = {k for k, v in self.v_may.items() if v.get()}
+        lens = {k for k, v in self.v_lens.items() if v.get()}
+        ds = {p for p, (m, ln) in self.meta.items()
+              if (m or MAY_KHONG_RO) in may and (ln or LENS_KHONG_RO) in lens}
+        return may, lens, ds
+
+    def _dem(self):
+        _, _, ds = self.tap_chon()
+        self.lbl.configure(text=f"Sẽ phân tích {len(ds)}/{len(self.meta)} ảnh.")
+        self.btn_chon.configure(text=f"Phân tích {len(ds)} ảnh đã chọn")
+        self.btn_chon.state(["!disabled"] if ds else ["disabled"])
+
+    def _chon(self):
+        may, lens, ds = self.tap_chon()
+        if ds:
+            self._xong((may, lens, ds))
+
+    def _xong(self, kq):
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+        if self.cb_xong is not None:
+            self.cb_xong(kq)
+
+
 class UndoDialog(tk.Toplevel):
     """Chọn một bản backup để khôi phục."""
 
