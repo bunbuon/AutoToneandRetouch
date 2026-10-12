@@ -193,6 +193,49 @@ def _curve_txt(r: dict) -> str:
     return " ".join(parts)
 
 
+def _huong_hue(dh: float) -> str:
+    """Lệch hue (đích − hiện tại, độ) -> chữ: da đang đỏ hơn hay vàng hơn đích."""
+    if abs(dh) < 0.5:
+        return "trùng đích"
+    return f"{abs(dh):.0f}° {'đỏ' if dh > 0 else 'vàng'} hơn đích"
+
+
+def tom_tat_mau_da(md: dict) -> str:
+    """Dòng trạng thái của chuỗi màu da một đích (at.chuoi_mau_da_mau): đích của mẫu,
+    da sau WB + Tone đang ở đâu, WB giữ hay chỉnh theo vùng trắng, HSL, Color Grading."""
+    if not md.get("n"):
+        return (f" · màu da “{md.get('ten', '')}”: chưa đo được da ảnh nào "
+                "(không thấy mặt) → giữ nguyên HSL / Color Grading")
+    s = (f" · màu da “{md.get('ten', '')}” ({md['n']} ảnh, {md.get('n_lr', 0)} đo trên ảnh "
+         f"duyệt): đích {md['hue_dich']:.0f}° / đậm {md['q_dich']:.3f} · sau WB + Tone "
+         f"{md['hue0']:.0f}° / {md['q0']:.3f} ({_huong_hue(md['hue_dich'] - md['hue0'])})")
+    if not md.get("wb_bat"):
+        pass
+    elif not md.get("wb_co_trang"):
+        s += " · WB: mẫu chưa có số vùng trắng (tạo lại mẫu) → giữ"
+    else:
+        phan = []
+        if md.get("wb_canh_chinh"):
+            phan.append(f"chỉnh {md['wb_canh_chinh']} cảnh ({md.get('wb_k', 0):+.0f} K / "
+                        f"Tint {md.get('wb_tint', 0):+.0f})")
+        if md.get("wb_canh_giu"):
+            phan.append(f"giữ {md['wb_canh_giu']} cảnh (vùng trắng khớp mẫu)")
+        if md.get("wb_canh_chua_do"):
+            phan.append(f"{md['wb_canh_chua_do']} cảnh chưa có ảnh duyệt để đo vùng trắng")
+        s += " · WB: " + ", ".join(phan) if phan else ""
+    hc = dict(md.get("hsl") or {})
+    if hc.get("bat"):
+        if hc.get("canh_chinh"):
+            s += (f" · HSL Cam {int(hc['hue']):+d}/{int(hc['sat']):+d} ở {hc['canh_chinh']} cảnh"
+                  f" → {md['hue1']:.0f}° / {md['q1']:.3f}")
+        else:
+            s += " · HSL: da trong vùng ổn, không đổi"
+    if md.get("grade_bat"):
+        s += (f" · Color Grading {md['grade_n']} ảnh → {md['hue2']:.0f}°" if md.get("grade_n")
+              else " · Color Grading: không cần")
+    return s
+
+
 class _NhanAnKhiTrong(tk.Label):
     """Nhãn tự ẩn KHUNG chứa nó (self.khung) khi chữ rỗng — dòng cảnh báo dưới
     hàng chip không chiếm chỗ lúc không có gì để nói."""
@@ -338,6 +381,7 @@ class App(XuLyAnhMixin, ttk.Frame):
         self.after(3000, self._soi_xuat)
         self.after(2500, self._mo_tram_retouch)
         self.after(4000, self._gop_y_khoi_dong)
+        self.after(6000, self._tu_kiem_cap_nhat)
         self._nho_mau_da(theo_buoi=False)    # 12/10: mẫu màu da dùng gần nhất (gu)
         self._set_busy(False)
 
@@ -428,7 +472,11 @@ class App(XuLyAnhMixin, ttk.Frame):
         m = self._doc_mau_da().get(ten) if ten != MAU_DA_MAC_DINH else None
         if not isinstance(m, dict) or not m.get("trong"):
             return None
-        return {"ten": ten, "trong": list(m["trong"]), "ngoai": list(m.get("ngoai") or m["trong"])}
+        out = {"ten": ten, "trong": list(m["trong"]), "ngoai": list(m.get("ngoai") or m["trong"])}
+        #  13/10: vung trang cua anh mau -> chuoi mau da xet lai WB (mau cu khong co)
+        if isinstance(m.get("trang"), dict) and m["trang"].get("trong"):
+            out["trang"] = dict(m["trang"])
+        return out
 
     def _ve_mau_da(self):
         cv = getattr(self, "cv_mau_da", None)
@@ -531,6 +579,8 @@ class App(XuLyAnhMixin, ttk.Frame):
                   "n_trong": mau["n_trong"], "n_ngoai": mau["n_ngoai"],
                   "luc": datetime.now().isoformat(timespec="seconds"),
                   "thu_muc": str(Path(fs[0]).parent)}
+        if mau.get("trang"):
+            d[ten]["trang"] = mau["trang"]
         self._ghi_mau_da(d)
         self.v_mau_da.set(ten)
         self._doi_mau_da()
@@ -2624,6 +2674,9 @@ class App(XuLyAnhMixin, ttk.Frame):
         _k = at.DEFAULTS.get("hsl_da_cuoi_dam") or (0.036, 0.042)
         _h = at.DEFAULTS.get("hsl_da_cuoi_hue") or (36.0, 41.0)
         ct(g_ghim, self.v_hsl_da, "Tự chỉnh HSL màu da (Cưới)",
+           "Đã chọn MẪU Màu da (mọi loại buổi): kênh Cam đưa da về đúng màu da của mẫu — "
+           "một đích cho cả WB, HSL và Color Grading; da đo trên ảnh duyệt, chưa có thì dự "
+           "đoán; chạm trần vẫn áp phần làm da gần mẫu hơn.\n"
            "Kênh Cam (Orange) đưa da chủ thể về TRẮNG, chỉ hơi hồng — CHỈ khi đã ĐO "
            "được da thật sau WB + Tone:\n"
            "1. Ghi (WB + Tone).  2. ⋯ → Duyệt nhanh → Dựng ảnh duyệt.  3. Ghi lại: "
@@ -2638,6 +2691,8 @@ class App(XuLyAnhMixin, ttk.Frame):
            "· KHÔNG đổi cân trắng. Chỉ preset SAY (saymedia7v / NoWBExposure); tắt ô "
            "thì ảnh tool đã chỉnh HSL trả về số preset.")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
+           "Đã chọn MẪU Màu da: Color Grading xoay phần da CÒN lệch mẫu sau HSL, không "
+           "đẩy vùng trắng quá 0.003 OkLab (không ám).\n"
            "Color Grading về da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt — "
            "bước CUỐI của chuỗi màu da: cân WB + Tone → đo màu da dự đoán trong "
            "Lightroom → HSL kênh da (Kỷ yếu) → đo lại → Color Grading chỉ cho ảnh "
@@ -3017,6 +3072,55 @@ class App(XuLyAnhMixin, ttk.Frame):
             pass
         self._bat_menu(self.menu_them, self.btn_them)
 
+    def _tu_kiem_cap_nhat(self, gt=None, lan: int = 0):
+        """Mở app (bản ĐÓNG GÓI) -> kiểm NGẦM bản mới trên Releases; có thì hỏi MỘT lần
+        cho mỗi bản ("Để sau" -> không hỏi lại bản đó; menu ⋯ vẫn kiểm tay được).
+
+        #[[ 13/10 (user: "thong bao update toi cac tool da cai"): truoc day CHI kiem khi
+        #   bam ⋯ -> Kiem tra cap nhat — ban OTA len Releases khong may nao biet. Chi chay
+        #   o ban DONG GOI: chay ma nguon ma nap ban va thi ban va de len chinh ma dang
+        #   sua; bai kiem giao dien (khong frozen) cung khong bi hop thoai chan. Dang chay
+        #   viec (busy) thi hoi lai sau 1 phut — khong chen hop thoai giua luot Xu ly. ]]"""
+        if not getattr(sys, "frozen", False) or os.environ.get("AUTOTONE_TU_KIEM"):
+            return
+        try:
+            import cap_nhat as cn
+            import thanh_luoi
+        except Exception:                                    # noqa: BLE001
+            return
+        if gt is None:
+            q: queue.Queue = queue.Queue()
+            threading.Thread(target=lambda: q.put(cn.kiem_tra()), daemon=True).start()
+
+            def _doi(n=0):
+                try:
+                    kq = q.get_nowait()
+                except queue.Empty:
+                    if n < 100:
+                        self.after(300, lambda: _doi(n + 1))
+                    return
+                if kq:
+                    self._tu_kiem_cap_nhat(kq)
+            self.after(300, _doi)
+            return
+        #  da tai ve roi (lan mo sau tu dung) / nguoi dung da bo qua ban nay
+        if cn.da_co(gt["ver"]) or str(thanh_luoi.doc_kv("cap_nhat_bo_qua", "") or "") == gt["ver"]:
+            return
+        if self.busy and lan < 30:
+            self.after(60000, lambda: self._tu_kiem_cap_nhat(gt, lan + 1))
+            return
+        mb = f" (~{gt['mb']} MB)" if gt.get("mb") else ""
+        ghi = ("\n\n" + gt["ghi_chu"]) if gt.get("ghi_chu") else ""
+        if messagebox.askyesno(
+                "Có bản cập nhật",
+                f"Bản mới: {gt['ver']}{mb}\nĐang chạy: {cn.phien_ban_dang_chay()}{ghi}\n\n"
+                "Tải ngay? Không cần cài lại — lần mở app sau sẽ tự dùng bản mới.\n"
+                "(Chọn No: không hỏi lại bản này; vẫn tải được ở ⋯ → Kiểm tra cập nhật…)",
+                parent=self):
+            TaiCapNhat(self, cn, gt)
+        else:
+            thanh_luoi.ghi_kv("cap_nhat_bo_qua", gt["ver"])
+
     def kiem_cap_nhat(self):
         """Hoi Releases xem co ban moi khong. Co thi hoi nguoi dung roi tai.
 
@@ -3048,6 +3152,15 @@ class App(XuLyAnhMixin, ttk.Frame):
                 loai, gt = q.get_nowait()
             except queue.Empty:
                 self.after(150, _doi)
+                return
+            #  ban moi DA tai ve: dang chay no (kich_hoat) hoac lan mo sau se chay
+            if loai == "ok" and gt is not None and cn.da_co(gt["ver"]):
+                dang = cn.phien_ban_dang_chay()
+                messagebox.showinfo(
+                    "Cập nhật",
+                    f"Đang dùng bản mới nhất ({dang})." if dang == gt["ver"] else
+                    f"Bản {gt['ver']} đã tải về — đóng và mở lại app để dùng.",
+                    parent=self)
                 return
             if loai == "loi" or gt is None:
                 messagebox.showinfo(
@@ -6616,7 +6729,9 @@ class App(XuLyAnhMixin, ttk.Frame):
         #   co / khong co HSL va Color Grading. ]]
         md = dict(getattr(at, "MAU_DA", None) or {})
         hc = dict(md.get("hsl") or {})
-        if hc.get("cuoi"):
+        if md.get("mau"):
+            msg += tom_tat_mau_da(md)
+        elif hc.get("cuoi"):
             #[[ 9/10: HSL mau da anh cuoi — noi ro DA DO THAT o dau, quyet gi, va
             #   buoc tiep theo neu chua do duoc (at.hsl_da_cuoi). ]]
             if hc.get("khac_preset"):
@@ -6803,8 +6918,33 @@ class App(XuLyAnhMixin, ttk.Frame):
             t_may, n_may = r["wb_trang_thai"]
             lines += ["", f"WB máy (preview): {t_may} / {n_may:+d} → tool cân trên màu da "
                           f"DỰ ĐOÁN trong Lightroom ở WB preset, không phải màu preview"]
+        #  13/10: chuoi mau da MOT DICH (mau da da chon) — so tung buoc so voi dich
+        b = r.get("mau_da_bao")
+        if b:
+            nguon = ("đo trên ảnh duyệt Lightroom" if b["nguon"] == "LR"
+                     else "dự đoán — chưa có ảnh duyệt")
+            lines += ["", f"Màu da so với mẫu ({nguon}):  hue° / độ đậm",
+                      f"   Đích (mẫu)     : {b['dich'][0]:5.1f}° / {b['dich'][1]:.3f}",
+                      f"   Sau WB + Tone  : {b['sau_wb'][0]:5.1f}° / {b['sau_wb'][1]:.3f}"
+                      f"  ({_huong_hue(b['dich'][0] - b['sau_wb'][0])})"]
+            tl = b.get("trang_lech")
+            wb = {"giu": "giữ — vùng trắng khớp mẫu", "chinh": "chỉnh theo vùng trắng",
+                  "chua_do": "giữ — chưa đo được vùng trắng"}.get(b.get("wb"), "giữ")
+            bu = b.get("wb_bu") or (0, 0)
+            lines.append(f"   WB xét lại     : {wb}"
+                         + (f" ({bu[0]:+.0f} K / Tint {bu[1]:+.0f})" if any(bu) else "")
+                         + (f" · trắng lệch a {tl[0] * 1000:+.1f} b {tl[1] * 1000:+.1f} (‰)"
+                            if tl else ""))
+            if any(b.get("hsl") or (0, 0)):
+                lines.append(f"   HSL Cam        : Hue {b['hsl'][0]:+d} / Sat {b['hsl'][1]:+d}"
+                             f" → {b['sau_hsl'][0]:5.1f}° / {b['sau_hsl'][1]:.3f}")
+            else:
+                lines.append("   HSL Cam        : không đổi")
+            if b.get("cg"):
+                lines.append(f"   Color Grading  : hue {b['cg'][0]} sat {b['cg'][1]}"
+                             f" → {b['sau_cg'][0]:5.1f}° / {b['sau_cg'][1]:.3f}")
         #  8/10 dem: chuoi mau da — do sau WB + Tone -> HSL -> do lai -> Color Grading
-        if r.get("da_lech0"):
+        elif r.get("da_lech0"):
             h0, c0 = r["da_lech0"]
             huong = "về đỏ / hồng" if h0 < 0 else "về vàng"
             lines += ["", "Màu da (dự đoán trong Lightroom, so với màu da đích):",

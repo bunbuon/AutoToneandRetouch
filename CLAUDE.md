@@ -878,6 +878,43 @@ Lens như filter Metadata của Lightroom, bấm Phân tích thì hỏi phân t�
   (mở hết nhóm 2400×1380) dư 16 px.
 Kiểm: `test_loc_may_mau_da.py` (giao diện thật: hộp chọn, đo một phần, gộp, nhớ mẫu).
 
+## Chuỗi màu da MỘT ĐÍCH khi chọn mẫu (13/10, v84) — `chuoi_mau_da_mau`
+
+User hỏi thứ tự WB / Tone / HSL / CG vì "da vẫn đỏ lệch hẳn". Thứ tự thật: Exposure → HL/SH
+(tính trên ảnh SAU Exposure) → WB theo da → san phẳng / loạt → các bước WB phụ → Exposure chỉnh
+lại theo WB (`phanh_da_sau_wb`, bù sáng) → `compute_values` → HSL → CG. Tìm ra: ba bước nhắm BA
+đích khác nhau — WB điểm điều khiển `skin_ref_rgb` 16.6°, HSL Cưới 36–41°, CG `skin_dich_hong`
+34.4° → CG kéo da đúng gu (38.5–41°) về ĐỎ. User chốt: (1) đích lấy từ MẪU màu da; (2) không
+tới được đích thì vẫn áp phần làm da gần đích hơn, miễn vùng trắng không ám.
+- Chọn mẫu (`mau_da_dich.trong`) + `mau_da_chuoi` (mặc định bật) → `chinh_mau_da` gọi
+  `chuoi_mau_da_mau`; không mẫu → đường cũ y nguyên (15 bộ kiểm cũ đạt).
+- **Đo** (q = chroma / L, bất biến theo phơi sáng): ảnh duyệt hợp lệ (cùng Tone với job,
+  `_trung_job(wb=False)`; WB khác → `doi_wb` sang WB mới), trừ phần HSL / CG tool đã ghi (job −
+  gốc) → da ở HSL / CG của PRESET; không có ảnh duyệt → `da_trong_lr` × `hsl_da_chroma_lr`.
+- **Xét lại WB theo VÙNG TRẮNG, không theo da** (bài học 8/10: giải WB theo da = trắng ám hồng):
+  `trung_tinh_ab` (L 0.62–0.96, chroma < 0.025, không phải da) trên ảnh duyệt vẽ ĐÚNG WB đang
+  ghi, so vùng trắng của mẫu (`mau_da_tu_anh` giờ trả `trang`; mẫu cũ không có → giữ WB, báo
+  tạo lại mẫu). Trung vị cảnh lệch > `wb_xet_lai_nguong` 0.004 → Jacobian `doi_wb` trên vật
+  xám, × 0.8, trần ±300 K / ±6 Tint. Phần chỉnh lưu `file_wb_xet_lai(buổi)` {goc, bu}: lần sau
+  cùng WB gốc → áp lại, ảnh duyệt cũ (WB khác) → không đo lại → KHÔNG trôi. `plan()` xoá
+  `wb_bu` trước decide; `_dat_wb_bu` trừ phần cũ rồi gọi lại `compute_values`.
+- **HSL Cam** một mức / cảnh (ưu tiên ảnh đo LR ≥ `hsl_da_cuoi_min_anh`), vùng ổn `da_on_*`,
+  trần 15/20 vẫn áp; CHỐT VƯỢT ĐÍCH đối xứng: 1/4 mặt đỏ nhất (vàng nhất / đậm / nhạt nhất)
+  không qua đích hơn vùng ổn. Cảnh chưa đo → không đụng HSL.
+- **CG** phần còn lệch > `grade_nguong_hue`, vecto kẹp `trang_tran_cg` 0.003 (< ngưỡng WB →
+  CG không tự tạo ra độ ám mà bước WB coi là đáng sửa). Phần chung ghi grade tách
+  `_grade_hoan_tat` (dùng cho cả `grade_theo_trang_thai`).
+- Giao diện: `tom_tat_mau_da` trên dòng trạng thái; Chi tiết ảnh in đích / sau WB / WB xét
+  lại / sau HSL / sau CG (`r["mau_da_bao"]`). Mở app (chỉ bản ĐÓNG GÓI) tự kiểm cập nhật
+  (`_tu_kiem_cap_nhat`, "No" = không hỏi lại bản đó) — trước đây chỉ kiểm khi bấm menu.
+- Phát lại Ănhoi2009 (dự đoán, ảnh duyệt cũ hơn job; mẫu từ 150 ảnh final Minh Thuý ĂH):
+  đích 39.3° / 0.056, sau WB 41.0° / 0.046 — trung vị gần nhưng TỪNG ẢNH trải rộng (218 ảnh đỏ
+  hơn > 4°, 181 vàng hơn > 4°); HSL (+16 Sat, 43 cảnh) 218 → 185; + CG 265 ảnh → 168. Mẫu học
+  từ ảnh final đậm hơn gu "da trắng" user nói 9/10 — chọn ảnh mẫu đúng gu.
+Kiểm: `test_mau_da_mot_dich.py` (24 mục; thử ngược 11/11 đột biến đỏ — hai lần lọt đầu do bài
+kiểm: đột biến chỉ tắt nửa điều kiện; plan() trên CÙNG danh sách phải kiểm sau MỖI lần vì lỗi
+làm WB nhảy qua lại).
+
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
 Chế độ an toàn CPU (ghim Lightroom + app + engine vào nhân E khi Xuất, v58) sinh ra vì
