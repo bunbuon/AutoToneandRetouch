@@ -1,0 +1,13 @@
+places365_resnet18.onnx / places365_nhan.txt
+
+Places365-CNN ResNet18 — Bolei Zhou, Agata Lapedriza, Aditya Khosla, Aude Oliva, Antonio Torralba,
+"Places: A 10 million Image Database for Scene Recognition", IEEE TPAMI 2017.
+http://places2.csail.mit.edu  ·  https://github.com/CSAILVision/places365
+
+Mô hình đã huấn luyện: Creative Commons Attribution (CC BY). Mã nguồn: MIT License,
+Copyright (c) 2017 Bolei Zhou and MIT CSAIL Computer Vision.
+
+Tone&Retouch chuyển trọng số resnet18_places365.pth.tar
+(sha256 2f4759217d470da2b803f8f66cd4488a066406b555a5fb95ee9a4663f9f05588) sang ONNX, không
+huấn luyện lại; places365_nhan.txt gộp categories_places365.txt + IO_places365.txt
+(1 = trong nhà, 2 = ngoài trời) của dự án gốc.

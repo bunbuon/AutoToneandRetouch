@@ -823,6 +823,30 @@ NHÀ · luôn gửi (báo một lần, tắt ở ⋯ › Góp dữ liệu cải 
 Kiểm: `test_gop_y.py` (plugin giả + máy nhận thật cổng ngẫu nhiên; `Image.open(zf.open())`
 giữ zip mở → Windows khoá, đọc vào BytesIO).
 
+## Nhận cảnh Places365 + "ngoài trời buổi tối" không hạ K (12/10) — `gan_canh`, BẬT
+
+User: "sự kiện ngoài trời chiều tối, máy nâng ISO, không flash — nhận là ảnh sự kiện thì WB
+đang dìm K xuống, thực tế cần tăng K". PUBGM 18–19h (G:\PUBGM): đèn LED cam + flash GEL cam
+(EXIF Flash = 13 = ĐÃ NỔ ở 53/55 ảnh — không phải "không flash"), da đo R/B ~7 → cân theo
+da kéo 5250 → 4250–4700 K, kể cả ảnh nhãn "ngày" (EV100 9.3). Nguyên nhân chính là cân
+theo da trung hoà sắc cam, nhãn đèn chỉ thêm −117 K (As Shot chỉ kéo lạnh).
+- `models/places365_resnet18.onnx` (45 MB, cv2.dnn, CC BY — `places365_GIAY_PHEP.txt`) +
+  `places365_nhan.txt`. `measure(..., canh_p365)` → `p_trong`, `canh_top`, `flash`
+  (EXIF 0x9209). Tham số cuối của measure + cau_hinh_do (khoá kết quả đo lưu).
+- TỪNG ẢNH về đêm KHÔNG tin được: gian hàng sáng giữa nền đen = "booth/indoor" P 0.8–0.9.
+  `gan_canh`: TB P(trong) ±30 phút < 0.7 + từ 17h (hoặc < 5h) + EV100 < 11 → `ngoai_toi`:
+  nhãn ngày (đích da ngoài, As Shot kéo ấm), `_wb_ngoai_toi` chặn temp_adj âm về 0 (sau
+  `_wb_ky_yeu`, trước `phanh_da_sau_wb`). "Cả buổi ánh đèn" → tắt. Ô "Ngoài trời buổi tối:
+  giữ ấm, không kéo lạnh" (nhóm Ánh sáng của buổi).
+- Cửa sổ ±30': PUBGM tối 0.33–0.68 · BVDay3 ≥ 0.90 · 1005 ≥ 0.91 · 1010 ≥ 0.85 · nhà hàng
+  VÁCH KÍNH KN2009 18:46 **0.76** (ngưỡng 0.8 nhận nhầm → da vàng, xem tận mắt) → 0.7.
+- Phát lại: PUBGM 52 ảnh +592 K (18h) / +660 (19h); KN2009 chỉ 14 ảnh đón khách ngoài trời
+  17h; BVDay3 / 1010 / TestTool / 1005 / TrainTool / 2609 / 2709 / Hiu: 0 ảnh đổi.
+  **CHƯA CÓ ĐÁP ÁN TAY** ảnh tối ngoài trời (5 bộ đáp án đều ban ngày; catalog BVDay3 /
+  KN2009 / PUBGM tối chưa ai sửa; 5 ảnh TestTool "sửa" là Reset về 5250/16). Ban ngày KHÔNG
+  áp: 2609 14h ngoài trời nhãn đèn tool kéo −509 K, user giữ.
+Kiểm: `test_canh_ngoai_toi.py` (thử ngược: bỏ `_wb_ngoai_toi` → đỏ), tu_kiem "Mô hình nhận cảnh".
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị

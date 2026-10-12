@@ -117,6 +117,8 @@ T_ISO              = 0x8827
 T_EXPTIME          = 0x829A
 T_FNUMBER          = 0x829D
 T_EXPBIAS          = 0x9204
+#  Flash (EXIF 0x9209): bit 0 = đèn ĐÃ NỔ. 0x10 / 0x18 = có đèn nhưng tắt/không nổ.
+T_FLASH            = 0x9209
 
 
 def _entry_value(data, e, typ, cnt, valoff, size):
@@ -271,7 +273,7 @@ def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
                 tags[key] = v
     for tag, key in ((T_ISO, "iso"), (T_EXPTIME, "exposure_time"),
                      (T_FNUMBER, "fnumber"), (T_EXPBIAS, "exposure_bias"),
-                     (T_ORIENTATION, "orientation")):
+                     (T_ORIENTATION, "orientation"), (T_FLASH, "flash")):
         if tag in ent and key not in tags:
             v = get(tag)
             if v:
@@ -759,6 +761,67 @@ def srgb_to_linear(a: np.ndarray) -> np.ndarray:
 FACE_MODEL = dd.tai_nguyen("models", "face_detection_yunet_2023mar.onnx")
 _DETECTOR = None          # nạp một lần cho mỗi tiến trình
 
+#[[ NHẬN CẢNH TRONG NHÀ / NGOÀI TRỜI (12/10) — Places365 ResNet18 (Zhou et al., MIT CSAIL;
+#   mô hình CC BY, mã MIT — http://places2.csail.mit.edu). 365 loại cảnh, mỗi loại có nhãn
+#   trong/ngoài của chính bộ dữ liệu (places365_nhan.txt: "<tên> <1 = trong | 2 = ngoài>").
+#   P(trong) = tổng xác suất các loại "trong". ONNX 45 MB chạy bằng cv2.dnn (không thêm thư
+#   viện), ~40 ms/ảnh trong tiến trình đo.
+#
+#   TỪNG ẢNH LẺ KHÔNG TIN ĐƯỢC VỀ ĐÊM: PUBGM 18h (sự kiện ngoài trời, trời đen, gian hàng
+#   sáng đèn) bị gọi "booth/indoor", "beer_hall" P 0.8-0.9. Gộp ±30 phút thì tách được:
+#   PUBGM 18-19h 0.33-0.68, sự kiện trong nhà buổi tối BVDay3 >= 0.90, 1005 >= 0.91,
+#   1010 >= 0.85. SÁT NHẤT: nhà hàng vách kính KN2009 18:46 (trong nhà, ngoài kính trời
+#   tối) 0.76 — ngưỡng 0.8 nhận nhầm, kéo da vàng; 0.7 bỏ 4 ảnh PUBGM 17:40 (0.77).
+#   Nhầm trong -> ngoài hại hơn bỏ sót (bỏ sót = cách cũ). Xem gan_canh(). ]]
+CANH_MODEL = dd.tai_nguyen("models", "places365_resnet18.onnx")
+CANH_NHAN = dd.tai_nguyen("models", "places365_nhan.txt")
+_CANH = None              # (net, mặt nạ "trong", tên) | False khi thiếu mô hình — mỗi tiến trình
+_CANH_TB = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+_CANH_LC = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+
+def _nap_canh():
+    global _CANH
+    if _CANH is None:
+        try:
+            import cv2
+            ten, trong = [], []
+            for ln in Path(CANH_NHAN).read_text(encoding="utf-8").splitlines():
+                p = ln.split()
+                if len(p) >= 2:
+                    ten.append(p[0])
+                    trong.append(p[1] == "1")
+            if len(ten) != 365:
+                raise ValueError(f"places365_nhan.txt có {len(ten)} dòng")
+            _CANH = (cv2.dnn.readNetFromONNX(str(CANH_MODEL)), np.array(trong), ten)
+        except Exception:                                    # noqa: BLE001
+            _CANH = False           # gói cũ / OTA chưa có mô hình: tắt lặng, luật cảnh không chạy
+    return _CANH or None
+
+
+def do_canh(im) -> tuple:
+    """(P(trong nhà) 0-1, tên cảnh đứng đầu) cho ảnh PIL RGB; (None, "") khi thiếu mô hình.
+    Tiền xử lý y bản gốc: cạnh ngắn 256, cắt giữa 224, chuẩn hoá ImageNet."""
+    m = _nap_canh()
+    if m is None:
+        return None, ""
+    net, trong, ten = m
+    try:
+        w, h = im.size
+        s = 256.0 / max(1, min(w, h))
+        x = im.resize((max(224, round(w * s)), max(224, round(h * s))), Image.BILINEAR)
+        w, h = x.size
+        l, u = (w - 224) // 2, (h - 224) // 2
+        a = (np.asarray(x.crop((l, u, l + 224, u + 224)), dtype=np.float32) / 255.0
+             - _CANH_TB) / _CANH_LC
+        net.setInput(np.ascontiguousarray(a.transpose(2, 0, 1)[None]))
+        lg = net.forward()[0].astype(np.float64)
+        p = np.exp(lg - lg.max())
+        p /= p.sum()
+        return round(float(p[trong].sum()), 4), ten[int(np.argmax(p))]
+    except Exception:                                        # noqa: BLE001
+        return None, ""
+
 
 # Dai mau da nguoi (HSV). Rong tay de con nhan duoc da ram, da duoi den vang.
 SKIN_HUE_HI = 50.0        # cam-vang
@@ -1185,7 +1248,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             # Dat CUOI de moi loi goi theo vi tri san co giu nguyen.
             mat_ao_to_pct: float = 0.0,
             mat_ao_diem: float = 0.6,
-            mf_giua_sigma: float = 0.0) -> dict:
+            mf_giua_sigma: float = 0.0,
+            canh_p365: bool = False) -> dict:
     """Đọc RAW -> preview -> thống kê. Chạy trong worker process."""
     out = {"path": str(path), "ok": False, "error": ""}
     try:
@@ -1204,6 +1268,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
         im = im.convert("RGB")
         im = apply_orientation(im, tags.get("orientation"))
         out["bw"] = la_den_trang(im)
+        #  Cảnh trong / ngoài (12/10) — xem do_canh(), gan_canh().
+        p_trong, canh_top = do_canh(im) if canh_p365 else (None, "")
 
         #[[ Đo mặt ở ĐỘ PHÂN GIẢI NHẬN DIỆN, không phải ở ảnh thống kê 480px.
         #   Mặt trong ảnh sự kiện chỉ ~53px trên khung 1024; thu về 480 thì ô mặt
@@ -2040,6 +2106,10 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             wb_may_K=tags.get("wb_may_K"),
             wb_may_rb=tags.get("wb_may_rb"),
             da_chay_frac=da_chay_frac,
+            #  EXIF Flash (bit 0 = đã nổ) + cảnh Places365 — xem gan_canh()
+            flash=tags.get("flash"),
+            p_trong=p_trong,
+            canh_top=canh_top,
         )
     except Exception as ex:  # pragma: no cover - phòng file lỗi
         out["error"] = f"{type(ex).__name__}: {ex}"
@@ -3258,6 +3328,24 @@ DEFAULTS = {
     #   luc nao; 0 = tat han viec phan loai.
     #]]
     "ev_ngoai_troi": 8.5,
+    #[[ NGOAI TROI BUOI TOI (12/10) — user: "su kien ngoai troi luc chieu toi, may nang
+    #   ISO, khong flash; nhan la anh su kien thi WB dang dim K xuong, thuc te can tang
+    #   K len". PUBGM 18-19h (ngoai troi, den LED cam, flash gel cam): da do ra cam
+    #   R/B ~7 -> buoc can theo da keo 5250 -> 4250-4700 K (ca anh nhan "ngay" EV100
+    #   9.3), anh ra lanh xanh. Luat: canh NGOAI (Places365 gop +-canh_cua_so_phut,
+    #   TB P(trong) < canh_ngoai_nguong) + tu ngoai_toi_gio + EV100 < ngoai_toi_ev ->
+    #   r["ngoai_toi"]: nhan anh sang NGAY (dich da ngoai, As Shot duoc keo am) va
+    #   KHONG ha K duoi preset (_wb_ngoai_toi). Chon "Ca buoi anh den" -> tat.
+    #   CHUA CO DAP AN TAY cho anh toi ngoai troi (5 bo dap an deu ban ngay; catalog:
+    #   BVDay3 / KN2009 / PUBGM toi chua ai sua) — nguong dat tren PUBGM vs 3 buoi
+    #   trong nha toi, can mat nguoi dung duyet. Ban ngay KHONG ap: 2609 14h ngoai
+    #   troi nhan den, tool keo lanh -509 K, user giu nguyen. ]]
+    "canh_p365": True,
+    "canh_cua_so_phut": 30.0,
+    "canh_ngoai_nguong": 0.7,   # 0.8 nhan nham nha hang vach kinh KN2009 18:46 (cs 0.76)
+    "wb_ngoai_toi": True,
+    "ngoai_toi_gio": 17.0,
+    "ngoai_toi_ev": 11.0,       # sau 17h EV100 < 11 = hoang hon / toi (nang chieu >= 13)
     #[[ skin_gain KHONG DOI — phep quet tu chon lai dung 0.6.
     #
     #   No khong phai "keo duoc bao nhieu phan quang duong" nhu ten goi gay hieu
@@ -3935,6 +4023,10 @@ def _nhan_da_ngoai(r: dict, cfg: dict) -> bool:
     #   chot 4364), SAY06092 ~4380K (user 4305).
     #]]
     """
+    if r.get("ngoai_toi"):
+        #  12/10: ngoai troi buoi toi — da cam vi den LED / flash gel la KHONG KHI cua
+        #  buoi, khong phai dau hieu "den trong nha" (xem gan_canh).
+        return True
     ngoai = _nhan_ngoai(r, cfg)
     lech = float(cfg.get("da_vang_lech_ngoai", 0.0) or 0.0)
     if not ngoai or lech <= 0 or not r.get("face_rgb"):
@@ -4938,6 +5030,8 @@ def ngoai_troi(r: dict, cfg: dict) -> bool:
         (Places365 chẳng hạn) sẽ gọi ảnh trong nhà bạt là "indoor" trong khi
         ánh sáng vẫn là ánh sáng ngày — trả lời đúng câu hỏi của nó, sai câu
         hỏi của mình.
+        (12/10: Places365 giờ CÓ dùng, nhưng chỉ cho "ngoài trời buổi tối" — gộp
+        ±30 phút, sau 17h, xem gan_canh() — không thay nhãn ban ngày ở đây.)
 
     Tên hàm giữ nguyên ngoai_troi() vì nó nằm trong REPORT_COLS, trong file
     trạng thái và trong dữ liệu gu đã học; đổi tên là làm hỏng dữ liệu cũ.
@@ -4960,6 +5054,51 @@ def ngoai_troi(r: dict, cfg: dict) -> bool:
         #   VE duong ISO chu khong tra ve False luon. Tra ve False la lang le
         #   xep ca nhung anh do vao nhom trong nha. ]]
     return _ngoai_troi_theo_iso(r, cfg)
+
+
+def gan_canh(items: list, cfg: dict) -> int:
+    """Cảnh trong / ngoài theo Places365 GỘP THEO THỜI GIAN + cờ "ngoài trời buổi tối".
+
+    r["p_trong_cs"]  P(trong) trung bình mọi ảnh trong ±canh_cua_so_phut quanh ảnh này
+    r["canh_ngoai"]  p_trong_cs < canh_ngoai_nguong
+    r["ngoai_toi"]   canh_ngoai + chụp từ ngoai_toi_gio (hoặc trước 5h) + EV100 < ngoai_toi_ev
+                     (không đọc được EV100 thì tính là tối) — wb_ngoai_toi bật và người dùng
+                     KHÔNG chọn "Cả buổi ánh đèn". Xem DEFAULTS canh_p365 / wb_ngoai_toi.
+    Ảnh không có p_trong (gói thiếu mô hình, kết quả đo cũ) không mang cờ. Trả về số ảnh
+    ngoai_toi."""
+    for r in items:
+        for k in ("p_trong_cs", "canh_ngoai", "ngoai_toi"):
+            r.pop(k, None)
+    w = float(cfg.get("canh_cua_so_phut") or 0.0) * 60.0
+    ds = sorted((r for r in items if r.get("p_trong") is not None and r.get("dt_obj")),
+                key=lambda r: r["dt_obj"])
+    if not ds:
+        return 0
+    t = np.array([r["dt_obj"].timestamp() for r in ds])
+    cs = np.concatenate([[0.0], np.cumsum([float(r["p_trong"]) for r in ds])])
+    lo = np.searchsorted(t, t - w, side="left")
+    hi = np.searchsorted(t, t + w, side="right")
+    nguong = float(cfg.get("canh_ngoai_nguong") or 0.0)
+    che_do = str(cfg.get("che_do_sang") or "tron").strip().lower()
+    bat = bool(cfg.get("wb_ngoai_toi")) and che_do not in ("den", "trong", "trong_nha", "indoor")
+    gio = float(cfg.get("ngoai_toi_gio") or 17.0)
+    ev_t = float(cfg.get("ngoai_toi_ev") or 0.0)
+    n = 0
+    for i, r in enumerate(ds):
+        tb = float((cs[hi[i]] - cs[lo[i]]) / max(1, hi[i] - lo[i]))
+        r["p_trong_cs"] = round(tb, 3)
+        r["canh_ngoai"] = tb < nguong
+        if not (bat and r["canh_ngoai"]):
+            continue
+        h = r["dt_obj"].hour + r["dt_obj"].minute / 60.0
+        if 5.0 <= h < gio:
+            continue
+        ev = ev100(r)
+        if ev_t > 0 and ev is not None and ev >= ev_t:
+            continue
+        r["ngoai_toi"] = True
+        n += 1
+    return n
 
 
 def _ngoai_troi_theo_iso(r: dict, cfg: dict) -> bool:
@@ -6850,6 +6989,7 @@ def decide(items: list, cfg: dict) -> None:
         _tint_theo_may(items, cfg)
         _tint_tran_am(items, cfg)
         _wb_ky_yeu(items, cfg)
+        _wb_ngoai_toi(items, cfg)        # 12/10: ngoai troi buoi toi khong ha K
     #  WB da chot -> kiem lai da TRUOC hai buoc bu sang chu y (11/10)
     phanh_da_sau_wb(items, cfg)
     if cfg["wb"] in ("asshot", "skin"):
@@ -7042,6 +7182,26 @@ def _wb_theo_asshot(items: list, cfg: dict) -> int:
         r["temp_adj"] = float(r.get("temp_adj", 0.0)) + keo
         r["notes"] = ";".join([v for v in [r.get("notes", ""), f"wb-asshot{keo:+.0f}"] if v])
         n += 1
+    return n
+
+
+def _wb_ngoai_toi(items: list, cfg: dict) -> int:
+    """Ảnh "ngoài trời buổi tối" (gan_canh): KHÔNG hạ Temperature dưới preset — temp_adj
+    âm (từ cân theo da cam / san phẳng cảnh / As Shot) về 0; kéo ấm thì giữ. Đặt SAU mọi
+    bước WB, TRƯỚC phanh_da_sau_wb (phanh da cần WB cuối). Trả về số ảnh bị chặn."""
+    if not cfg.get("wb_ngoai_toi"):
+        return 0
+    n = 0
+    for r in items:
+        if not r.get("ngoai_toi"):
+            continue
+        ta = float(r.get("temp_adj", 0.0) or 0.0)
+        ghi = "ngoai-toi"
+        if ta < 0:
+            r["temp_adj"] = 0.0
+            ghi = f"ngoai-toi-giu-am{-ta:+.0f}"
+            n += 1
+        r["notes"] = ";".join([v for v in [r.get("notes", ""), ghi] if v])
     return n
 
 
@@ -8442,7 +8602,8 @@ def cau_hinh_do(cfg: dict) -> tuple:
             bool(cfg.get("af_nikon", False)),
             float(cfg.get("mat_ao_to_pct", 0.0)),
             float(cfg.get("mat_ao_diem", 0.6)),
-            float(cfg.get("mf_giua_sigma", 0.0)))
+            float(cfg.get("mf_giua_sigma", 0.0)),
+            bool(cfg.get("canh_p365", True)))
 
 
 #[[ KET QUA PHAN TICH LUU THEO BUOI (8/10).
@@ -8582,9 +8743,11 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         pick_blinks(items, cfg, folder)
     #[[ Gan nhan trong/ngoai TRUOC khi tach canh — group_scenes() doc no de
     #   khong bao gio de hai moi truong anh sang vao chung mot canh.
+    #   12/10: ngoai troi buoi toi (gan_canh, Places365) -> nhan anh sang NGAY.
     #]]
+    gan_canh(items, cfg)
     for r in items:
-        r["ngoai_troi"] = ngoai_troi(r, cfg)
+        r["ngoai_troi"] = ngoai_troi(r, cfg) or bool(r.get("ngoai_toi"))
     lam_min_trong_ngoai(items, int(cfg.get("trong_ngoai_min_shots", 1)))
     group_scenes(items, cfg["gap_minutes"],
                  float(cfg.get("scene_sig_thresh", 0.0)),
@@ -8734,6 +8897,8 @@ REPORT_EXTRA = ["faces_n", "faces_found", "eye_open", "eye_open_min",
                 "face_area_min", "face_score_min", "cull"]
 
 REPORT_COLS = ["path", "sidecar", "dt", "scene", "scene_size", "iso", "ngoai_troi",
+               #  12/10: EXIF Flash + cảnh Places365 (từng ảnh / gộp thời gian)
+               "flash", "p_trong", "p_trong_cs", "canh_top", "ngoai_toi",
                "model", "metered_ev",
                "target_ev", "delta_ev", "old_exposure", "new_exposure",
                "clip_before_pct", "clip_after_pct", "shadow_after_pct",

@@ -136,6 +136,17 @@ def chay(nhanh: bool = False) -> Bao:
         return f"{p.name} · {kb:.0f} KB"
     b.thu("Mô hình nhận mặt", _mo_hinh)
 
+    def _mo_hinh_canh():
+        #  12/10: Places365 (nhận cảnh trong / ngoài) — thiếu thì luật "ngoài trời buổi
+        #  tối" tắt lặng, nên phải bắt ở đây chứ không đợi người dùng thấy ảnh lạnh.
+        from PIL import Image as _Im
+        im = _Im.new("RGB", (320, 240), (90, 120, 160))
+        p, ten = at.do_canh(im)
+        if p is None or not 0.0 <= p <= 1.0:
+            raise AssertionError(f"không chạy được {Path(at.CANH_MODEL).name} ({p})")
+        return f"{Path(at.CANH_MODEL).name} · P(trong) ảnh thử {p:.2f} · {ten}"
+    b.thu("Mô hình nhận cảnh (Places365)", _mo_hinh_canh)
+
     def _plugin():
         d = Path(at.LR_PLUGIN_DIR)
         thieu = [f for f in ("Info.lua", "AutoToneCore.lua", "ApplyNow.lua")
@@ -637,8 +648,10 @@ def chay(nhanh: bool = False) -> Bao:
             at.pick_burst(n, 2, 1, 0.6, cfg=cfg)
             if any(r.get("cull") for r in n):
                 raise AssertionError("mặt nghiêng vẫn bị tính nhắm mắt")
-            if "mf_giua_sigma" not in inspect.signature(at.measure).parameters or \
-                    at.cau_hinh_do(dict(at.DEFAULTS))[-1] != float(at.DEFAULTS["mf_giua_sigma"]):
+            #  Theo VỊ TRÍ trong measure() (12/10: canh_p365 thêm sau nó) chứ không "cuối".
+            ts_ = list(inspect.signature(at.measure).parameters)[1:]
+            if "mf_giua_sigma" not in ts_ or at.cau_hinh_do(dict(at.DEFAULTS))[
+                    ts_.index("mf_giua_sigma")] != float(at.DEFAULTS["mf_giua_sigma"]):
                 raise AssertionError("tham số mf_giua_sigma không tới được measure()")
             return "trùng khung: chỉ loại ảnh nhắm mắt · >4 người giữ · mặt nghiêng bỏ qua · MF giữa khung"
         b.thu("Lọc trùng khung / mặt nghiêng / MF", _loc_moi)

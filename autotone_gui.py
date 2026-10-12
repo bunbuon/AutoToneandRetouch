@@ -1737,6 +1737,8 @@ class App(ttk.Frame):
             value=bool(at.DEFAULTS.get("mat_sang_nhat", True)))
         self.v_dong_bo_chu_the = tk.BooleanVar(      # 11/10: at.dong_bo_chu_the
             value=bool(at.DEFAULTS.get("dong_bo_chu_the", True)))
+        self.v_ngoai_toi = tk.BooleanVar(            # 12/10: at.gan_canh / _wb_ngoai_toi
+            value=bool(at.DEFAULTS.get("wb_ngoai_toi", True)))
         self.v_burst = tk.BooleanVar(value=False)
         self.v_blink = tk.BooleanVar(value=False)
         self.v_upright = tk.BooleanVar(value=False)
@@ -1901,6 +1903,14 @@ class App(ttk.Frame):
                                      [(ma, NGAN_S[ma]) for ma, _c, _m in lua_sang],
                                      command=self._doi_che_do_sang)
         self.chon_sang.pack(side="left", fill="x", expand=True)
+        #[[ 12/10 — user: "su kien ngoai troi chieu toi ... WB dang dim K xuong, thuc te
+        #   can tang K len". Canh do luc Phan tich (Places365) -> doi o nay chi tinh lai. ]]
+        ct(g_sang, self.v_ngoai_toi, "Ngoài trời buổi tối: giữ ấm, không kéo lạnh",
+           "Tự nhận cảnh ngoài trời (cây, trời, phố) hay trong nhà (tường, trần, hội "
+           "trường) bằng mô hình Places365, gộp theo 30 phút. Ảnh ngoài trời chụp từ 17h, "
+           "trời tối: dùng màu da ánh sáng ngày và KHÔNG hạ nhiệt độ màu dưới preset — "
+           "đèn LED / flash gel cam là không khí của buổi. Chọn “Ánh đèn” ở trên thì "
+           "không áp.")
 
         # ------------------------------------------------ cách cân tone
         hop(g_tone, "Chế độ", self.v_mode, [m[0] for m in MODES],
@@ -2091,7 +2101,8 @@ class App(ttk.Frame):
                   self.v_hsl_da, self.v_loai_buoi, self.v_bu_sang, self.v_gap_on, self.v_gap,
                   self.v_gap_can_sig, self.v_scenesig, self.v_level,
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
-                  self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the):
+                  self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
+                  self.v_ngoai_toi):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         self._tom_tat_nhom()
 
@@ -3916,6 +3927,7 @@ class App(ttk.Frame):
                    dong_bo_loat=self.v_dong_bo_loat.get(),
                    mat_sang_nhat=self.v_mat_sang_nhat.get(),
                    dong_bo_chu_the=self.v_dong_bo_chu_the.get(),
+                   wb_ngoai_toi=self.v_ngoai_toi.get(),
                    max_ev_up=self._num(self.v_maxup, 1.0),
                    #[[ Anh sang cua buoi — nguoi dung chon o khau 2.
                    #   Thieu dong nay thi o chon la mot cai nut khong noi vao
