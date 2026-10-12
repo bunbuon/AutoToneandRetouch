@@ -29,6 +29,7 @@ import gzip
 import hashlib
 import io
 import json
+import math
 import os
 import platform
 import shutil
@@ -53,6 +54,7 @@ DIA_CHI_MAC_DINH = "https://gopy-ai.saymedia.com.vn"
 BI_MAT = "jA4PRIql5Wzx9IgAtAQcawqSKjfXBG3C"
 SUA_TOI_THIEU = 3
 CANH_ANH_NHO = 384
+GOI_TOI_DA = 95_000_000      # byte — Cloudflare miễn phí chặn yêu cầu > 100 MB (xem _dong_goi)
 CHAT_LUONG_ANH_NHO = 72
 CHO_CHUP_GIAY = 600          # chờ plugin Lightroom chụp catalog
 NHIP_GUI_GIAY = 15 * 60      # thử gửi lại hàng đợi mỗi chừng này
@@ -295,8 +297,8 @@ def xin_chup(thu_muc, ra: Path, job_dir: Path, cho: float = CHO_CHUP_GIAY,
     return None
 
 
-def anh_nho(nguon: Path, dich: Path) -> bool:
-    """Preview 384 px, KHÔNG EXIF/GPS (chỉ đọc ảnh gốc)."""
+def anh_nho(nguon: Path, dich: Path, canh: int = CANH_ANH_NHO) -> bool:
+    """Preview `canh` px (mặc định 384), KHÔNG EXIF/GPS (chỉ đọc ảnh gốc)."""
     try:
         from PIL import Image
         import autotone as at
@@ -313,11 +315,11 @@ def anh_nho(nguon: Path, dich: Path) -> bool:
                 return False
             im = Image.open(io.BytesIO(blob))
             huong = (tags or {}).get("orientation")
-        im.draft("RGB", (CANH_ANH_NHO * 2, CANH_ANH_NHO * 2))
+        im.draft("RGB", (canh * 2, canh * 2))
         im = im.convert("RGB")
         if huong:
             im = at.apply_orientation(im, huong)
-        im.thumbnail((CANH_ANH_NHO, CANH_ANH_NHO))
+        im.thumbnail((canh, canh))
         dich.parent.mkdir(parents=True, exist_ok=True)
         im.save(dich, "JPEG", quality=CHAT_LUONG_ANH_NHO, optimize=True)   # không truyền exif
         return True
@@ -447,14 +449,6 @@ def _dong_goi(thu_muc: Path, bao, job_dir, dung, cho_chup) -> Path | None:
             (tam / at.BASELINE_NAME).write_text(_thay_duong(bl.read_text(encoding="utf-8"), thu_muc, ma),
                                                 encoding="utf-8")
         shutil.rmtree(tam / "_chup", ignore_errors=True)
-        # ảnh nhỏ
-        n_anh = 0
-        for r in items:
-            if dung():
-                return None
-            p = Path(str(r.get("path") or ""))
-            if p.is_file() and anh_nho(p, tam / "anh_nho" / (p.stem + ".jpg")):
-                n_anh += 1
         # tốc độ retouch trên máy này
         nk = _file_toc_do()
         if nk is not None:
@@ -463,22 +457,43 @@ def _dong_goi(thu_muc: Path, bao, job_dir, dung, cho_chup) -> Path | None:
             except OSError:
                 pass
         may = sorted({str(r.get("model") or "") for r in items if r.get("model")})
-        meta = {"dinh_dang": PHIEN_DINH_DANG, "nguoi": nguoi, "buoi": ten_b, "ma_buoi": ma,
-                "khi": datetime.now().isoformat(timespec="seconds"),
-                "phien_ban": lan_day_cuoi(thu_muc).get("phien_ban") or _phien_ban(),
-                "lan_day": lan_day_cuoi(thu_muc), "thiet_bi": _thiet_bi(), "than_may": may,
-                "so_anh": len(items), "anh_sua": sua, "anh_chung": chung, "anh_nho": n_anh,
-                "ten_thu_muc_goc_bam": _bam(thu_muc.name, 8)}
-        (tam / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1, default=_json),
-                                       encoding="utf-8")
         cho = thu() / "cho"
         cho.mkdir(parents=True, exist_ok=True)
         z = cho / f"{ten_b}_{luc}.zip"
         zt = z.with_name(z.name + ".part")
-        with zipfile.ZipFile(zt, "w", zipfile.ZIP_DEFLATED) as zf:
-            for p in sorted(tam.rglob("*")):
-                if p.is_file():
-                    zf.write(p, p.relative_to(tam).as_posix())
+        #[[ GOI_TOI_DA: Cloudflare (goi mien phi) chan than yeu cau > 100 MB -> goi to hon
+        #   khong bao gio gui duoc, nam hang doi mai. Do that 12/10: ~22 MB / 1000 anh (anh
+        #   nho 18 KB + so do) -> buoi ~4500 anh tro len vuot. Vuot thi dong lai voi anh nho
+        #   thu theo ti le that; duoi 128 px van vuot -> bo anh nho, giu so do. ]]
+        canh = CANH_ANH_NHO
+        while True:
+            shutil.rmtree(tam / "anh_nho", ignore_errors=True)
+            n_anh = 0
+            for r in items if canh else []:
+                if dung():
+                    return None
+                p = Path(str(r.get("path") or ""))
+                if p.is_file() and anh_nho(p, tam / "anh_nho" / (p.stem + ".jpg"), canh):
+                    n_anh += 1
+            meta = {"dinh_dang": PHIEN_DINH_DANG, "nguoi": nguoi, "buoi": ten_b, "ma_buoi": ma,
+                    "khi": datetime.now().isoformat(timespec="seconds"),
+                    "phien_ban": lan_day_cuoi(thu_muc).get("phien_ban") or _phien_ban(),
+                    "lan_day": lan_day_cuoi(thu_muc), "thiet_bi": _thiet_bi(), "than_may": may,
+                    "so_anh": len(items), "anh_sua": sua, "anh_chung": chung, "anh_nho": n_anh,
+                    "canh_anh_nho": canh, "ten_thu_muc_goc_bam": _bam(thu_muc.name, 8)}
+            (tam / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1, default=_json),
+                                           encoding="utf-8")
+            with zipfile.ZipFile(zt, "w", zipfile.ZIP_DEFLATED) as zf:
+                for p in sorted(tam.rglob("*")):
+                    if p.is_file():
+                        zf.write(p, p.relative_to(tam).as_posix())
+            co = zt.stat().st_size
+            if co <= GOI_TOI_DA or not canh:
+                break
+            canh = int(canh * math.sqrt(GOI_TOI_DA * 0.85 / co)) // 16 * 16
+            canh = canh if canh >= 128 else 0
+            bao(f"góp ý: gói {co / 1e6:.0f} MB vượt {GOI_TOI_DA / 1e6:.0f} MB — đóng lại "
+                + (f"với ảnh nhỏ {canh} px" if canh else "không kèm ảnh nhỏ"))
         os.replace(zt, z)
         bao(f"góp ý: đóng gói {len(items)} ảnh ({sua} ảnh sửa tay, {n_anh} ảnh nhỏ) — "
             f"{z.stat().st_size / 1e6:.1f} MB")

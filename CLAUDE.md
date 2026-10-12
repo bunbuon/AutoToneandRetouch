@@ -817,6 +817,9 @@ NHÀ · luôn gửi (báo một lần, tắt ở ⋯ › Góp dữ liệu cải 
   `may_nhan/chay_may_nhan.bat`). MỘT cấp dưới saymedia.com.vn: chứng chỉ miễn phí không phủ
   hai cấp (gopy.ai.…). Máy nhận tắt → hàng đợi `gop_y/cho/`, 15 phút thử lại. Gom về:
   `may_nhan/nhan_goi_gop_y.py`.
+  12/10 đường hầm THÔNG (user chạy bat): /suc-khoe 200 qua HTTPS, sai khoá 403, gói thử vào
+  kho rồi dọn. Cloudflare miễn phí chặn yêu cầu > 100 MB: đo ~22 MB / 1000 ảnh → `GOI_TOI_DA`
+  95 MB, vượt thì đóng lại ảnh nhỏ thu theo tỉ lệ, < 128 px thì bỏ ảnh nhỏ (meta canh_anh_nho).
 - `ly_do_tat()`: tự kiểm / tiến trình con / dữ liệu ở thư mục TẠM → không hộp thoại (chặn bài
   kiểm giao diện), không đóng gói nền. Xoá gói đã gửi: diệt virus hay giữ file → `_bo` thử
   lại rồi đổi đuôi `.da_gui` (không gửi trùng).

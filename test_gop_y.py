@@ -164,6 +164,19 @@ def main() -> int:
         ktra("giải gói -> cổng kiem_2ban_quay đọc được (số đo, đáp án, preset)",
              len(goc and goi.get("items") or []) == 6 and sua_kb == 4 and len(pre) == 6,
              f"items {len(goi.get('items') or [])} · sửa {sua_kb} · preset {len(pre)}")
+        # 4b — gói vượt giới hạn Cloudflare (100 MB/yêu cầu) -> đóng lại ảnh nhỏ hơn / bỏ ảnh nhỏ
+        cu_td = gop_y.GOI_TOI_DA
+        gioi = z.stat().st_size // 2
+        gop_y.GOI_TOI_DA = gioi
+        z2 = gop_y.dong_goi(BUOI, bao=lambda *_a: None, job_dir=JOBS, cho_chup=20)
+        gop_y.GOI_TOI_DA = cu_td
+        with zipfile.ZipFile(z2) as zf:
+            m2 = json.loads(zf.read("meta.json"))
+            nho2 = [n for n in zf.namelist() if n.startswith("anh_nho/")]
+        ktra("gói vượt giới hạn -> đóng lại với ảnh nhỏ hơn (hoặc bỏ ảnh nhỏ), vẫn đủ số đo",
+             m2["canh_anh_nho"] < 384 and (z2.stat().st_size <= gioi or not nho2)
+             and m2["anh_sua"] == 4, f"cạnh {m2['canh_anh_nho']} · {len(nho2)} ảnh nhỏ · {z2.stat().st_size} B")
+        z2.unlink()
         # 5
         kho = TAM / "kho"
         cf = dict(mn.MAC_DINH, kho=str(kho))
