@@ -948,7 +948,14 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
 - Bài kiểm Retouch "máy xem trước vừa hỏng" có race: `_xong` của lượt chạy giả xoá dấu
   hỏng nếu chạy SAU lệnh kill → bài kiểm giờ chờ lượt chạy kết thúc hẳn rồi mới kill.
 - Nhãn "Cần xem" PHẢI hiếm: lỗi đọc · |ΔEV| ≥ 0,5 · cháy THÊM ≥ 3 điểm (clip sau −
-  trước). Dùng "cháy sau ≥ 3%" thì buổi PUBGM 171/221 ảnh bị gắn.
+  trước). Dùng "cháy sau ≥ 3%" thì buổi PUBGM 171/221 ảnh bị gắn. (BVDay3 v77 vẫn
+  708/1813 — có thể phải nâng ngưỡng EV, chờ user.)
+- v78 (user dùng thử v77): "Đọc từ Lightroom" / "Học từ buổi này" BỎ khỏi thanh trên
+  (còn trong ⋯). Chip đếm theo CẢNH đang lọc + dòng "Tất cả cảnh" (lọc cảnh mà chip
+  đếm cả buổi = bấm chip nào cũng ra đúng mấy ảnh của cảnh → user tưởng chip hỏng).
+  GoiY tắt khi <Unmap> + `GoiY.an_het()` lúc đổi trang; widget mới gắn sự kiện chuột
+  luôn `add="+"` (gắn đè <Leave> là chú thích kẹt). "Tự retouch ảnh mới" luôn TẮT khi
+  mở app (không nạp `tu_moi` từ retouch.json).
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
