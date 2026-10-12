@@ -984,6 +984,9 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   mức riêng theo tên RAW của riêng nó (td["giu_gd"]), bảng mức thư mục xuất ghi GỘP trên
   đĩa, trang Retouch đứng yên (không mở ảnh xuất lên ảnh lớn), chỉ tiến độ ở thanh đáy +
   trang 5. Nút "Xuất ảnh…" ở Cân sáng vẫn xuất cả buổi và mượn trang Retouch như cũ.
+- v82 (user thử v81): nút Phân tích khi đã có kết quả GIỮ CHỮ "Phân tích lại" (bản trước
+  chỉ còn biểu tượng → khó tìm). Bảng phải Cân sáng MẶC ĐỊNH là "Thiết lập cân sáng"
+  (`_xem_thiet_lap = True` lúc dựng); nút ⚙ / X mới về chi tiết ảnh.
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 

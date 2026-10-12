@@ -257,7 +257,7 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     app.thanh_buoc_gon.the["can_sang"].event_generate("<ButtonRelease-1>", x=5, y=5)
     chay(4)
     ktra("bấm một bước là đổi trang: bảng phải + nút theo trang",
-         sang_rt and app.khau_dang == "phan_tich" and app.bang_anh.winfo_ismapped()
+         sang_rt and app.khau_dang == "phan_tich" and app.cuon_phai.winfo_ismapped()
          and not app.cuon_phai_rt.winfo_ismapped() and app.cc_phai.winfo_ismapped()
          and not app.cc_phai_rt.winfo_ismapped() and app.thanh_lam.winfo_ismapped(),
          "Retouch không mang bảng / nút của Cân sáng, và ngược lại")
@@ -424,13 +424,19 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     app.v_folder.set(str(buoi))
 
     # ------------------------------------------------ 3. nhóm thu gọn
-    #[[ 12/10 (giao dien moi): tuy chon can sang nam sau nut Thiet lap — bang
-    #   phai mac dinh la chi tiet anh. Bam nut that de mo. ]]
+    #[[ 12/10 (user): "giao dien mac dinh khi cai xong app phai la giao dien
+    #   co Thiet lap can sang chu khong phai view xem anh". Nut Thiet lap (bam
+    #   that) doi qua lai voi chi tiet anh. ]]
+    mac_dinh_tl = app.cuon_phai.winfo_ismapped() and not app.bang_anh.winfo_ismapped()
     app.btn_thiet_lap.invoke()
     chay(3)
-    ktra("nút Thiết lập mở bảng tuỳ chọn thay cho chi tiết ảnh",
-         app.cuon_phai.winfo_ismapped() and not app.bang_anh.winfo_ismapped(),
-         "bảng phải: Thiết lập cân sáng")
+    sang_ct = app.bang_anh.winfo_ismapped() and not app.cuon_phai.winfo_ismapped()
+    app.btn_thiet_lap.invoke()
+    chay(3)
+    ktra("mở app: bảng phải là Thiết lập cân sáng; nút Thiết lập đổi qua lại chi tiết ảnh",
+         mac_dinh_tl and sang_ct
+         and app.cuon_phai.winfo_ismapped() and not app.bang_anh.winfo_ismapped(),
+         f"mặc định Thiết lập={mac_dinh_tl} · bấm → chi tiết={sang_ct}")
     nhom = app._nhom_tuy_chon
     ktra("bảy nhóm tuỳ chọn", len(nhom) == 7, " · ".join(n.tieu_de for n in nhom.values()))
     ktra("mở app lên thì nhóm nào cũng đóng, có dòng tóm tắt",

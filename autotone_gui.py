@@ -769,12 +769,15 @@ class App(ttk.Frame):
         self.btn_dong_tl.pack(side="right")
         self._vach_dau_p = tk.Frame(self.ben_phai, height=1, background=m["vien"])
         self._vach_dau_p.grid(row=0, column=0, sticky="sew")
-        #  bảng chi tiết ảnh đang chọn (mặc định của Cân sáng) — xem _build_chi_tiet
+        #  bảng chi tiết ảnh đang chọn (đóng Thiết lập mới thấy) — xem _build_chi_tiet
         self.bang_anh = gd.Cuon(self.ben_phai, nen=m["nen"])
         self.bang_anh.theo_noi_dung()
         self.bang_anh.grid(row=1, column=0, sticky="nsew", padx=(16, 4), pady=(16, 8))
         self.bang_anh.trong.configure(padding=(0, 0, 12, 0))
-        self._xem_thiet_lap = False
+        #[[ 12/10 (user): "giao dien mac dinh khi cai xong app phai la giao dien
+        #   co Thiet lap can sang chu khong phai view xem anh" — mo app la thay
+        #   bang Thiet lap; dong (X) moi ve chi tiet anh. ]]
+        self._xem_thiet_lap = True
         self.cuon_phai = gd.Cuon(self.ben_phai, nen=m["nen"])
         self.cuon_phai.theo_noi_dung()
         #[[ Le phai cho noi dung: khong co, dong tom tat cua nhom cham sat mep
@@ -1109,7 +1112,7 @@ class App(ttk.Frame):
 
     # ------------------------------------------------------------ bảng phải Cân sáng
     def _hien_bang_phai(self):
-        """Cân sáng: bảng phải là CHI TIẾT ẢNH (mặc định) hoặc THIẾT LẬP."""
+        """Cân sáng: bảng phải là THIẾT LẬP (mặc định) hoặc CHI TIẾT ẢNH."""
         tl = bool(getattr(self, "_xem_thiet_lap", False))
         (self.cuon_phai.grid if tl else self.cuon_phai.grid_remove)()
         (self.bang_anh.grid_remove if tl else self.bang_anh.grid)()
@@ -2852,9 +2855,9 @@ class App(ttk.Frame):
         co_kq = bool(self.items)
         a = getattr(self, "btn_analyze", None)
         if a is not None:
-            #  có kết quả: nút gọn chỉ biểu tượng (rê chuột: "Phân tích lại") —
-            #  thanh dưới còn chỗ cho số đếm + nút Áp như bản thiết kế
-            a.configure(text=("" if co_kq else
+            #[[ 12/10 (user): co ket qua ma nut chi con bieu tuong thi "kho tim
+            #   lai" — luon giu chu: "Phan tich lai". ]]
+            a.configure(text=("Phân tích lại" if co_kq else
                               f"Phân tích {gd.so_vn(n_anh)} ảnh" if n_anh else "Phân tích"))
             if not hasattr(a, "goi_y"):
                 a.goi_y = gd.GoiY(a, "")
