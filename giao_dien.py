@@ -1873,15 +1873,27 @@ class GoiY:
 
     TRE_MS = 280
     RONG = 380
+    _DANG_MO: set = set()          # các chú thích đang hiện — an_het() khi đổi trang
 
     def __init__(self, w, chu: str = ""):
         self.w = w
         self.chu = chu or ""
         self._hen = None
         self.cua = None            # cửa sổ nổi đang hiện (để bài kiểm hỏi)
+        #[[ 12/10: them <Unmap> / <Destroy> — widget bi an (doi trang) giua luc
+        #   chu thich dang hien thi KHONG co <Leave>, chu thich nam lai giua
+        #   man hinh khac. ]]
         for su_kien, ham in (("<Enter>", self._vao), ("<Leave>", self._ra),
-                             ("<ButtonPress>", self._ra)):
+                             ("<ButtonPress>", self._ra), ("<Unmap>", self._ra),
+                             ("<Destroy>", self._ra)):
             w.bind(su_kien, ham, add="+")
+
+    @classmethod
+    def an_het(cls) -> None:
+        """Tắt mọi chú thích đang hiện (gọi khi đổi trang)."""
+        for g in list(cls._DANG_MO):
+            g._huy_hen()
+            g.an()
 
     def dat(self, chu: str) -> None:
         self.chu = chu or ""
@@ -1938,8 +1950,10 @@ class GoiY:
             y = max(ty + 4, ty + th - ch - 4)
         cua.wm_geometry(f"+{x}+{y}")
         self.cua = cua
+        GoiY._DANG_MO.add(self)
 
     def an(self):
+        GoiY._DANG_MO.discard(self)
         if self.cua is not None:
             try:
                 self.cua.destroy()
@@ -2888,9 +2902,9 @@ class _Chip(tk.Canvas):
         super().__init__(nhom, height=self._cao, width=self.rong_can(),
                          highlightthickness=0, borderwidth=0, background=nen,
                          cursor="hand2")
-        self.bind("<Enter>", lambda _e: self._dat_re(True))
-        self.bind("<Leave>", lambda _e: self._dat_re(False))
-        self.bind("<ButtonRelease-1>", lambda _e: self._nhom._chon(self.ma))
+        self.bind("<Enter>", lambda _e: self._dat_re(True), add="+")
+        self.bind("<Leave>", lambda _e: self._dat_re(False), add="+")
+        self.bind("<ButtonRelease-1>", lambda _e: self._nhom._chon(self.ma), add="+")
 
     def rong_can(self) -> int:
         lh = self._f.metrics("linespace")
@@ -3001,10 +3015,10 @@ class _TheBuoc(tk.Canvas):
         self._anh = self._anh_hop = None
         super().__init__(thanh, height=self._cao, width=10, highlightthickness=0,
                          borderwidth=0, background=nen, cursor="hand2")
-        self.bind("<Configure>", lambda _e: self.ve())
-        self.bind("<Enter>", lambda _e: self._dat_re(True))
-        self.bind("<Leave>", lambda _e: self._dat_re(False))
-        self.bind("<ButtonRelease-1>", lambda _e: self._thanh._bam(self.ma))
+        self.bind("<Configure>", lambda _e: self.ve(), add="+")
+        self.bind("<Enter>", lambda _e: self._dat_re(True), add="+")
+        self.bind("<Leave>", lambda _e: self._dat_re(False), add="+")
+        self.bind("<ButtonRelease-1>", lambda _e: self._thanh._bam(self.ma), add="+")
 
     def rong_chu(self) -> int:
         """Chỗ tối thiểu cho tên bước (dòng phụ thì được cắt "…")."""
@@ -3075,9 +3089,9 @@ class _BuocGon(tk.Canvas):
         super().__init__(thanh, height=self._cao, width=self.rong_can(),
                          highlightthickness=0, borderwidth=0, background=nen,
                          cursor="hand2")
-        self.bind("<Enter>", lambda _e: self._dat_re(True))
-        self.bind("<Leave>", lambda _e: self._dat_re(False))
-        self.bind("<ButtonRelease-1>", lambda _e: self._thanh._bam(self.ma))
+        self.bind("<Enter>", lambda _e: self._dat_re(True), add="+")
+        self.bind("<Leave>", lambda _e: self._dat_re(False), add="+")
+        self.bind("<ButtonRelease-1>", lambda _e: self._thanh._bam(self.ma), add="+")
 
     def _chu(self):
         tt, _p = self._thanh.trang_thai(self.ma)
@@ -3247,7 +3261,7 @@ class BangDeXuat(tk.Canvas):
         self._ds: list = []
         super().__init__(cha, height=self._dong, width=10, highlightthickness=0,
                          borderwidth=0, background=self._nen)
-        self.bind("<Configure>", lambda _e: self.ve())
+        self.bind("<Configure>", lambda _e: self.ve(), add="+")
 
     def dat(self, ds):
         self._ds = list(ds or [])
@@ -3299,7 +3313,7 @@ class BieuDoSang(tk.Canvas):
         self._anh = None
         super().__init__(cha, height=self._cao, width=10, highlightthickness=0,
                          borderwidth=0, background=self._nen)
-        self.bind("<Configure>", lambda _e: self.ve())
+        self.bind("<Configure>", lambda _e: self.ve(), add="+")
 
     def dat(self, truoc, sau=None):
         self._truoc, self._sau = list(truoc or []), list(sau or [])
@@ -3353,9 +3367,11 @@ class NhomNutIcon(tk.Canvas):
                          cursor="hand2")
         self.goi_y = GoiY(self, " · ".join(g for _m, _i, g in self._ds))
         self._vet = variable.trace_add("write", lambda *_a: self.ve())
-        self.bind("<Motion>", self._di)
-        self.bind("<Leave>", lambda _e: self._dat_re(-1))
-        self.bind("<ButtonRelease-1>", self._bam)
+        #  add="+": GoiY đã gắn <Enter>/<Leave> — gắn đè là chú thích KẸT lại
+        #  (12/10, user chụp: "Lưới ảnh · Ảnh lớn…" nằm lì trên trang Retouch)
+        self.bind("<Motion>", self._di, add="+")
+        self.bind("<Leave>", lambda _e: self._dat_re(-1), add="+")
+        self.bind("<ButtonRelease-1>", self._bam, add="+")
         self.bind("<Destroy>", self._huy, add="+")
         self.ve()
 
@@ -3426,10 +3442,10 @@ class HangCanh(tk.Canvas):
         self._anh = self._anh_nho = None
         super().__init__(cha, height=self._cao, width=10, highlightthickness=0,
                          borderwidth=0, background=self._nen, cursor="hand2")
-        self.bind("<Configure>", lambda _e: self.ve())
-        self.bind("<Enter>", lambda _e: self._dat_re(True))
-        self.bind("<Leave>", lambda _e: self._dat_re(False))
-        self.bind("<ButtonRelease-1>", lambda _e: self._khi_bam and self._khi_bam())
+        self.bind("<Configure>", lambda _e: self.ve(), add="+")
+        self.bind("<Enter>", lambda _e: self._dat_re(True), add="+")
+        self.bind("<Leave>", lambda _e: self._dat_re(False), add="+")
+        self.bind("<ButtonRelease-1>", lambda _e: self._khi_bam and self._khi_bam(), add="+")
 
     def _dat_re(self, co):
         self._re = co
@@ -3554,7 +3570,7 @@ class TheBo(tk.Canvas):
         self.trong = tk.Frame(self, background=self._nen_the)
         self._i_nen = self.create_image(0, 0, anchor="nw")
         self._win = self.create_window(pad, self._pady, window=self.trong, anchor="nw")
-        self.bind("<Configure>", lambda _e: self._ve())
+        self.bind("<Configure>", lambda _e: self._ve(), add="+")
         self.trong.bind("<Configure>", lambda _e: self._doi_cao(), add="+")
 
     def dat_mau(self, nen_the: str | None = None, vien: str | None = None):
@@ -3599,7 +3615,7 @@ class ThanhTienDo(tk.Canvas):
         self._anh = []
         super().__init__(cha, height=cao, width=10, highlightthickness=0, borderwidth=0,
                          background=self._nen)
-        self.bind("<Configure>", lambda _e: self.ve())
+        self.bind("<Configure>", lambda _e: self.ve(), add="+")
 
     def dat(self, da, tong):
         try:

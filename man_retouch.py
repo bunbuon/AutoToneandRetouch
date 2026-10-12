@@ -191,7 +191,11 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.v_lamlai = tk.BooleanVar(value=False)
         self.v_dequy = tk.BooleanVar(value=False)
         #[[ TU RETOUCH ANH MOI (7/10) — xem _bat_theo_doi. Nho qua cac lan mo. ]]
-        self.v_tu_moi = tk.BooleanVar(value=bool(self.cf.get("tu_moi", False)))
+        #[[ 12/10 (user: "phan tu retouch anh moi them vao mac dinh off"): LUON tat
+        #   khi mo app — khong nap lai tu retouch.json. Bat no la app lang le theo
+        #   doi thu muc va tu chay retouch; phai la viec nguoi dung chu dong bat
+        #   cho tung lan, khong phai trang thai sot lai tu hom truoc. ]]
+        self.v_tu_moi = tk.BooleanVar(value=False)
         #[[ BO ANH KHONG CO NGUOI (12/10) — retouch.json "bo_khong_nguoi", mac dinh BAT;
         #   retouch.chay doc thang tu day cho moi duong chay. ]]
         self.v_bo_khong_nguoi = tk.BooleanVar(value=bool(self.cf.get("bo_khong_nguoi", True)))

@@ -940,6 +940,7 @@ class App(ttk.Frame):
         else:
             self.khoa_rt.grid_remove()
         self.khau_dang = ma
+        gd.GoiY.an_het()                 # 12/10: chú thích của trang cũ không được nằm lại
         ten = dict(KHAU)[ma]
         md = self.MO_DUN_CUA.get(ma, "tone")
         self._md_dang = md
@@ -956,13 +957,8 @@ class App(ttk.Frame):
         if can_sang or tone_phu:
             if not self.chip_lr.winfo_manager():
                 self.chip_lr.pack(side="left")
-            for w in (self.btn_doc_lr, self.btn_hoc):
-                if not w.winfo_manager():
-                    w.pack(side="left", padx=(0, 8), before=self.btn_them)
         else:
             self.chip_lr.pack_forget()
-            for w in (self.btn_doc_lr, self.btn_hoc):
-                w.pack_forget()
         #[[ Dong dau trang: Can sang = chip loc + doi kieu xem; trang phu (Duyet
         #   nhanh, Tong quan…) = nut quay ve + ten trang; Retouch / Xu ly co dau
         #   rieng ben trong trang. ]]
@@ -2791,6 +2787,7 @@ class App(ttk.Frame):
         for nhan, lenh in (("Xuất báo cáo CSV", self.do_csv),
                            ("Hoàn tác…", self.do_undo),
                            ("Đọc từ Lightroom", self.do_read_from_lr),
+                           ("Học từ buổi này", self.do_learn),
                            (None, None),
                            ("Duyệt nhanh trước khi Export…",
                             lambda: self._chon_khau("day")),
@@ -2823,20 +2820,11 @@ class App(ttk.Frame):
         self.lbl_job.pack(side="left", fill="x", expand=True)
 
     def _build_dau(self, cha):
-        """Thanh trên, bên phải: Đọc từ Lightroom · Học từ buổi này · ⋯ · Thiết lập."""
+        """Thanh trên, bên phải: ⋯ · Thiết lập.
+
+        #[[ 12/10 (user chup hai nut "Doc tu Lightroom" / "Hoc tu buoi nay": "an
+        #   cai nay di"): bo khoi thanh tren — ca hai nam trong menu ⋯. ]]"""
         m = gd.MAU
-        self.btn_doc_lr = gd.NutTron(cha, "Đọc từ Lightroom", kieu="toi", icon="dong_bo",
-                                     nen=m["nen"], command=self.do_read_from_lr)
-        self.btn_doc_lr.goi_y = gd.GoiY(
-            self.btn_doc_lr, "Đọc lại thông số hiện tại của các ảnh trong Lightroom "
-                             "(sau khi bạn sửa tay bên đó).")
-        self.btn_doc_lr.pack(side="left", padx=(0, 8))
-        self.btn_hoc = gd.NutTron(cha, "Học từ buổi này", kieu="toi", icon="hoc_gu",
-                                  nen=m["nen"], command=self.do_learn)
-        self.btn_hoc.goi_y = gd.GoiY(
-            self.btn_hoc, "So thông số trong Lightroom với những gì tool đã ghi để "
-                          "học gu sửa tay của bạn. Bấm SAU khi đã sửa xong buổi.")
-        self.btn_hoc.pack(side="left", padx=(0, 8))
         self.btn_them = gd.NutTron(cha, "", icon="them", kieu="toi",
                                    nen=m["nen"], command=self._mo_menu_them)
         self.btn_them.goi_y = gd.GoiY(
@@ -3338,15 +3326,21 @@ class App(ttk.Frame):
         chip = getattr(self, "chip_loc", None)
         if chip is not None:
             if self.items:
-                dem = self._dem_nhan()
-                chip.dat_so({"tat_ca": len(ds), "giu": dem["giu"], "loai": dem["loai"],
-                             "xem": dem["xem"]})
-                loc = self.v_loc.get()
-                if loc in ("giu", "loai", "xem"):
-                    ds = [o for o in ds if o.get("nhan") == loc]
+                #[[ 12/10 (user: "bam cac filter anh chua doi theo filter"): dang
+                #   loc MOT canh thi so tren chip PHAI la so cua canh do — so ca buoi
+                #   (Giu 939) ma luoi chi 5 anh, bam chip nao cung ra dung 5 anh do
+                #   -> trong nhu chip khong an. Loc canh truoc, dem sau. ]]
                 canh = getattr(self, "_canh_chon", None)
                 if canh is not None:
                     ds = [o for o in ds if o.get("canh") == canh]
+                dem = {"giu": 0, "loai": 0, "xem": 0}
+                for o in ds:
+                    if o.get("nhan") in dem:
+                        dem[o["nhan"]] += 1
+                chip.dat_so({"tat_ca": len(ds), **dem})
+                loc = self.v_loc.get()
+                if loc in ("giu", "loai", "xem"):
+                    ds = [o for o in ds if o.get("nhan") == loc]
             else:
                 chip.dat_so({"tat_ca": len(ds)})
         luoi.dat_ds(ds, giu_cuon=giu_cuon)
@@ -3364,7 +3358,10 @@ class App(ttk.Frame):
         except Exception:                                    # noqa: BLE001
             traceback.print_exc()
         if not ds:
-            if self.folder() is None:
+            if self.items:
+                luoi.dat_trong("Không có ảnh nào khớp bộ lọc.\nBấm “Tất cả” hoặc "
+                               "“Tất cả cảnh” để xem lại cả buổi.", co_nut=False)
+            elif self.folder() is None:
                 luoi.dat_trong("Chưa chọn buổi chụp.\n"
                                "Chọn thư mục ảnh RAW để bắt đầu.")
             else:
@@ -3814,6 +3811,15 @@ class App(ttk.Frame):
                                                      else "Chưa chọn buổi."),
                          background=gd.MAU["nen"], foreground=gd.MAU["mo2"],
                          font=gd.CHU_NHO, anchor="w").pack(fill="x", padx=8, pady=4)
+            if nhom:
+                #  dòng "Tất cả cảnh": bỏ lọc cảnh (đang lọc thì nó không sáng)
+                h = gd.HangCanh(self.cuon_canh.trong, "Tất cả cảnh",
+                                f"{len(nhom)} cảnh",
+                                gd.so_vn(sum(len(v) for v in nhom.values())),
+                                khi_bam=lambda: self._chon_canh(None), nen=gd.MAU["nen"])
+                h.pack(fill="x", pady=(0, 4))
+                h.duong_dan = None
+                self._hang_canh[None] = h
             for s, ds in sorted(nhom.items(), key=lambda x: x[0]):
                 gio = [r.get("dt_obj") for r in ds if r.get("dt_obj")]
                 phu = (f"{min(gio):%H:%M} – {max(gio):%H:%M}" if gio else "")
@@ -3839,7 +3845,7 @@ class App(ttk.Frame):
             return
         thieu = []
         for h in self._hang_canh.values():
-            if h.co_anh() or h.duong_dan in luoi._hong:
+            if h.duong_dan is None or h.co_anh() or h.duong_dan in luoi._hong:
                 continue
             im = luoi._anh_pil.get(h.duong_dan)
             if im is not None:
@@ -3851,8 +3857,9 @@ class App(ttk.Frame):
             self._hen_anh_canh = self.after(500, self._nap_anh_canh)
 
     def _chon_canh(self, s):
-        """Bấm một cảnh: lọc lưới theo cảnh đó; bấm lại cảnh đang lọc = bỏ lọc."""
-        self._canh_chon = None if self._canh_chon == s else s
+        """Bấm một cảnh: lọc lưới theo cảnh đó; bấm lại cảnh đang lọc hoặc
+        “Tất cả cảnh” (s = None) = bỏ lọc."""
+        self._canh_chon = None if (s is None or self._canh_chon == s) else s
         self._cap_nhat_luoi(giu_cuon=False)
 
     # ------------------------------------------------------------ thanh dưới: số đếm (12/10)
