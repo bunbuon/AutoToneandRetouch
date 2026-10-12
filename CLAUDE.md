@@ -893,6 +893,63 @@ khớp hết, 0 WHEA / BSOD trong 3.5 giờ. Giờ:
 - Build của chính dự án thôi ghim nhân E (`/AFFINITY FFFF0000` bỏ từ v76).
 Kiểm: `test_xuat_mot_thao_tac.py` (microcode cũ / mới / không rõ, hiệu lực, tệp bản cũ).
 
+## Giao diện mới "SAY Auto Tone & Retouch" (12/10) — thay khung Evoto
+
+User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon) + `Icons.dc.html`:
+"Hãy thay đổi giao diện". Giữ Tkinter, đổi khung + màu + phông + icon:
+- **Token** (`gd.MAU`): nền app `#111214`, khung/bảng `#16171b`, thẻ `#18191c`, viền
+  `#26282c`, chữ `#edebe7`/`#a6a39d`/`#8c8984`, nhấn HỔ PHÁCH `#f2b54a` (+ `nhan_nen`
+  `#2a2416`), Giữ xanh `#9cc2ff`/`#1c2433`, Loại `#fca18e`/`#2b1c19`, xong `#73ce91`.
+- **Phông đi kèm** `fonts/` (Be Vietnam Pro 5 độ đậm + JetBrains Mono, OFL) — đăng ký RIÊNG
+  tiến trình lúc import giao_dien (`nap_phong_kem`: Windows AddFontResourceExW FR_PRIVATE,
+  macOS CoreText scope process — CHƯA thử Mac thật). Tk chỉ có normal/bold → Medium /
+  SemiBold gọi bằng TÊN HỌ riêng của Windows ("Be Vietnam Pro SemiBold"); Mac không có
+  tên đó → lùi bold. Dùng `gd.phong(cỡ, kiểu)` (thuong/vua/dam/dam2/rat_dam/so/so_vua),
+  KHÔNG viết tuple "Segoe UI" mới. `TAI_NGUYEN` có ("fonts","fonts"); tu_kiem soi.
+- **Icon**: 24 path của bản thiết kế chép NGUYÊN vào `bieu_tuong.BO` (+ phụ: tam_dung,
+  dong_ho, toc_do, bang_csv, mui_phai, thong_tin, vet_co_the…); `HOP_ICON` = 4 kiểu hộp.
+  "retouch"/"dong_bo"/"so_sanh"/"mat"/"xong" trỏ sang hình mới.
+- **Khung** (`_build_shell`): hàng 1 thanh trên (logo hộp hổ phách · "SAY Auto Tone" ·
+  `nut_buoi` nhỏ + `lbl_so_buoi` · `chip_lr` (nhịp plugin < 60 s = đã kết nối) · `lbl_job`
+  · Đọc từ Lightroom · Học từ buổi này (`do_learn`) · ⋯ · Thiết lập) · hàng 2 THANH 5 BƯỚC
+  `thanh_buoc` (`BUOC`: nguon/loc/can_sang/retouch/xu_ly; thẻ to ở Cân sáng, bản gọn
+  `thanh_buoc_gon` giữa thanh trên ở trang khác; `_lam_moi_buoc` theo vòng 4 s) · hàng 3
+  thân: `cot_canh` (cột Cảnh, TỰ ẨN khi thân < 76 dòng chữ — `_hien_cot_canh`) · `giua` ·
+  `ben_phai` · hàng 4 thanh dưới: đếm (`lbl_dem`) / tiến độ · `lbl_status` · `lbl_han` ·
+  `thanh_lam` (Dừng · Xuất CSV · Phân tích · Xuất ảnh… · **Áp N ảnh vào Lightroom** =
+  `btn_ghi3`, chữ "Ghi N ảnh ra .xmp" khi tắt đẩy thẳng). Cột mô-đun `thanh_md` BỎ.
+- **Cân sáng**: chip `ChipLoc` Tất cả/Giữ/Loại 1★/Cần xem + `NhomNutIcon` lưới/ảnh lớn/bảng
+  (`v_kieu_xem`; `v_xem` vẫn luoi/bang). Ô lưới bo góc (ảnh dựng sẵn PIL), nhãn viên RGBA
+  (`gd.anh_vien_trong`), EV "+0,02 EV", tên file mono. BẤM = chọn (bảng phải), ĐÚP = ảnh lớn.
+  Bảng phải mặc định = CHI TIẾT ẢNH (`_build_chi_tiet`: ảnh, nhãn, mô tả, Giữ P / Loại X,
+  histogram trước/sau ΔEV, `BangDeXuat` Phơi sáng=ΔEV · Vùng sáng · Vùng tối · K · Tint ·
+  Cháy sáng); nút Thiết lập đổi sang bảy nhóm cũ (`_mo_thiet_lap`).
+- **Nhãn ảnh** (`_nhan_cua`): tay > Loại (cull hoặc rating 1 của bộ lọc) > Cần xem (tag
+  err/clip/big) > Giữ. P/X lưu `file_ket_qua_do(buoi).chon_tay.json`, áp SAU mỗi at.plan
+  (`_ap_chon_tay`: Loại → cull "tay" + rating 1; Giữ → gỡ 1★ của tool). `_goc_cull` giữ
+  giá trị gốc để bỏ chọn tay. Giữ không gỡ 1★ đã nằm trong Lightroom từ lần gửi trước.
+- **Trang 5 `xu_ly_ui.TrangXuLy`**: chỉ ĐỌC — retouch (worker/pb_tt/txt) > Lightroom xuất
+  (`xuat_lr.tien_do_xuat`) > phân tích; s/ảnh từ mẫu 90 s; Tự động/Nhanh/Tiết kiệm gắn
+  `RetouchWindow.v_che_do`; "Báo khi xong" (thanh_luoi kv). Phần cứng đọc ở luồng nền,
+  nhãn đổi ở luồng giao diện (Tk không an toàn đa luồng).
+- **Retouch**: thanh xem lên TRÊN ảnh (Chia đôi · Chỉ ảnh sau · Trước|Sau · Giữ để so ·
+  Khung mặt · Vừa · 100%); thanh kéo có hộp icon (`ICON_KEO`), vùng Da/Khuôn mặt/Cơ thể.
+- Chụp màn hình để soát: tiến trình python KHÔNG DPI-aware → nhân toạ độ Tk với
+  (rộng ảnh chụp toàn màn / winfo_screenwidth) trước khi cắt. Script chụp mà gọi
+  start_analyze PHẢI có `if __name__ == "__main__"` (tiến trình con multiprocessing
+  chạy lại cả script — đã mở 8 cửa sổ app); và chốt bản quyền chặn Phân tích khi
+  chạy từ mã nguồn không key.
+- **Bẫy đổi phông lộ ra** (đổi số đo là lộ): (1) `LuoiAnh` ẩn/hiện thanh cuộn làm đổi
+  bề ngang canvas → đổi số cột → đổi chiều cao → thanh cuộn lại đổi: dao động VÔ HẠN
+  trong update_idletasks (kiem_retouch_gui treo, 20 GB RAM) → giờ CHỪA SẴN chỗ thanh
+  cuộn (columnconfigure/rowconfigure minsize). (2) `gd.TheBao` xuống dòng đúng bằng
+  bề ngang được cấp → bảng phải nới tạm một lần là giữ luôn (408 thay 404) → trừ thêm
+  8 px để luôn co về. (3) Tên tệp liền khối không xuống dòng được → cắt giữa "…".
+- Bài kiểm Retouch "máy xem trước vừa hỏng" có race: `_xong` của lượt chạy giả xoá dấu
+  hỏng nếu chạy SAU lệnh kill → bài kiểm giờ chờ lượt chạy kết thúc hẳn rồi mới kill.
+- Nhãn "Cần xem" PHẢI hiếm: lỗi đọc · |ΔEV| ≥ 0,5 · cháy THÊM ≥ 3 điểm (clip sau −
+  trước). Dùng "cháy sau ≥ 3%" thì buổi PUBGM 171/221 ảnh bị gắn.
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị

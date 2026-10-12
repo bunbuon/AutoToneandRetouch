@@ -330,7 +330,7 @@ class KhungAnh(tk.Frame):
 
     def __init__(self, cha, nen: str | None = None, khi_doi=None, khi_phim=None,
                  khi_dup=None):
-        self._nen = nen or "#101114"
+        self._nen = nen or "#0f1012"
         super().__init__(cha, background=self._nen)
         self._khi_doi = khi_doi
         self._khi_phim = khi_phim
@@ -348,7 +348,7 @@ class KhungAnh(tk.Frame):
         self._i_vach = c.create_line(0, 0, 0, 0, fill="#ffffff", width=2, state="hidden")
         self._i_nut_vach = c.create_oval(0, 0, 0, 0, fill="#ffffff", outline="#111214",
                                          width=2, state="hidden")
-        f_nhan = gd._phong(self, ("Segoe UI", 10, "bold"))
+        f_nhan = gd._phong(self, gd.phong(10, "dam"))
         #[[ Nhan "ANH GOC" nam tren nen toi rieng: chu cam tren anh cuoi (phong
         #   nen kem, vay trang) la khong doc duoc — da thay tren anh that. ]]
         self._i_nhan_nen = c.create_rectangle(0, 0, 0, 0, fill="#111214", outline="",
@@ -358,12 +358,14 @@ class KhungAnh(tk.Frame):
         self._i_chu = c.create_text(0, 0, anchor="center", text="", fill=gd.MAU["mo"],
                                     font=gd._phong(self, gd.CHU), justify="center")
         #  nhãn TRƯỚC / SAU khi so sánh (viên bo tròn như Lightroom / mẫu user gửi)
-        f_so = gd._phong(self, ("Segoe UI", 9, "bold"))
+        f_so = gd._phong(self, gd.phong(9, "dam"))
         self._nhan_so = {}
-        for ten, nen_v in (("truoc", "#3b3f47"), ("sau", "#6d4ad8")):
+        #  12/10 (giao diện mới): "Trước" viên tối chữ trắng, "Sau" viên hổ phách chữ tối
+        for ten, nen_v, chu_v in (("truoc", "#141518", "#edebe7"),
+                                  ("sau", gd.MAU["nhan"], gd.MAU["chu_nhan"])):
             nen_id = c.create_rectangle(0, 0, 0, 0, fill=nen_v, outline="", state="hidden")
-            chu_id = c.create_text(0, 0, anchor="nw", text="TRƯỚC" if ten == "truoc" else "SAU",
-                                   fill="#ffffff", font=f_so, state="hidden")
+            chu_id = c.create_text(0, 0, anchor="nw", text="Trước" if ten == "truoc" else "Sau",
+                                   fill=chu_v, font=f_so, state="hidden")
             self._nhan_so[ten] = (nen_id, chu_id)
         self._o_trong = tk.Frame(c, background=self._nen)
         #[[ 7/10 (thiet ke lai): bieu tuong khung anh lon + tieu de dam + dong

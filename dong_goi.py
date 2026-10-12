@@ -146,7 +146,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #  10/10: trạm retouch cho "Retouch khi xuất" của Lightroom (import trong hàm)
         "tram_retouch",
         #  12/10: góp dữ liệu buổi đã sửa tay (import trong hàm — autotone_gui, retouch_may)
-        "gop_y"]
+        "gop_y",
+        #  12/10 giao diện mới: trang 5 · Xử lý & xuất (import trong App._build_xu_ly)
+        "xu_ly_ui"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).
@@ -175,7 +177,10 @@ NGAM_NGOAI = ["PIL._tkinter_finder", "PIL._imagingtk"]
 NGAM_RETOUCH = ["retouch"]
 
 # Thư mục/dữ liệu phải mang theo: (nguồn, tên trong gói)
-TAI_NGUYEN = [("models", "models"), ("AutoTone.lrplugin", "AutoTone.lrplugin")]
+#  12/10: fonts/ = Be Vietnam Pro + JetBrains Mono (OFL) của giao diện mới —
+#  giao_dien.nap_phong_kem() đăng ký riêng cho tiến trình lúc mở app
+TAI_NGUYEN = [("models", "models"), ("AutoTone.lrplugin", "AutoTone.lrplugin"),
+              ("fonts", "fonts")]
 
 #[[ THU MUC jobs/ KHONG DUOC VAO GOI.
 #

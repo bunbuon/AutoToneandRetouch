@@ -163,18 +163,19 @@ if root is not None:
     app.dp_preset().chon(None)
     app._cap_nhat_luoi()
     chay(5)
-    tl = app.thanh_luoi_ct
-    ktra("thanh lưới Cân tone: đếm sao trên cả buổi",
-         "Tất cả  6" in str(tl.pd_loc._lua_chon if hasattr(tl.pd_loc, "_lua_chon") else
-                            tl._nhan_loc(6, 5, 1)) and len(app.luoi.ds) == 6)
-    tl.v_loc.set("co_sao")
-    tl._doi_loc()
+    #[[ 12/10 (giao dien moi): loc o Can sang la CHIP Tat ca / Giu / Loai 1★ /
+    #   Can xem — anh 1 sao cua bo loc la "Loai 1★". ]]
+    so = {ma: c._so for ma, c in app.chip_loc.chip.items()}
+    ktra("chip lọc Cân sáng: đếm trên cả buổi",
+         so.get("tat_ca") == "6" and so.get("loai") == "1" and len(app.luoi.ds) == 6,
+         str(so))
+    app.chip_loc._chon("loai")              # như bấm chip (cửa sổ kiểm có thể chưa hiện)
     chay(3)
-    ktra("lọc “Đã lọc (có sao)” -> lưới chỉ còn ảnh có sao",
+    ktra("chip “Loại 1★” -> lưới chỉ còn ảnh bị loại",
          [Path(o["path"]).name for o in app.luoi.ds] == ["DSC0003.ARW"],
          str([Path(o["path"]).name for o in app.luoi.ds]))
-    tl.v_loc.set("tat_ca")
-    tl._doi_loc()
+    app.v_loc.set("tat_ca")
+    app._cap_nhat_luoi()
     chay(3)
 
     # bấm một ô -> ảnh lớn; bấm đúp -> lưới

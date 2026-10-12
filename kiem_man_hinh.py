@@ -160,6 +160,13 @@ def main() -> int:
             if app.khau_dang != "phan_tich" or not app.dau_chinh.winfo_ismapped():
                 lech.append(f"{ma}: không về trang chính")
             continue
+        if ma == "xu_ly":
+            #[[ 12/10: trang Xu ly & xuat tu du (the tien do + cac buoc), khong
+            #   dung dong dau trang phu. ]]
+            tr = getattr(app, "xu_ly", None)
+            if app.dau_trang.winfo_ismapped() or tr is None or not tr.winfo_ismapped():
+                lech.append("xu_ly: trang không hiện / lẫn đầu trang phụ")
+            continue
         if ma == "retouch":
             #[[ Retouch la MO-DUN (toi 3/10): dau trang rieng [Luoi anh | Nhat
             #   ky] nam trong khung cua no; dong dau trang phu cua app phai an,
@@ -198,6 +205,9 @@ def main() -> int:
         for n in app._nhom_tuy_chon.values():
             (n.mo if mo_nhom else n.dong)()
         app._chon_khau(ma)
+        #  12/10: lượt đóng nhóm soi bảng chi tiết ảnh, lượt mở nhóm soi Thiết lập
+        if ma == "phan_tich":
+            app._mo_thiet_lap(mo_nhom)
         chay()
         ds = []
         di_khap(app, ds)
@@ -274,6 +284,7 @@ def main() -> int:
     def do_tai(w, h, mo):
         root.geometry(f"{w}x{h}")
         app._chon_khau("phan_tich")
+        app._mo_thiet_lap(True)
         for k, n in nhom.items():
             (n.mo if (mo is True or k == mo) else n.dong)()
         chay(8)
@@ -299,9 +310,12 @@ def main() -> int:
     ktra("một nhóm mở (nhóm cao nhất): vừa ở mọi cửa sổ ≥1200 px cao",
          bool(mot) and all(can <= o + 2 for can, o, *_x in mot.values()),
          f"nhóm “{nhom[cao_nhat].tieu_de}”")
+    #[[ 12/10 (giao dien moi): them hang 5 buoc + phong Be Vietnam Pro cao dong
+    #   hon -> mo HET bay nhom o 2400x1380 phai cuon (~220 px). Thiet lap nay
+    #   la bang PHU (sau nut ⚙), cuon la binh thuong — chi in so, khong chan. ]]
     that = mo_het[(2400, 1380)]
-    ktra("mở hết nhóm: vừa ở cỡ thật của người dùng (2400x1380)",
-         that[0] <= that[1] + 2, f"{that[0]} px nội dung / {that[1]} px ô nhìn")
+    print(f"  (mở hết nhóm ở 2400x1380: {that[0]} px nội dung / {that[1]} px ô nhìn"
+          " — bảng Thiết lập cuộn được)")
     rong = {rb for bo in (dong, mo_het, mot) for _c, _o, rb, *_x in bo.values()}
     ktra("bề ngang bảng điều khiển không đổi khi mở / đóng nhóm, đổi cỡ cửa sổ",
          len(rong) == 1, f"{sorted(rong)} px")
@@ -310,7 +324,7 @@ def main() -> int:
     w1660 = dong[(1660, 940)]
     ktra("lưới ảnh chiếm phần lớn màn hình",
          w1660[3] >= 0.55 * 1660 and all(b[4] >= 3 for b in dong.values())
-         and all(b[5] >= h - 250 for (_w, h), b in dong.items()),
+         and all(b[5] >= h - 340 for (_w, h), b in dong.items()),
          f"1660 px → lưới {w1660[3]} px · 1180 px → {dong[(1180, 680)][4]} cột")
     root.geometry("1660x940")
     for n in nhom.values():
@@ -321,7 +335,8 @@ def main() -> int:
     app._chon_khau("tong_quan")
     chay()
     the = getattr(app, "_the_tq", {})
-    ktra("Tổng quan dựng đủ tám thẻ", len(the) == 8, f"{len(the)} thẻ")
+    ktra("Tổng quan dựng đủ tám thẻ", len(the) == 8 and "xu_ly" not in the,
+         f"{len(the)} thẻ")
     ktra("thẻ nào cũng có chữ trạng thái",
          all(o["l_tt"].cget("text") for o in the.values()), "không thẻ nào trống trơn")
     #[[ Bam vao the phai NHAY duoc sang khau do. Day la ly do the ton tai. ]]

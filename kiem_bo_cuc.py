@@ -208,12 +208,15 @@ def main() -> int:
     ktra("mở app lên là vào trang chính (lưới ảnh)",
          '_chon_khau("phan_tich")' in init and '_chon_khau("nap")' not in init
          and '_chon_khau("tong_quan")' not in init, "không còn khâu Nạp ảnh riêng")
-    ktra("thanh công cụ · thân · cột mô-đun · thanh trạng thái",
-         all(t in sh for t in ("self.thanh_cc", "self.ben_phai", "gd.ThanhMoDun(",
-                               "self.thanh_tt", "self.lbl_han")),
-         "hạn dùng LUÔN hiện ở thanh trạng thái")
-    ktra("cột mô-đun có Cân tone và Retouch",
-         '("tone",' in sh and '("retouch",' in sh, "như Portrait / Background của Evoto")
+    #[[ 12/10 (giao dien moi "SAY Auto Tone & Retouch"): cot mo-dun thay bang
+    #   THANH 5 BUOC (the to o Can sang, dong gon o trang khac). ]]
+    ktra("thanh trên · thanh 5 bước · thân · thanh dưới",
+         all(t in sh for t in ("self.thanh_cc", "self.ben_phai", "gd.ThanhBuoc(",
+                               "self.thanh_tt", "self.lbl_han", "self.cot_canh")),
+         "hạn dùng LUÔN hiện ở thanh dưới")
+    ktra("thanh 5 bước: Nguồn · Lọc · Cân sáng · Retouch · Xử lý & xuất",
+         all(f'("{b}",' in src for b in ("nguon", "loc", "can_sang", "retouch", "xu_ly")),
+         "bản thiết kế 12/10")
     #[[ Dem MOI cho truyen command=self.do_apply trong ca lop App (nut ttk, nut
     #   ve tay, muc menu...). Doi nut thi de nham thanh "them nut moi, quen go
     #   nut cu" — dung cai benh hai nut mot viec, _set_busy phai nho khoa ca
@@ -229,9 +232,9 @@ def main() -> int:
                     goi_ghi.append(n.lineno)
     ktra("cả app chỉ có MỘT chỗ gọi do_apply", len(goi_ghi) == 1,
          f"{len(goi_ghi)} chỗ (dòng {goi_ghi}) — nút vàng trên thanh công cụ")
-    ktra("nút Ghi là nút vẽ tay trên thanh công cụ",
-         "self.btn_ghi3 = gd.NutTron(cha" in gh and "self._build_ghi(self.cc_phai)" in src,
-         "cạnh “1 · Phân tích”")
+    ktra("nút Áp vào Lightroom là nút vẽ tay ở thanh dưới",
+         "self.btn_ghi3 = gd.NutTron(cha" in gh and "self._build_ghi(self.thanh_lam)" in src,
+         "góc phải thanh dưới, như bản thiết kế")
     nut_cc = []
     for n in ast.walk(ast.parse(ac)):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) \
@@ -239,8 +242,8 @@ def main() -> int:
             for k in n.keywords:
                 if k.arg == "command" and isinstance(k.value, ast.Attribute):
                     nut_cc.append(k.value.attr)
-    ktra("_build_actions chỉ dựng hai nút: Phân tích và Dừng",
-         sorted(nut_cc) == ["do_cancel", "start_analyze"], f"{sorted(nut_cc)}")
+    ktra("_build_actions chỉ dựng Dừng · Xuất CSV · Phân tích",
+         sorted(nut_cc) == ["do_cancel", "do_csv", "start_analyze"], f"{sorted(nut_cc)}")
     ktra("Xuất CSV, Duyệt nhanh nằm trong menu ⋯ cạnh nút Ghi",
          "self.do_csv" in gh and "Xuất báo cáo CSV" in gh
          and '_chon_khau("day")' in gh, "việc phụ không chiếm thanh công cụ")

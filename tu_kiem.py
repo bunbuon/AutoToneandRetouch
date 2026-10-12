@@ -147,6 +147,23 @@ def chay(nhanh: bool = False) -> Bao:
         return f"{Path(at.CANH_MODEL).name} · P(trong) ảnh thử {p:.2f} · {ten}"
     b.thu("Mô hình nhận cảnh (Places365)", _mo_hinh_canh)
 
+    def _phong_giao_dien():
+        #  12/10 giao diện mới: Be Vietnam Pro + JetBrains Mono đi kèm gói (fonts/).
+        #  Thiếu thì app vẫn chạy (lùi về Segoe UI) nhưng lệch bản thiết kế.
+        import duong_dan as _dd
+        d = _dd.goc_tai_nguyen() / "fonts"
+        can = ("BeVietnamPro-Regular.ttf", "BeVietnamPro-SemiBold.ttf",
+               "JetBrainsMono-Regular.ttf")
+        thieu = [f for f in can if not (d / f).is_file()]
+        if thieu:
+            raise AssertionError(f"{d} thiếu {', '.join(thieu)}")
+        import giao_dien as _gd
+        n = _gd.nap_phong_kem()
+        if sys.platform in ("win32", "darwin") and n <= 0:
+            raise AssertionError("không đăng ký được phông nào cho tiến trình")
+        return f"{len(list(d.glob('*.ttf')))} phông · đăng ký {n}"
+    b.thu("Phông giao diện (Be Vietnam Pro)", _phong_giao_dien)
+
     def _plugin():
         d = Path(at.LR_PLUGIN_DIR)
         thieu = [f for f in ("Info.lua", "AutoToneCore.lua", "ApplyNow.lua")

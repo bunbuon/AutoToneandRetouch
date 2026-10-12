@@ -63,7 +63,7 @@ class BuoiWindow(tk.Toplevel):
         frm.columnconfigure(0, weight=1)
         frm.rowconfigure(1, weight=1)
 
-        self.lbl_top = ttk.Label(frm, font=("Segoe UI", 11, "bold"))
+        self.lbl_top = ttk.Label(frm, font=gd.phong(11, "dam"))
         self.lbl_top.grid(row=0, column=0, sticky="w", pady=(0, 8))
 
         self.hop = ttk.Frame(frm)
@@ -108,12 +108,12 @@ class BuoiWindow(tk.Toplevel):
             dau = "✓" if k["xong"] else "○"
             mau = gd.MAU["xong"] if k["xong"] else gd.MAU["mo"]
             ttk.Label(self.hop, text=dau, foreground=mau,
-                      font=("Segoe UI", 12)).grid(row=i, column=0, sticky="w",
+                      font=gd.phong(12)).grid(row=i, column=0, sticky="w",
                                                   padx=(0, 8), pady=3)
             o = ttk.Frame(self.hop)
             o.grid(row=i, column=1, sticky="ew", pady=3)
             o.columnconfigure(0, weight=1)
-            ttk.Label(o, text=k["nhan"], font=("Segoe UI", 10, "bold")
+            ttk.Label(o, text=k["nhan"], font=gd.phong(10, "dam")
                       ).grid(row=0, column=0, sticky="w")
             phu = k["mo_ta"]
             if k["khi"]:
@@ -582,13 +582,13 @@ class GuWindow(Khung):
         frm.columnconfigure(0, weight=1)
         frm.rowconfigure(1, weight=1)
 
-        self.lbl_top = ttk.Label(frm, font=("Segoe UI", 11, "bold"))
+        self.lbl_top = ttk.Label(frm, font=gd.phong(11, "dam"))
         self.lbl_top.grid(row=0, column=0, sticky="w")
 
         self.canvas = tk.Label(frm, background="#161618")
         self.canvas.grid(row=1, column=0, sticky="nsew", pady=(6, 6))
 
-        self.lbl_so = ttk.Label(frm, foreground=gd.MAU["mo"], font=("Consolas", 9),
+        self.lbl_so = ttk.Label(frm, foreground=gd.MAU["mo"], font=gd.phong(9, "so"),
                                 justify="left")
         self.lbl_so.grid(row=2, column=0, sticky="w")
 
@@ -736,7 +736,7 @@ class LogWindow(tk.Toplevel):
                   text=subtitle or f"{at.LR_JOB_DIR / 'plugin.log'}"
                   ).grid(row=0, column=0, sticky="w", pady=(0, 6))
 
-        txt = tk.Text(frm, wrap="none", font=("Consolas", 9))
+        txt = tk.Text(frm, wrap="none", font=gd.phong(9, "so"))
         txt.grid(row=1, column=0, sticky="nsew")
         sb = ttk.Scrollbar(frm, orient="vertical", command=txt.yview)
         sb.grid(row=1, column=1, sticky="ns")

@@ -145,18 +145,33 @@ class MucMixin:
                                           self.v_muc[ten])
         return hang
 
-    #  (mã vùng, tên hiện) — thứ tự hiện trên bảng
-    VUNG_KEO = (("mat", "Khuôn mặt"), ("co_the", "Cơ thể"), ("khac", "Khác"))
+    #  (mã vùng, tên hiện) — thứ tự hiện trên bảng.
+    #[[ 12/10 (giao dien moi): ba vung nhu ban thiet ke — DA (khuyet diem, min
+    #   da, nep nhan, vet tren co the), KHUON MAT (nong cam, tao hinh mat…),
+    #   CO THE (keo dai chan, chieu cao). ]]
+    VUNG_KEO = (("da", "Da"), ("mat", "Khuôn mặt"), ("co_the", "Cơ thể"),
+                ("khac", "Khác"))
     #  8/10: "cao" (Tăng chiều cao, buoc_chan.BuocCao) cũng là thân người
-    _KEO_CO_THE = {"vet_body", "da_body", "chan", "keo_chan", "cao"}
+    _KEO_CO_THE = {"chan", "keo_chan", "cao"}
+    _KEO_DA = {"vet", "vet_body", "min_da", "da_body", "dodge_burn", "nhan_tran",
+               "nhan_mat", "bong_dau"}
+    #  biểu tượng của từng tính năng (bộ icon của bản thiết kế)
+    ICON_KEO = {"vet": "xoa_khuyet_diem", "vet_body": "vet_co_the",
+                "min_da": "lam_min_da", "da_body": "lam_min_da",
+                "dodge_burn": "lam_min_da", "nhan_tran": "nep_nhan_tran",
+                "nhan_mat": "can_xem", "bong_dau": "mat_net", "rang": "khung_mat",
+                "nong_cam": "xoa_nong_cam", "lq_thon_mat": "tao_hinh_mat",
+                "chan": "keo_dai_chan", "keo_chan": "keo_dai_chan",
+                "cao": "keo_dai_chan"}
 
     @classmethod
     def vung_keo(cls, ten: str) -> str:
-        """Tính năng thuộc vùng nào: "co_the" (thân / tay / chân) hay "mat"."""
+        """Tính năng thuộc vùng nào: "da", "mat" (khuôn mặt) hay "co_the"."""
         t = str(ten or "")
-        if t in cls._KEO_CO_THE or t.endswith("_body") or t.startswith("body_") \
-                or "co_the" in t:
+        if t in cls._KEO_CO_THE or "co_the" in t:
             return "co_the"
+        if t in cls._KEO_DA or t.endswith("_body") or t.startswith("body_"):
+            return "da"
         return "mat"
 
     def _mot_hang_keo(self, sb, i, goc, ten, nhan, md, goi, v) -> int:
@@ -170,10 +185,17 @@ class MucMixin:
         """
         nh = self.nhom_dang
         o = ttk.Frame(sb)
-        o.pack(fill="x", pady=(6, 1))
+        o.pack(fill="x", pady=(8, 2))
+        o.columnconfigure(1, weight=1)
+        #[[ 12/10 (giao dien moi): HOP ICON dau moi hang (bo icon cua ban thiet
+        #   ke), nhan + so o tren, thanh truot ho phach o duoi. ]]
+        lh = gd.don_vi(o)
+        ic = gd.HopIcon(o, self.ICON_KEO.get(ten, "retouch"), co=round(lh * 1.9),
+                        mau_hop="#202226", mau_net=gd.MAU["nhan_nhat"])
+        ic.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 10))
         dong = ttk.Frame(o)
-        dong.pack(fill="x")
-        self._o_keo += [o, dong]
+        dong.grid(row=0, column=1, sticky="ew")
+        self._o_keo += [o, dong, ic]
         if not nh:
             bien = v
         else:
@@ -211,11 +233,11 @@ class MucMixin:
             h = gd.NutHoi(dong, chu)
             h.pack(side="left", padx=(6, 0))
             self._o_keo.append(h)
-        lb = ttk.Label(dong, width=4, anchor="e")
+        lb = ttk.Label(dong, width=4, anchor="e", font=gd.phong(9, "so"))
         lb.pack(side="right")
         sc = gd.Truot(o, from_=0, to=100, variable=bien,
                       command=lambda gt, _b=bien: self._lam_tron(_b, gt))
-        sc.pack(fill="x", pady=(3, 0))
+        sc.grid(row=1, column=1, sticky="ew", pady=(3, 0))
         #[[ Ban phim: mui ten +-1, Shift +-10. Bam dup thanh = ve muc mac dinh
         #   cua tool (nhu Lightroom / Evoto). ]]
         for phim, buoc in (("<Left>", -1), ("<Down>", -1), ("<Right>", 1),
@@ -845,8 +867,14 @@ class MucMixin:
         if not p:
             chu = "Chưa có ảnh — đang đặt MỨC CHUNG cho mọi ảnh."
         else:
-            chu = f"{Path(p).name} · " + ("mức riêng của ảnh này" if rieng
-                                          else "theo mức chung")
+            #[[ 12/10: ten tep LIEN MOT KHOI (khong dau cach) khong xuong dong duoc
+            #   -> nhan doi be ngang = ca ten tep. Phong Be Vietnam Pro rong hon
+            #   Segoe UI: ten 49 ky tu day bang phai phinh 4 px. Cat giua "…". ]]
+            ten = Path(p).name
+            if len(ten) > 34:
+                ten = ten[:15] + "…" + ten[-17:]
+            chu = f"{ten} · " + ("mức riêng của ảnh này" if rieng
+                                 else "theo mức chung")
         n = len(self.luoi.ds_chon()) if p else 0
         try:
             self._cap_nhat_nut_chay()

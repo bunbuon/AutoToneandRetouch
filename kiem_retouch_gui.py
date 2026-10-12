@@ -896,6 +896,14 @@ def main() -> int:
          f"{len(goi_chay)} lượt chạy · tiến trình {'còn' if p_con is not None and p_con.poll() is None else 'mất'}")
     ktra("…và ảnh lớn về bản trên đĩa", not w._xem_dang_hien
          and w.xem.kich_thuoc() in (None, (2000, 1500)), str(w.xem.kich_thuoc()))
+    #[[ 12/10: CHO luot chay gia KET THUC HAN (_xong) truoc khi giet may xem
+    #   truoc. _xong co y xoa dau "hong" khi engine chet giua me — neu no chay
+    #   SAU lenh kill ben duoi (may cham / giao dien nang hon) thi dau hong cua
+    #   lan giet nay bi xoa va keo thanh mo lai engine: bai kiem "may xem truoc
+    #   vua hong" truot vi THU TU, khong phai vi app sai. ]]
+    cho(lambda: (w.worker is None or not w.worker.is_alive())
+        and not getattr(w, "_dang_chay", False))
+    chay(4)
     w._mo_xem_truoc()
     cho(lambda: w._xem_san_sang and w._may_xem is not None)
     w._may_xem.proc.kill()
@@ -1393,6 +1401,22 @@ def main() -> int:
     chay(4)
     w.v_muc[ten0].set(moi + 5)
     chay(8)
+    if app.ben_phai.winfo_width() != rong_rt:
+        #  in ra widget rộng nhất trong bảng phải — biết ngay ai làm phình
+        ds_w = []
+
+        def _di(x):
+            for c in x.winfo_children():
+                if c.winfo_ismapped():
+                    try:
+                        chu = str(c.cget("text"))[:40]
+                    except Exception:                       # noqa: BLE001
+                        chu = ""
+                    ds_w.append((c.winfo_reqwidth(), c.winfo_class(), chu, str(c)[-60:]))
+                    _di(c)
+        _di(app.ben_phai)
+        for x in sorted(ds_w, reverse=True)[:8]:
+            print("     rộng:", x)
     ktra("tên tệp dài + mức riêng: bảng điều khiển không phình ra",
          app.ben_phai.winfo_width() == rong_rt
          and "mức riêng" in w.lbl_pham_vi.cget("text"),

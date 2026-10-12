@@ -219,16 +219,22 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     ktra("không còn cột trái bảy khâu",
          not hasattr(app, "ray") and not any(type(w).__name__ == "Ray" for w in ds),
          "bỏ hẳn theo yêu cầu tối 3/10")
-    ktra("cột mô-đun: Cân tone · Retouch",
-         list(app.thanh_md.nut) == ["tone", "retouch"] and app.thanh_md.dang == "tone",
-         " · ".join(app.thanh_md.nut))
+    #[[ 12/10 (giao dien moi): thanh 5 buoc thay cot mo-dun; nut viec cua Can
+    #   sang (Phan tich · Ap vao Lightroom) xuong thanh duoi. ]]
+    ktra("thanh 5 bước: Nguồn ảnh · Lọc ảnh · Cân sáng · Retouch · Xử lý & xuất",
+         list(app.thanh_buoc.the) == ["nguon", "loc", "can_sang", "retouch", "xu_ly"]
+         and app.thanh_buoc.dang == "can_sang" and app.thanh_buoc.winfo_ismapped(),
+         " · ".join(app.thanh_buoc.the))
     cc = app.thanh_cc
-    tren = {"nút buổi": app.nut_buoi, "lần gửi": app.lbl_job,
-            "Phân tích": app.btn_analyze, "Ghi": app.btn_ghi3, "⋯": app.btn_them}
+    tren = {"nút buổi": app.nut_buoi, "lần gửi": app.lbl_job, "⋯": app.btn_them,
+            "Thiết lập": app.btn_thiet_lap}
     vang = [k for k, w in tren.items()
             if not (la_con_cua(w, cc) and w.winfo_ismapped())]
-    ktra("thanh công cụ: buổi ▾ · lần gửi · Phân tích · Ghi · ⋯", not vang,
-         f"thiếu {vang}" if vang else "một hàng, như thanh trên của Evoto")
+    duoi = {"Phân tích": app.btn_analyze, "Áp": app.btn_ghi3}
+    vang += [k for k, w in duoi.items()
+             if not (la_con_cua(w, app.thanh_tt) and w.winfo_ismapped())]
+    ktra("thanh trên: buổi ▾ · lần gửi · ⋯ · Thiết lập; thanh dưới: Phân tích · Áp",
+         not vang, f"thiếu {vang}" if vang else "như bản thiết kế")
     ktra("hạn dùng luôn hiện ở thanh trạng thái",
          la_con_cua(app.lbl_han, app.thanh_tt) and app.lbl_han.winfo_ismapped()
          and bool(app.lbl_han.cget("text")), app.lbl_han.cget("text")[:40])
@@ -238,22 +244,23 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     #   thay doi luon"): MOI mo-dun mot bang dieu khien + mot bo nut tren thanh
     #   cong cu. Doi mo-dun la doi CA HAI — sot mot cai la bam "Chay" o mo-dun
     #   nay chay viec cua mo-dun kia. ]]
-    app.thanh_md.nut["retouch"].event_generate("<ButtonRelease-1>", x=5, y=5)
+    app.thanh_buoc.the["retouch"].event_generate("<ButtonRelease-1>", x=5, y=5)
     chay(4)
     rt_win = getattr(app, "_retouch_win", None)
-    sang_rt = (app.khau_dang == "retouch" and app.thanh_md.dang == "retouch"
+    sang_rt = (app.khau_dang == "retouch" and app.thanh_buoc_gon.dang == "retouch"
                and app.khung_ngoai["retouch"].winfo_ismapped()
-               and not app.cuon_phai.winfo_ismapped()
+               and not app.cuon_phai.winfo_ismapped() and not app.bang_anh.winfo_ismapped()
                and not app.cc_phai.winfo_ismapped() and app.cc_phai_rt.winfo_ismapped()
+               and not app.thanh_lam.winfo_ismapped()
                and (rt_win is None or (app.cuon_phai_rt.winfo_ismapped()
                                        and rt_win.btn_run.winfo_ismapped())))
-    app.thanh_md.nut["tone"].event_generate("<ButtonRelease-1>", x=5, y=5)
+    app.thanh_buoc_gon.the["can_sang"].event_generate("<ButtonRelease-1>", x=5, y=5)
     chay(4)
-    ktra("bấm biểu tượng là đổi mô-đun: bảng điều khiển + nút theo mô-đun",
-         sang_rt and app.khau_dang == "phan_tich" and app.cuon_phai.winfo_ismapped()
+    ktra("bấm một bước là đổi trang: bảng phải + nút theo trang",
+         sang_rt and app.khau_dang == "phan_tich" and app.bang_anh.winfo_ismapped()
          and not app.cuon_phai_rt.winfo_ismapped() and app.cc_phai.winfo_ismapped()
-         and not app.cc_phai_rt.winfo_ismapped(),
-         "Retouch không mang bảng / nút của Cân tone, và ngược lại")
+         and not app.cc_phai_rt.winfo_ismapped() and app.thanh_lam.winfo_ismapped(),
+         "Retouch không mang bảng / nút của Cân sáng, và ngược lại")
     m = app.menu_them
     i_duyet = next((i for i in range(m.index("end") + 1) if m.type(i) == "command"
                     and "Duyệt nhanh" in m.entrycget(i, "label")), None)
@@ -272,18 +279,17 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          app.nut_ve.cget("text"))
 
     # ------------------------------------------------ 2. nút Ghi
-    ktra("nút Ghi trên thanh công cụ, nhìn thấy được",
-         la_con_cua(app.btn_ghi3, cc) and app.btn_ghi3.winfo_ismapped()
-         and "Ghi" in str(app.btn_ghi3.cget("text")), str(app.btn_ghi3.cget("text")))
-    #[[ Dong lan gui NGAY CANH nut Ghi: cung mot hang, nam ben trai cac nut —
-    #   bam gui xong la thay "dang cho / da ap" ngay canh cho vua bam. ]]
-    lj, bt = app.lbl_job, app.btn_analyze
-    giua_j = lj.winfo_rooty() + lj.winfo_height() / 2
-    giua_b = bt.winfo_rooty() + bt.winfo_height() / 2
-    ktra("dòng lần gửi cạnh nút Ghi, cùng một hàng",
-         lj.winfo_rootx() + lj.winfo_width() <= bt.winfo_rootx() + 2
-         and abs(giua_j - giua_b) < bt.winfo_height() / 2,
-         "bên trái “1 · Phân tích”")
+    chu_ap = str(app.btn_ghi3.cget("text"))
+    ktra("nút Áp vào Lightroom ở thanh dưới, nhìn thấy được",
+         la_con_cua(app.btn_ghi3, app.thanh_tt) and app.btn_ghi3.winfo_ismapped()
+         and ("Áp" in chu_ap or "Ghi" in chu_ap), chu_ap)
+    #[[ Dong lan gui o giua THANH TREN, mot hang voi ten buoi — thay ngay "da
+    #   ap / dang cho" o moi luc nhin len. ]]
+    lj = app.lbl_job
+    ktra("dòng lần gửi giữa thanh trên",
+         la_con_cua(lj, cc) and lj.winfo_ismapped()
+         and lj.winfo_rootx() > app.nut_buoi.winfo_rootx(),
+         "cạnh chip Lightroom")
     #[[ Dem theo LENH THAT cua widget (ca nut ve tay — cget("command") tra ve
     #   ham Python — lan nut tk/ttk va muc menu, von dang ky thanh lenh Tcl ten
     #   "<so>do_apply"). Dung moi khau dung cham truoc khi dem: hai nut mot
@@ -379,10 +385,10 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     app._set_busy(False)
     ktra("có kết quả thì nút Ghi vàng, Phân tích lùi về nút phụ",
          vang_co_kq == ("phu", "chinh"), f"{vang_co_kq}")
-    app.thanh_md.nut["retouch"].event_generate("<ButtonRelease-1>", x=5, y=5)
+    app._bam_buoc("retouch")
     chay(3)
     an_o_rt = not dq.dang_hien()
-    app.thanh_md.nut["tone"].event_generate("<ButtonRelease-1>", x=5, y=5)
+    app._bam_buoc("can_sang")
     chay(3)
     ktra("Retouch không mang dải báo của Cân tone", an_o_rt and dq.dang_hien(),
          "về Cân tone thì dải hiện lại")
@@ -418,6 +424,13 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     app.v_folder.set(str(buoi))
 
     # ------------------------------------------------ 3. nhóm thu gọn
+    #[[ 12/10 (giao dien moi): tuy chon can sang nam sau nut Thiet lap — bang
+    #   phai mac dinh la chi tiet anh. Bam nut that de mo. ]]
+    app.btn_thiet_lap.invoke()
+    chay(3)
+    ktra("nút Thiết lập mở bảng tuỳ chọn thay cho chi tiết ảnh",
+         app.cuon_phai.winfo_ismapped() and not app.bang_anh.winfo_ismapped(),
+         "bảng phải: Thiết lập cân sáng")
     nhom = app._nhom_tuy_chon
     ktra("bảy nhóm tuỳ chọn", len(nhom) == 7, " · ".join(n.tieu_de for n in nhom.values()))
     ktra("mở app lên thì nhóm nào cũng đóng, có dòng tóm tắt",

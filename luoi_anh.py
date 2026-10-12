@@ -235,6 +235,13 @@ class LuoiAnh(tk.Frame):
     """
 
     tu_cuon = True          # Cuon nhường lăn chuột cho lưới
+    #  12/10 (giao diện mới): nền ô, và nhãn trái trên theo o["nhan"]
+    #  (chữ, nền, màu chữ, biểu tượng) — Giữ xanh · Loại 1★ đỏ cam · Cần xem hổ phách
+    NEN_O = "#202226"
+    NEN_O_CHON = "#2a2c31"
+    NHAN = {"giu": ("Giữ", "#9cc2ff", "#0f1a2e", "giu_anh"),
+            "loai": ("Loại 1★", "#fca18e", "#3a120c", "dong"),
+            "xem": ("Cần xem", "#f0b648", "#2a1a05", "can_xem")}
 
     def __init__(self, cha, khi_chon=None, khi_mo=None, nen: str | None = None,
                  khi_trong=None, dai: bool = False, chon_nhieu: bool = False,
@@ -288,6 +295,13 @@ class LuoiAnh(tk.Frame):
                                      style="Toi.Horizontal.TScrollbar")
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
+        #[[ 12/10: CHUA SAN cho thanh cuon (nhu gd.Cuon.theo_noi_dung). Khong
+        #   chua thi an / hien thanh cuon doi be ngang canvas -> doi so cot ->
+        #   doi chieu cao noi dung -> thanh cuon lai doi: dao dong VO HAN trong
+        #   update_idletasks (kiem_retouch_gui treo, 20 GB RAM — lo ra khi doi
+        #   sang phong Be Vietnam Pro lam doi so do). Thanh ngang: chi chua khi
+        #   o che do dai (_doi_che_do). ]]
+        self.columnconfigure(1, minsize=self.thanh.winfo_reqwidth())
         self.canvas.configure(yscrollcommand=self._dat_thanh)
 
         # ô trống: chưa có ảnh nào
@@ -507,6 +521,8 @@ class LuoiAnh(tk.Frame):
     def _doi_che_do(self, ngang: bool):
         c = self.canvas
         self.ngang = ngang
+        self.rowconfigure(1, minsize=self.thanh_x.winfo_reqheight() if ngang else 0)
+        self.columnconfigure(1, minsize=0 if ngang else self.thanh.winfo_reqwidth())
         if ngang:
             self.thanh.grid_remove()
             c.configure(yscrollcommand="", xscrollcommand=self._dat_thanh_x)
@@ -609,55 +625,67 @@ class LuoiAnh(tk.Frame):
         can_doc = []
         m = gd.MAU
         f_nho = gd._phong(self, gd.CHU_NHO)
-        f_so = gd._phong(self, ("Segoe UI", 8, "bold"))
+        f_ten = gd._phong(self, gd.phong(8, "so"))
+        f_so = gd._phong(self, gd.phong(8, "so_vua"))
+        f_nhan = gd._phong(self, gd.phong(8, "dam"))
         nhieu = len(self.da_chon) > 1
+        bo_g = self._bo_goc_o(ow)
+        lh_n = f_nhan.metrics("linespace")
         for i in range(i0, i1):
             o = self.ds[i]
             x, y = self._o_xy(i)
             chon = o["path"] == self.dang_chon
-            #[[ Tam DA CHON (Ctrl / Shift + bam) ma khong phai tam dang xem: nen
-            #   sang hon + vien trang — phan biet duoc voi tam dang xem (vien
-            #   vang), nhu Lightroom. ]]
+            #[[ Tam DA CHON (Ctrl / Shift + bam) ma khong phai tam dang xem: vien
+            #   trang — phan biet duoc voi tam dang xem (vien ho phach), nhu
+            #   Lightroom. ]]
             phu = nhieu and not chon and o["path"] in self.da_chon
             bo = o.get("bo") or ""
-            # nền khung ảnh
-            c.create_rectangle(x, y, x + ow, y + ah, fill="#33363c" if phu else "#202226",
-                               outline=m["nhan"] if chon else "#202226",
-                               width=2 if chon else 1, tags=("o",))
-            a = self._anh_cho(o["path"], ow - 4, ah - 4, mo=bool(bo))
+            #[[ 12/10 (giao dien moi): O BO GOC — anh duoc dung san thanh mot tam
+            #   bo goc tren nen o (PIL, xem _anh_cho), khong con khung chu nhat
+            #   ve bang canvas. Nen o dat tag "o" de bai kiem van dem duoc. ]]
+            c.create_rectangle(x + bo_g, y + bo_g, x + ow - bo_g, y + ah - bo_g,
+                               fill=self.NEN_O, outline="", width=0, tags=("o",))
+            a = self._anh_cho(o["path"], ow, ah, mo=bool(bo), phu=phu)
             if a is not None:
-                c.create_image(x + ow / 2, y + ah / 2, image=a, tags=("o",))
-            elif o["path"] in self._hong:
-                c.create_text(x + ow / 2, y + ah / 2, text="không đọc được ảnh",
-                              fill=m["mo2"], font=f_nho, tags=("o",))
+                c.create_image(x, y, image=a, anchor="nw", tags=("o",))
             else:
-                can_doc.append(o["path"])
+                c.create_image(x, y, anchor="nw", tags=("o",),
+                               image=gd.anh_vien_trong(self, ow, ah, bo_g,
+                                                       self.NEN_O))
+                if o["path"] in self._hong:
+                    c.create_text(x + ow / 2, y + ah / 2, text="không đọc được ảnh",
+                                  fill=m["mo2"], font=f_nho, tags=("o",))
+                else:
+                    can_doc.append(o["path"])
             if chon:
-                c.create_rectangle(x - 1, y - 1, x + ow + 1, y + ah + 1,
-                                   outline=m["nhan"], width=2, tags=("o",))
+                c.create_image(x - 3, y - 3, anchor="nw", tags=("o",),
+                               image=gd.anh_vong(self, ow + 6, ah + 6, bo_g + 3,
+                                                 m["nhan"], 2))
             elif phu:
-                c.create_rectangle(x - 1, y - 1, x + ow + 1, y + ah + 1,
-                                   outline="#e8e9eb", width=2, tags=("o", "phu"))
-            # nhãn góc: cảnh (trái trên), ΔEV (phải dưới), 1 sao (trái dưới)
-            y_nw = y + 4
-            if o.get("canh") is not None:
-                self._nhan(c, x + 4, y_nw, f"C{o['canh']}", "nw", "#111214",
-                           "#d9dadc", f_nho)
-                y_nw += f_nho.metrics("linespace") + 6
+                c.create_image(x - 3, y - 3, anchor="nw", tags=("o", "phu"),
+                               image=gd.anh_vong(self, ow + 6, ah + 6, bo_g + 3,
+                                                 m["chu"], 2))
+            #  nhãn góc trái trên: Giữ / Loại 1★ / Cần xem (Cân sáng), B/W, chấm riêng
+            le = max(5, round(lh_n * 0.4))
+            y_nw = y + le
+            nhan = self.NHAN.get(o.get("nhan") or "")
+            if nhan:
+                self._vien(c, x + le, y_nw, nhan[0], "nw", nhan[1], nhan[2], f_nhan,
+                           icon=nhan[3])
+                y_nw += lh_n + 8
             if o.get("bw"):
                 #[[ 8/10: anh DEN TRANG (may chup B/W) — tool giu B/W, khong doi
                 #   WB / mau. Nhan de nguoi dung thay tool da nhan ra. ]]
-                self._nhan(c, x + 4, y_nw, "B/W", "nw", "#111214", "#d9dadc", f_nho)
-                y_nw += f_nho.metrics("linespace") + 6
+                self._vien(c, x + le, y_nw, "B/W", "nw", "#111214", "#d9dadc", f_nhan,
+                           alpha=200)
+                y_nw += lh_n + 8
             if o.get("rieng"):
-                #[[ Anh co MUC RIENG (Retouch: da keo / Sync rieng cho tam nay).
-                #   7/10 (thiet ke lai): CHAM VANG vien toi thay nhan chu "riêng"
-                #   — ca dai anh deu "riêng" thi hang chuc nhan chu che goc anh,
-                #   doc thanh nhieu. Cham la quy uoc "da chinh" cua Lightroom /
+                #[[ Anh co MUC RIENG (Retouch: da keo / Sync rieng cho tam nay):
+                #   CHAM HO PHACH vien toi — quy uoc "da chinh" cua Lightroom /
                 #   Evoto; tam dang xem co dong "mức riêng của ảnh này" o bang
                 #   phai noi ro bang chu. ]]
                 r = max(4, round(f_nho.metrics("linespace") * 0.32))
-                cx, cy = x + 6 + r, y_nw + 2 + r
+                cx, cy = x + le + 2 + r, y_nw + 2 + r
                 c.create_oval(cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2,
                               fill="#111214", outline="", tags=("o", "rieng"))
                 c.create_oval(cx - r, cy - r, cx + r, cy + r, fill=m["nhan"],
@@ -665,34 +693,33 @@ class LuoiAnh(tk.Frame):
             dev = o.get("dev")
             if dev is not None:
                 loai = o.get("loai", "")
-                nen = {"err": "#7a2a24", "clip": "#6a3320", "big": "#6b5410",
-                       "zero": "#2b2d31"}.get(loai, "#1d2b22" if dev > 0 else "#2a2230")
-                chu = m["mo"] if loai == "zero" else "#f2f2f2"
-                txt = "lỗi" if loai == "err" else f"{dev:+.2f}"
-                self._nhan(c, x + ow - 4, y + ah - 4, txt, "se", nen, chu, f_so)
-            #  số sao (Lightroom / tool gắn khi lọc): 1 sao nhãn đỏ (ảnh loại), 2–5 vàng
+                txt = "lỗi" if loai == "err" else gd.thap_phan_vn(dev) + " EV"
+                mau = {"err": m["do"], "clip": m["canh"]}.get(loai, "#f2f0ec")
+                self._vien(c, x + ow - le, y + ah - le, txt, "se", "#0d0d0f", mau,
+                           f_so, alpha=200)
+            #  số sao trong Lightroom: 2–5 sao viên hổ phách; 1 sao chỉ khi ô
+            #  không mang nhãn Loại (lưới Retouch)
             sao = int(o.get("sao") or (1 if o.get("sao1") else 0) or 0)
-            if sao >= 1:
-                if sao == 1:
-                    self._nhan(c, x + 4, y + ah - 4, "1★", "sw", "#5a1f1b", "#f3b7b2", f_so)
-                else:
-                    self._nhan(c, x + 4, y + ah - 4, f"{sao}★", "sw", "#3d3412", "#ffde17", f_so)
+            if sao >= 2 or (sao == 1 and o.get("nhan") != "loai"):
+                self._vien(c, x + le, y + ah - le, f"{sao}★", "sw",
+                           m["do_nen"] if sao == 1 else m["nhan_nen"],
+                           m["do"] if sao == 1 else m["nhan"], f_so, alpha=230)
             if bo:
-                self._nhan(c, x + ow - 4, y + 4, bo, "ne", "#111214", m["mo"],
-                           f_nho)
+                self._vien(c, x + ow - le, y + le, bo, "ne", "#111214", m["mo"],
+                           f_nhan, alpha=220)
             elif o.get("dau"):
                 #[[ "dau": nhan trang thai THUONG (vd. "✓ da lam" o Retouch) —
                 #   anh giu nguyen do sang, khac "bo" la anh nam NGOAI. ]]
-                self._nhan(c, x + ow - 4, y + 4, o["dau"], "ne", "#1d3a28",
-                           "#9be3b5", f_nho)
+                self._vien(c, x + ow - le, y + le, o["dau"], "ne", m["xong_nen"],
+                           m["xong"], f_nhan, alpha=235)
             # tên file (dải ảnh thì không — tên nằm ở thanh trên ảnh lớn)
             if self.ngang:
                 continue
             ten = o.get("ten", "")
-            c.create_text(x + 2, y + ah + 5, text=self._cat(ten, f_nho, ow - 4),
+            c.create_text(x + 2, y + ah + 6, text=self._cat(ten, f_ten, ow - 4),
                           anchor="nw",
-                          fill=(m["chu"] if chon else (m["mo2"] if bo else m["mo"])),
-                          font=f_nho, tags=("o",))
+                          fill=(m["chu"] if chon else (m["mo3"] if bo else m["mo"])),
+                          font=f_ten, tags=("o",))
         # đọc trước thêm hai màn
         sau = min(len(self.ds), i1 + 2 * man)
         for i in range(i1, sau):
@@ -721,11 +748,33 @@ class LuoiAnh(tk.Frame):
         c.create_text(x0 + w / 2, y0 + h / 2, text=chu, fill=mau_chu, font=f,
                       tags=("o",))
 
+    def _vien(self, c, x, y, chu, goc, nen, mau_chu, f, icon=None, alpha=255):
+        """Nhãn VIÊN THUỐC bo tròn đặt đè lên ảnh (nền ngoài góc trong suốt)."""
+        lh = f.metrics("linespace")
+        h = lh + 4
+        s_i = round(lh * 0.82) if icon else 0
+        w = f.measure(chu) + 2 * round(lh * 0.45) + ((s_i + 3) if icon else 0)
+        x0 = x - (w if "e" in goc else 0)
+        y0 = y - (h if "s" in goc else 0)
+        c.create_image(x0, y0, anchor="nw", tags=("o",),
+                       image=gd.anh_vien_trong(self, w, h, h // 2, nen, alpha))
+        tx = x0 + round(lh * 0.45)
+        if icon:
+            gd.ve_bieu_tuong(c, icon, tx + s_i / 2, y0 + h / 2, s_i, mau_chu,
+                             tag=("o",), net=2.4)
+            tx += s_i + 3
+        c.create_text(tx, y0 + h / 2, text=chu, fill=mau_chu, font=f, anchor="w",
+                      tags=("o",))
+
     # ---------------------------------------------------------------- ảnh
-    def _anh_cho(self, path, w, h, mo: bool = False):
-        """PhotoImage vừa khung (w×h) nếu đã đọc xong, không thì None.
-        mo=True: tối hẳn đi (ảnh sẽ không được ghi)."""
-        key = (path, w, h, mo)
+    def _bo_goc_o(self, ow):
+        """Bán kính bo góc ô ảnh — theo cỡ ô, ~10 px ở cỡ mặc định."""
+        return max(4, min(12, round(ow / 22)))
+
+    def _anh_cho(self, path, w, h, mo: bool = False, phu: bool = False):
+        """PhotoImage đúng cỡ ô (w×h), BO GÓC, ảnh nằm giữa nền ô — None nếu
+        chưa đọc xong. mo=True: tối hẳn đi (ảnh sẽ không được ghi)."""
+        key = (path, w, h, mo, phu)
         a = self._anh_tk.get(key)
         if a is not None:
             self._anh_tk.move_to_end(key)
@@ -737,7 +786,10 @@ class LuoiAnh(tk.Frame):
         anh.thumbnail((w, h), Image.BILINEAR)
         if mo:
             anh = anh.point(lambda v: int(v * 0.32))
-        a = ImageTk.PhotoImage(anh, master=self)
+        o = Image.new("RGB", (w, h), self.NEN_O_CHON if phu else self.NEN_O)
+        o.paste(anh, ((w - anh.width) // 2, (h - anh.height) // 2))
+        o = gd.bo_goc_pil(o, self._bo_goc_o(w), self._nen)
+        a = ImageTk.PhotoImage(o, master=self)
         self._anh_tk[key] = a
         while len(self._anh_tk) > 400:
             self._anh_tk.popitem(last=False)

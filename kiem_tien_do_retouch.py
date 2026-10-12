@@ -138,9 +138,10 @@ def main() -> int:
          f"{day} · {w.pb_tt.cget('value')}/{w.pb_tt.cget('maximum')}")
     app._chon_khau("phan_tich")
     chay(4)
-    ktra("sang Cân tone: thanh retouch ẩn, thanh Cân tone về chỗ cũ",
-         not w.pb_tt.winfo_ismapped() and app.lbl_tien3.winfo_ismapped()
-         and app.pb.winfo_ismapped())
+    #  12/10 (giao diện mới): thanh tiến độ Cân sáng CHỈ hiện khi đang chạy —
+    #  lúc rảnh chỗ đó là số đếm Giữ / Loại / Cần xem
+    ktra("sang Cân sáng: thanh retouch ẩn, thanh Cân sáng chỉ hiện khi chạy",
+         not w.pb_tt.winfo_ismapped() and not app.pb.winfo_ismapped())
     try:
         if w._may_xem is not None:
             w._may_xem.dong()

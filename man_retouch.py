@@ -381,7 +381,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.khung_log.rowconfigure(0, weight=1)
         self.khung_log.columnconfigure(0, weight=1)
         self.txt = tk.Text(self.khung_log, wrap="word", height=10, state="disabled",
-                           font=("Consolas", 9), background=m["toi2"],
+                           font=gd.phong(8, "so"), background=m["toi2"],
                            foreground=m["chu"], insertbackground=m["chu"],
                            selectbackground=m["nhan_t"], relief="flat",
                            borderwidth=0, highlightthickness=0, padx=12, pady=10)
@@ -398,7 +398,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         m = gd.MAU
         nen = m["toi"]
         t = tk.Frame(cha, background=nen)
-        t.pack(side="bottom", fill="x", pady=(6, 6))
+        #  12/10 (giao diện mới): thanh nằm TRÊN ảnh lớn như bản thiết kế
+        t.pack(side="top", fill="x", pady=(0, 10))
         self.thanh_xem = t
         hoi = gd.NutHoi(t, "Kéo thanh ở bảng phải: ảnh lớn tính lại NGAY theo mức "
                            "đó (bản xem trước). Bấm ✕ trên nhãn “Xem trước” để "
@@ -414,8 +415,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                            "Dải ảnh: Ctrl + bấm chọn thêm, Shift + bấm chọn một "
                            "dãy — để Sync mức.", nen=nen)
         hoi.pack(side="right", padx=(8, 0))
-        self.btn_goc = gd.NutTron(t, "Giữ xem gốc", kieu="phu", nen=nen, font=gd.CHU,
-                                  icon="so_sanh")
+        self.btn_goc = gd.NutTron(t, "Giữ để so", kieu="toi", nen=nen, font=gd.CHU,
+                                  icon="can_xem")
         self.btn_goc.pack(side="right", padx=(10, 0))
         #[[ Nut GIU chu khong phai nut bam: an xuong la anh goc, tha ra la
         #   ket qua — so sanh nhanh nhat, khong phai bam hai lan. ]]
@@ -424,8 +425,9 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.btn_goc.bind("<ButtonRelease-1>", lambda _e: self.xem.giu_goc(False),
                           add="+")
         #  9/10: kiểu so sánh Trước / Sau như Lightroom
-        self.pd_so = gd.PhanDoan(t, self.v_so_sanh, [("sau", "Sau"), ("canh", "Trước | Sau"),
-                                                    ("chia", "Chia đôi")],
+        self.pd_so = gd.PhanDoan(t, self.v_so_sanh, [("chia", "Chia đôi"),
+                                                    ("sau", "Chỉ ảnh sau"),
+                                                    ("canh", "Trước | Sau")],
                                  command=self._doi_so_sanh, nen=nen, deu=False)
         self.pd_so.pack(side="right", padx=(10, 0))
         self.btn_ve_luoi = gd.NutTron(t, "Lưới", kieu="chu", nen=nen, font=gd.CHU,
@@ -439,11 +441,11 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.btn_100 = gd.NutTron(t, "100%", kieu="chu", nen=nen, font=gd.CHU,
                                   command=lambda: self.xem.phong_100())
         self.btn_100.pack(side="right", padx=(4, 0))
-        self.btn_vua = gd.NutTron(t, "Vừa khung", kieu="chu", nen=nen, font=gd.CHU,
+        self.btn_vua = gd.NutTron(t, "Vừa", kieu="chu", nen=nen, font=gd.CHU,
                                   command=lambda: self.xem.vua_khung())
         self.btn_vua.pack(side="right", padx=(4, 0))
-        self.btn_mat = gd.NutTron(t, "Vào mặt", kieu="phu", nen=nen, font=gd.CHU,
-                                  icon="mat", command=lambda: self.xem.vao_mat())
+        self.btn_mat = gd.NutTron(t, "Khung mặt", kieu="toi", nen=nen, font=gd.CHU,
+                                  icon="khung_mat", command=lambda: self.xem.vao_mat())
         self.btn_mat.pack(side="right")
         self.btn_mat.goi_y = gd.GoiY(self.btn_mat, "Nhảy tới khuôn mặt kế tiếp (mặt "
                                                    "to trước), phóng đủ để soi da.")
@@ -460,8 +462,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         for b in (self.btn_goc, self.btn_100, self.btn_vua, self.btn_mat):
             b.configure(state="disabled")
 
-    MAU_CHIP = {"xong": ("#1d3a28", "#9be3b5"), "chua": ("#2c2f34", "#a3a6ab"),
-                "xem": ("#3a3214", "#ffde17"), "loi": ("#3a1d1b", "#f3b7b2"),
+    MAU_CHIP = {"xong": ("#1b2a20", "#73ce91"), "chua": ("#1f2024", "#a6a39d"),
+                "xem": ("#2a2416", "#f2b54a"), "loi": ("#2b1c19", "#fca18e"),
                 "": (None, None)}
 
     def _dat_chip(self, loai: str, chu: str = ""):
@@ -786,8 +788,25 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             return
         m = gd.MAU
         self.pb_tt = ttk.Progressbar(o, mode="determinate", length=160)
-        self.lbl_tt_chay = tk.Label(o, text="", background=m["toi2"],
+        self.lbl_tt_chay = tk.Label(o, text="", background=m["nen"],
                                     foreground=m["mo"], font=gd.CHU_NHO)
+
+    def tom_tat_buoc(self) -> str:
+        """Dòng phụ của bước 4 · Retouch trên thanh 5 bước (giao diện mới 12/10)."""
+        chay = bool(getattr(self, "worker", None) and self.worker.is_alive())
+        pb = getattr(self, "pb_tt", None)
+        if chay and pb is not None:
+            try:
+                da, tong = int(float(pb.cget("value"))), int(float(pb.cget("maximum")))
+                return f"Đang retouch {gd.so_vn(da)}/{gd.so_vn(tong)}"
+            except (tk.TclError, ValueError):
+                return "Đang retouch…"
+        chu = str(getattr(self, "_chu_tt_chay", "") or "")
+        if chu.startswith("Retouch xong"):
+            return chu.replace("Retouch xong", "Đã retouch", 1)
+        luoi = getattr(self, "luoi", None)
+        n = len(getattr(luoi, "ds", None) or []) if luoi is not None else 0
+        return f"Sẵn sàng · {gd.so_vn(n)} ảnh" if n else "Chưa có ảnh"
 
     def _hien_tien_do_tt(self):
         """Hiện khi đang ở mô-đun Retouch VÀ (đang chạy, hoặc còn chữ của lượt
