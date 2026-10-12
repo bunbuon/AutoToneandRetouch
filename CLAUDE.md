@@ -840,6 +840,8 @@ theo da trung hoà sắc cam, nhãn đèn chỉ thêm −117 K (As Shot chỉ k�
   giữ ấm, không kéo lạnh" (nhóm Ánh sáng của buổi).
 - Cửa sổ ±30': PUBGM tối 0.33–0.68 · BVDay3 ≥ 0.90 · 1005 ≥ 0.91 · 1010 ≥ 0.85 · nhà hàng
   VÁCH KÍNH KN2009 18:46 **0.76** (ngưỡng 0.8 nhận nhầm → da vàng, xem tận mắt) → 0.7.
+  **User xác nhận 12/10: PUBGM ngoài trời, ảnh bữa tối KN2009 (SAY01054–68) TRONG NHÀ**
+  → 0.7 đúng; KHÔNG nới lên 0.8. 4 ảnh PUBGM 17:40 (0.78) chịu bỏ sót — cách 0.02.
 - Phát lại: PUBGM 52 ảnh +592 K (18h) / +660 (19h); KN2009 chỉ 14 ảnh đón khách ngoài trời
   17h; BVDay3 / 1010 / TestTool / 1005 / TrainTool / 2609 / 2709 / Hiu: 0 ảnh đổi.
   **CHƯA CÓ ĐÁP ÁN TAY** ảnh tối ngoài trời (5 bộ đáp án đều ban ngày; catalog BVDay3 /
