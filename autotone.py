@@ -7637,7 +7637,9 @@ def khoa_duong_dan(p) -> str:
     d = os.path.abspath(str(p))
     if sys.platform.startswith("win") or sys.platform == "darwin":
         return d.lower()
-    return os.path.normcase(d)
+    #  Nguyen van (= posixpath.normcase tren Linux that). Khong goi os.path.normcase:
+    #  kiem_mac gia lap "linux" tren may Windows thi no la ntpath -> viet thuong (12/10).
+    return d
 
 
 def _read_tsv(path: Path) -> dict[str, dict]:

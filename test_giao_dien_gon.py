@@ -605,8 +605,11 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          "chỉ còn dòng tóm tắt của nhóm")
 
     # ------------------------------------------------ 6. cảnh báo im lặng
+    #  Chi file job — app mo tram retouch sau 2.5 s (jobs\tram_retouch\ la THU MUC,
+    #  unlink -> WinError 5; truoc 12/10 do chap chon tuy bai toi day nhanh hay cham).
     for p in at.LR_JOB_DIR.iterdir():
-        p.unlink()
+        if p.is_file():
+            p.unlink()
     app.v_folder.set("")
     app._lam_moi_ray()
     chay(3)

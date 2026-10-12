@@ -65,6 +65,12 @@ def main() -> int:
     import autotone_gui as ag
     import giao_dien as gd
     import retouch as rt
+    #[[ 12/10: bai nay gia dinh "may nay khong co tool that" (muc 1). Du lieu tam nen
+    #   khong co cau hinh, nhung tim_tool() con do cho_hay_co() -> may dev co
+    #   F:\Claude AI\ToolCloneEvoto -> 4 muc "chua co tool" do oan. Chan ca hai
+    #   duong do de bai kiem dung tren moi may (tool that: kiem_xem_truoc.py). ]]
+    rt.cho_hay_co = lambda: []
+    rt.goc_trong_goi = lambda: None
 
     #[[ HOP THOAI THAT cua tkinter la cua so MODAL — bai kiem khong co ai bam:
     #   gap mot cai ngoai du tinh la TREO toi het gio (da gap luc thu nguoc 4/10:
