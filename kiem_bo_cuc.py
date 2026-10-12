@@ -242,8 +242,8 @@ def main() -> int:
             for k in n.keywords:
                 if k.arg == "command" and isinstance(k.value, ast.Attribute):
                     nut_cc.append(k.value.attr)
-    ktra("_build_actions chỉ dựng Dừng · Xuất CSV · Phân tích",
-         sorted(nut_cc) == ["do_cancel", "do_csv", "start_analyze"], f"{sorted(nut_cc)}")
+    ktra("_build_actions chỉ dựng hai nút: Phân tích và Dừng",
+         sorted(nut_cc) == ["do_cancel", "start_analyze"], f"{sorted(nut_cc)}")
     ktra("Xuất CSV, Duyệt nhanh nằm trong menu ⋯ cạnh nút Ghi",
          "self.do_csv" in gh and "Xuất báo cáo CSV" in gh
          and '_chon_khau("day")' in gh, "việc phụ không chiếm thanh công cụ")

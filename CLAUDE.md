@@ -969,6 +969,12 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   cả hai luật cảnh thì cũng không tách theo máy. Thứ tự `items` sau plan = thứ tự này →
   lưới hiện theo máy / tên file; cột Cảnh ghi "A7M4 DC" khi buổi nhiều thiết bị.
   test_wb_asshot mục 6 đổi tiền đề: hai máy xen kẽ → mỗi máy MỘT cảnh riêng.
+- v80 (user thử v79): BỎ nhãn "Cần xem" — chỉ còn Giữ / Loại 1★ (`_nhan_tu_dong` trả
+  "giu" trước nhánh cũ, giữ code phòng bật lại). Bỏ nút Xuất CSV ở thanh dưới (còn trong
+  ⋯). Áp vào Lightroom: buổi có ảnh Loại thì `_hoi_ap` (hoi_nut) hỏi "Chỉ N ảnh Giữ" /
+  "Toàn bộ" — chỉ Giữ thì ảnh Loại KHÔNG gửi (không đổi thông số, không gắn 1★).
+  Đổi chip / cảnh khi đang mở ảnh lớn → `_doi_loc` về lưới. Bấm đúp thanh Bù sáng /
+  K / Tint → 0 (`mac_dinh="0"`; trước về giá trị lúc dựng, vd. −0,10 của Sự kiện).
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 

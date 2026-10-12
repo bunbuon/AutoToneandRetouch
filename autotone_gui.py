@@ -863,13 +863,13 @@ class App(ttk.Frame):
         co_kq = bool(self.items)
         nguon = (("xong", f"{gd.so_vn(n)} ảnh · đã quét") if n
                  else ("cho", "Chưa chọn buổi"))
-        loc = (("xong", f"{gd.so_vn(dem['loai'])} loại · {gd.so_vn(dem['xem'])} cần xem")
+        loc = (("xong", f"{gd.so_vn(dem['loai'])} loại · {gd.so_vn(dem['giu'])} giữ")
                if co_kq else ("cho", "Chờ phân tích"))
         ap = getattr(self, "_da_ap_lr", False)
         if co_kq:
             can = ("xong" if ap else "cho",
                    "Đã áp vào Lightroom" if ap else
-                   f"Đang duyệt {gd.so_vn(dem['giu'] + dem['xem'])} ảnh")
+                   f"Đang duyệt {gd.so_vn(dem['giu'])} ảnh giữ")
         else:
             can = ("cho", "Chưa phân tích" if n else "Chờ chọn buổi")
         rt = self._tt_retouch_buoc()
@@ -2349,7 +2349,7 @@ class App(ttk.Frame):
         hang_bu.pack(fill="x", pady=(4, 1))
         self.sp_bu_sang = gd.ThanhTruot(
             hang_bu, self.v_bu_sang, -1.0, 1.0, 0.05, khi_xong=self.refresh_plan,
-            nhan="Bù sáng +",
+            nhan="Bù sáng +", mac_dinh="0",       # 12/10: bấm đúp thanh -> về 0
             mo="Bù sáng cả buổi — EV, cộng sau chống cháy. Cưới 0 · Sự kiện "
                f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f}. "
                "Ảnh không có mặt giữ nguyên. "
@@ -2359,12 +2359,14 @@ class App(ttk.Frame):
         self.sp_bu_sang.pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.sp_bu_k = gd.ThanhTruot(
             hang_bu, self.v_bu_k, -1000, 1000, 50, khi_xong=self.refresh_plan, nhan="K +",
+            mac_dinh="0",
             mo="Bù nhiệt độ cả buổi (K): cộng vào Temperature của mọi ảnh SAU mọi bước cân "
                "WB tự động (kể cả “Ngoài trời buổi tối”). Dương = ấm hơn, âm = lạnh hơn. "
                "Ảnh đen trắng giữ nguyên; Cân bằng trắng “Không đụng tới” thì không áp.")
         self.sp_bu_k.pack(side="left", fill="x", expand=True, padx=4)
         self.sp_bu_tint = gd.ThanhTruot(
             hang_bu, self.v_bu_tint, -30, 30, 1, khi_xong=self.refresh_plan, nhan="Tint +",
+            mac_dinh="0",
             mo="Bù Tint cả buổi: cộng vào Tint của mọi ảnh như Bù K. Dương = hồng / magenta "
                "hơn, âm = xanh lá hơn.")
         self.sp_bu_tint.pack(side="left", fill="x", expand=True, padx=(4, 0))
@@ -2741,9 +2743,7 @@ class App(ttk.Frame):
         m = gd.MAU
         self.btn_cancel = gd.NutTron(cha, "Dừng", kieu="chu", nen=m["nen"], icon="dung",
                                      command=self.do_cancel)
-        self.btn_csv = gd.NutTron(cha, "Xuất CSV", kieu="toi", nen=m["nen"],
-                                  icon="bang_csv", command=self.do_csv)
-        self.btn_csv.pack(side="left", padx=(0, 8))
+        #  12/10 (user): bỏ nút Xuất CSV khỏi thanh dưới — còn trong menu ⋯
         self.btn_analyze = gd.NutTron(cha, "Phân tích", kieu="phu", icon="can_sang",
                                       nen=m["nen"], command=self.start_analyze)
         self.btn_analyze.pack(side="left", padx=(0, 8))
@@ -2953,9 +2953,8 @@ class App(ttk.Frame):
         self.chip_loc = gd.ChipLoc(hang, self.v_loc,
                                    [("tat_ca", "Tất cả", None),
                                     ("giu", "Giữ", m["xanh"]),
-                                    ("loai", "Loại 1★", m["do"]),
-                                    ("xem", "Cần xem", m["nhan"])],
-                                   command=lambda: self._cap_nhat_luoi(giu_cuon=False),
+                                    ("loai", "Loại 1★", m["do"])],
+                                   command=self._doi_loc,
                                    nen=m["toi"])
         self.chip_loc.pack(side="left")
         self.v_xem = tk.StringVar(value="luoi")
@@ -3341,13 +3340,13 @@ class App(ttk.Frame):
                 canh = getattr(self, "_canh_chon", None)
                 if canh is not None:
                     ds = [o for o in ds if o.get("canh") == canh]
-                dem = {"giu": 0, "loai": 0, "xem": 0}
+                dem = {"giu": 0, "loai": 0}
                 for o in ds:
                     if o.get("nhan") in dem:
                         dem[o["nhan"]] += 1
                 chip.dat_so({"tat_ca": len(ds), **dem})
                 loc = self.v_loc.get()
-                if loc in ("giu", "loai", "xem"):
+                if loc in ("giu", "loai"):
                     ds = [o for o in ds if o.get("nhan") == loc]
             else:
                 chip.dat_so({"tat_ca": len(ds)})
@@ -3486,6 +3485,10 @@ class App(ttk.Frame):
         cull, sao = r.get("_goc_cull") or (r.get("cull"), r.get("rating"))
         if cull or int(sao or 0) == 1:
             return "loai"
+        #[[ 12/10 (user dung thu v79: "phan can xem dua sang luon muc giu. Bo can
+        #   xem"): chi con HAI nhan — Giu / Loai 1★. Doan duoi giu lai (khong goi)
+        #   phong khi can bat lai nhan "Can xem". ]]
+        return "giu"
         #[[ CAN XEM phai HIEM (ban thiet ke: 24 / 1.464): loi doc anh, tool keo /
         #   dim manh (|ΔEV| >= 0,5), hoac chinh sang lam CHAY THEM >= 3 diem.
         #   Khong dung "chay sau >= 3%" cua bang so — anh su kien co den LED /
@@ -3511,9 +3514,9 @@ class App(ttk.Frame):
         return self._nhan_tu_dong(r)
 
     def _dem_nhan(self) -> dict:
-        d = {"giu": 0, "loai": 0, "xem": 0}
+        d = {"giu": 0, "loai": 0}
         for r in self.items or []:
-            d[self._nhan_cua(r)] += 1
+            d[self._nhan_cua(r)] = d.get(self._nhan_cua(r), 0) + 1
         return d
 
     def _r_cua(self, path):
@@ -3876,6 +3879,13 @@ class App(ttk.Frame):
         """Bấm một cảnh: lọc lưới theo cảnh đó; bấm lại cảnh đang lọc hoặc
         “Tất cả cảnh” (s = None) = bỏ lọc."""
         self._canh_chon = None if (s is None or self._canh_chon == s) else s
+        self._doi_loc()
+
+    def _doi_loc(self):
+        """Đổi chip lọc / cảnh: đang mở MỘT ảnh lớn thì về lưới (12/10, user: "khi
+        mở 1 ảnh mà bấm đổi trên tab filter thì phải đổi về lưới")."""
+        if getattr(self, "_che_do_ct", "luoi") == "mot":
+            self._ve_luoi_ct()
         self._cap_nhat_luoi(giu_cuon=False)
 
     # ------------------------------------------------------------ thanh dưới: số đếm (12/10)
@@ -3889,8 +3899,7 @@ class App(ttk.Frame):
             if self.items:
                 d = self._dem_nhan()
                 doan = [(gd.so_vn(d["giu"]), ("so", "giu")), (" giữ   ", ("mo",)),
-                        (gd.so_vn(d["loai"]), ("so", "loai")), (" loại 1★   ", ("mo",)),
-                        (gd.so_vn(d["xem"]), ("so", "xem")), (" cần xem      ", ("mo",)),
+                        (gd.so_vn(d["loai"]), ("so", "loai")), (" loại 1★      ", ("mo",)),
                         ("P giữ · X loại · ← → chuyển ảnh", ("mo2",))]
             elif self.pairs:
                 doan = [(gd.so_vn(len(self.pairs)), ("so", "mo")),
@@ -4950,7 +4959,7 @@ class App(ttk.Frame):
         try:
             if busy:
                 self.btn_cancel.pack(side="left", padx=(0, 6),
-                                     before=self.btn_csv)
+                                     before=self.btn_analyze)
             else:
                 self.btn_cancel.pack_forget()
         except tk.TclError:
@@ -6561,13 +6570,29 @@ class App(ttk.Frame):
         #   sai viec (khong ghi .xmp nao, khong can Read Metadata) va de doa dung
         #   cho nguoi dung bam Huy o lan hai. Lai khong co parent: hop co the nam
         #   sau cua so chinh, bam nut Ghi nhu khong co gi xay ra. ]]
+        #[[ 12/10 (user: "nut ap vao Lightroom can them Dialog hoi xem muon ap toan
+        #   bo anh hay chi ap cac anh Giu"): buoi CO anh Loai 1★ thi hoi pham vi
+        #   bang hop co nut mang ten rieng. Chi anh Giu: anh Loai KHONG duoc gui —
+        #   khong doi thong so, cung khong gan 1★ trong Lightroom. ]]
+        n_loai = sum(1 for r in self.items if self._nhan_cua(r) == "loai")
+        items_ghi = self.items
+        if hoi and n_loai:
+            ok = self._hoi_ap(n_loai)
+            if ok is None:
+                self.status("Đã huỷ — chưa gửi gì.", gd.MAU["mo"])
+                return
+            if ok == "giu":
+                items_ghi = [r for r in self.items if self._nhan_cua(r) != "loai"]
+            hoi_xac_nhan = False
+        else:
+            hoi_xac_nhan = hoi
         if self.cfg.get("source") == "catalog":
             gui = sum(1 for r in self.items
                       if "new_exposure" in r and not r.get("ngoai_xuat"))
             n_gr = sum(1 for r in self.items if r.get("gr_ghi") and r.get("gr_sat"))
             hsl = dict(getattr(at, "HSL_DA", None) or {})
             n_hsl = sum(1 for r in self.items if r.get("hsl_ghi"))
-            ok = True if not hoi else messagebox.askokcancel(
+            ok = True if not hoi_xac_nhan else messagebox.askokcancel(
                 "Gửi vào Lightroom",
                 f"Gửi {gui} ảnh vào Lightroom ({n} ảnh đổi sáng"
                 + (f", {n_gr} ảnh Color Grading trắng hồng" if n_gr else "")
@@ -6583,7 +6608,7 @@ class App(ttk.Frame):
                 + "\n\nGửi?",
                 icon="question", parent=self)
         else:
-            ok = True if not hoi else messagebox.askokcancel(
+            ok = True if not hoi_xac_nhan else messagebox.askokcancel(
                 "Ghi vào sidecar .xmp",
                 f"Sẽ ghi {len(self.items)} file .xmp ({n} ảnh có thay đổi).\n\n"
                 "Bản gốc được backup tự động, hoàn tác được bằng nút “Hoàn tác...”.\n\n"
@@ -6607,12 +6632,13 @@ class App(ttk.Frame):
         #]]
         at.LAST_JOB = None
         self._set_busy(True)
-        self.pb.configure(value=0, maximum=max(len(self.items), 1))
+        self._so_dang_ghi = len(items_ghi)
+        self.pb.configure(value=0, maximum=max(len(items_ghi), 1))
         self.status("Đang gửi vào Lightroom..." if self.cfg.get("source") == "catalog"
-                    else f"Đang ghi 0/{len(self.items)} file .xmp...", gd.MAU["canh"])
+                    else f"Đang ghi 0/{len(items_ghi)} file .xmp...", gd.MAU["canh"])
         self.lbl_job.configure(text="", foreground=gd.MAU["mo"])
 
-        items, cfg = self.items, self.cfg
+        items, cfg = items_ghi, self.cfg
 
         def work():
             t0 = time.monotonic()
@@ -6626,6 +6652,26 @@ class App(ttk.Frame):
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _hoi_ap(self, n_loai: int):
+        """Hộp hỏi phạm vi Áp: "giu" | "tat_ca" | None (huỷ)."""
+        from retouch_chung import hoi_nut
+        n_giu = len(self.items) - n_loai
+        catalog = self.cfg.get("source") == "catalog"
+        noi = (f"Buổi có {gd.so_vn(n_giu)} ảnh Giữ và {gd.so_vn(n_loai)} ảnh Loại 1★.\n\n"
+               "• Chỉ ảnh Giữ: ảnh Loại không được gửi — Lightroom giữ nguyên chúng "
+               "(không đổi thông số, không gắn 1★).\n"
+               "• Toàn bộ: mọi ảnh nhận thông số cân sáng; ảnh Loại được gắn 1★.\n\n"
+               + ("Plugin áp thẳng vào catalog — không cần Read Metadata from File. "
+                  "Gửi lại bao nhiêu lần cũng tính từ preset gốc, không cộng dồn."
+                  if catalog else
+                  "Ghi .xmp (có backup, hoàn tác được). Sau đó trong Lightroom: Metadata "
+                  "→ Read Metadata from File — thao tác đó GHI ĐÈ chỉnh sửa đang có."))
+        return hoi_nut(self.winfo_toplevel(),
+                       "Áp vào Lightroom" if catalog else "Ghi .xmp",
+                       noi, [("giu", f"Chỉ {gd.so_vn(n_giu)} ảnh Giữ", "chinh"),
+                             ("tat_ca", f"Toàn bộ {gd.so_vn(len(self.items))} ảnh"),
+                             (None, "Huỷ")])
+
     def _ghi_xong(self, backup, giay: float, root, hoi: bool):
         """Chạy trên luồng chính sau khi ghi .xmp xong."""
         self.last_backup = backup
@@ -6636,7 +6682,8 @@ class App(ttk.Frame):
         #[[ Khong dua thanh khau 3 ve 0: de nguyen "xong N/N" lam bang chung da
         #   chay xong. Dua ve 0 thi man hinh lai trong tron y het luc chua bam —
         #   dung cai da lam nguoi dung tuong khong co gi chay. ]]
-        self._tien_do_3(len(self.items), max(len(self.items), 1), "Đã ghi")
+        n_ghi = int(getattr(self, "_so_dang_ghi", 0) or len(self.items))
+        self._tien_do_3(n_ghi, max(n_ghi, 1), "Đã ghi")
         #[[ Do CA khau ghi. Cong kiem giai doan 4 doi tong thoi gian tung khau;
         #   thieu mot khau thi con so tong khong so duoc voi cach lam cu.
         #   Ghi ngay sau write_sidecars, TRUOC phan cho plugin — cho plugin la
