@@ -262,12 +262,46 @@ def phan_sap_may():
     (dd.goc_du_lieu() / "xuat.json").write_bytes(b"\x00" * 189)
     ktra("xuat.json toàn byte 0 -> về mặc định, không ném", xuat_ui.doc_cai_dat()["chat"] == 80)
     # ---- an toàn CPU
-    ktra("đề xuất an toàn: Intel 13/14 + có nhân E -> bật; 12th / AMD / không nhân E -> tắt",
-         xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", list(range(16, 32)))
-         and xuat_ui.de_xuat_an_toan("14th Gen Intel(R) Core(TM) i7-14700K", [20, 21])
-         and not xuat_ui.de_xuat_an_toan("12th Gen Intel(R) Core(TM) i9-12900K", [16, 17])
-         and not xuat_ui.de_xuat_an_toan("AMD Ryzen 9 7950X", [])
-         and not xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", []))
+    ktra("đề xuất an toàn: Intel 13/14 + nhân E + microcode cũ -> bật; 12th / AMD / không nhân E -> tắt",
+         xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", list(range(16, 32)), ma=0x113)
+         and xuat_ui.de_xuat_an_toan("14th Gen Intel(R) Core(TM) i7-14700K", [20, 21], ma=0x129)
+         and not xuat_ui.de_xuat_an_toan("12th Gen Intel(R) Core(TM) i9-12900K", [16, 17], ma=0x113)
+         and not xuat_ui.de_xuat_an_toan("AMD Ryzen 9 7950X", [], ma=0)
+         and not xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", [], ma=0x113))
+    #  12/10: BIOS mới (microcode >= 0x12B, bản vá gốc của Intel) -> mở nhân P
+    ktra("microcode 0x12B / 0x133 -> tắt; không đọc được microcode (0) -> vẫn bật",
+         not xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", [16, 17], ma=0x12B)
+         and not xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", [16, 17], ma=0x133)
+         and xuat_ui.de_xuat_an_toan("13th Gen Intel(R) Core(TM) i9-13900KS", [16, 17], ma=0))
+    ma = xuat_ui.vi_ma_cpu()
+    ktra("đọc được microcode của máy này (Windows)", ma > 0 or not sys.platform.startswith("win"),
+         f"0x{ma:X}")
+    cu_md, cu_e = xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e
+    try:
+        xuat_ui.nhan_e = lambda: [16, 17]
+        xuat_ui.de_xuat_an_toan = lambda **k: False
+        tat = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": None})
+        tay = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": True})
+        xuat_ui.de_xuat_an_toan = lambda **k: True
+        bat = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": None})
+        tat_tay = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": False})
+        xuat_ui.nhan_e = lambda: []
+        khong_e = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": True})
+    finally:
+        xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e = cu_md, cu_e
+    ktra("hiệu lực: None theo đề xuất (tắt / bật), chọn tay thắng, không nhân E -> tắt",
+         not tat and tay and bat and not tat_tay and not khong_e)
+    #  12/10: tệp do bản cũ lưu (luôn lưu cứng an_toan_cpu, chưa có dấu v2) -> tự quyết
+    (dd.goc_du_lieu() / "xuat.json").write_text('{"chat": 70, "an_toan_cpu": true}', encoding="utf-8")
+    cu_ = xuat_ui.doc_cai_dat()
+    xuat_ui.ghi_cai_dat({"chat": 71})
+    sau_ = xuat_ui.doc_cai_dat()
+    xuat_ui.ghi_cai_dat({"an_toan_cpu": True})
+    tay_ = xuat_ui.doc_cai_dat()
+    ktra("xuat.json bản cũ (an_toan_cpu true, chưa dấu v2) -> tự quyết; ghi lại có dấu; chọn tay mới thì giữ",
+         cu_["an_toan_cpu"] is None and cu_["chat"] == 70 and sau_["an_toan_cpu"] is None
+         and '"an_toan_cpu_v2": true' in (dd.goc_du_lieu() / "xuat.json").read_text(encoding="utf-8")
+         and tay_["an_toan_cpu"] is True, f"{cu_['an_toan_cpu']} / {sau_['an_toan_cpu']} / {tay_['an_toan_cpu']}")
     e = xuat_ui.nhan_e()
     n = os.cpu_count() or 1
     ktra("nhân E đọc từ Windows là tập con hợp lệ các luồng", all(0 <= x < n for x in e),

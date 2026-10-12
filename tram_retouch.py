@@ -655,7 +655,9 @@ class Tram:
             return
         try:
             import xuat_ui as xu
-            if not xu.doc_cai_dat().get("an_toan_cpu"):
+            #  12/10: giá trị HIỆU LỰC (None = tự quyết theo CPU / microcode) — trước đây
+            #  None bị coi là tắt nên máy để "tự quyết" không bao giờ được ghim.
+            if not xu.an_toan_hieu_luc():
                 return
             if self._dang_xuat is not None and self._dang_xuat():
                 return                     # lượt Xuất của app đã ghim (và sẽ tự trả)

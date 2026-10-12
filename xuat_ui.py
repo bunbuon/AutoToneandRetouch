@@ -52,6 +52,10 @@ MAC_DINH = {
     "ep_song_song": False,      # máy yếu vẫn ép chạy song song
     "thu_muc": "",              # thư mục xuất lần trước — Retouch mặc định mở nó (9/10)
     "an_toan_cpu": None,        # chỉ dùng nhân E khi xuất; None = tự quyết theo CPU
+    #  12/10: dấu cách lưu mới — bản cũ LUÔN lưu cứng an_toan_cpu (kể cả khi người dùng
+    #  không chạm vào ô) nên cập nhật BIOS xong vẫn bị ghim nhân E mãi. Tệp chưa có dấu
+    #  này -> coi an_toan_cpu là None (tự quyết theo microcode) — xem doc_cai_dat.
+    "an_toan_cpu_v2": True,
 }
 #[[ NGUONG MAY DU SUC VUA XUAT VUA RETOUCH. Lightroom export cỡ gốc ăn hết CPU
 #   và vài GB RAM; retouch cần card (mô hình ~2–3 GB VRAM) + 2–4 GB RAM. Đo trên
@@ -77,6 +81,8 @@ def doc_cai_dat() -> dict:
         v = json.loads(_tep().read_text(encoding="utf-8"))
         if isinstance(v, dict):
             d.update({k: v[k] for k in MAC_DINH if k in v})
+            if not v.get("an_toan_cpu_v2"):
+                d["an_toan_cpu"] = None      # giá trị do bản cũ lưu cứng -> tự quyết
     except (OSError, ValueError):
         pass
     try:
@@ -237,11 +243,51 @@ def ten_cpu() -> str:
     return platform.processor() or ""
 
 
-def de_xuat_an_toan(cpu: str | None = None, e: list | None = None) -> bool:
-    """Mặc định bật chế độ an toàn? Intel thế hệ 13/14 (dòng có lỗi điện áp) VÀ có nhân E."""
+#[[ 12/10: user cap nhat BIOS 3202 -> microcode 0x113 -> 0x133. Thu tai 16 luong nhan P
+#   6 phut (160 moc) + 32 luong toan may 12 phut (140 moc), so ket qua bit-by-bit: khop
+#   het, 0 WHEA / man hinh xanh trong 3.5 gio -> "nhan P on dinh thi mo ra de tang hieu nang". 0x12B (9/2024) la ban va GOC cua
+#   Intel cho loi dien ap (Vmin shift) dong 13/14; tu do tro len thi mac dinh KHONG ghim
+#   nhan E nua. May nguoi test chua cap BIOS (hoac khong doc duoc microcode) van ghim. ]]
+MICROCODE_DA_VA = 0x12B
+
+
+def vi_ma_cpu() -> int:
+    """Phiên bản microcode CPU đang chạy (Windows: registry "Update Revision"); 0 = không rõ."""
+    if not sys.platform.startswith("win"):
+        return 0
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                           r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+        b = bytes(winreg.QueryValueEx(k, "Update Revision")[0])
+    except (OSError, TypeError, ValueError):
+        return 0
+    #  4 byte (máy này: 33 01 00 00) hoặc 8 byte có số ở nửa cao (00 00 00 00 2B 01 00 00)
+    if len(b) >= 8 and any(b[4:8]):
+        return int.from_bytes(b[4:8], "little")
+    return int.from_bytes(b[:4], "little")
+
+
+def de_xuat_an_toan(cpu: str | None = None, e: list | None = None,
+                    ma: int | None = None) -> bool:
+    """Mặc định bật chế độ an toàn? Intel thế hệ 13/14 (dòng có lỗi điện áp) + có nhân E
+    + microcode CHƯA có bản vá gốc (< 0x12B, hoặc không đọc được)."""
     cpu = ten_cpu() if cpu is None else cpu
     e = nhan_e() if e is None else e
-    return bool(e) and bool(re.search(r"\b1[34]th Gen Intel", cpu))
+    if not (bool(e) and re.search(r"\b1[34]th Gen Intel", cpu)):
+        return False
+    ma = vi_ma_cpu() if ma is None else ma
+    return not ma or ma < MICROCODE_DA_VA
+
+
+def an_toan_hieu_luc(cd: dict | None = None) -> bool:
+    """Chế độ an toàn CPU đang có hiệu lực không: người dùng chọn tay thì theo đó,
+    để None (tự quyết) thì theo de_xuat_an_toan(). Máy không có nhân E -> False."""
+    v = (doc_cai_dat() if cd is None else cd).get("an_toan_cpu")
+    e = nhan_e()
+    if not e:
+        return False
+    return de_xuat_an_toan(e=e) if v is None else bool(v)
 
 
 def ghim_cpu(pids, cpus: list) -> list:
@@ -529,11 +575,16 @@ class XuatDialog(tk.Toplevel):
         ct_at.pack(side="right")
         ttk.Label(o8, text="Chỉ dùng nhân E khi xuất (Lightroom + retouch)").pack(side="left")
         if self._nhan_e:
+            ma = vi_ma_cpu()
+            ve_ma = (f"Microcode CPU 0x{ma:X} — "
+                     + ("ĐÃ có bản vá Intel (0x12B trở lên), mặc định tắt."
+                        if ma >= MICROCODE_DA_VA else "CHƯA có bản vá Intel 0x12B, mặc định bật.")
+                     if ma else "Không đọc được microcode — mặc định bật nếu là Intel 13/14.")
             mo(f"Máy có {len(self._nhan_e)} luồng nhân E ({ten_cpu() or 'CPU lai'}). Bật: trong lúc "
                "xuất, Lightroom và retouch chỉ chạy trên nhân E — chậm hơn nhưng không "
                "dùng nhân P. Intel thế hệ 13/14 chưa cập nhật BIOS dễ SẬP MÁY (màn hình "
                "xanh) khi nhân P chạy nặng — máy này đã sập như vậy. Xuất xong app trả "
-               "lại như cũ. Sửa tận gốc: cập nhật BIOS mainboard.")
+               "lại như cũ. Sửa tận gốc: cập nhật BIOS mainboard. " + ve_ma)
         else:
             ct_at.configure(state="disabled")
             self.v_an_toan.set(False)
@@ -772,7 +823,11 @@ class XuatDialog(tk.Toplevel):
                      "retouch_ra": self.v_retouch_ra.get(), "cache_mb": cache_mb,
                      "tu_retouch": tu, "preset": preset, "ep_song_song": bool(self.v_ep.get()),
                      "thu_muc": tm,
-                     "an_toan_cpu": an_toan if self._nhan_e else None})
+                     #  12/10: chỉ lưu CỨNG khi người dùng chọn KHÁC đề xuất — để None thì
+                     #  cập nhật BIOS / đổi máy xong app tự theo microcode mới.
+                     "an_toan_cpu": (None if not self._nhan_e
+                                     or an_toan == de_xuat_an_toan(e=self._nhan_e)
+                                     else an_toan)})
         try:
             import cache_xem
             cache_xem.lay_chung().dat_gioi_han_mb(cache_mb)

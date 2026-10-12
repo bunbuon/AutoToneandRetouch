@@ -878,6 +878,21 @@ Lens như filter Metadata của Lightroom, bấm Phân tích thì hỏi phân t�
   (mở hết nhóm 2400×1380) dư 16 px.
 Kiểm: `test_loc_may_mau_da.py` (giao diện thật: hộp chọn, đo một phần, gộp, nhớ mẫu).
 
+## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
+
+Chế độ an toàn CPU (ghim Lightroom + app + engine vào nhân E khi Xuất, v58) sinh ra vì
+i9-13900KS BIOS 0904 / microcode 0x113 sập 11 lần 5–9/10. User cập nhật BIOS 3202 →
+microcode **0x133**; thử tải 16 luồng P 6 phút + 32 luồng 12 phút, so kết quả bit-by-bit:
+khớp hết, 0 WHEA / BSOD trong 3.5 giờ. Giờ:
+- Đề xuất bật CHỈ KHI Intel 13/14 + có nhân E + microcode < `MICROCODE_DA_VA` 0x12B (bản vá
+  gốc Vmin shift của Intel) hoặc không đọc được (`vi_ma_cpu`: registry "Update Revision",
+  4 hoặc 8 byte).
+- Bản cũ LUÔN lưu cứng `an_toan_cpu` → tệp chưa có dấu `an_toan_cpu_v2` coi như None (tự
+  quyết) một lần; hộp Xuất chỉ lưu cứng khi người dùng chọn KHÁC đề xuất.
+- `an_toan_hieu_luc()` cho trạm Retouch khi xuất — trước đây None bị coi là TẮT.
+- Build của chính dự án thôi ghim nhân E (`/AFFINITY FFFF0000` bỏ từ v76).
+Kiểm: `test_xuat_mot_thao_tac.py` (microcode cũ / mới / không rõ, hiệu lực, tệp bản cũ).
+
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
 User (15:12, G:\2709 cưới, chế độ "Trộn"): "ảnh ngoài trời bị kéo về ngưỡng bị
