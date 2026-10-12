@@ -127,6 +127,7 @@ PHIEN_BAN = 1        # 4 bit dau than — doi khi doi cach ma hoa
 
 # Các gói bán — chỉ để tiện cấp key, app không phụ thuộc danh sách này.
 GOI_BAN = {
+    "thu3": 3,
     "thu": 7,
     "thang": 30,
     "quy": 90,
@@ -308,7 +309,8 @@ def kich_hoat(key: str) -> tuple[bool, str]:
 def _ten_goi(so_ngay: int) -> str:
     for ten, n in GOI_BAN.items():
         if n == so_ngay:
-            return {"thu": "dùng thử 7 ngày", "thang": "1 tháng",
+            return {"thu3": "dùng thử 3 ngày",
+                    "thu": "dùng thử 7 ngày", "thang": "1 tháng",
                     "quy": "3 tháng", "nam": "1 năm",
                     "vinh-vien": "vĩnh viễn"}.get(ten, f"{so_ngay} ngày")
     return f"{so_ngay} ngày"
