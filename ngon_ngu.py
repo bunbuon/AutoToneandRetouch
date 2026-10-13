@@ -36,7 +36,7 @@ VN = re.compile(r"[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽê
                 re.I)
 #  đoạn KHÔNG dịch trong lúc thay từng cụm: đường dẫn, tên file
 _KHONG_DICH = re.compile(r"([A-Za-z]:[\\/][^\n·—|]*|\\\\[^\n·—|]*|/(?:Users|Volumes)/[^\n·—|]*"
-                         r"|[\w\-. ]+\.(?:ARW|NEF|CR2|CR3|RAF|DNG|ORF|RW2|jpg|jpeg|JPG|xmp|tsv|"
+                         r"|[\w\-. ]+\.(?:ARW|SRF|SR2|NEF|NRW|CR2|CR3|CRW|RAF|DNG|ORF|RW2|jpg|jpeg|JPG|xmp|tsv|"
                          r"json|lrcat|png|log|txt))")
 
 _NGON_NGU: list = []

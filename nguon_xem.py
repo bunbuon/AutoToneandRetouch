@@ -37,7 +37,7 @@ def la_raw(p) -> bool:
         import autotone as at
         return Path(str(p)).suffix.lower() in at.RAW_EXTS
     except Exception:                                        # noqa: BLE001
-        return Path(str(p)).suffix.lower() in {".arw", ".nef", ".cr2", ".cr3", ".raf",
+        return Path(str(p)).suffix.lower() in {".arw", ".sr2", ".srf", ".nef", ".nrw", ".cr2", ".cr3", ".crw", ".raf",
                                                 ".dng", ".orf", ".rw2", ".srw", ".pef"}
 
 
@@ -58,6 +58,8 @@ def _khoa(p, canh) -> str | None:
     except OSError:
         return None
     van = f"{os.path.normcase(os.path.abspath(str(p)))}|{st.st_mtime_ns}|{st.st_size}|{canh}"
+    if str(p).lower().endswith(".cr3"):
+        van += "|cr3-exif"          # 13/10: ảnh CR3 cũ trong kho nằm ngang (at._doc_cr3)
     return hashlib.sha1(van.encode("utf-8", "surrogatepass")).hexdigest()
 
 

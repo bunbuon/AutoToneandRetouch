@@ -75,7 +75,10 @@ def khoa_kho(path: str) -> str | None:
         st = os.stat(path)
     except OSError:
         return None
-    h = hashlib.sha1(f"{path}|{st.st_mtime_ns}|{st.st_size}|{CANH_KHO}"
+    #  13/10: ảnh nhỏ CR3 cũ trong kho dựng khi app chưa đọc được EXIF của CR3 (nằm
+    #  ngang, xem at._doc_cr3) — đổi khoá riêng cho CR3 để dựng lại, file khác giữ kho
+    phien = "|cr3-exif" if str(path).lower().endswith(".cr3") else ""
+    h = hashlib.sha1(f"{path}|{st.st_mtime_ns}|{st.st_size}|{CANH_KHO}{phien}"
                      .encode("utf-8", "surrogatepass")).hexdigest()
     return f"{h[:2]}/{h[2:22]}.jpg"
 

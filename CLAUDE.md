@@ -86,6 +86,8 @@ python3 test_mat_na_da.py      # mặt nạ da mặt: phân vùng / dự phòng,
 python3 test_curve_da.py       # curve da về đích + chặn trắng + nén cháy + gom loạt, đo LẠI ảnh sau (13/10)
 python3 test_curve_job.py      # curve qua mốc / bản xuất / job — chạy lại không cộng dồn (13/10)
 python3 kiem_curve_lua.py      # plugin: ô curve, so curve, xuất curve, job @curve, dựng lượt 2 (lupa; 13/10)
+python3 test_cr3.py            # Canon CR3: EXIF CMT1/CMT2, ảnh nhúng, xoay, gom loạt (13/10; AUTOTONE_CR3=<file thật>)
+python3 test_dinh_dang_raw.py  # 8 đuôi CR2 CR3 CRW NEF NRW ARW SRF SR2: CRW (CIFF), ISO Nikon MakerNote, file hỏng (13/10; AUTOTONE_RAW_MAU=<thư mục>)
 python3 kiem_ban_xuat.py       # app đọc lại bản xuất (cần tkinter)
 python3 kiem_xuat_lr.py        # khâu 5 — bắt đường dẫn Export
 python3 kiem_tim_tool.py       # tìm tool retouch
@@ -364,7 +366,8 @@ Wide-area chọn nét ở đâu đó TRONG vùng, nên mặt nào CHẠM vùng l
 (`af_hop`), không đòi trúng tâm. Mẫu 9 ảnh: HIU_4204 cũ đo BÁNH XE Ô TÔ là mặt
 (−2.35), bật lên đo đúng người (−0.99).
 Bản 0100 (dòng D) và 0400 (Z8/Z9/Z6III) CHƯA có file thật nên KHÔNG đọc — ghi
-`af_nikon_ban` rồi lùi về đoán. Canon: chưa có file nào để đối chiếu, chưa làm.
+`af_nikon_ban` rồi lùi về đoán. Canon: chưa có file nào để đối chiếu, chưa làm (13/10:
+EXIF CR3 / CRW đã đọc — mục "Định dạng RAW"; AF Canon vẫn chưa).
 
 ### Cổng Nikon (29/9): ĐẠT trên giấy, KHÔNG BẬT — vì mẫu số bị pha loãng
 Chạy `kiem_gu --de-xuat de_xuat_af_nikon.json` trên 2609: A đạt (gần 2 / xa 0),
@@ -976,6 +979,55 @@ phân tích: dừng sau ~3 s), `test_tram_retouch` mục "máy bị đẩy ra"; 
 hộp hết credit, chi_anh, nhãn, trạm, kích hoạt api 2, key cũ khi gia hạn...) — lần đầu LỌT 2 do
 BÀI KIỂM thiếu (trạm chỉ thử khi đã tự biết bị đẩy ra; nhãn chỉ thử qua tin phiên, không qua
 nhịp 60 giây) -> thêm mục, chạy lại 25/25 bị bắt.
+
+## Định dạng RAW: CR3 / CRW đọc ra RỖNG, thiếu đuôi .CRW .NRW (13/10) — đã vá, LUÔN BẬT
+
+User (bộ Canon EOS R, CR3, 1/500 f/4 ISO 250 ở 80 mm): "load ảnh preview không đúng định
+dạng — đo sáng các bức cùng cảnh, cùng thông số bị sáng và tối khác nhau" (lưới ảnh: ảnh dọc
+NẰM NGANG; Lightroom: NHFT1461 sáng hẳn NHFT1460 dù cùng thông số). Rồi: "phân tích luôn các
+định dạng: Canon CR2 CR3 CRW · Nikon NEF NRW · Sony ARW SRF SR2".
+
+Gốc bệnh: read_raw / doc_the / anh_nho chỉ đọc EXIF khi file mở đầu II/MM (TIFF). CR3 là
+ISO-BMFF (như MP4) -> tags RỖNG: không Orientation (ảnh dọc nằm ngang -> YuNet lúc thấy mặt
+lúc không -> phép đo lùi về khung / chủ thể khác nhau từng tấm), không tốc / khẩu / ISO / giờ
+(chia_loat không gom loạt -> `dong_bo_loat` không chạy; EV100 rỗng -> nhãn ngày / đèn sai).
+CRW (CIFF) mở đầu "II" nhưng KHÔNG phải TIFF -> nhánh TIFF đọc offset rác, cũng rỗng.
+.CRW / .NRW còn không có trong RAW_EXTS (app không nhận file).
+
+Đã sửa (`autotone.py`):
+- `_doc_khung_raw()` — MỘT chỗ chia theo khung cho cả ba hàm: CRW (xét TRƯỚC, cũng "II")
+  · TIFF (ARW SR2 SRF NEF NRW CR2 DNG) · CR3. Đừng viết lại nhánh II/MM ở chỗ thứ tư.
+- `_doc_cr3()`: hộp uuid 85c0b687… -> CMT1 (IFD0: máy, Orientation, giờ) + CMT2 (EXIF IFD:
+  tốc, khẩu, ISO, giờ chụp, ống kính), mỗi khối là TIFF trọn -> `_parse_ifd`; THMB 160 px;
+  PRVW 1620 px (uuid eaf42b5e…, anh_nho dùng); JPEG cỡ gốc = mẫu đầu trak 1 (co64/stco + stsz).
+- `_doc_crw()`: đống CIFF lồng nhau (bảng bản ghi ở cuối đống, vị trí tính từ ĐẦU ĐỐNG, bit
+  0x4000 = dữ liệu trong bản ghi): máy 0x080a, xoay 0x1810 (độ -> Orientation như dcraw: 90->6,
+  270->8), giờ 0x180e (giây Unix theo giờ MÁY -> gmtime), ShotInfo 0x102a (ISO = BaseISO ×
+  AutoISO / 100; khẩu [21] / tốc [22], thiếu thì [4] / [5]; mã EV Canon 1/32 stop, 0x0c / 0x14
+  = 1/3 / 2/3). JpgFromRaw (EOS 1536 px); PowerShot chỉ có Thumbnail 160 px — đo thô.
+- Nikon D70 / D70s không ghi ISO vào EXIF -> `_wb_nikon` đọc MakerNote 0x0002 (số sau) KHI
+  EXIF thiếu (máy đời mới giữ số EXIF).
+- Kho ảnh nhỏ của lưới (`luoi_anh.khoa_kho`) + kho xem RAW (`nguon_xem._khoa`) đổi khoá
+  RIÊNG cho .cr3 — kho cũ giữ bản nằm ngang. Kết quả đo lưu (`phan_tich/*.pkl`) tự đo lại vì
+  `dau_engine()` đổi theo autotone.py. Mã ảnh credit (`tin_dung.ma_anh`) theo nội dung: không đổi.
+
+Đối chiếu ExifTool (13.x, chạy bằng perl từ mã nguồn) trên file THẬT, khớp TỪNG SỐ (máy,
+hướng, ISO, tốc, khẩu, giờ) + measure chạy, ảnh nhỏ đúng chiều: 32 file — CR3 (R6, R3, R8 ×4),
+CR2 (350D, 600D, 70D, 7D dọc), CRW (10D dọc — nhìn tận mắt, 300D, PowerShot S40), NEF (D70,
+D70s ×4, D200, D300 dọc, D5100, D90, D800E, D810 dọc), ARW (A500, A5000, NEX-5N, NEX-7, A7M3
+dọc, A7M4). Nguồn mẫu: kho `drewnoakes/metadata-extractor-images`, `t/images` của ExifTool,
+`test/data` của Exiv2 (cả 12 file CRW hỏng cố ý của bộ fuzz). Đột biến ngẫu nhiên (cắt cụt,
+lật byte, số rác) 2.436 lần gọi: 0 treo, 0 sập.
+CHƯA có file thật: .NRW, .SRF, .SR2 — cả ba là khung TIFF, đi đúng đường của ARW / NEF (bài
+kiểm dựng TIFF giả dưới từng đuôi). Ảnh D70 dọc: preview Nikon đã XOAY SẴN mà Orientation = 1
+— đúng, đừng "sửa".
+Chưa làm cho Canon: điểm AF + WB máy trong MakerNote CMT3 (luật AF / WB theo máy chỉ có
+Sony / Nikon). Muốn làm phải có CR3 thật của user để đối chiếu, như Nikon 29/9.
+
+Kiểm: `test_cr3.py` (CR3 giả đúng cấu trúc hộp; thử ngược 14 đột biến), `test_dinh_dang_raw.py`
+(8 đuôi, CRW giả bố cục như file 10D với ShotInfo THẬT + số ExifTool, CRW / CR3 hỏng, ISO
+Nikon; thử ngược 22 đột biến) — 36/36 đỏ (`cr3/dot_bien_dd.py` trong scratchpad). Bộ 32 file
+thật: `AUTOTONE_RAW_MAU=<thư mục> python3 test_dinh_dang_raw.py`.
 
 ## Curve da mặt + nén vùng cháy, đo trên ảnh Lightroom DỰNG (13/10) — `curve_da` / `curve_chay`, TẮT
 

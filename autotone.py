@@ -40,7 +40,7 @@ from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = None
 
-RAW_EXTS = {".arw", ".sr2", ".srf", ".nef", ".cr2", ".cr3", ".raf",
+RAW_EXTS = {".arw", ".sr2", ".srf", ".nef", ".nrw", ".cr2", ".cr3", ".crw", ".raf",
             ".rw2", ".orf", ".dng", ".pef"}
 
 # --- histogram trên log2 của linear luminance ---
@@ -108,6 +108,7 @@ T_SONY_WB_MODE     = 0x0115
 T_SONY_COLOR_TEMP  = 0xB021
 T_NIKON_WB_RB      = 0x000C
 T_NIKON_CT_AUTO    = 0x004F
+T_NIKON_ISO        = 0x0002          # MakerNote Nikon: (0, ISO) — chi dung khi EXIF thieu ISO
 T_ORIENTATION      = 0x0112
 T_DATETIME         = 0x0132
 T_DATETIME_ORIG    = 0x9003
@@ -181,7 +182,12 @@ def _af_nikon(data, mvo: int, tags: dict) -> None:
 
 def _wb_nikon(data, mvo: int, tags: dict) -> None:
     """Doc WB may tu MakerNote Nikon (xem T_NIKON_CT_AUTO). Hong thi bo qua —
-    thieu so nay chi la quay ve cach can mau cu."""
+    thieu so nay chi la quay ve cach can mau cu.
+
+    Kem ISO (the 0x0002, hai so, so sau la ISO) khi EXIF chuan khong co: D70 / D70s
+    (13/10, doi chieu ExifTool) khong ghi ISOSpeedRatings -> iso None -> EV100 rong,
+    nhan ngay / den sai. The ISO EXIF nam CUNG IFD va doc truoc, nen may doi moi giu
+    nguyen so EXIF."""
     try:
         goc = mvo + 10
         bo = bytes(data[goc:goc + 2])
@@ -195,7 +201,11 @@ def _wb_nikon(data, mvo: int, tags: dict) -> None:
         for i in range(n):
             q = ifd + 2 + i * 12
             tag, typ, cnt = struct.unpack_from(e + "HHI", data, q)
-            if tag == T_NIKON_CT_AUTO and typ == 3 and cnt >= 1:
+            if tag == T_NIKON_ISO and typ == 3 and cnt == 2 and "iso" not in tags:
+                iso = struct.unpack_from(e + "HH", data, q + 8)[1]
+                if iso:
+                    tags["iso"] = int(iso)
+            elif tag == T_NIKON_CT_AUTO and typ == 3 and cnt >= 1:
                 k = struct.unpack_from(e + "H", data, q + 8)[0]
                 if 1500 <= k <= 15000:
                     tags["wb_may_K"] = int(k)
@@ -448,19 +458,246 @@ def _tiff_trong_jpeg(mm):
     return None
 
 
+#: hai hộp uuid của Canon trong CR3: khối siêu dữ liệu (CMT1..4, THMB) và ảnh xem trước PRVW
+_UUID_CANON = bytes.fromhex("85c0b687820f11e08111f4ce462b6a48")
+_UUID_PRVW = bytes.fromhex("eaf42b5e1c984b88b9fbb7dc406e4d16")
+
+
+def la_cr3(mm) -> bool:
+    """File Canon CR3 (khung ISO-BMFF như MP4, nhãn "crx ")."""
+    return bytes(mm[4:8]) == b"ftyp" and bytes(mm[8:12]) == b"crx "
+
+
+def _hop_iso(mm, o: int, het: int):
+    """Duyệt các hộp ISO-BMFF trong [o, het): (kiểu, đầu nội dung, cuối hộp)."""
+    while o + 8 <= het:
+        try:
+            dai, kieu = struct.unpack_from(">I4s", mm, o)
+            dau = 8
+            if dai == 1:
+                dai, dau = struct.unpack_from(">Q", mm, o + 8)[0], 16
+            elif dai == 0:
+                dai = het - o
+        except struct.error:
+            return
+        if dai < dau:
+            return
+        yield bytes(kieu), o + dau, min(o + dai, het)
+        o += dai
+
+
+def _mau_dau_trak(mm, a: int, b: int, sau: int = 0):
+    """(vị trí, độ dài) mẫu ĐẦU của một trak (co64 / stco + stsz) — trak 1 của CR3 là
+    JPEG cỡ gốc. None khi không đọc được. Chặn độ sâu: file hỏng lồng mdia trong mdia
+    hàng triệu tầng là RecursionError."""
+    for kieu, a2, b2 in _hop_iso(mm, a, b):
+        if kieu in (b"mdia", b"minf"):
+            return _mau_dau_trak(mm, a2, b2, sau + 1) if sau < 4 else None
+        if kieu == b"stbl":
+            vi_tri = do_dai = None
+            for k3, a3, _b3 in _hop_iso(mm, a2, b2):
+                try:
+                    if k3 == b"co64" and struct.unpack_from(">I", mm, a3 + 4)[0]:
+                        vi_tri = struct.unpack_from(">Q", mm, a3 + 8)[0]
+                    elif k3 == b"stco" and struct.unpack_from(">I", mm, a3 + 4)[0]:
+                        vi_tri = struct.unpack_from(">I", mm, a3 + 8)[0]
+                    elif k3 == b"stsz":
+                        co, so = struct.unpack_from(">II", mm, a3 + 4)
+                        do_dai = co or (struct.unpack_from(">I", mm, a3 + 12)[0] if so else None)
+                except struct.error:
+                    continue
+            return (int(vi_tri), int(do_dai)) if vi_tri and do_dai else None
+    return None
+
+
+def _doc_cr3(mm, tags: dict, jpegs: list) -> None:
+    """EXIF + ảnh JPEG nhúng của Canon CR3.
+
+    #[[ 13/10 (user, bộ CR3 Canon EOS R): "load ảnh preview không đúng định dạng — đo
+    #   sáng các bức cùng cảnh, cùng thông số mà sáng tối khác nhau". CR3 KHÔNG phải
+    #   TIFF như ARW / NEF / CR2 mà là khung ISO-BMFF (như MP4): read_raw / doc_the /
+    #   anh_nho chỉ đọc EXIF khi file mở đầu bằng II/MM nên với CR3 tags RỖNG HẲN:
+    #     · không Orientation -> ảnh dọc nằm ngang, YuNet không thấy mặt (lúc thấy lúc
+    #       không) -> phép đo lùi về khung / chủ thể khác nhau từng tấm;
+    #     · không tốc / khẩu / ISO / giờ -> chia_loat không gom được loạt nào (thiếu
+    #       thông số) -> "cùng khung + cùng thông số -> cùng một mức" không chạy; EV100
+    #       rỗng -> nhãn ngày / đèn sai; gom cảnh theo giờ không có giờ.
+    #   Canon để EXIF trong hộp uuid 85c0b687…: CMT1 = IFD0 (máy, Orientation, giờ),
+    #   CMT2 = EXIF IFD (tốc, khẩu, ISO, giờ chụp, ống kính) — mỗi khối là một TIFF
+    #   trọn vẹn (mở đầu "II*"), nên đưa thẳng cho _parse_ifd. CMT3 (MakerNote Canon) / CMT4
+    #   (GPS) chưa dùng. Ảnh nhúng: THMB 160 px (cùng hộp), PRVW 1620 px (uuid eaf42b5e…),
+    #   JPEG cỡ gốc = mẫu đầu của trak 1 (trong mdat). ]]"""
+    n = len(mm)
+    so_trak = 0
+    for kieu, a, b in _hop_iso(mm, 0, n):
+        if kieu == b"moov":
+            for k2, a2, b2 in _hop_iso(mm, a, b):
+                if k2 == b"uuid" and bytes(mm[a2:a2 + 16]) == _UUID_CANON:
+                    for k3, a3, b3 in _hop_iso(mm, a2 + 16, b2):
+                        if k3 in (b"CMT1", b"CMT2"):
+                            khoi = bytes(mm[a3:b3])
+                            if khoi[:2] in (b"II", b"MM"):
+                                e = "<" if khoi[:2] == b"II" else ">"
+                                try:
+                                    _parse_ifd(khoi, struct.unpack_from(e + "I", khoi, 4)[0],
+                                               e, set(), [], tags)
+                                except Exception:            # noqa: BLE001
+                                    pass
+                        elif k3 == b"THMB":
+                            i = mm.find(b"\xff\xd8\xff", a3, b3)
+                            if i >= 0:
+                                jpegs.append((i, b3 - i))
+                elif k2 == b"trak":
+                    so_trak += 1
+                    if so_trak == 1:
+                        mau = _mau_dau_trak(mm, a2, b2)
+                        if mau and 0 < mau[0] < n:
+                            jpegs.append(mau)
+        elif kieu == b"uuid" and bytes(mm[a:a + 16]) == _UUID_PRVW:
+            i = mm.find(b"\xff\xd8\xff", a + 16, min(b, a + 16 + 256))
+            if i >= 0:
+                jpegs.append((i, b - i))
+
+
+def la_crw(mm) -> bool:
+    """File Canon CRW (CIFF — EOS D30/D60/10D/300D, PowerShot đời 2000–2004)."""
+    return bytes(mm[:2]) in (b"II", b"MM") and bytes(mm[6:14]) == b"HEAPCCDR"
+
+
+def _canon_ev(v: int) -> float:
+    """Mã EV của Canon: 1/32 stop, phần lẻ 0x0c / 0x14 là 1/3 / 2/3 stop (Canon::CanonEv
+    của ExifTool)."""
+    dau = -1.0 if v < 0 else 1.0
+    v = abs(int(v))
+    le = v & 0x1F
+    v -= le
+    if le == 0x0C:
+        le = 32 / 3
+    elif le == 0x14:
+        le = 64 / 3
+    return dau * (v + le) / 32.0
+
+
+#: thẻ CIFF cần dùng (đã bỏ 2 bit nơi lưu 0xC000)
+_CIFF_MAY, _CIFF_ANH, _CIFF_GIO, _CIFF_CHUP = 0x080A, 0x1810, 0x180E, 0x102A
+_CIFF_JPEG = (0x2007, 0x2008)          # JpgFromRaw, Thumbnail
+_CIFF_XOAY = {0: 1, 90: 6, 180: 3, 270: 8}
+
+
+def _doc_crw(mm, tags: dict, jpegs: list) -> None:
+    """EXIF + JPEG nhúng của Canon CRW (khung CIFF).
+
+    #[[ 13/10 (user: "phân tích luôn các định dạng CR2 CR3 CRW / NEF NRW / ARW SRF SR2").
+    #   CRW mở đầu "II" như TIFF nhưng KHÔNG phải TIFF: sau 26 byte đầu ("HEAPCCDR") là
+    #   các ĐỐNG (heap) lồng nhau; 4 byte cuối mỗi đống chỉ tới bảng bản ghi 10 byte
+    #   (thẻ, cỡ, vị trí — vị trí tính từ ĐẦU ĐỐNG). Bit 0x4000 của thẻ = dữ liệu nằm
+    #   ngay trong 8 byte của bản ghi; kiểu 0x2800 / 0x3000 = đống con. Trước đây file
+    #   này lọt vào nhánh TIFF, đọc offset rác -> tags rỗng hẳn (không máy, không hướng,
+    #   không ISO/tốc/khẩu/giờ) — y bệnh CR3.
+    #   Số đọc: máy (0x080a), xoay (0x1810, độ -> Orientation như dcraw), giờ (0x180e,
+    #   giây Unix theo giờ máy), ShotInfo (0x102a: ISO = BaseISO × AutoISO / 100, khẩu
+    #   [21] / tốc [22], thiếu thì lấy khẩu/tốc đích [4]/[5]). Đối chiếu ExifTool trên
+    #   EOS 10D, EOS 300D, PowerShot S40: khớp từng số. Ảnh nhúng: JpgFromRaw (EOS:
+    #   1536 px) / Thumbnail (PowerShot chỉ có 160 px — đo trên 160 px là đo thô).
+    #   File hỏng cố ý (bộ fuzz của Exiv2) không được treo / sập: mọi vị trí đều kiểm
+    #   biên, đống lồng ≤ 6 tầng, tổng ≤ 4000 bản ghi. ]]"""
+    e = "<" if bytes(mm[:2]) == b"II" else ">"
+    n = len(mm)
+    dem = [0]
+
+    def chup(a: int, b: int) -> None:
+        v = [struct.unpack_from(e + "h", mm, a + 2 * i)[0] for i in range((b - a) // 2)]
+
+        def lay(i):
+            return v[i] if i < len(v) else 0
+        #  số rác (file hỏng) thì bỏ — 2 ** (số int16 / 32) có thể tràn float
+        mu = (lay(2) + lay(1)) / 32.0
+        if lay(2) and "iso" not in tags and 0 <= mu <= 20:
+            tags["iso"] = int(round(2 ** mu * 100 / 32))
+        k = lay(21) or (lay(4) if lay(4) > 0 else 0)
+        if k and "fnumber" not in tags and -2 <= _canon_ev(k) <= 15:
+            tags["fnumber"] = (int(round(2 ** (_canon_ev(k) / 2) * 100)), 100)
+        t = lay(22) or lay(5)
+        if t and "exposure_time" not in tags and -12 <= _canon_ev(t) <= 17:
+            tags["exposure_time"] = (int(round(2 ** -_canon_ev(t) * 1_000_000)), 1_000_000)
+        if len(v) > 6 and "exposure_bias" not in tags and abs(_canon_ev(lay(6))) <= 10:
+            tags["exposure_bias"] = (int(round(_canon_ev(lay(6)) * 100)), 100)
+
+    def dong(a: int, b: int, sau: int) -> None:
+        if sau > 6 or b - a < 6 or b > n:
+            return
+        bang = a + struct.unpack_from(e + "I", mm, b - 4)[0]
+        if not a <= bang <= b - 6:
+            return
+        so = struct.unpack_from(e + "H", mm, bang)[0]
+        for i in range(so):
+            q = bang + 2 + 10 * i
+            dem[0] += 1
+            if q + 10 > b or dem[0] > 4000:
+                return
+            the, co, vt = struct.unpack_from(e + "HII", mm, q)
+            noi, ma = the & 0xC000, the & 0x3FFF
+            if noi == 0x4000:
+                d0, d1 = q + 2, q + 10
+            elif noi == 0 and a <= a + vt <= a + vt + co <= b:
+                d0, d1 = a + vt, a + vt + co
+            else:
+                continue
+            if the & 0x3800 in (0x2800, 0x3000):
+                if noi == 0 and (d0, d1) != (a, b):
+                    dong(d0, d1, sau + 1)
+            elif ma == _CIFF_MAY and "model" not in tags:
+                hai = bytes(mm[d0:d1]).split(b"\0")
+                if len(hai) >= 2 and hai[1].strip():
+                    tags["make"] = hai[0].decode("latin-1").strip()
+                    tags["model"] = hai[1].decode("latin-1").strip()
+            elif ma == _CIFF_ANH and d1 - d0 >= 16 and "orientation" not in tags:
+                xoay = struct.unpack_from(e + "i", mm, d0 + 12)[0] % 360
+                if xoay in _CIFF_XOAY:
+                    tags["orientation"] = _CIFF_XOAY[xoay]
+            elif ma == _CIFF_GIO and d1 - d0 >= 4 and "datetime_original" not in tags:
+                giay = struct.unpack_from(e + "I", mm, d0)[0]
+                if giay:
+                    g = time.strftime("%Y:%m:%d %H:%M:%S", time.gmtime(giay))
+                    tags["datetime_original"] = g
+                    tags.setdefault("datetime", g)
+            elif ma == _CIFF_CHUP and d1 - d0 >= 12:
+                chup(d0, d1)
+            elif ma in _CIFF_JPEG and d1 - d0 > 3 and bytes(mm[d0:d0 + 3]) == b"\xff\xd8\xff":
+                jpegs.append((d0, d1 - d0))
+
+    try:
+        dong(struct.unpack_from(e + "I", mm, 2)[0], n, 0)
+    except (struct.error, ValueError, IndexError, OverflowError):
+        pass
+
+
+def _doc_khung_raw(mm, tags: dict, jpegs: list) -> bool:
+    """Đọc EXIF + vị trí JPEG nhúng theo KHUNG file: CRW (CIFF), TIFF (ARW, SR2, SRF, NEF,
+    NRW, CR2, DNG...), CR3 (ISO-BMFF). False khi không phải khung nào trong ba — vd. file
+    đã là ảnh JPEG (người gọi tự đọc đoạn APP1). CRW xét TRƯỚC vì nó cũng mở đầu "II"."""
+    if la_crw(mm):
+        _doc_crw(mm, tags, jpegs)
+    elif bytes(mm[:2]) in (b"II", b"MM"):
+        e = "<" if bytes(mm[:2]) == b"II" else ">"
+        try:
+            _parse_ifd(mm, struct.unpack_from(e + "I", mm, 4)[0], e, set(), jpegs, tags)
+        except Exception:                                    # noqa: BLE001
+            pass
+    elif la_cr3(mm):
+        _doc_cr3(mm, tags, jpegs)                            # Canon CR3 — xem _doc_cr3
+    else:
+        return False
+    return True
+
+
 def read_raw(path: Path):
     """Trả về (bytes preview JPEG lớn nhất, dict tag EXIF). Đọc file 1 lần bằng mmap."""
     tags: dict = {}
     with open(path, "rb") as fh:
         with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
             jpegs: list = []
-            if mm[:2] in (b"II", b"MM"):
-                e = "<" if mm[:2] == b"II" else ">"
-                try:
-                    _parse_ifd(mm, struct.unpack_from(e + "I", mm, 4)[0], e, set(), jpegs, tags)
-                except Exception:
-                    pass
-            else:
+            if not _doc_khung_raw(mm, tags, jpegs):
                 #[[ Anh DA XUAT (JPEG): EXIF nam trong doan APP1, khong nam o dau
                 #   file. Xem _tiff_trong_jpeg(). Danh sach preview de rong: voi
                 #   file JPEG thi CHINH NO la anh, khong lay thumbnail nhung.
@@ -519,10 +756,7 @@ def doc_the(path) -> dict:
     try:
         with open(path, "rb") as fh:
             with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                if mm[:2] in (b"II", b"MM"):
-                    e = "<" if mm[:2] == b"II" else ">"
-                    _parse_ifd(mm, struct.unpack_from(e + "I", mm, 4)[0], e, set(), [], tags)
-                else:
+                if not _doc_khung_raw(mm, tags, []):
                     kh = _tiff_trong_jpeg(mm)
                     if kh and kh[:2] in (b"II", b"MM"):
                         e = "<" if kh[:2] == b"II" else ">"
@@ -590,14 +824,9 @@ def anh_nho(path, canh: int = 320):
     try:
         with open(p, "rb") as fh:
             with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                if mm[:2] in (b"II", b"MM"):
-                    e = "<" if mm[:2] == b"II" else ">"
-                    jpegs: list = []
-                    try:
-                        _parse_ifd(mm, struct.unpack_from(e + "I", mm, 4)[0], e,
-                                   set(), jpegs, tags)
-                    except Exception:                        # noqa: BLE001
-                        pass
+                jpegs: list = []
+                _doc_khung_raw(mm, tags, jpegs)              # CR3: PRVW 1620 px
+                if jpegs:
                     du_lon = []
                     for o, ln in sorted(set(jpegs), key=lambda t: t[1]):
                         if ln < 2000 or not (0 < ln <= len(mm) - o) \
