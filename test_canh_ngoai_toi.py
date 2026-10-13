@@ -8,7 +8,7 @@ CHUYỆN ĐANG SỬA
     LED cam + flash gel, da đo ra cam -> cân theo da kéo 5250 -> 4250-4700 K.
 
 Mục kiểm
-    1. DEFAULTS bật; canh_p365 là tham số CUỐI của measure() và cuối cau_hinh_do().
+    1. DEFAULTS bật; canh_p365 đúng vị trí trong measure() và cau_hinh_do() (thẳng hàng).
     2. read_raw đọc EXIF Flash (0x9209) trong Exif IFD.
     3. do_canh: mô hình + 365 nhãn (161 trong); thiếu mô hình -> (None, "") không vỡ.
     4. gan_canh: ngoài trời tối (gộp cửa sổ) -> cờ; trong nhà tối / ban ngày / sáng /
@@ -80,9 +80,13 @@ def main() -> int:
     ktra("DEFAULTS bật nhận cảnh + ngoài trời buổi tối",
          d.get("canh_p365") and d.get("wb_ngoai_toi") and d.get("canh_cua_so_phut") == 30.0)
     ts_ = list(inspect.signature(at.measure).parameters)
-    ktra("canh_p365 là tham số CUỐI của measure() và cuối cau_hinh_do()",
-         ts_[-1] == "canh_p365" and at.cau_hinh_do(dict(d))[-1] is True
-         and len(at.cau_hinh_do(dict(d))) == len(ts_) - 1, ts_[-1])
+    #  14/10: hl_da_tron (theo máy) thêm SAU canh_p365 — điều canh vẫn là cau_hinh_do()
+    #  THẲNG HÀNG với measure() (đo truyền theo vị trí): canh_p365 đúng chỗ ở cả hai bên
+    ch_ = at.cau_hinh_do(dict(d))
+    i_ = ts_.index("canh_p365")
+    ktra("canh_p365 đúng vị trí trong measure() và cau_hinh_do() (thẳng hàng, đủ tham số)",
+         ch_[i_ - 1] is True and len(ch_) == len(ts_) - 1
+         and at.cau_hinh_do(dict(d, canh_p365=False))[i_ - 1] is False, f"{ts_[i_:]}")
     # 2
     for v, no in ((13, True), (16, False), (0, False)):
         tags, jp = {}, []

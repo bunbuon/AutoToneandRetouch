@@ -87,6 +87,7 @@ LOAI_TRU = [
     "kiem_curve_lua.py", "test_curve_lr.py", "test_mat_na_da.py", "test_curve_da.py",
     "test_curve_job.py", "test_curve_xu_ly.py", "kiem_curve_lr.py", "kiem_cong_curve.py",
     "so_sanh_curve.py", "test_cr3.py", "test_dinh_dang_raw.py", "kiem_raw_that.py",
+    "test_da_sang_tron.py",
     "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
     "test_phanh_da_wb.py", "test_canh_ngoai_toi.py", "test_loc_may_mau_da.py",
     "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",

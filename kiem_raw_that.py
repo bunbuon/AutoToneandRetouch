@@ -35,7 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 LECH_EV = 0.30          # cặp liền nhau lệch hơn mức này thì liệt kê (ngưỡng "dời" của các cổng)
-PHIEN = "v3 13/10 (có mục 4b thử tắt từng cơ chế + tờ cận mặt)"   # in ở đầu báo cáo: biết bản nào đã chạy
+PHIEN = "v4 14/10 (4b: A = Canon chuyển dần, A0 = công tắc cũ)"   # in ở đầu báo cáo: biết bản nào đã chạy
 
 
 def _so(v):
@@ -94,7 +94,7 @@ def cap_lech(items: list) -> list:
 
 def to_mat(ds: list, dest: Path, so_a: dict, so_c: dict, toi_da: int = 40) -> int:
     """Tờ ảnh CẬN MẶT: khung mặt đem đo, điểm có kênh lớn nhất ≥ 220/255 tô hồng (vùng
-    "da sáng" mà cách đo theo vùng da sáng nhìn vào). Nhãn: mặt đo A (hiện tại) / C (tắt vùng da sáng)."""
+    "da sáng" mà cách đo theo vùng da sáng nhìn vào). Nhãn: mặt đo công tắc cũ (A0) / hiện tại (A)."""
     import autotone as at
     import numpy as np
     from PIL import Image, ImageDraw
@@ -299,11 +299,15 @@ def main() -> int:
     #  Chỉ CHẨN ĐOÁN: đo lại / tính lại bằng chính analyze() + plan() với một khoá cfg đổi.
     #  Biến thể nào làm hết cặp lệch thì cơ chế đó là thủ phạm trên bộ ảnh này.
     p("\n4b. THỬ TẮT TỪNG CƠ CHẾ (đo lại / tính lại bằng hàm thật — chỉ để chẩn đoán)")
-    p("   A hiện tại · B tắt 'mặt nét sáng nhất' (mat_sang_nhat) · C tắt 'đo theo vùng da sáng'"
+    p(f"   A hiện tại (đo vùng da sáng chuyển dần theo máy: {cfg.get('hl_da_tron_theo_may')})"
+      " · A0 công tắc cũ trước 14/10 (hl_da_tron_theo_may = {})"
+      " · B tắt 'mặt nét sáng nhất' (mat_sang_nhat) · C tắt hẳn 'đo theo vùng da sáng'"
       f" (hl_da_ti_le {cfg.get('hl_da_ti_le')} -> 0) · D tắt cả hai")
     do_c, _ = at.analyze(pairs, dict(cfg, hl_da_ti_le=0.0), jobs)
+    do_a0, _ = at.analyze(pairs, dict(cfg, hl_da_tron_theo_may={}), jobs)
     bien: dict = {"A": items}
-    for ten, goc, them in (("B", goc_do, {"mat_sang_nhat": False}),
+    for ten, goc, them in (("A0", do_a0, {"hl_da_tron_theo_may": {}}),
+                           ("B", goc_do, {"mat_sang_nhat": False}),
                            ("C", do_c, {"hl_da_ti_le": 0.0}),
                            ("D", do_c, {"hl_da_ti_le": 0.0, "mat_sang_nhat": False})):
         ds_b = copy.deepcopy(goc)
@@ -312,19 +316,20 @@ def main() -> int:
     dv = {k: {r["path"]: r.get("delta_ev") for r in v} for k, v in bien.items()}
     mat_c = {r["path"]: r.get("metered_face_ev") for r in do_c}
     mat_a = {r["path"]: r.get("metered_face_ev") for r in goc_do}      # số đo của measure, trước plan
+    mat_a0 = {r["path"]: r.get("metered_face_ev") for r in do_a0}
     p("   số cặp lệch > %.2f:  " % LECH_EV + " · ".join(f"{k} {len(cap_lech(v))}" for k, v in bien.items()))
-    nghi = {r["path"] for _, x, y in cap for r in (x, y)}
+    nghi = {r["path"] for v in (items, bien["A0"]) for _, x, y in cap_lech(v) for r in (x, y)}
     canh = {r.get("scene") for r in items if r["path"] in nghi}
     xem = [r for r in sorted(items, key=lambda r: r["dt_obj"]) if r.get("scene") in canh][:60]
     if xem:
-        p("   tên | ΔEV A | B | C | D | mặt đo A | mặt đo C (không đo vùng da sáng) | mặt sau plan A | cảnh")
+        p("   tên | ΔEV A | A0 | B | C | D | mặt đo A | A0 | C (không đo vùng da sáng) | mặt sau plan A | cảnh")
         for r in xem:
             q = r["path"]
-            p(f"   {Path(q).name} | {_f(dv['A'].get(q))} | {_f(dv['B'].get(q))} | {_f(dv['C'].get(q))} | "
-              f"{_f(dv['D'].get(q))} | {_f(mat_a.get(q))} | {_f(mat_c.get(q))} | {_f(r.get('metered_face_ev'))} | "
-              f"{r.get('scene')}")
+            p(f"   {Path(q).name} | {_f(dv['A'].get(q))} | {_f(dv['A0'].get(q))} | {_f(dv['B'].get(q))} | "
+              f"{_f(dv['C'].get(q))} | {_f(dv['D'].get(q))} | {_f(mat_a.get(q))} | {_f(mat_a0.get(q))} | "
+              f"{_f(mat_c.get(q))} | {_f(r.get('metered_face_ev'))} | {r.get('scene')}")
     if a.mat and xem:
-        n = to_mat(xem, Path(a.mat), mat_a, mat_c)
+        n = to_mat(xem, Path(a.mat), mat_a0, mat_a)
         p(f"   tờ ảnh cận mặt ({n} tấm, hồng = điểm ≥ 220/255): {a.mat}")
 
     # ---------------------------------------------------------------- 5. từng ảnh

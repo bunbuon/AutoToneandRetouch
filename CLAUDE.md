@@ -88,6 +88,7 @@ python3 test_curve_job.py      # curve qua mốc / bản xuất / job — chạy
 python3 kiem_curve_lua.py      # plugin: ô curve, so curve, xuất curve, job @curve, dựng lượt 2 (lupa; 13/10)
 python3 test_cr3.py            # Canon CR3: EXIF CMT1/CMT2, ảnh nhúng, xoay, gom loạt (13/10; AUTOTONE_CR3=<file thật>)
 python3 test_dinh_dang_raw.py  # 8 đuôi CR2 CR3 CRW NEF NRW ARW SRF SR2: CRW (CIFF), ISO Nikon MakerNote, file hỏng (13/10; AUTOTONE_RAW_MAU=<thư mục>)
+python3 test_da_sang_tron.py   # đo vùng da sáng chuyển dần CHỈ Canon; Sony / Nikon y hệt + SỐ CHUẨN code cũ (14/10)
 python3 kiem_ban_xuat.py       # app đọc lại bản xuất (cần tkinter)
 python3 kiem_xuat_lr.py        # khâu 5 — bắt đường dẫn Export
 python3 kiem_tim_tool.py       # tìm tool retouch
@@ -1041,6 +1042,42 @@ Kiểm: `test_cr3.py` (CR3 giả đúng cấu trúc hộp; thử ngược 14 đ�
 (8 đuôi, CRW giả bố cục như file 10D với ShotInfo THẬT + số ExifTool, CRW / CR3 hỏng, ISO
 Nikon; thử ngược 22 đột biến) — 36/36 đỏ (`cr3/dot_bien_dd.py` trong scratchpad). Bộ 32 file
 thật: `AUTOTONE_RAW_MAU=<thư mục> python3 test_dinh_dang_raw.py`.
+
+## Đo vùng da sáng CHUYỂN DẦN — CHỈ Canon (14/10) — `hl_da_tron_theo_may` {"CANON": 15}, BẬT
+
+User (bộ CR3 Canon EOS R `G:\TestThacCao\test`, 42 ảnh, nắng trưa 11:41–12:00, da trắng):
+sau khi CR3 đọc đúng, vẫn "cùng khung cảnh mà bức sáng bức tối". `KIEM_RAW_THAT.bat`
+(`kiem_raw_that.py`) trên máy user: NHFT1457–1462 (cùng hai người, 1/500 f/4 ISO 250)
+Exposure −0.33 −0.33 −0.34 +0.15 +0.15 −0.34; NHFT1433–37 −0.35 cạnh 1438–40 +0.11. Số đo mặt
+chỉ HAI mức: −0.66 hoặc −1.1..−1.2. Mục 4b (đo lại bằng analyze + plan thật): tắt
+`mat_sang_nhat` 4 → 3 cặp lệch > 0.30; tắt `hl_da_ti_le` (đo theo vùng da sáng) 4 → **0**.
+Tờ cận mặt: các tấm −0.66 là mặt dính nắng (8–27% điểm ≥ 220/255 trong ô).
+
+Gốc: công tắc `hl_da_ti_le` 30% — ≥ 30% da có kênh lớn nhất ≥ 220 thì đo RIÊNG phần đó. Đổi
+chế độ là đổi cả TẬP ĐIỂM: số đo mặt, p95 da (phanh chống cháy) và màu da (WB) cùng nhảy.
+Mặt nửa nắng nửa bóng nhảy mạnh nhất (đo thường gồm cả phần bóng). Tỉ lệ % da sáng tăng DỐC
+theo phơi sáng (D810: 20% → 30% → 41% trong 0.10 EV) nên trộn theo % KHÔNG mượt (+0.16 —
+đã thử, bỏ). Tắt hẳn quy tắc: p95 lúc đó lấy trong dải p30–p90 (≤ p90 da) → phanh da yếu đi
+với mặt dính nắng — rủi ro, không làm.
+
+Sửa (`measure()`, nhánh `tron_da > 0`): trọng số theo ĐỘ SÁNG phân vị (100 − hl_da_ti_le) của
+kênh lớn nhất — đúng đại lượng công tắc cũ so với 220 — trong [220 − tron, 220 + tron] mức
+sRGB; "phần da sáng" để trộn = điểm ≥ min(220, phân vị đó) (dưới ngưỡng = đúng 30% sáng nhất,
+tập công tắc cũ nhìn vào lúc bật; lấy tập ≥ 220 khi mới vài % vượt thì trung bình vọt +0.08).
+Số đo mặt trộn tuyến tính, điểm màu / p95 lấy hai tập theo cùng tỉ lệ. Hai đầu dải = ĐÚNG cách
+cũ. `tron_theo_may(tags, bang)`: chuỗi trong "HÃNG MÁY" viết hoa; bảng vào `cau_hinh_do`
+(cuối, tuple — đổi bảng = đo lại). `face_debug[].da_sang` = % da sáng (truy lỗi).
+
+**User chốt (14/10): "đặt ra các case theo loại máy — sửa mà làm thay đổi những gì đã đạt ở
+Sony và Nikon thì không được".** Nên bảng CHỈ có Canon; máy không khớp đi đúng nhánh cũ.
+Chứng minh: 27 file RAW thật (Sony 6, Nikon 11, Canon 10) measure() Y HỆT code trước sửa
+(commit 8f50502, so toàn bộ dict); `test_da_sang_tron.py` (Sony / Nikon / không EXIF y hệt ở
+23 mức sáng + Sony khớp SỐ CHUẨN đo bằng code cũ; Canon: cú nhảy +0.110 → +0.027, không
+sinh bước mới, hai đầu y hệt, ca đốm sáng). Thử ngược 9/9 (`cr3/dot_bien_ds.py` scratchpad)
+— đột biến "đổi ngưỡng công tắc cũ" chỉ bị SỐ CHUẨN bắt (so code với chính nó thì lọt).
+**Tiêu chí đặt TRƯỚC khi user chạy lại `KIEM_RAW_THAT.bat` trên TestThacCao** (cột A mục 4b):
+cặp liền nhau cùng thông số lệch > 0.30 EV = 0. Không đạt → tắt (bảng `{}`), ghi lại, không
+nới. Chưa có buổi Canon nào có đáp án tay → cần user xem tận mắt sau khi đẩy vào Lightroom.
 
 ## Curve da mặt + nén vùng cháy, đo trên ảnh Lightroom DỰNG (13/10) — `curve_da` / `curve_chay`, TẮT
 

@@ -1506,6 +1506,19 @@ def la_bw_catalog(crs: dict) -> bool:
     return v in ("true", "1")
 
 
+def tron_theo_may(tags: dict, bang) -> float:
+    """Độ rộng dải chuyển dần của "đo theo vùng da sáng" cho máy của ảnh này (0 = công
+    tắc cứng cũ). bang: số (mọi máy) hoặc các cặp (chuỗi, độ rộng) — chuỗi nằm trong
+    "HÃNG TÊN MÁY" viết hoa thì khớp. Xem DEFAULTS["hl_da_tron_theo_may"]."""
+    if isinstance(bang, (int, float)):
+        return float(bang)
+    may = f"{tags.get('make') or ''} {tags.get('model') or ''}".upper()
+    for k, v in (bang.items() if isinstance(bang, dict) else bang or ()):
+        if k and str(k).upper() in may:
+            return float(v)
+    return 0.0
+
+
 def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             wb_needs_faces: bool = False, face_px: int = 1024,
             face_score: float = 0.5, focus_q: float = 0.92,
@@ -1528,7 +1541,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             mat_ao_to_pct: float = 0.0,
             mat_ao_diem: float = 0.6,
             mf_giua_sigma: float = 0.0,
-            canh_p365: bool = False) -> dict:
+            canh_p365: bool = False,
+            hl_da_tron=()) -> dict:
     """Đọc RAW -> preview -> thống kê. Chạy trong worker process."""
     out = {"path": str(path), "ok": False, "error": ""}
     try:
@@ -1745,6 +1759,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             #   đoán.
             #]]
             face_stats = []
+            tron_da = tron_theo_may(tags, hl_da_tron)
             for x, y, bw, bh, s, _eyes in faces:
                 cx, cy = x + bw / 2, y + bh / 2
 
@@ -1838,10 +1853,45 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 #   luminance noi 28% vung da vuot nguong, max(RGB) noi 54% —
                 #   con so thu hai moi dung voi cai mat nhin thay.
                 sel_b = None
+                da_sang_pct = None
+                tron_w = None                # (trọng số vùng sáng, tập điểm sáng) khi trộn
                 if hl_da_ti_le > 0:
                     mx_use = (pc[keep_sk] if keep_sk is not None else pc).max(axis=1)
                     sang = mx_use >= (hl_da_muc / 255.0)
-                    if sang.mean() * 100.0 >= hl_da_ti_le and sang.sum() >= 9:
+                    da_sang_pct = float(sang.mean()) * 100.0
+                    if tron_da > 0:
+                        #[[ 14/10 — CHUYỂN DẦN thay cho bật / tắt ở đúng hl_da_ti_le.
+                        #
+                        #   User (bộ CR3 Canon EOS R G:\TestThacCao\test, nắng trưa, da
+                        #   trắng): cùng hai người, cùng 1/500 f/4 ISO 250 mà Exposure
+                        #   −0.33 / +0.15 xen kẽ. kiem_raw_that mục 4b: số đo mặt chỉ có
+                        #   HAI mức (−0.66 khi da sáng ≥ 30%, −1.1..−1.2 khi dưới) — tắt
+                        #   quy tắc này thì cặp lệch > 0.30 từ 4 về 0. Đổi chế độ là đổi cả
+                        #   TẬP ĐIỂM đo: số đo mặt, p95 da (phanh chống cháy), màu da cùng nhảy.
+                        #
+                        #   Trộn theo ĐỘ SÁNG phân vị (100 − hl_da_ti_le) của kênh lớn nhất
+                        #   — công tắc cũ bật đúng khi nó chạm hl_da_muc — chứ KHÔNG theo
+                        #   tỉ lệ % da sáng: da mịn nên tỉ lệ đó dốc đứng (đo D810: 20% →
+                        #   30% → 41% chỉ trong 0.10 EV), trộn theo % vẫn nhảy +0.16. Độ
+                        #   sáng phân vị thì tăng đều theo phơi sáng. Dải [muc − tron,
+                        #   muc + tron] (mức sRGB); hai đầu dải = ĐÚNG cách đo thường /
+                        #   cách đo vùng sáng cũ, giữa là trộn: số đo mặt trộn tuyến tính,
+                        #   điểm đem tính màu da + p95 lấy theo cùng tỉ lệ từ hai tập.
+                        #   CHỈ máy khớp hl_da_tron_theo_may (mặc định Canon) — Sony /
+                        #   Nikon giữ công tắc cứng cũ TỪNG SỐ. ]]
+                        q_sw = float(np.quantile(mx_use, 1.0 - hl_da_ti_le / 100.0))
+                        w_s = min(1.0, max(0.0, (q_sw * 255.0 - (hl_da_muc - tron_da))
+                                           / (2.0 * tron_da)))
+                        #  "phần da sáng" để trộn = điểm ≥ min(hl_da_muc, phân vị đó): dưới
+                        #  ngưỡng cũ là đúng hl_da_ti_le% điểm sáng nhất — tập công tắc cũ
+                        #  nhìn vào lúc bật — nên số đo vùng sáng cũng liên tục (lấy tập
+                        #  ≥ hl_da_muc khi mới vài % điểm vượt thì trung bình vọt, +0.08)
+                        sb = mx_use >= min(hl_da_muc / 255.0, q_sw)
+                        if sb.sum() >= 9 and w_s >= 1.0:
+                            sel_b = sb
+                        elif sb.sum() >= 9 and w_s > 0.0:
+                            tron_w = (w_s, sb)
+                    elif da_sang_pct >= hl_da_ti_le and sang.sum() >= 9:
                         sel_b = sang
                 if sel_b is None:
                     lo, hi = np.quantile(pv_use, 0.30), np.quantile(pv_use, 0.90)
@@ -1866,6 +1916,23 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                         bonus = float(np.clip((float(cell.mean()) - q50)
                                               / (q95 - q50), 0.0, 1.0))
                 px = linf[y0:y1, x0:x1].reshape(-1, 3)[sel]
+                ev_o = float(np.log2(pv[sel] + EPS).mean())
+                if tron_w is not None:
+                    w_s, sb2 = tron_w
+                    if keep_sk is None:
+                        sel2 = sb2
+                    else:
+                        sel2 = np.zeros_like(sk)
+                        sel2[np.flatnonzero(sk)[sb2]] = True
+                    px2 = linf[y0:y1, x0:x1].reshape(-1, 3)[sel2]
+                    ev_o = (1.0 - w_s) * ev_o + w_s * float(np.log2(pv[sel2] + EPS).mean())
+                    #  điểm cho màu da / p95: lấy đều từ hai tập theo đúng tỉ lệ trộn
+                    n_ = max(len(px), len(px2))
+                    k1, k2 = int(round((1.0 - w_s) * n_)), int(round(w_s * n_))
+                    ch = [a_[np.linspace(0, len(a_) - 1, k_).round().astype(int)]
+                          for a_, k_ in ((px, k1), (px2, k2)) if k_ > 0 and len(a_)]
+                    if ch:
+                        px = np.concatenate(ch, axis=0)
 
                 #[[ Trọng số: diện tích DỊU đi bằng căn bậc hai, còn độ nét và
                 #   độ tin cậy thì tính đủ.
@@ -1885,7 +1952,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 #   nay dung, thay vi dung lai logic loc o file khac roi lech
                 #   voi ban that — da mac dung loi do mot lan trong du an nay.
                 #]]
-                face_patches.append((float(np.log2(pv[sel] + EPS).mean()), w, px,
+                face_patches.append((ev_o, w, px,
                                      bonus, on_af, (float(x), float(y), float(bw),
                                                     float(bh), float(s))))
 
@@ -1901,9 +1968,11 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                     "w": float(w),
                     "bonus": float(bonus),
                     "on_af": bool(on_af),
-                    "ev": float(np.log2(pv[sel] + EPS).mean()),
+                    "ev": ev_o,
                     # dien tich mat so voi ca khung, tinh theo %
                     "area_pct": 100.0 * (bw * bh) / float(max(fw_ * fh_, 1)),
+                    # % da co kenh lon nhat >= hl_da_muc (None khi hl_da_ti_le = 0)
+                    "da_sang": None if da_sang_pct is None else round(da_sang_pct, 1),
                 })
 
                 # chỉ chấm điểm cho khuôn mặt NẶNG KÝ NHẤT (chủ thể)
@@ -2866,6 +2935,16 @@ DEFAULTS = {
     #]]
     "hl_da_muc": 220.0,
     "hl_da_ti_le": 30.0,
+    #[[ 14/10 — THEO MAY: {"chuoi trong ten hang + ten may": nua do rong dai, MUC sRGB}.
+    #   May khop -> do mat CHUYEN DAN khi phan vi (100 - hl_da_ti_le) cua kenh lon nhat
+    #   di qua [hl_da_muc - tron, hl_da_muc + tron], thay vi bat / tat cung (so do mat,
+    #   p95 da, mau da nhay bac giua hai tam lien nhau — bo CR3 Canon EOS R
+    #   G:\TestThacCao\test). Xem measure(). May KHONG khop giu dung cong
+    #   tac cu tung so: user "sua ma thay doi nhung gi da dat duoc o Sony va Nikon thi
+    #   khong duoc" — test_da_sang_tron.py canh Sony / Nikon y het. {} = tat moi may.
+    #   Tieu chi dat TRUOC khi user chay lai kiem_raw_that tren bo Canon: cap lien
+    #   nhau cung thong so lech > 0.30 EV = 0. ]]
+    "hl_da_tron_theo_may": {"CANON": 15.0},
     #[[ Tran chay sang MOI SINH RA tren vung chu the (mat + than), tinh %.
     #
     #   Bo sung cho hl_hard_pct (nhin ca khung) va skin_hard_p95 (nhin rieng
@@ -9737,7 +9816,10 @@ def cau_hinh_do(cfg: dict) -> tuple:
             float(cfg.get("mat_ao_to_pct", 0.0)),
             float(cfg.get("mat_ao_diem", 0.6)),
             float(cfg.get("mf_giua_sigma", 0.0)),
-            bool(cfg.get("canh_p365", True)))
+            bool(cfg.get("canh_p365", True)),
+            #  bang theo may -> tuple cap (hashable: khoa ket qua do luu)
+            tuple(sorted((str(k).upper(), float(v)) for k, v in
+                         dict(cfg.get("hl_da_tron_theo_may") or {}).items())))
 
 
 #[[ KET QUA PHAN TICH LUU THEO BUOI (8/10).
