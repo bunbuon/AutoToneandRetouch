@@ -1096,6 +1096,11 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
     Tên thanh kéo / nhóm mặt đến từ saytool lúc chạy — thêm tay (khối TU_DIEN.update cuối file).
     Tên menu plugin Lightroom ("AutoTone: …") GIỮ tiếng Việt trong câu tiếng Anh.
   Bài kiểm: test_ngon_ngu.py (hàm dịch, chọn ngôn ngữ, app dựng bằng tiếng Anh).
+  Phát hành 13/10: push e5f9e73, Mac build 38333786203 (arm) + 38333795093 (intel), OTA 13.4
+  (win + mac-arm64 + mac-x86_64) trên release app-latest. OTA KHÔNG mang plugin Lua → Denoise
+  / DanhSachCore chỉ có khi cài bản đầy đủ + khởi động lại Lightroom. Từ nay user muốn build Mac
+  CHỈ arm (`loai_mac=apple-silicon`); Intel chỉ khi user yêu cầu (latest.json khi đó thiếu khối
+  mac-x86_64 — máy Intel giữ bản cũ).
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
