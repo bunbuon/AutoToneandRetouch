@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 LECH_EV = 0.30          # cặp liền nhau lệch hơn mức này thì liệt kê (ngưỡng "dời" của các cổng)
+PHIEN = "v3 13/10 (có mục 4b thử tắt từng cơ chế + tờ cận mặt)"   # in ở đầu báo cáo: biết bản nào đã chạy
 
 
 def _so(v):
@@ -217,7 +218,7 @@ def main() -> int:
         print(s, flush=True)
 
     p(f"KIỂM RAW THẬT — {folder}   ({time.strftime('%d/%m/%Y %H:%M')})")
-    p(f"engine {at.dau_engine()}")
+    p(f"công cụ {PHIEN} · engine {at.dau_engine()}")
     if not folder.is_dir():
         p("KHÔNG THẤY THƯ MỤC.")
         return 2
