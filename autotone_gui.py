@@ -728,7 +728,8 @@ class App(XuLyAnhMixin, ttk.Frame):
         import cot_thu_muc
         self.cot_thu_muc = cot_thu_muc.CotThuMuc(
             than, khi_chon=self._mo_buoi_tu_cot, khi_lam_moi=self._lam_moi_thu_muc_lr,
-            rong=round(gd.don_vi(self) * 14), khi_gon=self._gon_thu_muc)
+            rong=round(gd.don_vi(self) * 14), khi_gon=self._gon_thu_muc,
+            khi_import=self.pick_folder, khi_export=lambda: self.do_xuat_hop())
         self.cot_thu_muc.grid(row=0, column=0, sticky="ns")
         self._vach_thu_muc = tk.Frame(than, width=1, background=m["vien"])
         self._vach_thu_muc.grid(row=0, column=1, sticky="ns")
@@ -2980,15 +2981,9 @@ class App(XuLyAnhMixin, ttk.Frame):
         #[[ 9/10 — NUT XUAT: Lightroom xuat anh co goc theo thong so Export cua no
         #   -> app retouch ngay trong luc xuat hay sau khi xuat xong — MOT thao
         #   tac. Xem xuat_ui.py + do_xuat_hop. Tien do o trang Xu ly & xuat. ]]
-        self.btn_xuat_anh = gd.NutTron(cha, "Xuất ảnh…", kieu="toi", nen=m["nen"],
-                                       icon="xuat_anh", command=self.do_xuat_hop)
-        self.btn_xuat_anh.pack(side="left", padx=(0, 8))
-        self.btn_xuat_anh.goi_y = gd.GoiY(
-            self.btn_xuat_anh,
-            "Lightroom xuất ảnh cỡ gốc rồi app retouch — một thao tác.\n"
-            "Hộp thoại chọn: chất lượng JPEG, thư mục xuất, ảnh retouch ghi đâu, "
-            "cache xem trước, retouch ngay trong lúc xuất hay sau khi xuất xong "
-            "(có kiểm tài nguyên máy). Tiến độ ở bước 5 · Xử lý & xuất.")
+        #[[ 13/10 (user: "Bo nut Xuat anh ben phai di"): Export… nam DUOI cot Thu muc
+        #   (cot_thu_muc.btn_export) — giu ten btn_xuat_anh cho cho cu / bai kiem. ]]
+        self.btn_xuat_anh = self.cot_thu_muc.btn_export
         #[[ 13/10 (user: "Dua quy trinh Phan tich va Ap vao Lightroom thanh 1 nut
         #   bam Xu ly anh"): phan tich (chi do anh chua co ket qua) -> tu ap ->
         #   (Denoise) -> hop tong ket. Xem xu_ly_anh_ui.py. ]]
@@ -5308,7 +5303,7 @@ class App(XuLyAnhMixin, ttk.Frame):
         try:
             if busy:
                 self.btn_cancel.pack(side="left", padx=(0, 6),
-                                     before=self.btn_xuat_anh)
+                                     before=self.btn_xu_ly)
             else:
                 self.btn_cancel.pack_forget()
         except tk.TclError:

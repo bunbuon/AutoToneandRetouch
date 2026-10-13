@@ -128,7 +128,8 @@ def _tu_nhien(s: str):
 class CotThuMuc(tk.Frame):
     """Cột trái của Cân sáng: ổ đĩa → thư mục (Lightroom + các buổi đã mở)."""
 
-    def __init__(self, cha, khi_chon, khi_lam_moi=None, rong: int = 220, khi_gon=None):
+    def __init__(self, cha, khi_chon, khi_lam_moi=None, rong: int = 220, khi_gon=None,
+                 khi_import=None, khi_export=None):
         m = gd.MAU
         super().__init__(cha, background=m["nen"])
         self._khi_chon = khi_chon
@@ -149,6 +150,16 @@ class CotThuMuc(tk.Frame):
                                       nen=m["nen"], command=lambda: self._doi_gon(False))
         self.btn_mo_rong.goi_y = gd.GoiY(self.btn_mo_rong, "Mở cột Thư mục")
         self.btn_mo_rong.pack(side="top", pady=(14, 0), padx=4)
+        #  dải thu gọn cũng có Import / Export (chỉ biểu tượng)
+        self.btn_import_gon = gd.NutTron(self._thanh_gon, "", icon="tai", kieu="chu",
+                                         nen=m["nen"], command=lambda: self._goi(khi_import))
+        self.btn_import_gon.goi_y = gd.GoiY(self.btn_import_gon, "Import… — mở thư mục ảnh RAW")
+        self.btn_export_gon = gd.NutTron(self._thanh_gon, "", icon="xuat_anh", kieu="chu",
+                                         nen=m["nen"], command=lambda: self._goi(khi_export))
+        self.btn_export_gon.goi_y = gd.GoiY(self.btn_export_gon,
+                                            "Export… — Lightroom xuất ảnh rồi retouch")
+        self.btn_export_gon.pack(side="bottom", pady=(4, 14), padx=4)
+        self.btn_import_gon.pack(side="bottom", pady=(0, 0), padx=4)
         tk.Frame(self._day, width=rong, height=1, background=m["nen"]).pack(anchor="w")
         dau = tk.Frame(self._day, background=m["nen"], padx=16)
         dau.pack(fill="x", pady=(14, 6))
@@ -202,6 +213,28 @@ class CotThuMuc(tk.Frame):
         self.cay.column("#0", width=max(120, rong - 70), stretch=True)
         self.cay.column("so", width=56, anchor="e", stretch=False)
         self.cay.grid(row=0, column=0, sticky="nsew")
+        #[[ 13/10 (user: "them nut Import va Export ben duoi folder nhu window(s)" —
+        #   anh chup Lightroom: hai nut Import… / Export… cuoi cot trai). Import = mo
+        #   thu muc anh RAW (buoi moi); Export = hop Xuat (Lightroom xuat + retouch) —
+        #   thay nut "Xuat anh…" o thanh duoi. ]]
+        self._day_nut = tk.Frame(self._day, background=m["nen"])
+        self._day_nut.columnconfigure(0, weight=1, uniform="ie")
+        self._day_nut.columnconfigure(1, weight=1, uniform="ie")
+        self.btn_import = gd.NutTron(self._day_nut, "Import…", kieu="toi", nen=m["nen"],
+                                     command=lambda: self._goi(khi_import))
+        self.btn_import.goi_y = gd.GoiY(self.btn_import,
+                                        "Mở một thư mục ảnh RAW (buổi chụp) vào tool.")
+        self.btn_import.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.btn_export = gd.NutTron(self._day_nut, "Export…", kieu="toi", nen=m["nen"],
+                                     command=lambda: self._goi(khi_export))
+        self.btn_export.goi_y = gd.GoiY(
+            self.btn_export,
+            "Lightroom xuất ảnh cỡ gốc rồi app retouch — một thao tác.\n"
+            "Hộp thoại chọn: chất lượng JPEG, thư mục xuất, ảnh retouch ghi đâu, "
+            "cache xem trước, retouch ngay trong lúc xuất hay sau khi xuất xong "
+            "(có kiểm tài nguyên máy). Tiến độ ở bước 5 · Xử lý & xuất.")
+        self.btn_export.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self._day_nut.pack(side="bottom", fill="x", padx=(12, 8), pady=(0, 12), before=khung)
         self.thanh = ttk.Scrollbar(khung, orient="vertical", command=self.cay.yview)
         self.cay.configure(yscrollcommand=self._dat_thanh)
         self.cay.tag_configure("dia", foreground=m["chu"], font=gd.phong(9, "dam"))
@@ -231,6 +264,11 @@ class CotThuMuc(tk.Frame):
         else:
             self._thanh_gon.pack_forget()
             self._day.pack(fill="both", expand=True)
+
+    @staticmethod
+    def _goi(ham):
+        if ham is not None:
+            ham()
 
     def _doi_gon(self, gon: bool):
         """Người dùng bấm ‹ / biểu tượng thư mục."""

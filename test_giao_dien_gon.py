@@ -230,7 +230,11 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
             "Thiết lập": app.btn_thiet_lap}
     vang = [k for k, w in tren.items()
             if not (la_con_cua(w, cc) and w.winfo_ismapped())]
-    duoi = {"Xuất ảnh": app.btn_xuat_anh, "Xử lý ảnh": app.btn_xu_ly}
+    duoi = {"Xử lý ảnh": app.btn_xu_ly}
+    #  13/10: Import… / Export… nằm dưới cột Thư mục (bỏ "Xuất ảnh…" ở thanh dưới)
+    vang += [k for k, w in (("Import", app.cot_thu_muc.btn_import), ("Export", app.cot_thu_muc.btn_export))
+             if not (la_con_cua(w, app.cot_thu_muc) and w.winfo_ismapped())]
+    vang += ["Xuất ảnh ở thanh dưới"] if la_con_cua(app.btn_xuat_anh, app.thanh_tt) else []
     vang += [k for k, w in duoi.items()
              if not (la_con_cua(w, app.thanh_tt) and w.winfo_ismapped())]
     ktra("thanh trên: buổi ▾ · lần gửi · ⋯ · Thiết lập; thanh dưới: Xuất ảnh · Xử lý ảnh",
