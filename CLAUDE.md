@@ -124,6 +124,7 @@ python3 dong_goi.py --khong-retouch --khong-khoa   # đóng .app trên Mac
 python3 chan_doan.py "/thu/muc/anh"        # chẩn đoán khâu Phân tích
 python3 chan_doan.py --anh "ANH.ARW"       # số đo thô một tấm, để so hai máy
 python3 chan_doan.py --plugin              # thư mục plugin phải Add
+python3 kiem_raw_that.py "/thu/muc/anh"    # RAW THẬT trên máy user: EXIF từng file, đo, plan, cặp lệch sáng, tờ ảnh nhỏ (KIEM_RAW_THAT.bat)
 python3 dong_goi.py --bao-mat              # đóng gói BẢN MÃ HOÁ LÕI (xem dưới)
 ```
 
@@ -1023,6 +1024,18 @@ kiểm dựng TIFF giả dưới từng đuôi). Ảnh D70 dọc: preview Nikon 
 — đúng, đừng "sửa".
 Chưa làm cho Canon: điểm AF + WB máy trong MakerNote CMT3 (luật AF / WB theo máy chỉ có
 Sony / Nikon). Muốn làm phải có CR3 thật của user để đối chiếu, như Nikon 29/9.
+
+**Đang treo — MẶT GIẢ NHỎ thắng mặt thật khi KHÔNG có điểm AF** (Canon hiện thuộc diện này):
+bộ mẫu D70s "Issue 247" (4 tấm gần y hệt, cùng 1/60 f/2.8 ISO 200, cách vài giây) ra ΔEV
++1.66 / +0.20 / +1.75 / +0.34. Tấm 1 và 3 đo một "mặt" 9×10 px điểm YuNet 0.51 trên hoa văn
+áo thay cho mặt thật 121×153 điểm 0.90: nhánh "lọc theo độ nét" của measure (không AF thì
+giữ mặt có `bonus` ≥ bmax − 0.25 / − 0.15) lấy bmax từ CHÍNH khung giả (bonus 1.0, vùng áo
+nét hơn mặt 0.61) → mặt thật bị loại trước cả bước trọng số (w 271 vs 14.5). Mặt đo nhảy
+−2.54 ↔ −4.00 EV, loạt không gom (bố cục 0.12 > 0.10). Có thể là cùng cơ chế với ca
+"đo nhầm mặt −4.25" SUB_6486 (2709) ở mục dong_bo_loat. CHƯA SỬA: mọi luật mới phải qua
+cổng (TrainTool / 2609 trên máy Windows). Hướng đề xuất: bmax chỉ lấy trong khung điểm ≥
+`mat_ao_diem` (0.6, ngưỡng có sẵn) khi ảnh có khung như vậy. `kiem_raw_that.py` in ra
+"khung đem đo điểm < 0.6 trong khi ảnh có khung tin chắc hơn" + vẽ khung đỏ trên tờ ảnh nhỏ.
 
 Kiểm: `test_cr3.py` (CR3 giả đúng cấu trúc hộp; thử ngược 14 đột biến), `test_dinh_dang_raw.py`
 (8 đuôi, CRW giả bố cục như file 10D với ShotInfo THẬT + số ExifTool, CRW / CR3 hỏng, ISO

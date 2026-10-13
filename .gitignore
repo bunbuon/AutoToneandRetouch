@@ -90,3 +90,7 @@ AutoTone.lrplugin/jobs_dir.txt
 
 #  12/10: may nhan gop y tu tao luc chay (chua khoa chung)
 may_nhan/may_nhan_gop_y.json
+
+#  ket qua KIEM_RAW_THAT.bat (kiem_raw_that.py) — bao cao tren may nguoi dung
+ket_qua_kiem_raw.txt
+kiem_raw_luoi.jpg
