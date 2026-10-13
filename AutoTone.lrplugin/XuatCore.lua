@@ -142,25 +142,11 @@ function M.docDong(dong)
     return folder, opts, ts
 end
 
---[[ 12/10: so duong dan khong phan biet hoa thuong / dau gach (Windows). ]]
-function M.chuanDuong(p)
-    local s = string.lower(tostring(p or ""))
-    s = string.gsub(s, "/", "\\")
-    return s
-end
-
---[[ Ham THUAN: giu lai anh co duong dan nam trong ds (ds rong -> giu het).
-     layDuong(photo) -> duong dan (bai kiem truyen ham gia, khong can Lightroom). ]]
-function M.locTheoDs(photos, ds, layDuong)
-    if type(ds) ~= "table" or #ds == 0 then return photos end
-    local muon = {}
-    for i = 1, #ds do muon[M.chuanDuong(ds[i])] = true end
-    local ra = {}
-    for i = 1, #photos do
-        if muon[M.chuanDuong(layDuong(photos[i]))] then ra[#ra + 1] = photos[i] end
-    end
-    return ra
-end
+--[[ 12/10: so duong dan khong phan biet hoa thuong / dau gach (Windows); giu anh co
+     duong dan nam trong ds (ds rong -> giu het). 13/10: doi sang AutoToneCore (DuyetCore
+     cung can) — o day la bi danh, bai kiem va cho goi cu khong doi. ]]
+M.chuanDuong = Core.chuanDuong
+M.locTheoDs = Core.locTheoDs
 
 -- ----------------------------------------------------------------- xuất ảnh
 

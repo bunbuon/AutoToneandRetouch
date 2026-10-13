@@ -187,6 +187,13 @@ LrTasks.startAsyncTask(function()
         if Duyet then
             local _, errD = Core.try("autoDuyet", Duyet.runRequest)
             if errD then Core.log("LOI yeu cau duyet: " .. tostring(errD)) end
+            --[[ 13/10: luot 2 cua "Xu ly anh" (curve da / nen chay) — dung anh da ap
+                 thong so cho app do. Chieu DOC (khong doi anh) nen chay bat ke autoApply;
+                 viec GHI curve van di job ap thuong (runPending). ]]
+            if type(Duyet.runRequestCurve) == "function" then
+                local _, errCv = Core.try("autoDoCurve", Duyet.runRequestCurve)
+                if errCv then Core.log("LOI yeu cau do curve: " .. tostring(errCv)) end
+            end
             local _, errM = Core.try("autoDanhDau", Duyet.runDanhDau)
             if errM then Core.log("LOI yeu cau danh dau: " .. tostring(errM)) end
         end

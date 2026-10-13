@@ -1894,4 +1894,84 @@ TU_DIEN.update({
     'Bản AutoTone này đã cũ. Cập nhật bản mới để dùng tiếp.': 'This AutoTone version is outdated. Update to keep using it.',
     'Mã ảnh gửi lên máy chủ không hợp lệ.': 'The photo IDs sent to the server are invalid.',
     'Gửi quá nhiều ảnh trong một lần.': 'Too many photos sent at once.',
+    # curve da + nén cháy (13/10)
+    'Curve R/G/B: da mặt về màu đích': 'R/G/B curve: facial skin to the target colour',
+    'Curve tổng: nén vùng cháy sáng': 'Master curve: compress blown highlights',
+    ('Sau khi áp WB / Tone, Lightroom dựng lại ảnh, app tách mặt nạ da mặt và '
+     'đo TỪNG điểm da, rồi chỉnh ba kênh R / G / B của curve để da về màu đích '
+     '(mẫu màu da nếu có). Ghép vào curve của preset, không ghi đè.\n'
+     '· Chỉ chỉnh dải sáng của da; vùng trắng / xám cùng độ sáng không được ám '
+     'quá 0,003 (OkLab) — vượt thì thu bớt.\n'
+     '· Không tới được đích thì vẫn chỉnh phần làm da gần đích hơn (không đổi '
+     'xấu hue để được chroma hay ngược lại).\n'
+     '· Cả loạt ảnh liền nhau cùng một curve. Cần nguồn catalog và plugin bản '
+     'mới; thêm ~7–10 phút / 1000 ảnh.'):
+        ('After WB / Tone are applied, Lightroom re-renders the photos, the app separates a '
+         'facial-skin mask and measures EVERY skin pixel, then adjusts the R / G / B curve '
+         'channels so the skin reaches the target colour (the skin sample if one is chosen). '
+         "Merged into the preset's curve, never overwritten.\n"
+         "· Only the skin's brightness band is adjusted; whites / greys at the same brightness "
+         'may not shift more than 0.003 (OkLab) — if they would, the change is scaled down.\n'
+         '· If the target cannot be reached, the part that brings the skin closer is still '
+         'applied (never trading worse hue for better chroma or vice versa).\n'
+         '· Consecutive burst shots share one curve. Needs the catalog source and the new '
+         'plugin; adds ~7–10 min / 1000 photos.'),
+    ('Sau khi áp WB / Tone, ảnh Lightroom dựng còn cháy (≥ 2% khung có kênh ≥ 250, '
+     'đã bỏ đốm bóng) thì bẻ ĐỈNH curve tổng: dưới mức sáng của da giữ nguyên, '
+     'phần sáng nhất hạ xuống (đỉnh không dưới 235).\n'
+     '· Chỗ đã cháy hẳn trong RAW không lấy lại được chi tiết — thành trắng xám '
+     'phẳng.\n'
+     '· Cả loạt ảnh liền nhau cùng một mức nén.'):
+        ('If the Lightroom render is still blown after WB / Tone (≥ 2% of the frame with a '
+         'channel ≥ 250, specular dots ignored), the TOP of the master curve is bent: below '
+         'the skin brightness nothing changes, the brightest part is pulled down (the top '
+         'never goes below 235).\n'
+         '· Areas fully clipped in the RAW cannot get detail back — they become flat light grey.\n'
+         '· Consecutive burst shots share one compression level.'),
+    ' · Curve da': ' · Skin curve',
+    ' · nén cháy': ' · highlight compression',
+    'Curve da mặt & vùng cháy': 'Skin & highlight curve',
+    'plugin trong Lightroom là bản cũ': 'the Lightroom plugin is outdated',
+    'không ảnh nào cần đo': 'no photos to measure',
+    '{} ảnh — chờ Lightroom dựng…': '{} photos — waiting for Lightroom to render…',
+    'Lightroom dựng {} / {} · đã đo {}': 'Lightroom rendered {} / {} · measured {}',
+    'Đo da + vùng cháy {} / {} ảnh': 'Measuring skin + highlights {} / {} photos',
+    'Lightroom chưa nhận yêu cầu dựng ảnh': 'Lightroom has not picked up the render request',
+    'lỗi khi đo / giải': 'error while measuring / solving',
+    'Lightroom không dựng được ảnh ({})': 'Lightroom could not render the photos ({})',
+    'đã gửi curve {} ảnh — chờ Lightroom nhận…': 'curves sent for {} photos — waiting for Lightroom…',
+    'Lightroom đang áp curve': 'Lightroom is applying curves',
+    'đo {} ảnh': 'measured {} photos',
+    'chỉnh da {}': 'skin adjusted {}',
+    'nén cháy {}': 'highlights compressed {}',
+    'không ảnh nào cần đổi curve': 'no photo needs a curve change',
+    'không đo được ảnh nào': 'no photo could be measured',
+    'Đã dừng ở bước Curve — WB / Tone đã áp vào Lightroom, curve chưa ghi.':
+        'Stopped at the Curve step — WB / Tone are applied in Lightroom, curves were not written.',
+    'Đã huỷ gửi curve — WB / Tone đã áp, curve chưa ghi.':
+        'Curve job cancelled — WB / Tone are applied, curves were not written.',
+    'Đã huỷ gửi curve — WB / Tone đã áp.': 'Curve job cancelled — WB / Tone are applied.',
+    'Lightroom đang áp curve — không ngắt giữa chừng được.':
+        'Lightroom is applying curves — it cannot be interrupted midway.',
+    ('⚠ Curve: plugin trong Lightroom là bản cũ — cài lại AutoTone (bản đầy đủ, '
+     'cập nhật OTA không mang plugin) rồi khởi động lại Lightroom.'):
+        ('⚠ Curve: the Lightroom plugin is outdated — reinstall AutoTone (full installer; '
+         'OTA updates do not carry the plugin), then restart Lightroom.'),
+    '⚠ Curve: Lightroom không nhận yêu cầu dựng ảnh sau {} giây — curve chưa ghi.':
+        '⚠ Curve: Lightroom did not pick up the render request after {} seconds — curves were not written.',
+    '⚠ Curve: lỗi — {}.': '⚠ Curve: error — {}.',
+    '· Curve: không ảnh nào cần đo.': '· Curve: no photos to measure.',
+    '· Curve: chỉnh da {} ảnh, nén cháy {} ảnh / {} ảnh đo': '· Curve: skin adjusted on {} photos, highlights compressed on {} / {} measured',
+    ' · {} ảnh da đã đúng đích': ' · {} photos already on the skin target',
+    ' · {} ảnh thu bớt để vùng trắng không ám': ' · {} photos scaled down so whites stay neutral',
+    ' · mặt nạ da DỰ PHÒNG (máy chưa có mô hình phân vùng mặt)': ' · FALLBACK skin mask (no face-parsing model on this machine)',
+    ' · ⚠ {} ảnh Lightroom chưa nhận curve': ' · ⚠ {} photos did not take the curves in Lightroom',
+    'Curve (đo trên ảnh Lightroom dựng) — mặt nạ da: {}, {} điểm da': 'Curve (measured on the Lightroom render) — skin mask: {}, {} skin pixels',
+    'phân vùng mặt': 'face parsing',
+    'dự phòng (elip + màu da)': 'fallback (ellipse + skin colour)',
+    'phân vùng + dự phòng': 'parsing + fallback',
+    '   — da đã đúng đích': '   — skin already on target',
+    'không thấy da trên ảnh dựng': 'no skin found on the render',
+    '  — không nén': '  — not compressed',
+    ' (da quá sáng)': ' (skin too bright)',
 })

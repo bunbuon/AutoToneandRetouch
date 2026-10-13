@@ -484,6 +484,10 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #  13/10: vung trang cua anh mau -> chuoi mau da xet lai WB (mau cu khong co)
         if isinstance(m.get("trang"), dict) and m["trang"].get("trong"):
             out["trang"] = dict(m["trang"])
+        #  13/10: dich do bang mat na phan vung -> curve da cung phep do (mau cu khong co)
+        if m.get("trong_mn"):
+            out["trong_mn"] = list(m["trong_mn"])
+            out["ngoai_mn"] = list(m.get("ngoai_mn") or m["trong_mn"])
         return out
 
     def _ve_mau_da(self):
@@ -589,6 +593,10 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                   "thu_muc": str(Path(fs[0]).parent)}
         if mau.get("trang"):
             d[ten]["trang"] = mau["trang"]
+        #  13/10: đích đo bằng mặt nạ phân vùng — curve da (curve_da.giai_da) dùng
+        for k in ("trong_mn", "ngoai_mn"):
+            if mau.get(k):
+                d[ten][k] = mau[k]
         self._ghi_mau_da(d)
         self.v_mau_da.set(ten)
         self._doi_mau_da()
@@ -2427,6 +2435,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self.v_grade = tk.BooleanVar(value=False)
         self.v_hsl_da = tk.BooleanVar(value=False)    # 9/10: HSL mau da anh cuoi
         self.v_curve = tk.BooleanVar(value=True)
+        #  13/10: curve điểm đo trên ảnh Lightroom dựng (curve_da.py) — mặc định TẮT
+        self.v_curve_da = tk.BooleanVar(value=bool(at.DEFAULTS.get("curve_da", False)))
+        self.v_curve_chay = tk.BooleanVar(value=bool(at.DEFAULTS.get("curve_chay", False)))
         self.v_scenesig = tk.BooleanVar(value=True)
         self.v_canh_may = tk.BooleanVar(             # 12/10: at.group_scenes theo_may
             value=bool(at.DEFAULTS.get("canh_theo_may", True)))
@@ -2782,6 +2793,25 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         ct(g_ghim, self.v_curve, "Tự chỉnh Curve (parametric)",
            "Cộng bốn núi parametric curve (Highlights / Lights / Darks / "
            "Shadows) lên preset; point curve của preset giữ nguyên.")
+        #[[ 13/10: CURVE DIEM do tren anh Lightroom dung (luot 2 cua Xu ly anh, xem
+        #   curve_da.py). User chot: mac dinh TAT cho toi khi xem PDF truoc / sau. ]]
+        ct(g_ghim, self.v_curve_da, "Curve R/G/B: da mặt về màu đích",
+           "Sau khi áp WB / Tone, Lightroom dựng lại ảnh, app tách mặt nạ da mặt và "
+           "đo TỪNG điểm da, rồi chỉnh ba kênh R / G / B của curve để da về màu đích "
+           "(mẫu màu da nếu có). Ghép vào curve của preset, không ghi đè.\n"
+           "· Chỉ chỉnh dải sáng của da; vùng trắng / xám cùng độ sáng không được ám "
+           "quá 0,003 (OkLab) — vượt thì thu bớt.\n"
+           "· Không tới được đích thì vẫn chỉnh phần làm da gần đích hơn (không đổi "
+           "xấu hue để được chroma hay ngược lại).\n"
+           "· Cả loạt ảnh liền nhau cùng một curve. Cần nguồn catalog và plugin bản "
+           "mới; thêm ~7–10 phút / 1000 ảnh.")
+        ct(g_ghim, self.v_curve_chay, "Curve tổng: nén vùng cháy sáng",
+           "Sau khi áp WB / Tone, ảnh Lightroom dựng còn cháy (≥ 2% khung có kênh ≥ 250, "
+           "đã bỏ đốm bóng) thì bẻ ĐỈNH curve tổng: dưới mức sáng của da giữ nguyên, "
+           "phần sáng nhất hạ xuống (đỉnh không dưới 235).\n"
+           "· Chỗ đã cháy hẳn trong RAW không lấy lại được chi tiết — thành trắng xám "
+           "phẳng.\n"
+           "· Cả loạt ảnh liền nhau cùng một mức nén.")
 
         # ------------------------------------------- gom cảnh & đồng bộ
         #[[ HAI LUAT TACH CANH, MOI LUAT MOT CONG TAC.
@@ -2896,7 +2926,8 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                   self.v_dong_bo_loat, self.v_burst, self.v_blink,
                   self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
                   self.v_ngoai_toi, self.v_bu_k, self.v_bu_tint, self.v_mau_da,
-                  self.v_ap_loai, self.v_denoise, self.v_denoise_iso):
+                  self.v_ap_loai, self.v_denoise, self.v_denoise_iso,
+                  self.v_curve_da, self.v_curve_chay):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         self._tom_tat_nhom()
 
@@ -2977,7 +3008,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                      f"×{so(self.v_gain, 1.0):.2f}"),
             "ghim": (((T("Tự kéo ") + ", ".join(ghim)) if ghim else T("Tắt hết"))
                      + (f" · Denoise ISO ≥ {int(so(self.v_denoise_iso, 2000))}"
-                        if self.v_denoise.get() else "")),
+                        if self.v_denoise.get() else "")
+                     + (T(" · Curve da") if self.v_curve_da.get() else "")
+                     + (T(" · nén cháy") if self.v_curve_chay.get() else "")),
             "loai_buoi": (f"{ {'su_kien': 'Sự kiện', 'ky_yeu': 'Kỷ yếu'}.get(loai, 'Cưới') } · bù sáng "
                           f"{so(self.v_bu_sang, 0.0):+.2f} EV"
                           + (f" · WB {so(self.v_bu_k, 0.0):+.0f} K / Tint {so(self.v_bu_tint, 0.0):+.0f}"
@@ -3945,6 +3978,33 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
             pass
         self.dat_nhan_tay(nhan)
         return "break"
+
+    @staticmethod
+    def _dong_curve(cb: dict) -> str:
+        """Báo cáo curve một ảnh (lượt 2, curve_da.ket_thuc) cho bảng Chi tiết."""
+        mn = {"parse": "phân vùng mặt", "du_phong": "dự phòng (elip + màu da)",
+              "tron": "phân vùng + dự phòng"}.get(cb.get("mat_na"), "không có")
+        da, ch = cb.get("da") or {}, cb.get("chay") or {}
+        dong = [f"Curve (đo trên ảnh Lightroom dựng) — mặt nạ da: {mn}, "
+                f"{gd.so_vn(cb.get('n_da', 0))} điểm da"]
+        if "h0" in da:
+            dong.append(f"   Da : {da['h0']:5.1f}° / {da['q0']:.3f}  →  {da.get('h1', da['h0']):5.1f}°"
+                        f" / {da.get('q1', da['q0']):.3f}   đích {da['h_t']:5.1f}° / {da['q_t']:.3f}")
+            dr, dg, db = (cb.get("delta_ma") or [0, 0, 0])[:3]
+            dong.append(f"   R / G / B dải da : {dr:+.1f} / {dg:+.1f} / {db:+.1f} mã"
+                        + (f"   (thu ×{da['thu']:.2f} để vùng trắng không ám)"
+                           if da.get("thu", 1.0) < 0.999 else "")
+                        + ("   — da đã đúng đích" if da.get("ly_do") == "da-on" else ""))
+        elif da.get("ly_do"):
+            dong.append("   Da : " + {"khong-thay-da": "không thấy da trên ảnh dựng",
+                                      "tat": "tắt"}.get(da["ly_do"], da["ly_do"]))
+        if ch.get("truoc") is not None:
+            dong.append(f"   Vùng cháy : {float(ch['truoc']):.2f}%"
+                        + (f"  →  {float(ch['sau']):.2f}%  (đỉnh −{ch['d']:.1f} mã từ "
+                           f"{float(ch['k']) * 100:.0f}%)" if ch.get("d") and ch.get("sau") is not None
+                           else "  — không nén" + (" (da quá sáng)" if ch.get("ly_do") == "da-sang"
+                                                   else "")))
+        return "\n".join(dong)
 
     def _mo_ta_anh(self, r) -> str:
         """Một dòng mô tả ảnh cho bảng chi tiết ("Thiếu sáng 0,35 EV · 2 khuôn mặt")."""
@@ -5523,6 +5583,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                    #  13/10: Denoise Lightroom cho ảnh ISO cao
                    denoise=self.v_denoise.get(),
                    denoise_iso=int(max(50, self._num(self.v_denoise_iso, 2000.0))),
+                   #  13/10: lượt 2 curve điểm (curve_da.py)
+                   curve_da=self.v_curve_da.get(),
+                   curve_chay=self.v_curve_chay.get(),
                    ap_anh_loai=self.v_ap_loai.get(),
                    dong_bo_loat=self.v_dong_bo_loat.get(),
                    mat_sang_nhat=self.v_mat_sang_nhat.get(),
@@ -7126,6 +7189,10 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                 lines.append(f"   Midtone        : hue {m_[0]}  sat {m_[1]}")
             if h_:
                 lines.append(f"   Highlight      : hue {h_[0]}  sat {h_[1]}")
+        #  13/10: lượt 2 — curve điểm đo trên ảnh Lightroom dựng (curve_da.py)
+        cb = (getattr(self, "_curve_bao", None) or {}).get(at.khoa_duong_dan(r["path"]))
+        if cb:
+            lines += ["", self._dong_curve(cb)]
         lines += [
             "",
             f"Cháy sáng    : {r['clip_before_pct']:.2f}%  →  {r['clip_after_pct']:.2f}% (ước lượng)",

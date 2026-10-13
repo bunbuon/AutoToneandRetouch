@@ -3213,6 +3213,28 @@ DEFAULTS = {
     # Chan tren noi long theo p90: anh su kien chay 25-30% van con dep khi them
     # mot cham tuong phan; chi bo qua nhung anh chay du doi.
     "curve_contrast_max_clip": 30.0,
+    #[[ 13/10 — CURVE DIEM (ToneCurvePV2012 + Red/Green/Blue) do tren anh LIGHTROOM
+    #   DUNG THAT, sau khi WB + Tone da vao catalog (luot 2 cua "Xu ly anh", xem
+    #   curve_da.py). User: "do lai da tren tung pixel roi can thiep cac kenh Curve
+    #   cho da dung mau dich; WB + Tone xong ma van chay thi can thiep Curve". User
+    #   chot: do tren anh Lightroom dung (khong mo phong), vung chay = NEN dinh curve
+    #   tong (giu da + trung tong), MAC DINH TAT cho toi khi xem PDF truoc/sau.
+    #   Moi so duoi dat TRUOC khi chay cong (luat du an). Khong ghi de curve preset
+    #   (138,132 + R/G/B, xem "curve" o tren): moi chinh sua GHEP vao curve MOC. ]]
+    "curve_da": False,              # Curve kenh R/G/B: da mat ve mau dich
+    "curve_chay": False,            # Curve tong: nen vung chay sang
+    "curve_mien": "melissa",        # mien curve cua Lightroom — V0 (kiem_curve_lr) chot
+    "curve_kieu_tong": "kenh",      # curve tong ap tung kenh / "rgb_tone" giu sac — V0 chot
+    "curve_da_tran": 0.030,         # |Delta| moi kenh (thang 0..1) — ~7.7 ma, curve van don dieu
+    "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
+    "curve_da_trang_max": 0.003,    # vung trung tinh trong dai da lech ab toi da (= trang_tran_cg)
+    "curve_da_trang_dien_tich": 0.005,  # vung trung tinh bi cham >= ti le khung nay moi xet
+    "curve_chay_nguong": 2.0,       # % khung chay (kenh lon nhat >= 250, bo dom bong) moi nen
+    "curve_chay_knee": 0.80,        # knee toi thieu (mien curve 0..1)
+    "curve_chay_knee_max": 0.90,    # da sang tren muc nay -> khong nen (dung vao da)
+    "curve_chay_san": 235,          # dinh curve khong xuong duoi muc nay (ma 0..255)
+    "curve_chay_d_max": 20,         # nen toi da (ma)
+    "curve_giu_anh": False,         # giu anh dung luot 2 (go loi / cong) — mac dinh xoa
     #[[ "DAY TONE VE DA TRANG HONG" (grade) — ky yeu, concept. Bat thi:
     #     1. WB dung dich da trang hong (skin_ref_rgb) cho MOI anh, ke ca ngoai
     #        troi (tat: anh ngoai troi keo ve da ram skin_ref_rgb_ngoai).
@@ -4841,6 +4863,87 @@ DAI_HSL_DA = ("Red", "Orange", "Yellow")
 COT_HSL = tuple(f"{k}Adjustment{d}" for d in DAI_HSL_DA for k in ("Hue", "Saturation"))
 
 
+#[[ 13/10: curve DIEM — ten curve + bon curve (tong, R, G, B). Luu vao moc nhu COT_HSL
+#   de lan chay sau van biet curve GOC cua preset (tool ghep chinh sua vao curve goc,
+#   khong bao gio vao curve dang co trong catalog — xem curve_da.py). ]]
+COT_CURVE = ("ToneCurveName2012", "ToneCurvePV2012", "ToneCurvePV2012Red",
+             "ToneCurvePV2012Green", "ToneCurvePV2012Blue")
+#: hậu tố tên job lượt 2 (curve) — ten_job() không bao giờ sinh "@", nên các glob
+#: "apply_*_{ten}.done" cũ (thong_so_trong_lr, last_applied, anh_da_hsl…) không nhặt nó
+HAU_TO_CURVE = "@curve"
+
+
+def anh_da_curve(folder: Path, job_dir: Path | None = None) -> dict:
+    """{khoá ảnh: (dòng job @curve MỚI NHẤT có ảnh đó, mtime)} — curve tool đã ghi vào
+    Lightroom ở lượt 2. Chỉ đọc job ĐÃ ÁP (.done)."""
+    d = Path(job_dir or LR_JOB_DIR)
+    if not folder or not d.is_dir():
+        return {}
+    ten = ten_job(Path(folder).name)
+    out = {}
+    for jp in sorted(d.glob(f"apply_*_{ten}{HAU_TO_CURVE}.done")):
+        try:
+            mt = jp.stat().st_mtime
+            with io.open(jp, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    if row.get("path") and any(str(row.get(k) or "").strip()
+                                               for k in COT_CURVE[1:]):
+                        out[khoa_duong_dan(row["path"])] = (row, mt)
+        except (OSError, csv.Error):
+            continue
+    return out
+
+
+def _curve_o(rec: dict, k: str):
+    import curve_lr as _cl
+    return _cl.doc_o((rec or {}).get(k))
+
+
+def curve_giong(a: dict, b: dict) -> bool:
+    """Bốn curve điểm của hai bản ghi (bản xuất / mốc / dòng job) trùng nhau (≤ 0.5 mã)."""
+    import curve_lr as _cl
+    for k in COT_CURVE[1:]:
+        ca, cb = _curve_o(a, k), _curve_o(b, k)
+        if ca is None and cb is None:
+            continue
+        if _cl.lech_toi_da(ca or _cl.DONG_NHAT, cb or _cl.DONG_NHAT) > 0.5:
+            return False
+    return True
+
+
+def co_cot_curve(rec: dict) -> bool:
+    """Bản ghi có đủ curve (plugin mới xuất cả bốn curve; plugin cũ không xuất)."""
+    return bool(rec) and all(_curve_o(rec, k) is not None for k in COT_CURVE[1:])
+
+
+def bu_cot_curve(moc: dict, moi: dict, da_curve: bool) -> dict:
+    """Cột COT_CURVE mà mốc để TRỐNG (mốc chốt trước 13/10, hoặc plugin cũ) lấy từ bản
+    xuất mới — CHỈ khi tool chưa từng ghi curve cho ảnh này (lúc đó curve trong catalog
+    chính là curve preset). Đã ghi thì curve gốc không còn ở đâu: không bù, ảnh bị bỏ
+    qua ở bước curve (trang_thai_curve -> "mat_goc")."""
+    if da_curve or co_cot_curve(moc) or not co_cot_curve(moi):
+        return {}
+    return {k: moi[k] for k in COT_CURVE if str(moi.get(k) or "").strip()}
+
+
+def trang_thai_curve(moc: dict, cur: dict, tool_row: dict | None) -> str:
+    """Curve của ảnh trong catalog đang ở đâu so với mốc:
+      "moc"       — đúng curve mốc (preset)
+      "tool"      — đúng curve lượt 2 lần trước tool ghi -> lượt 1 trả về mốc
+      "nguoi_sua" — khác cả hai: người dùng sửa tay -> không bao giờ đụng
+      "mat_goc"   — mốc không có curve (chốt từ plugin cũ) mà tool đã ghi
+      "khong_ro"  — bản xuất không có curve (plugin cũ)"""
+    if not co_cot_curve(cur):
+        return "khong_ro"
+    if not co_cot_curve(moc):
+        return "mat_goc" if tool_row is not None else "khong_ro"
+    if curve_giong(cur, moc):
+        return "moc"
+    if tool_row is not None and curve_giong(cur, tool_row):
+        return "tool"
+    return "nguoi_sua"
+
+
 def anh_da_hsl(folder: Path, job_dir: Path | None = None) -> set:
     """Khoá ảnh mà một job bất kỳ của buổi này từng gửi HSL kênh da — catalog của
     chúng đang mang số TOOL ghi, không phải số preset."""
@@ -5636,6 +5739,14 @@ def mau_da_tu_anh(paths, cfg: dict, progress=None) -> dict:
     ng = float(cfg.get("ev_ngoai_troi") or 8.5)
     nhom: dict = {"trong": [], "ngoai": [], "chung": []}
     trang: dict = {"trong": [], "ngoai": [], "chung": []}
+    #[[ 13/10: thêm số đo bằng MẶT NẠ PHÂN VÙNG (curve_da.da_mau_mn) — curve da đo ảnh
+    #   Lightroom dựng bằng chính mặt nạ đó, đích phải cùng phép đo. Máy không có mô
+    #   hình phân vùng thì không có khoá "*_mn" (curve dùng phép đo cũ). ]]
+    nhom_mn: dict = {"trong": [], "ngoai": [], "chung": []}
+    try:
+        import curve_da as _cd
+    except Exception:                                        # noqa: BLE001
+        _cd = None
     bo = []
     ds = [Path(p) for p in paths]
     for i, p in enumerate(ds, 1):
@@ -5647,6 +5758,13 @@ def mau_da_tu_anh(paths, cfg: dict, progress=None) -> dict:
             bo.append(p.name)
         else:
             nhom[k_nhom].append(np.asarray(f, dtype=np.float64))
+            if _cd is not None:
+                try:
+                    mn_lin = _cd.da_mau_mn(p, r)
+                except Exception:                            # noqa: BLE001
+                    mn_lin = None
+                if mn_lin is not None:
+                    nhom_mn[k_nhom].append(np.asarray(mn_lin, dtype=np.float64))
         if r.get("ok") and not r.get("bw"):
             try:
                 with Image.open(p) as im:
@@ -5678,9 +5796,14 @@ def mau_da_tu_anh(paths, cfg: dict, progress=None) -> dict:
 
     a_t = ab(tt) or ab(tn)
     a_n = ab(tn) or a_t
-    return {"trong": t, "ngoai": n, "n_trong": len(trong), "n_ngoai": len(ngoai),
-            "n_anh": len(ds) - len(bo), "bo": bo,
-            "trang": {"trong": a_t, "ngoai": a_n, "n_trong": len(tt), "n_ngoai": len(tn)}}
+    kq = {"trong": t, "ngoai": n, "n_trong": len(trong), "n_ngoai": len(ngoai),
+          "n_anh": len(ds) - len(bo), "bo": bo,
+          "trang": {"trong": a_t, "ngoai": a_n, "n_trong": len(tt), "n_ngoai": len(tn)}}
+    mt, mng = nhom_mn["trong"] + nhom_mn["chung"], nhom_mn["ngoai"] + nhom_mn["chung"]
+    if mt or mng:
+        kq["trong_mn"] = mau(mt) if mt else mau(mng)
+        kq["ngoai_mn"] = mau(mng) if mng else kq["trong_mn"]
+    return kq
 
 
 #: Bon o Color Grading tool ghi (cong vecto vao so goc cua preset).
@@ -6035,6 +6158,34 @@ _OK_M2 = np.array([[0.2104542553, 0.7936177850, -0.0040720468],
                    [0.0259040371, 0.7827717662, -0.8086757660]])
 
 
+def chon_da_hop(arr, box) -> np.ndarray | None:
+    """Điểm da của MỘT ô mặt theo phép đo ảnh duyệt (RGB tuyến tính, (N, 3)): lõi 55%
+    ô mặt, skin_mask, dải sáng p30–p90 của da. None = ô quá nhỏ / không thấy da.
+    arr: ảnh sRGB 0..1 (H, W, 3) cùng toạ độ với box (x, y, w, h).
+
+    #[[ 13/10: tách khỏi do_anh_duyet để curve_da đo ĐÚNG phép đo này trên ảnh Lightroom
+    #   dựng — mọi đích da (mau_da_tu_anh, hsl_da_cuoi_hue…) đặt trên phép đo cùng loại,
+    #   nên sai lệch tới đích phải đo bằng chính nó, không bằng một phép đo chép lại. ]]"""
+    H, W = arr.shape[:2]
+    x, y, bw, bh = (float(v) for v in box[:4])
+    cx, cy, hw, hh = x + bw / 2, y + bh / 2, bw * 0.275, bh * 0.275
+    x0, x1 = int(max(0, cx - hw)), int(min(W, cx + hw))
+    y0, y1 = int(max(0, cy - hh)), int(min(H, cy + hh))
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return None
+    pc = arr[y0:y1, x0:x1].reshape(-1, 3)
+    sk = skin_mask(pc)
+    if sk.sum() < max(9, int(0.15 * sk.size)):
+        return None
+    lin = srgb_to_linear(pc[sk])
+    yy = lin @ _SRGB_XYZ[1]
+    lo, hi = np.quantile(yy, 0.30), np.quantile(yy, 0.90)
+    sel = (yy >= lo) & (yy <= hi)
+    if sel.sum() < 9:
+        return None
+    return lin[sel]
+
+
 def do_anh_duyet(r: dict, anh) -> dict | None:
     """Đo ảnh duyệt Lightroom vẽ: {"da_lin": RGB tuyến tính trung bình da chủ thể (hoặc
     None), "da_n": số điểm da, "trang": trung_tinh_ab(cả khung) hoặc None}. None = không
@@ -6062,24 +6213,11 @@ def do_anh_duyet(r: dict, anh) -> dict | None:
                                  dtype=np.float32) / 255.0
                 rgbs, ns = [], []
                 for b in boxes:
-                    x, y, bw, bh = (float(v) for v in b[:4])
-                    cx, cy, hw, hh = x + bw / 2, y + bh / 2, bw * 0.275, bh * 0.275
-                    x0, x1 = int(max(0, cx - hw)), int(min(W, cx + hw))
-                    y0, y1 = int(max(0, cy - hh)), int(min(H, cy + hh))
-                    if x1 - x0 < 3 or y1 - y0 < 3:
+                    lin = chon_da_hop(arr, b)
+                    if lin is None:
                         continue
-                    pc = arr[y0:y1, x0:x1].reshape(-1, 3)
-                    sk = skin_mask(pc)
-                    if sk.sum() < max(9, int(0.15 * sk.size)):
-                        continue
-                    lin = srgb_to_linear(pc[sk])
-                    yy = lin @ _SRGB_XYZ[1]
-                    lo, hi = np.quantile(yy, 0.30), np.quantile(yy, 0.90)
-                    sel = (yy >= lo) & (yy <= hi)
-                    if sel.sum() < 9:
-                        continue
-                    rgbs.append(lin[sel].mean(axis=0))
-                    ns.append(int(sel.sum()))
+                    rgbs.append(lin.mean(axis=0))
+                    ns.append(int(lin.shape[0]))
                 kq = {"da_lin": (np.average(np.asarray(rgbs), axis=0, weights=ns)
                                  if rgbs else None),
                       "da_n": int(sum(ns)), "trang": trung_tinh_ab(arr)}
@@ -6110,6 +6248,19 @@ def thong_so_trong_lr(folder, job_dir: Path | None = None) -> dict:
         except (OSError, csv.Error):
             continue
     return out
+
+
+def anh_mang_curve_tool(r: dict, anh, gio_job: float) -> bool:
+    """Ảnh duyệt `anh` vẽ SAU job curve (lượt 2) mà job đó mới hơn job WB / Tone gần nhất
+    (`gio_job`) — tức ảnh mang curve tool ghi, không còn là "da sau WB + Tone + HSL" mà
+    chuỗi màu da cần đo. (Lượt 1 sau đó trả curve về mốc thì job WB / Tone mới hơn.)"""
+    t = r.get("curve_tool_gio")
+    if not t or t <= gio_job:
+        return False
+    try:
+        return Path(anh).stat().st_mtime > t
+    except OSError:
+        return False
 
 
 def _trung_job(r: dict, row: dict, wb: bool = True) -> bool:
@@ -6193,7 +6344,8 @@ def hsl_da_cuoi(items: list, cfg: dict, folder=None, job_dir: Path | None = None
         j = jobs.get(khoa_duong_dan(r["path"]))
         anh = thu_muc_duyet / (Path(str(r["path"]).replace("\\", "/")).stem + ".jpg")
         try:
-            moi_hon = j is not None and anh.stat().st_mtime > j[1]
+            moi_hon = (j is not None and anh.stat().st_mtime > j[1]
+                       and not anh_mang_curve_tool(r, anh, j[1]))
         except OSError:
             moi_hon = False
         if not moi_hon:
@@ -6537,7 +6689,7 @@ def chuoi_mau_da_mau(items: list, cfg: dict, folder=None, job_dir: Path | None =
             continue
         anh = thu_muc_duyet / (Path(str(r["path"]).replace("\\", "/")).stem + ".jpg")
         try:
-            moi_hon = anh.stat().st_mtime > j[1]
+            moi_hon = anh.stat().st_mtime > j[1] and not anh_mang_curve_tool(r, anh, j[1])
         except OSError:
             moi_hon = False
         if not moi_hon or not _trung_job(r, j[0], wb=False):
@@ -8259,7 +8411,9 @@ EXPORT_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012",
                  # 8/10: B/W + Color Grading / Saturation / Vibrance (COT_MAU)
                  "ConvertToGrayscale", *COT_MAU,
                  # 8/10 vong 5: HSL Red / Orange / Yellow (COT_HSL)
-                 *COT_HSL]
+                 *COT_HSL,
+                 # 13/10: curve diem (COT_CURVE) — o "x1,y1,..."; ten curve la CHU
+                 *COT_CURVE]
 BASELINE_NAME = "_autotone_baseline.tsv"
 
 # So anh bi bo qua vi nguoi dung da sua tay o lan chay gan nhat — giao dien doc
@@ -8809,7 +8963,7 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
                         rec = dict(rec, **bu)
                     #  Cot mau (8/10) moc cu de trong: attach_catalog_settings da
                     #  quyet so goc (bu_cot_mau) va dat vao ban ghi moi -> lay theo
-                    bu = {k: m[k] for k in (*COT_MAU, *COT_HSL)
+                    bu = {k: m[k] for k in (*COT_MAU, *COT_HSL, *COT_CURVE)
                           if str(rec.get(k) if rec.get(k) is not None else "").strip() == ""
                           and str(m.get(k) if m.get(k) is not None else "").strip() != ""}
                     if bu:
@@ -8823,7 +8977,7 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
     cols = ["Exposure2012", "Highlights2012", "Shadows2012",
             "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
             "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
-            *COT_MAU, *COT_HSL]
+            *COT_MAU, *COT_HSL, *COT_CURVE]
     # Cot path ghi ban Lightroom neu co, khong thi ghi khoa normcase. Ghi de
     # bang khoa normcase se lam mat cach viet hoa/thuong that va lan chay sau
     # gui job voi duong dan Lightroom khong nhan ra.
@@ -9039,6 +9193,7 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
     base = load_baseline(folder)
     da_grade = anh_da_grade(folder) if not bo_moc else set()
     da_hsl = anh_da_hsl(folder) if not bo_moc else set()
+    da_curve = anh_da_curve(folder)
     matched = missing = 0
     for r in items:
         #[[ khoa_duong_dan, KHONG phai normcase: ban xuat va moc deu doc qua
@@ -9047,6 +9202,9 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
         key = khoa_duong_dan(r["path"])
         cur = export.get(key)
         old = base.get(key)
+        #  curve moc CU — giu lai khi dat lai moc ma catalog dang mang curve tool ghi
+        cv_cu = ({k: old[k] for k in COT_CURVE if k in old}
+                 if isinstance(old, dict) and key in da_curve and co_cot_curve(old) else {})
         r["ngoai_xuat"] = False
         r.pop("moc_moi", None)
         if bo_moc and cur:
@@ -9075,8 +9233,24 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
             if bu:
                 old = dict(old, **bu)
                 base[key] = old
+            bu = bu_cot_curve(old, cur, key in da_curve)
+            if bu:
+                old = dict(old, **bu)
+                base[key] = old
         r["da_grade"] = key in da_grade
         r["da_hsl"] = key in da_hsl
+        #[[ 13/10: curve diem. Moc moi (bo_moc) lay catalog hien tai — neu catalog
+        #   dang mang curve tool ghi thi moc do sai; nen voi anh tool tung ghi curve,
+        #   curve moc giu theo moc CU (khong lay catalog). ]]
+        tool_cv = da_curve.get(key)
+        moc_cv = old if old is not None else (dict(cur, **cv_cu) if cur else None)
+        r["curve_moc"] = {k: (moc_cv or {}).get(k, "") for k in COT_CURVE}
+        r["curve_tt"] = trang_thai_curve(moc_cv or {}, cur or {},
+                                         tool_cv[0] if tool_cv else None)
+        r["curve_tool_gio"] = tool_cv[1] if tool_cv else None
+        r.pop("curve_reset", None)
+        if r["curve_tt"] == "tool":
+            r["curve_reset"] = dict(r["curve_moc"])
         if old is not None:
             #[[ Moc cu la preset DAY DU, catalog lai dang o trang thai preset bo
             #   trong WB/Tone (As Shot, Tone 0) -> anh da duoc import / dat lai
@@ -9095,9 +9269,11 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
             r["rerun"] = True
             matched += 1
         elif cur:
-            r["crs"] = dict(cur)
+            #  cv_cu: đặt lại mốc khi catalog mang curve tool ghi -> giữ curve mốc CŨ
+            #  (write_sidecars lưu r["crs"] làm mốc mới — save_baseline(thay=...))
+            r["crs"] = dict(cur, **cv_cu)
             r["atn"] = {}
-            base[key] = dict(cur)          # lần đầu thấy -> chốt làm mốc
+            base[key] = dict(cur, **cv_cu)  # lần đầu thấy -> chốt làm mốc
             matched += 1
         else:
             #[[ KHONG CO trong ban xuat lan moc -> KHONG duoc day vao Lightroom.
@@ -9863,7 +10039,12 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  "SplitToningHighlightHue", "SplitToningHighlightSaturation",
                  # 8/10 vong 5: HSL kenh da (hsl_da_theo_trang_thai) — o trong =
                  # khong dung toi; plugin doc theo TEN cot nen khong sua Lua
-                 *COT_HSL]
+                 *COT_HSL,
+                 #[[ 13/10: curve diem — o "x1,y1,..." (curve_lr.ghi_o). Luot 1 chi
+                 #   ghi khi TRA curve ve moc (anh dang mang curve tool ghi, xem
+                 #   trang_thai_curve); luot 2 ghi o job rieng "@curve". Plugin cu
+                 #   tonumber() o nay ra nil -> bo qua, khong hong gi. ]]
+                 *COT_CURVE]
 
 # File job vừa ghi gần nhất — giao diện theo dõi nó tới khi plugin đổi đuôi .done
 LAST_JOB: Path | None = None
@@ -10230,6 +10411,20 @@ def plugin_buoc(job_dir: Path | None = None) -> str:
     return ""
 
 
+def plugin_kha_nang(job_dir: Path | None = None) -> set:
+    """Khả năng plugin đang chạy khai trong nhịp (dòng "kha_nang=curve1,…"). Plugin
+    cũ không khai -> tập rỗng: app biết là phải cài lại bản đầy đủ (OTA không mang Lua)."""
+    try:
+        txt = (Path(job_dir or LR_JOB_DIR) / NHIP_PLUGIN).read_text(encoding="utf-8",
+                                                                    errors="replace")
+    except OSError:
+        return set()
+    for dong in txt.splitlines():
+        if dong.startswith("kha_nang="):
+            return {v.strip() for v in dong[9:].split(",") if v.strip()}
+    return set()
+
+
 def plugin_song_khi_nao(job_dir: Path | None = None) -> float | None:
     """Lần cuối plugin ghi vào nhật ký, tính bằng giây trước hiện tại.
 
@@ -10378,6 +10573,12 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             # HSL kenh da: ca sau o (so goc + phan tool chinh o dai da) hoac trong het
             *([str(int(dict(r["hsl_moi"]).get(k, 0))) for k in COT_HSL]
               if r.get("hsl_ghi") and r.get("hsl_moi") else [""] * len(COT_HSL)),
+            #[[ 13/10: anh dang mang curve luot 2 lan truoc -> tra ve curve MOC, de
+            #   anh Lightroom dung sau luot nay khong mang curve cu (luot 2 do tren
+            #   no). Tat o curve thi chinh dong nay tra anh ve curve preset. ]]
+            *([str(r["curve_reset"].get(k) or "") for k in COT_CURVE]
+              if r.get("curve_reset") and co_cot_curve(r["curve_reset"])
+              else [""] * len(COT_CURVE)),
         ])
     if not rows:
         return None

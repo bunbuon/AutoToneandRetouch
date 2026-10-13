@@ -81,6 +81,11 @@ python3 test_bu_sang.py        # bù sáng cả buổi / loại buổi (3/10; ph
 python3 test_dong_bo_loat.py   # cùng khung + cùng thông số -> cùng một mức (3/10)
 python3 test_wb_asshot.py      # preset bỏ trống WB: kéo Temp về As Shot (3/10, bước 2)
 python3 test_tin_dung.py       # credit + một máy một lúc, Worker THẬT (13/10; cần ../KeyActiveAutoTone đã npm ci)
+python3 test_curve_lr.py       # toán curve điểm: spline DNG, ghép vào curve preset, mô phỏng (13/10)
+python3 test_mat_na_da.py      # mặt nạ da mặt: phân vùng / dự phòng, chọn mặt chủ thể (13/10)
+python3 test_curve_da.py       # curve da về đích + chặn trắng + nén cháy + gom loạt, đo LẠI ảnh sau (13/10)
+python3 test_curve_job.py      # curve qua mốc / bản xuất / job — chạy lại không cộng dồn (13/10)
+python3 kiem_curve_lua.py      # plugin: ô curve, so curve, xuất curve, job @curve, dựng lượt 2 (lupa; 13/10)
 python3 kiem_ban_xuat.py       # app đọc lại bản xuất (cần tkinter)
 python3 kiem_xuat_lr.py        # khâu 5 — bắt đường dẫn Export
 python3 kiem_tim_tool.py       # tìm tool retouch
@@ -96,6 +101,7 @@ python3 kiem_xem_truoc.py      # xem trước với tool THẬT (máy Windows); 
 python3 kiem_gui_duyet.py      # khâu Duyệt nhanh & Lightroom
 python3 test_giao_dien_gon.py  # khung Evoto, nút Ghi, dải báo, một dòng, nhóm, thanh trượt, dấu ?
 python3 test_tin_dung_gui.py   # hộp "Key đang dùng trên máy khác", trừ credit khi Phân tích, hết credit (13/10)
+python3 test_curve_xu_ly.py    # bước Curve trong chuỗi Xử lý ảnh: plugin cũ, gửi / đo / job, Dừng (13/10)
 
 # cần lua5.1
 lua5.1 kiem_duyet.lua AutoTone.lrplugin
@@ -970,6 +976,98 @@ phân tích: dừng sau ~3 s), `test_tram_retouch` mục "máy bị đẩy ra"; 
 hộp hết credit, chi_anh, nhãn, trạm, kích hoạt api 2, key cũ khi gia hạn...) — lần đầu LỌT 2 do
 BÀI KIỂM thiếu (trạm chỉ thử khi đã tự biết bị đẩy ra; nhãn chỉ thử qua tin phiên, không qua
 nhịp 60 giây) -> thêm mục, chạy lại 25/25 bị bắt.
+
+## Curve da mặt + nén vùng cháy, đo trên ảnh Lightroom DỰNG (13/10) — `curve_da` / `curve_chay`, TẮT
+
+User 13/10: "cân chỉnh màu da so với màu đích trên TỪNG PIXEL da… tách mask da mặt… sau
+khi cân WB, Tone xong, đo lại da rồi can thiệp các kênh Curve cho da đúng màu đích. Nhận
+biết vùng highlight; WB + Tone xong mà vẫn cháy thì can thiệp Curve". User CHỐT (hỏi đáp):
+(1) đo trên ảnh **Lightroom dựng thật** (2 lượt), không mô phỏng trong app; (2) vùng cháy
+= **nén ĐỈNH curve tổng**, giữ da + trung tông (đã nghe: chỗ cháy hẳn trong RAW thành
+xám phẳng); (3) **mặc định TẮT**, bật sau khi xem PDF trước / sau (như AF Nikon).
+
+- **Luồng** (xu_ly_anh_ui, bước `curve` giữa Áp và Denoise, chỉ khi bật một ô + nguồn
+  catalog): lượt 1 áp xong (.done) → kiểm `kha_nang=curve1` trong nhịp plugin (thiếu =
+  plugin cũ → "bỏ qua", tổng kết bảo cài lại AutoTone; OTA KHÔNG mang Lua) →
+  `request_do_curve.txt` (dòng `anh=` từng ảnh, bỏ 1★ / ảnh chưa nhận đúng) → plugin dựng
+  JPEG 1600 px (DuyetCore `runRequestCurve`, bộ file RIÊNG `do_curve_*` — không giẫm Duyệt
+  nhanh) vào `<dữ liệu>/do_curve/<buổi>/<mã>/` (KHÔNG `_duyet`) → luồng nền đo từng lô →
+  `ket_thuc` → job `apply_<giờ>_<buổi>@curve.tsv` (chỉ COT_CURVE) → .done → Denoise.
+  Dừng: chưa nhận thì rút yêu cầu, nhận rồi thì cờ dừng sau lô. Không trừ credit thêm.
+- **Module**: `curve_lr.py` (toán: miền curve, spline bản chép `dng_spline_solver`, `ghep`
+  = g ∘ curve cũ, `ap_mien` / `ap_anh` mô phỏng), `mat_na_da.py` (mặt nạ), `curve_da.py`
+  (đo / giải / gom / job / cầu nối). Đều trong NGAM + MA_HOA.
+- **Mặt nạ**: resnet34 face-parsing (nhãn 1 da + 10 mũi) — mô hình CÔNG KHAI bộ Retouch
+  mang sẵn (`mo_hinh/resnet34_faceparse.onnx`; tìm thêm `FACE_PARSE_ONNX`,
+  `~/.cache/skin_spike`, `models/`), onnxruntime hoặc cv2.dnn (≈3× chậm). Không có →
+  dự phòng: elip YuNet − mắt − miệng (5 mốc) ∩ skin_mask. Cả hai: co mép 2% bề ngang,
+  bỏ ≥ 250, bỏ tối < SKIN_DARK_REL × p90. Dò mặt LẠI trên ảnh dựng (bộ YuNet RIÊNG):
+  cùng tỉ lệ → mặt trùng `meter_boxes` (IoU ≥ 0.3); đã crop → mặt lớn nhất điểm ≥ 0.7.
+  Bản `--khong-retouch` không có mô hình → dự phòng, tổng kết + tu_kiem nói ra.
+- **Phép đo da = phép đo của ĐÍCH**: `at.chon_da_hop` (tách khỏi `do_anh_duyet`, lõi 55%
+  ô mặt + skin_mask + p30–p90) vì mọi đích da đặt trên phép đo đó. Mẫu màu da tạo SAU
+  13/10 có thêm `trong_mn` / `ngoai_mn` (mặt nạ phân vùng, `curve_da.da_mau_mn`) → ảnh đo
+  bằng phân vùng thì so với đích cùng phép đo đó. Mặt nạ quyết DẢI chỉnh + loại da khỏi
+  vùng trung tính.
+- **Số chốt TRƯỚC cổng** (DEFAULTS): bump kênh g(y) = y + Δ·w(y), w = 1 trên [p10 − 0.02,
+  p90 + 0.02] của da kênh đó, chân nửa-cosin 0.10, trong [0.06, knee − 0.04];
+  |Δ| ≤ `curve_da_tran` 0.030 (~7.7 mã, curve vẫn đơn điệu); vùng chết `da_on_hue` 3° /
+  `da_on_chroma` 10%. Chặn trắng: trung tính (chroma < 0.025, L 0.30–0.96, không da) bị
+  dải chạm ≥ 0.5% khung thì lệch ab ≤ `curve_da_trang_max` 0.003 (= trang_tran_cg, dưới
+  wb_xet_lai_nguong 0.004 → không giằng với bước xét lại WB). Nén cháy: khung (≥ 250, mở
+  5×5 bỏ đốm bóng) ≥ `curve_chay_nguong` 2% → h(x) = x − d((x−k)/(1−k))², k = max(0.80,
+  p95 da + 0.03), k > 0.90 bỏ (`da-sang`), d = min(20, 8 + 0.4(cháy% − 2), 0.45(1−k)·255),
+  đỉnh ≥ 235. p95 da đo trên mặt nạ CHƯA lọc bóng (`da_tho`).
+- **Giải**: Gauss–Newton trên TỪNG điểm da (áp g rồi mới lấy trung bình tuyến tính), sai
+  số theo đơn vị vùng ổn (L 0.01 · hue 3° · ln q 10%), bài toán có ràng buộc giải đúng
+  (`_bpt_hop`, 27 tổ hợp kẹp). **Không đổi xấu một chiều**: hue (hoặc chroma) xa đích hơn
+  vùng ổn → giải lại nặng ×10 chiều đó. Nút curve là SỐ NGUYÊN → `tinh_chinh_nut` dò ±1
+  từng nút trong dải theo thống kê da của curve THẬT (trước khi có: lệch dự đoán ~0.8°).
+- **Gom loạt** (`chia_loat` thật): một Δ / loạt (trung vị tấm có da), chặn trắng lấy hệ số
+  nhỏ nhất cả loạt, tinh chỉnh nút MỘT lần trên da gộp → cả loạt một curve; nén cháy khi
+  đa số loạt cháy. Ảnh không mặt ngoài loạt: không curve kênh.
+- **Mốc / chạy lại** (bài học 2705): COT_CURVE (tên + 4 curve) vào bản xuất (cuối, trước
+  Rating), mốc (`bu_cot_curve` bù khi tool chưa từng ghi curve), `r["curve_moc"]`.
+  `trang_thai_curve`: moc / tool (catalog = curve @curve lần trước → lượt 1 ghi lại curve
+  mốc) / nguoi_sua (khác cả hai → KHÔNG bao giờ đụng) / mat_goc / khong_ro (plugin cũ).
+  Luôn ghép lên MỐC, không lên curve đang có. Đặt lại mốc (bo_moc) mà catalog mang curve
+  tool → giữ curve mốc cũ. Tắt ô → lượt 1 trả curve preset.
+- **BẪY tên job**: hậu tố `@curve` — `ten_job` không sinh "@" nên glob cũ
+  `apply_*_{ten}.done` (thong_so_trong_lr, last_applied, anh_da_hsl/grade) KHÔNG nhặt;
+  Lua `khoaJob` bỏ hậu tố → job WB / Tone mới hơn huỷ job curve bỏ dở. Ảnh `_duyet` vẽ sau
+  job curve (mới hơn job WB / Tone) bị chuỗi màu da bỏ (`anh_mang_curve_tool`).
+- **Plugin**: `readJob` ô curve → bảng (hỏng thì BỎ, không ghi nhầm), `diffFields` so bảng
+  (sameNumber trên bảng luôn "khác" → kiểm chứng báo chưa nhận mãi), tên curve ghi kèm,
+  KHÔNG kiểm; `applyJob` đặt "Custom"; `exportCell` tuần tự bảng; `chuanDuong`/`locTheoDs`
+  dời vào Core (XuatCore giữ bí danh).
+- **BẪY đã mắc khi làm**: (1) ảnh giả đổi curve trên ảnh ĐÃ làm tròn 8 bit → lệch hue
+  0.7° giả (Lightroom làm tròn MỘT lần) — ảnh giả giữ float, làm tròn khi lưu; (2) kẹp Δ
+  SAU bước Gauss–Newton → hue trôi xa đích 5° (ảnh mẫu da rất đỏ); (3) bump cắt ngang
+  chân → curve gãy bậc, ghép ra không đơn điệu; (4) da cháy hẳn → mặt nạ đã lọc rỗng,
+  knee mất; (5) bài kiểm mặt nạ "đạt" nhờ lọc tối loại mắt / môi thay cho nhãn — ảnh giả
+  giờ có mắt / môi MÀU DA (`mat_mau_da`).
+- **CHƯA KIỂM trên Lightroom thật** — máy Windows:
+  · `KIEM_CURVE_LR.bat` (V0, `kiem_curve_lr.py`): bảng thử TIFF, 9 ca qua job + dựng thật,
+    khớp miền (melissa / prophoto22 / prophoto18) × curve tổng (kenh / rgb_tone) × thứ tự;
+    ĐẠT thang ≤ 2 mã, mảng ≤ 3; + HSL trước / sau curve, số lẻ, 16 điểm, tên "Linear".
+    Chốt `curve_mien` / `curve_kieu_tong` theo `curve_lr_hieu_chinh.json` TRƯỚC cổng.
+  · `KIEM_CONG_CURVE.bat mo` (app với `AUTOTONE_CURVE_GIU_ANH=1`: giữ ảnh dựng R1 +
+    `ket_qua.json`) → Xử lý ảnh → `KIEM_CONG_CURVE.bat <buổi>` (`kiem_cong_curve.py`:
+    dựng lại R2 sau job curve, đo bằng chính `do_anh`, cổng, `so_sanh_curve.pdf`).
+    Cổng (ngưỡng trong NGUONG của script, đặt trước): Da A trung vị |hue| R2 ≤ 0.7 × R1,
+    tỉ lệ trong vùng ổn +10 điểm, dự đoán vs đo ≤ 1.0°; Da B xấu đi ≤ 2%, trung tính lệch
+    ab > 0.004 ở ≤ 2% ảnh, ảnh không đổi curve |R2 − R1| ≤ 0.5 mã; Cháy A ≥ 95% ảnh nén
+    còn cháy < 2%; Cháy B ≥ 99% ảnh nén |ΔY| (điểm < 200) ≤ 1 mã và da lệch ≤ 1 mã.
+    Hai buổi chưa dùng khi làm (cưới có mẫu da + sự kiện LED). Trượt → giữ TẮT.
+  · Chạy thử trong container bằng "Lightroom giả" (R2 = curve job áp lên R1): cổng chạy
+    hết đường, PDF dựng đúng (scratchpad `curve/thu_cong.py`).
+- Thời gian thêm ước tính: dựng ~0.44 s/ảnh + đo 0.2–0.35 s/ảnh (song song) + job →
+  ~9–11 phút / 1000 ảnh (chỉ bật da: chỉ ảnh có mặt / loạt có mặt).
+- Kiểm: `test_curve_lr`, `test_mat_na_da` (mô hình thật tuỳ chọn: AUTOTONE_ANH_MAT +
+  FACE_PARSE_ONNX — đã chạy trên ảnh mặt mẫu OpenCV: mắt / miệng ngoài mặt nạ),
+  `test_curve_da`, `test_curve_job`, `kiem_curve_lua` (lupa), `test_curve_xu_ly` (xvfb).
+  Thử ngược 42 đột biến (scratchpad `curve/dot_bien.py`) — lần đầu LỌT 4, đều do bài kiểm
+  (mắt / môi giả quá tối; da giả chưa cháy hẳn; Init.lua chỉ dò chữ) → sửa bài kiểm, 42/42.
 
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 

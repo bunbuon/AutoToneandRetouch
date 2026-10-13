@@ -80,6 +80,16 @@ M.TIEN_DO = "duyet_tiendo.txt"     -- plugin ghi, app đọc
 M.YEU_CAU = "request_duyet.txt"    -- app ghi, plugin đọc
 M.DANH_DAU = "request_danhdau.tsv" -- app ghi, plugin đọc
 M.CO_DUNG = "request_duyet_dung.txt"   -- app ghi để xin dừng giữa chừng
+M.BANG = "duyet_anh.tsv"               -- plugin ghi, app đọc (ảnh gốc -> ảnh duyệt)
+
+--[[ 13/10: cùng bộ máy dựng ảnh, MỘT BỘ FILE KHÁC cho lượt 2 "Xử lý ảnh" (curve da /
+     nén cháy — curve_da.py): app gửi danh sách ảnh (dòng anh=), plugin dựng vào thư mục
+     dữ liệu của app. Tách file để Duyệt nhanh đang chạy không giẫm lên lượt 2. ]]
+M.CFG_DUYET = { yeuCau = M.YEU_CAU, tienDo = M.TIEN_DO, bang = M.BANG,
+                coDung = M.CO_DUNG, ten = "duyet" }
+M.CFG_CURVE = { yeuCau = "request_do_curve.txt", tienDo = "do_curve_tiendo.txt",
+                bang = "do_curve_anh.tsv", coDung = "request_do_curve_dung.txt",
+                ten = "do_curve" }
 
 --[[ XIN DỪNG GIỮA CHỪNG.
 
@@ -90,13 +100,13 @@ M.CO_DUNG = "request_duyet_dung.txt"   -- app ghi để xin dừng giữa chừn
      Kiểm giữa hai lô chứ không giữa chừng một lô: LrExportSession đã chạy thì
      phải để nó chạy hết lô đó, cắt ngang là để lại file dở trên đĩa. Lô 25 ảnh
      nên chậm nhất cũng chỉ chờ thêm một lô. ]]
-function M.xinDung()
-    return LrFileUtils.exists(LrPathUtils.child(Core.jobDir(), M.CO_DUNG))
+function M.xinDung(cfg)
+    return LrFileUtils.exists(LrPathUtils.child(Core.jobDir(), (cfg or M.CFG_DUYET).coDung))
 end
 
-function M.xoaCoDung()
+function M.xoaCoDung(cfg)
     Core.try("xoaCoDung", function()
-        LrFileUtils.delete(LrPathUtils.child(Core.jobDir(), M.CO_DUNG))
+        LrFileUtils.delete(LrPathUtils.child(Core.jobDir(), (cfg or M.CFG_DUYET).coDung))
         return true
     end)
 end
@@ -105,16 +115,16 @@ end
 
 --[[ Ghi trạng thái ra file cho app đọc. Ghi .part rồi đổi tên: app không bao
      giờ đọc phải file đang ghi dở (cùng quy ước với job áp). ]]
-function M.ghiTienDo(bang)
+function M.ghiTienDo(bang, cfg)
     local dir = Core.jobDir()
     if not LrFileUtils.exists(dir) then
         LrFileUtils.createAllDirectories(dir)
     end
-    local dest = LrPathUtils.child(dir, M.TIEN_DO)
+    local dest = LrPathUtils.child(dir, (cfg or M.CFG_DUYET).tienDo)
     local tmp = dest .. ".part"
     local fh = io.open(tmp, "w")
     if not fh then return nil end
-    for _, k in ipairs({ "trang_thai", "xong", "tong", "loi", "thu_muc", "tsv", "thong_bao" }) do
+    for _, k in ipairs({ "trang_thai", "xong", "tong", "loi", "thu_muc", "tsv", "thong_bao", "ma" }) do
         if bang[k] ~= nil then
             fh:write(k .. "=" .. tostring(bang[k]) .. "\n")
         end
@@ -279,8 +289,9 @@ end
 
      Trả về bảng { cap = {{src,jpg}}, loi = <số ảnh không ra file>, tsv = <đường
      dẫn bảng ánh xạ> }. ]]
-function M.xuatDuyet(photos, dest, opts, tienDo)
+function M.xuatDuyet(photos, dest, opts, tienDo, cfg)
     opts = opts or {}
+    cfg = cfg or M.CFG_DUYET
     local canh = tonumber(opts.canh) or M.CANH
     local chat = tonumber(opts.chat) or M.CHAT
     local lo   = tonumber(opts.lo) or M.LO
@@ -303,18 +314,18 @@ function M.xuatDuyet(photos, dest, opts, tienDo)
 
         --[[ Ghi bảng ánh xạ SAU MỖI LÔ chứ không đợi hết. Nhờ vậy app mở ra
              soát được ngay khi lô đầu xong, không phải chờ cả buổi. ]]
-        M.ghiBang(cap, dest)
+        M.ghiBang(cap, dest, cfg)
         if tienDo then tienDo(last, #photos, #cap) end
         M.ghiTienDo({ trang_thai = "dang_chay", xong = last, tong = #photos,
-                      loi = last - #cap, thu_muc = dest })
+                      loi = last - #cap, thu_muc = dest, ma = opts.ma }, cfg)
         LrTasks.yield()
         idx = last + 1
 
-        if M.xinDung() then
-            M.xoaCoDung()
+        if M.xinDung(cfg) then
+            M.xoaCoDung(cfg)
             Core.log(string.format("duyet: nguoi dung xin dung o anh %d/%d",
                                    last, #photos))
-            local tsv_dung = M.ghiBang(cap, dest)
+            local tsv_dung = M.ghiBang(cap, dest, cfg)
             --[[ da_dung = true, va 'loi' tinh trên SỐ ĐÃ LÀM chứ không trên
                  tổng: dừng giữa chừng thì mấy ảnh chưa tới lượt không phải
                  là lỗi. Đếm chúng vào lỗi là báo động giả. ]]
@@ -323,16 +334,16 @@ function M.xuatDuyet(photos, dest, opts, tienDo)
         end
     end
 
-    local tsv = M.ghiBang(cap, dest)
+    local tsv = M.ghiBang(cap, dest, cfg)
     return { cap = cap, loi = #photos - #cap, tsv = tsv, da_dung = false,
              da_lam = #photos }
 end
 
 --[[ Bảng ánh xạ ảnh gốc -> ảnh duyệt, để app biết mở file nào cho tấm nào. ]]
-function M.ghiBang(cap, dest)
+function M.ghiBang(cap, dest, cfg)
     local d = Core.jobDir()
     if not LrFileUtils.exists(d) then LrFileUtils.createAllDirectories(d) end
-    local path = LrPathUtils.child(d, "duyet_anh.tsv")
+    local path = LrPathUtils.child(d, (cfg or M.CFG_DUYET).bang)
     local tmp = path .. ".part"
     local fh = io.open(tmp, "w")
     if not fh then return nil end
@@ -392,8 +403,9 @@ end
 
      gioi_han: chỉ xuất N ảnh đầu. Đây là đường CHẠY THỬ — đo tốc độ thật trên
      một nhúm ảnh trước khi cho chạy cả buổi. ]]
-function M.runRequest()
-    local req = LrPathUtils.child(Core.jobDir(), M.YEU_CAU)
+function M.chayYeuCau(cfg)
+    cfg = cfg or M.CFG_DUYET
+    local req = LrPathUtils.child(Core.jobDir(), cfg.yeuCau)
     if not LrFileUtils.exists(req) then return 0 end
 
     local claimed = Core.claim(req)      -- cùng cơ chế giành với job áp
@@ -405,15 +417,22 @@ function M.runRequest()
         folder = fh:read("*l")
         for line in fh:lines() do
             local k, v = string.match(line, "^%s*([%w_]+)%s*=%s*(.-)%s*$")
-            if k then opts[k] = v end
+            if k == "anh" then
+                --[[ 13/10: nhieu dong "anh=<duong dan>" = CHI dung dung nhung anh do
+                     (luot 2 cua Xu ly anh: anh vua ap thong so, khong ca thu muc). ]]
+                opts.anh = opts.anh or {}
+                opts.anh[#opts.anh + 1] = v
+            elseif k then
+                opts[k] = v
+            end
         end
         fh:close()
     end
     Core.try("boYeuCauDuyet", function() LrFileUtils.delete(claimed) end)
 
     if not folder or folder == "" then
-        Core.log("duyet: thieu duong dan thu muc")
-        M.ghiTienDo({ trang_thai = "loi", thong_bao = "thieu duong dan" })
+        Core.log(cfg.ten .. ": thieu duong dan thu muc")
+        M.ghiTienDo({ trang_thai = "loi", thong_bao = "thieu duong dan", ma = opts.ma }, cfg)
         return 0
     end
     folder = string.gsub(folder, "^%s*(.-)%s*$", "%1")
@@ -426,9 +445,23 @@ function M.runRequest()
     local catalog = LrApplication.activeCatalog()
     local photos, how = Core.photosInFolder(catalog, folder)
     if not photos or #photos == 0 then
-        Core.log("duyet: khong thay anh nao trong " .. folder)
-        M.ghiTienDo({ trang_thai = "loi", thong_bao = "khong thay anh nao" })
+        Core.log(cfg.ten .. ": khong thay anh nao trong " .. folder)
+        M.ghiTienDo({ trang_thai = "loi", thong_bao = "khong thay anh nao", ma = opts.ma }, cfg)
         return 0
+    end
+
+    --[[ 13/10: danh sach anh (dong anh=) -> chi nhung anh do; loc sao VAN chay sau do
+         (anh 1 sao khong dung, khong lam curve — quy uoc chung). ]]
+    if type(opts.anh) == "table" and #opts.anh > 0 then
+        local loc = Core.try("locAnhDs", function()
+            local ra
+            catalog:withReadAccessDo(function()
+                ra = Core.locTheoDs(photos, opts.anh,
+                                    function(ph) return ph:getRawMetadata("path") end)
+            end)
+            return ra
+        end)
+        if type(loc) == "table" then photos = loc end
     end
 
     local boSao
@@ -443,16 +476,16 @@ function M.runRequest()
     end
 
     if #photos == 0 then
-        M.ghiTienDo({ trang_thai = "loi", thong_bao = "loc xong khong con anh nao" })
+        M.ghiTienDo({ trang_thai = "loi", thong_bao = "loc xong khong con anh nao", ma = opts.ma }, cfg)
         return 0
     end
 
     --[[ Xoá cờ dừng CŨ trước khi chạy. Còn sót cờ của lần trước thì lượt mới
          dừng ngay sau lô đầu mà không ai hiểu vì sao. ]]
-    M.xoaCoDung()
+    M.xoaCoDung(cfg)
 
     local t0 = os.time()
-    M.ghiTienDo({ trang_thai = "dang_chay", xong = 0, tong = #photos, thu_muc = dest })
+    M.ghiTienDo({ trang_thai = "dang_chay", xong = 0, tong = #photos, thu_muc = dest, ma = opts.ma }, cfg)
 
     local canh = tonumber(opts.canh)
     local chat = tonumber(opts.chat)
@@ -460,11 +493,12 @@ function M.runRequest()
 
     local res, err = Core.try("xuatDuyet", function()
         return M.xuatDuyet(photos, dest, { canh = canh, chat = chat,
-                                           lo = tonumber(opts.lo) })
+                                           lo = tonumber(opts.lo), ma = opts.ma },
+                           nil, cfg)
     end)
     if not res then
-        Core.log("duyet: LOI -> " .. tostring(err))
-        M.ghiTienDo({ trang_thai = "loi", thong_bao = tostring(err) })
+        Core.log(cfg.ten .. ": LOI -> " .. tostring(err))
+        M.ghiTienDo({ trang_thai = "loi", thong_bao = tostring(err), ma = opts.ma }, cfg)
         return 0
     end
 
@@ -474,13 +508,23 @@ function M.runRequest()
                   xong = #res.cap, tong = res.da_lam or #photos,
                   loi = res.loi, thu_muc = dest, tsv = res.tsv,
                   thong_bao = string.format("%d giay, %.2f giay/anh",
-                                            giay, moi_anh) })
+                                            giay, moi_anh), ma = opts.ma }, cfg)
     Core.log(string.format(
-        "duyet: %s %d/%d anh (%s), bo %d anh %s sao, %d giay (%.2f s/anh) -> %s",
+        cfg.ten .. ": %s %d/%d anh (%s), bo %d anh %s sao, %d giay (%.2f s/anh) -> %s",
         res.da_dung and "DUNG GIUA CHUNG sau" or "xuat",
         #res.cap, #photos, how, boSao or 0, tostring(opts.bo_sao),
         giay, moi_anh, dest))
     return #res.cap
+end
+
+function M.runRequest()
+    return M.chayYeuCau(M.CFG_DUYET)
+end
+
+--[[ 13/10: lượt 2 của "Xử lý ảnh" — dựng ảnh đã áp WB / Tone để app đo da từng điểm ảnh
+     và vùng cháy (curve_da.py). ]]
+function M.runRequestCurve()
+    return M.chayYeuCau(M.CFG_CURVE)
 end
 
 -- ------------------------------------------------------- đánh dấu ảnh cần sửa

@@ -84,6 +84,60 @@ local function splitTab(line)
     return out
 end
 
+--[[ 13/10: CURVE ĐIỂM (ToneCurvePV2012 + Red / Green / Blue). getDevelopSettings trả
+     bảng phẳng {x1, y1, x2, y2, ...} thang 0..255 (ChupCore / XemPresetCore đọc ra
+     đúng như vậy). App gửi một ô "x1,y1,..." (curve_lr.ghi_o). ]]
+M.CURVE_KEYS = { ToneCurvePV2012 = true, ToneCurvePV2012Red = true,
+                 ToneCurvePV2012Green = true, ToneCurvePV2012Blue = true }
+
+--[[ Ô curve -> bảng phẳng; nil khi hỏng: số lẻ phần tử, < 2 điểm, ngoài 0..255, x không
+     tăng ngặt. ]]
+function M.docCurve(val)
+    if type(val) ~= "string" then return nil end
+    local t = {}
+    for so in string.gmatch(val, "[^,;%s]+") do
+        local n = tonumber(so)
+        if not n or n < 0 or n > 255 then return nil end
+        t[#t + 1] = n
+    end
+    if #t < 4 or #t % 2 ~= 0 then return nil end
+    for i = 3, #t, 2 do
+        if t[i] <= t[i - 2] then return nil end
+    end
+    return t
+end
+
+--[[ Hai curve (bảng phẳng) trùng nhau: cùng số điểm, từng số lệch ≤ 0.5. ]]
+function M.cungCurve(a, b)
+    if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then return false end
+    for i = 1, #a do
+        local d = (tonumber(a[i]) or -1e9) - (tonumber(b[i]) or 1e9)
+        if d < 0 then d = -d end
+        if d > 0.5 then return false end
+    end
+    return true
+end
+
+--[[ 12/10 (dời từ XuatCore 13/10 — DuyetCore cũng cần): so đường dẫn không phân biệt
+     hoa thường / dấu gạch (Windows). locTheoDs: giữ ảnh có đường dẫn nằm trong ds
+     (ds rỗng -> giữ hết); layDuong(photo) -> đường dẫn. Hàm THUẦN. ]]
+function M.chuanDuong(p)
+    local s = string.lower(tostring(p or ""))
+    s = string.gsub(s, "/", "\\")
+    return s
+end
+
+function M.locTheoDs(photos, ds, layDuong)
+    if type(ds) ~= "table" or #ds == 0 then return photos end
+    local muon = {}
+    for i = 1, #ds do muon[M.chuanDuong(ds[i])] = true end
+    local ra = {}
+    for i = 1, #photos do
+        if muon[M.chuanDuong(layDuong(photos[i]))] then ra[#ra + 1] = photos[i] end
+    end
+    return ra
+end
+
 --[[ Đọc file job.
      Dòng đầu là tiêu đề: path, Exposure2012, Highlights2012, Shadows2012,
      Temperature, Tint... (đọc THEO TÊN CỘT — autotone thêm cột mới như
@@ -111,6 +165,14 @@ function M.readJob(path)
                     elseif key == "ConvertToGrayscale" then
                         -- 8/10: anh den trang. "1"/"true" = Black & White
                         rec.settings[key] = (val == "1" or val == "true" or val == "True")
+                    elseif M.CURVE_KEYS[key] then
+                        --[[ 13/10: curve diem "x1,y1,..." -> bang phang. O hong thi BO
+                             khoa do (ghi nham mot curve la doi mau ca anh). ]]
+                        local t = M.docCurve(val)
+                        if t then rec.settings[key] = t
+                        else M.log("bo o curve hong: " .. key .. " = " .. tostring(val)) end
+                    elseif key == "ToneCurveName2012" then
+                        rec.settings[key] = val
                     else
                         rec.settings[key] = tonumber(val)
                     end
@@ -151,6 +213,12 @@ local function diffFields(cur, want)
         if type(val) == "boolean" then
             -- ConvertToGrayscale: Lightroom tra true/false (nil = mau)
             if (cur[key] == true) ~= val then bad[#bad + 1] = key end
+        elseif type(val) == "table" then
+            -- 13/10: curve diem — so tung so (sameNumber tren bang luon "khac")
+            if not M.cungCurve(cur[key], val) then bad[#bad + 1] = key end
+        elseif key == "ToneCurveName2012" then
+            --[[ Ten curve: ghi kem, KHONG kiem — Lightroom co the tu dat lai ten khi
+                 curve trung mot curve dung san; kiem ten la bao "chua nhan" mai. ]]
         elseif not sameNumber(cur[key], val) then bad[#bad + 1] = key end
     end
     if (want.Temperature or want.Tint) and cur.WhiteBalance ~= "Custom" then
@@ -434,6 +502,14 @@ function M.applyJob(rows, jobName)
                         if rec.settings.Temperature or rec.settings.Tint then
                             s.WhiteBalance = "Custom"
                         end
+                        if not rec.settings.ToneCurveName2012 then
+                            for key in pairs(M.CURVE_KEYS) do
+                                if rec.settings[key] then
+                                    s.ToneCurveName2012 = "Custom"
+                                    break
+                                end
+                            end
+                        end
                         todo[#todo + 1] = { photo = photo, settings = s, dev = wantDev,
                                             rating = wantRating and rec.rating or nil }
                     else
@@ -619,13 +695,17 @@ local EXPORT_FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
                              CONG vao so goc nay. Dat CUOI: app doc theo ten cot. ]]
                         "HueAdjustmentRed", "SaturationAdjustmentRed",
                         "HueAdjustmentOrange", "SaturationAdjustmentOrange",
-                        "HueAdjustmentYellow", "SaturationAdjustmentYellow" }
+                        "HueAdjustmentYellow", "SaturationAdjustmentYellow",
+                        --[[ 13/10: curve diem cua preset — app ghep chinh sua da /
+                             nen chay vao curve GOC nay (khong ghi de). Dat CUOI. ]]
+                        "ToneCurveName2012", "ToneCurvePV2012", "ToneCurvePV2012Red",
+                        "ToneCurvePV2012Green", "ToneCurvePV2012Blue" }
 -- Rating KHONG phai develop setting nen phai lay rieng bang getRawMetadata,
 -- xem cho ghi tung dong ben duoi. Can de doi chieu voi nhan loc anh cua nguoi dung.
 M.EXPORT_FIELDS = EXPORT_FIELDS
 
 -- Truong la CHU chu khong phai so: "As Shot", "Custom", "Auto"...
-local EXPORT_TEXT = { WhiteBalance = true }
+local EXPORT_TEXT = { WhiteBalance = true, ToneCurveName2012 = true }
 
 local function numOrEmpty(v)
     if type(v) == "boolean" then
@@ -642,6 +722,17 @@ end
      "As Shot" thành ô trống, và autotone tưởng plugin cũ không xuất cột này.
      Tab / xuống dòng thay bằng dấu cách: lọt một tab là cả dòng lệch cột. ]]
 function M.exportCell(key, v)
+    if M.CURVE_KEYS[key] then
+        -- 13/10: bang phang -> "x1,y1,..." (khong co tab: mot o)
+        if type(v) ~= "table" then return "" end
+        local o = {}
+        for i = 1, #v do
+            local n = tonumber(v[i])
+            if not n then return "" end
+            o[#o + 1] = string.format("%.14g", n)
+        end
+        return table.concat(o, ",")
+    end
     if EXPORT_TEXT[key] then
         if type(v) ~= "string" then return "" end
         return (string.gsub(v, "[\t\r\n]", " "))
@@ -813,6 +904,7 @@ end
      để người dùng ngồi chờ yêu cầu xuất. ]]
 local nhipCuoi = 0
 local vongNhip = nil
+M.KHA_NANG = "curve1"
 
 --[[ 8/10: applyJob cũng gọi (vong = nil, kèm `buoc`) giữa các lô. Trước đây
      đang áp thì không có nhịp: app không phân biệt được "đang áp 1813 ảnh" với
@@ -830,6 +922,9 @@ function M.ghiNhip(vong, cachGiay, buoc)
     local fh = io.open(LrPathUtils.child(dir, "plugin_song.txt"), "w")
     if not fh then return false end
     fh:write("vong=" .. tostring(vongNhip) .. "\nkhi=" .. os.date("%Y-%m-%d %H:%M:%S") .. "\n")
+    --[[ 13/10: kha nang cua ban plugin nay — app hoi truoc khi gui viec can plugin
+         moi (OTA khong mang Lua: may chua cai lai thi app biet ma noi ra). ]]
+    fh:write("kha_nang=" .. M.KHA_NANG .. "\n")
     if buoc then fh:write("buoc=" .. tostring(buoc) .. "\n") end
     fh:close()
     return true
@@ -993,6 +1088,9 @@ local function khoaJob(ten)
     local st, buoi = string.match(ten, "^apply_(%d+_%d+)_(.+)%.tsv$")
     if not st then st, buoi = string.match(ten, "^apply_(%d+_%d+)_(.+)%.tsv%..+%.running$") end
     if not st then st, buoi = string.match(ten, "^apply_(%d+_%d+)_(.+)%.done$") end
+    --[[ 13/10: job curve (luot 2) cung buoi voi job WB / Tone: job WB / Tone moi hon
+         thi job curve cu bo do khong ap lai (no ghep tren trang thai cu). ]]
+    if buoi then buoi = string.gsub(buoi, "@curve$", "") end
     return st, buoi
 end
 

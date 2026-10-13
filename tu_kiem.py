@@ -158,6 +158,21 @@ def chay(nhanh: bool = False) -> Bao:
         return f"{Path(at.CANH_MODEL).name} · P(trong) ảnh thử {p:.2f} · {ten}"
     b.thu("Mô hình nhận cảnh (Places365)", _mo_hinh_canh)
 
+    def _mat_na_da():
+        #  13/10: curve da (curve_da.py) tách da mặt bằng mô hình phân vùng mặt của bộ
+        #  Retouch (mo_hinh/resnet34_faceparse.onnx). Bản không kèm retouch không có ->
+        #  mặt nạ dự phòng (elip + màu da), VẪN chạy — chỉ báo, không hỏng.
+        import numpy as _np
+        import mat_na_da as _mn
+        tt = _mn.trang_thai()
+        if not tt["co"]:
+            return f"dùng mặt nạ dự phòng (elip + màu da) — {tt['ly_do']}"
+        L = _mn.nhan_vung(_np.full((256, 256, 3), 180, _np.uint8))
+        if L is None or L.shape != (256, 256):
+            raise AssertionError("mô hình phân vùng mặt không chạy được")
+        return f"{Path(tt['duong']).name} · {tt['kieu']}"
+    b.thu("Mặt nạ da mặt (curve da)", _mat_na_da)
+
     def _phong_giao_dien():
         #  12/10 giao diện mới: Be Vietnam Pro + JetBrains Mono đi kèm gói (fonts/).
         #  Thiếu thì app vẫn chạy (lùi về Segoe UI) nhưng lệch bản thiết kế.
