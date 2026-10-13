@@ -983,6 +983,19 @@ class Tram:
                 self.tra_loi(y, ok=False, loi="hết hạn bản quyền Tone&Retouch — ảnh không retouch")
             self.log(f"{len(ds)} ảnh: hết hạn bản quyền — không retouch")
             return
+        #[[ 13/10: mot key mot may mot luc — may da bi day ra (key dang dung o may
+        #   khac) thi Lightroom o may nay khong retouch tiep. phien_ok() goi mang
+        #   toi da 5 phut/lan; mat mang thi cho chay (an han do ban_quyen lo). ]]
+        try:
+            import tin_dung
+            ok_p, ly_p = tin_dung.phien_ok()
+        except Exception:                                    # noqa: BLE001
+            ok_p, ly_p = True, ""
+        if not ok_p:
+            for y in ds:
+                self.tra_loi(y, ok=False, loi=f"{ly_p} — ảnh không retouch")
+            self.log(f"{len(ds)} ảnh: {ly_p}")
+            return
         rt = self.rt
         nhom: dict = {}
         for y in ds:

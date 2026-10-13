@@ -1829,3 +1829,64 @@ TU_DIEN.update({
     'Nữ': 'Female', 'Trẻ con': 'Child', 'Nữ lớn tuổi': 'Older female', 'Nam lớn tuổi': 'Older male',
     'Mắt': 'Eyes', 'Cơ thể': 'Body', 'Khác': 'Other', 'Khuôn mặt': 'Face',
 })
+
+#  13/10: credit theo ảnh + một key một máy một lúc (tin_dung / tin_dung_ui / ban_quyen)
+TU_DIEN.update({
+    'Credit & thiết bị…': 'Credit & devices…',
+    'Credit & thiết bị': 'Credit & devices',
+    'Máy này đã bị đẩy ra': 'This machine was signed out',
+    'Key đang dùng trên máy khác': 'Key in use on another machine',
+    'Key này vừa được đăng nhập trên máy «{}».': 'This key was just signed in on «{}».',
+    'Key này đang được dùng trên máy «{}».': 'This key is in use on «{}».',
+    'Lần cuối máy đó hoạt động: {} phút trước.': 'That machine was last active {} min ago.',
+    'Máy đó đang mở tool.': 'The app is open on that machine.',
+    'Mỗi key chỉ dùng trên MỘT máy tại một thời điểm.': 'Each key works on ONE machine at a time.',
+    'Bấm “Tiếp tục dùng trên máy này” để chuyển key về đây — máy kia sẽ bị đẩy ra. Credit dùng chung, ảnh đã trừ credit ở máy kia không bị trừ lại.':
+        'Click “Continue on this machine” to move the key here — the other machine will be signed out. '
+        'Credit is shared; photos already charged on the other machine are not charged again.',
+    'Tiếp tục dùng trên máy này': 'Continue on this machine',
+    'Đã chuyển key về máy này — máy kia sẽ bị đẩy ra ở nhịp kế tiếp.':
+        'Key moved to this machine — the other machine will be signed out at its next check.',
+    'Không nối được máy chủ. Kiểm tra mạng rồi bấm lại.': 'Could not reach the server. Check the network and try again.',
+    'Không chuyển được key về máy này.': 'Could not move the key to this machine.',
+    'Đang kiểm credit cho {} ảnh…': 'Checking credit for {} photos…',
+    'Hết credit — không phân tích ảnh mới.': 'Out of credit — new photos were not analyzed.',
+    'Mất mạng và đã ứng trước đủ {} ảnh — nối mạng để trừ bù rồi phân tích tiếp.':
+        'Offline and the {}-photo advance is used up — connect to the network to settle it, then continue.',
+    'Máy này đã bị đẩy ra — key đang dùng ở máy khác.': 'This machine was signed out — the key is in use on another machine.',
+    'Key đang dùng ở máy khác.': 'The key is in use on another machine.',
+    'Không trừ được credit.': 'Could not charge credit.',
+    'Cần nối mạng': 'Network needed',
+    'Hết credit': 'Out of credit',
+    'Cần {} credit cho ảnh mới, key này còn {}.': 'New photos need {} credit; this key has {} left.',
+    '{} ảnh đã trừ credit từ trước — phân tích lại miễn phí.': '{} photos were already charged — re-analyzing them is free.',
+    'Liên hệ SAY Media để nạp thêm credit.': 'Contact SAY Media to top up credit.',
+    'Phân tích {} ảnh vừa đủ credit ({} ảnh mới + {} ảnh đã trừ)?':
+        'Analyze the {} photos your credit covers ({} new + {} already charged)?',
+    'Phân tích {} ảnh vừa đủ credit?': 'Analyze the {} photos your credit covers?',
+    'Đang hỏi máy chủ số credit…': 'Asking the server for credit…',
+    'Không hỏi được máy chủ.': 'Could not ask the server.',
+    'Không nối được máy chủ.': 'Could not reach the server.',
+    '{} Số dưới là lần cập nhật gần nhất.': '{} The numbers below are from the last update.',
+    'Credit: còn {} / {}  (đã dùng {})': 'Credit: {} / {} left  ({} used)',
+    'Ứng trước lúc mất mạng: {} ảnh, chờ trừ bù.': 'Advanced while offline: {} photos, waiting to be settled.',
+    'Máy đang dùng key: {} (máy này)': 'Machine using the key: {} (this machine)',
+    'Máy đang dùng key: {}': 'Machine using the key: {}',
+    'Ảnh đã phân tích theo máy (trừ credit / tổng lượt phân tích):':
+        'Photos analyzed per machine (credit charged / total analyses):',
+    'Chưa có số liệu.': 'No data yet.',
+    'Trừ {} credit': 'Charged {} credit',
+    'Trừ {} credit ({} ảnh đã trừ trước)': 'Charged {} credit ({} photos already charged)',
+    'ứng trước {}/{}': 'offline advance {}/{}',
+    'Mất mạng — đã ứng trước {}/{} ảnh, sẽ trừ khi có mạng':
+        'Offline — advanced {}/{} photos, will be charged when back online',
+    # ban_quyen.LY_DO_VIET (13/10)
+    'Key này đang được dùng trên một máy khác.': 'This key is in use on another machine.',
+    'Key này vừa được đăng nhập trên một máy khác, máy này đã bị đẩy ra.':
+        'This key was just signed in on another machine; this machine was signed out.',
+    'Đã hết credit phân tích ảnh của key này. Liên hệ SAY Media để nạp thêm.':
+        'This key has no photo-analysis credit left. Contact SAY Media to top up.',
+    'Bản AutoTone này đã cũ. Cập nhật bản mới để dùng tiếp.': 'This AutoTone version is outdated. Update to keep using it.',
+    'Mã ảnh gửi lên máy chủ không hợp lệ.': 'The photo IDs sent to the server are invalid.',
+    'Gửi quá nhiều ảnh trong một lần.': 'Too many photos sent at once.',
+})

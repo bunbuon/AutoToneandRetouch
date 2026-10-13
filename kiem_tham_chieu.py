@@ -72,10 +72,30 @@ def thieu_at(cay) -> list:
                    and n.value.id == "at" and not hasattr(at, n.attr)})
 
 
-def thieu_self(cay) -> list:
+def cay_mixin(cay) -> list:
+    """Cây AST của các file mixin mà App kế thừa (`from x_ui import YMixin`).
+
+    #[[ 13/10: App ke thua XuLyAnhMixin / TinDungMixin — ham cua chung nam o file
+    #   khac. Khong doc cac file do thi moi self._xl_*() / self._td_*() deu bi bao
+    #   "khong co ham" (10 loi gia tu ngay co nut Xu ly anh), va loi that bi chim
+    #   giua loi gia. ]]
+    """
+    ra = []
+    for n in ast.walk(cay):
+        if isinstance(n, ast.ImportFrom) and n.module and any(
+                a.name.endswith("Mixin") for a in n.names):
+            f = HERE / (n.module.replace(".", "/") + ".py")
+            try:
+                ra.append(ast.parse(f.read_text(encoding="utf-8", errors="replace")))
+            except (OSError, SyntaxError):
+                pass
+    return ra
+
+
+def thieu_self(cay, them=()) -> list:
     ham = set()
     gan = set()
-    for n in ast.walk(cay):
+    for n in [x for c in (cay, *them) for x in ast.walk(c)]:
         if isinstance(n, ast.ClassDef):
             ham |= {f.name for f in n.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
         if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
@@ -111,7 +131,7 @@ def main() -> int:
         for ten in thieu_at(cay):
             loi.append(f"{f.name}: at.{ten} KHONG TON TAI trong autotone.py")
         if f.name == "autotone_gui.py":
-            for ten in thieu_self(cay):
+            for ten in thieu_self(cay, cay_mixin(cay)):
                 loi.append(f"{f.name}: self.{ten}(...) KHONG co ham nao ten do")
     print(f"  rà {so_file} file")
     for m in loi:

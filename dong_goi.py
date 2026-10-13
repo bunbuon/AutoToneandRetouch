@@ -82,6 +82,7 @@ LOAI_TRU = [
     "kiem_lens_co.py", "kiem_nut_catalog.py", "kiem_plugin_lua51.py",
     "kiem_tien_do_retouch.py", "test_cho_lightroom.py", "test_chu_the_af.py",
     "test_chuoi_mau_da.py", "test_gop_y.py", "test_hsl_da.py", "test_hsl_da_cuoi.py",
+    "test_tin_dung.py", "test_tin_dung_gui.py", "thu_may_thu_hai.py",
     "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
     "test_phanh_da_wb.py", "test_canh_ngoai_toi.py", "test_loc_may_mau_da.py",
     "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",
@@ -149,6 +150,8 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         "tram_retouch",
         #  12/10: góp dữ liệu buổi đã sửa tay (import trong hàm — autotone_gui, retouch_may)
         "gop_y",
+        #  13/10: credit + một máy một lúc (ban_quyen / tram_retouch import trong hàm)
+        "tin_dung", "tin_dung_ui",
         #  12/10 giao diện mới: trang 5 · Xử lý & xuất (import trong App._build_xu_ly)
         "xu_ly_ui",
         #  13/10: nút Xử lý ảnh (mixin của App), mô phỏng thông số lên ảnh xem trước,

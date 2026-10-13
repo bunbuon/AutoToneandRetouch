@@ -80,6 +80,7 @@ python3 test_dung_lai_buoi.py  # dùng lại buổi đã chạy: bản xuất th
 python3 test_bu_sang.py        # bù sáng cả buổi / loại buổi (3/10; phần GUI cần màn hình)
 python3 test_dong_bo_loat.py   # cùng khung + cùng thông số -> cùng một mức (3/10)
 python3 test_wb_asshot.py      # preset bỏ trống WB: kéo Temp về As Shot (3/10, bước 2)
+python3 test_tin_dung.py       # credit + một máy một lúc, Worker THẬT (13/10; cần ../KeyActiveAutoTone đã npm ci)
 python3 kiem_ban_xuat.py       # app đọc lại bản xuất (cần tkinter)
 python3 kiem_xuat_lr.py        # khâu 5 — bắt đường dẫn Export
 python3 kiem_tim_tool.py       # tìm tool retouch
@@ -94,6 +95,7 @@ python3 kiem_retouch_gui.py    # mô-đun Retouch: ảnh lớn + dải ảnh, b�
 python3 kiem_xem_truoc.py      # xem trước với tool THẬT (máy Windows); AUTOTONE_TOOL_THU / AUTOTONE_ANH_THU để chỉ chỗ khác
 python3 kiem_gui_duyet.py      # khâu Duyệt nhanh & Lightroom
 python3 test_giao_dien_gon.py  # khung Evoto, nút Ghi, dải báo, một dòng, nhóm, thanh trượt, dấu ?
+python3 test_tin_dung_gui.py   # hộp "Key đang dùng trên máy khác", trừ credit khi Phân tích, hết credit (13/10)
 
 # cần lua5.1
 lua5.1 kiem_duyet.lua AutoTone.lrplugin
@@ -914,6 +916,48 @@ tới được đích thì vẫn áp phần làm da gần đích hơn, miễn v�
 Kiểm: `test_mau_da_mot_dich.py` (24 mục; thử ngược 11/11 đột biến đỏ — hai lần lọt đầu do bài
 kiểm: đột biến chỉ tắt nửa điều kiện; plan() trên CÙNG danh sách phải kiểm sau MỖI lần vì lỗi
 làm WB nhảy qua lại).
+
+## Credit theo ảnh + một key một máy một lúc (13/10) — `tin_dung.py`, BẬT khi Worker có D1
+
+User: "cấp 1 key cho 1 máy đang gặp vấn đề với người dùng 2 thiết bị muốn linh động... key 1
+năm là 500.000 credit. 1 credit = 1 ảnh đã bấm phân tích; ảnh đã trừ thì lần sau không trừ
+nữa. Như xuất ảnh của Evoto." Chốt thêm: một key chỉ dùng MỘT máy tại một thời điểm — máy
+sau vào thì hiện cảnh báo, "tiếp tục" thì đẩy máy kia ra; mất mạng ứng trước 2.000 ảnh;
+gói khác theo tỉ lệ ngày (500.000 × ngày / 365).
+- **Máy chủ** (repo RIÊNG `bunbuon/KeyActiveAutoTone`, `src/credit.js` + D1
+  `migrations/0001_credit.sql`): số dư, ảnh đã trừ, máy đang giữ phiên đều ở đây — KV cũ
+  không đếm nguyên tử được và chỉ 1.000 lượt ghi/ngày. App gửi `api: 2`; app CŨ không gửi
+  thì Worker giữ đúng luật cũ (một key một máy, không credit). Triển khai + quản trị
+  (`quan_tri.mjs xem/nap/dat/day/noi`): `HUONG_DAN.md` của repo đó. Kiểm: `node kiem_credit.mjs`
+  (47 phép, `wrangler dev --local` thật; thử ngược 21 đột biến).
+- **Mã ảnh** `tin_dung.ma_anh`: sha256(cỡ + 64 KiB đầu + 64 KiB giữa) — đổi tên, chép thư mục
+  (kiểu G:\Test1009), sang máy khác vẫn cùng mã; Lightroom không ghi vào RAW độc quyền. DNG
+  dùng `RawDataUniqueID` (0xC65D, `tags["raw_uid"]` trong `_parse_ifd`) vì Lightroom có thể
+  ghi metadata vào DNG. Kho kết quả đo (`phan_tich/*.pkl`) KHÔNG dùng làm sổ credit: khoá
+  theo đường dẫn, đổi mỗi lần cập nhật engine.
+- **Trừ khi nào**: `start_analyze` → `work()` → `_td_tru_cho_do(pairs)` TRƯỚC `at.analyze`,
+  chỉ ảnh SẼ đo (`can_do`; ảnh có sẵn kết quả lưu không đụng credit). Bấm Dừng giữa chừng:
+  ảnh đã trừ vẫn là "đã trừ", phân tích lại không trừ. Hết credit → server từ chối CẢ mẻ
+  (402 + `cu_idx`), hộp đề nghị phân tích phần vừa đủ (`start_analyze(chi_anh=…)`).
+- **Phiên**: `tin_dung.NhipPhien` (luồng nền) vào phiên lúc mở app, nhịp 5 phút; máy im
+  > 15 phút coi như đã rời; đóng app `roi()` (≤ 2 s). Bị đẩy ra / máy khác đang dùng →
+  `_khoa_chan()` chặn + hộp "Tiếp tục dùng trên máy này" (`tin_dung_ui._td_hop_phien`).
+  Trạm retouch (`tram_retouch.lam`) cũng kiểm `tin_dung.phien_ok()`.
+- **Tắt** (chạy y như trước): chưa có key, `AUTOTONE_CREDIT=0`, hoặc Worker chưa có cửa
+  credit (404 `khong_co_cua_nay` / 503 `chua_co_credit`) — thử lại sau 6 giờ. Nên app mới ra
+  trước khi deploy Worker vẫn chạy. Các bài kiểm GUI cũ stub `bq.kiem` mà không lưu key →
+  credit tắt, hành vi không đổi.
+- Trạng thái máy này: `<dữ liệu>/credit/phien.json` + `so_cai.sqlite` (ảnh đã trừ + hàng
+  ứng trước). Giới hạn: chặn ở app là MỀM như `ban_quyen.py` đã ghi — số thật ở máy chủ.
+- `kiem_tham_chieu.py` giờ đọc cả file mixin (`from x_ui import YMixin`) — trước đó báo 10
+  lỗi giả cho `self._xl_*()` từ ngày có nút Xử lý ảnh.
+- Thử 2 "máy" trên một máy Windows: `THU_CREDIT_2_MAY.bat` (máy thứ hai = `thu_may_thu_hai.py`,
+  dữ liệu riêng trong %TEMP%, mã máy giả).
+Kiểm: `test_tin_dung.py` (33), `test_tin_dung_gui.py` (20, xvfb), `test_tram_retouch` mục "máy bị
+đẩy ra". Thử ngược phía app 25 đột biến (mã ảnh, công tắc, Worker cũ, phiên, ứng trước, trừ bù,
+hộp hết credit, chi_anh, nhãn, trạm, kích hoạt api 2, key cũ khi gia hạn...) — lần đầu LỌT 2 do
+BÀI KIỂM thiếu (trạm chỉ thử khi đã tự biết bị đẩy ra; nhãn chỉ thử qua tin phiên, không qua
+nhịp 60 giây) -> thêm mục, chạy lại 25/25 bị bắt.
 
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 

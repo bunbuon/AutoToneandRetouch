@@ -52,6 +52,7 @@ from hop_thoai import (BuoiWindow, GuWindow, LogWindow,     # noqa: F401
                        TaiCapNhat, TaiTaiNguyenDialog, UndoDialog)
 from cua_saytool import _cua_saytool, _tro_insightface   # noqa: F401
 from xu_ly_anh_ui import XuLyAnhMixin                     # 13/10: nút Xử lý ảnh
+from tin_dung_ui import TinDungMixin                      # 13/10: credit + một máy một lúc
 
 
 #[[ BAY KHAU — xuong song cua ung dung.
@@ -285,7 +286,7 @@ def _pick_txt(r: dict) -> str:
     return ""
 
 
-class App(XuLyAnhMixin, ttk.Frame):
+class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
     """Cửa sổ chính, dáng Evoto (3/10 tối) — xem _build_shell().
 
     BỐ CỤC
@@ -388,6 +389,7 @@ class App(XuLyAnhMixin, ttk.Frame):
         self.after(2500, self._mo_tram_retouch)
         self.after(4000, self._gop_y_khoi_dong)
         self.after(6000, self._tu_kiem_cap_nhat)
+        self.after(1500, self._td_khoi_dong)        # 13/10: phiên một máy + credit
         self._nho_mau_da(theo_buoi=False)    # 12/10: mẫu màu da dùng gần nhất (gu)
         self._set_busy(False)
 
@@ -1585,12 +1587,12 @@ class App(XuLyAnhMixin, ttk.Frame):
             #   ho noi mang mot lan la xong; bao sau thi ho dang giua job va
             #   khong hieu vi sao app dung. ]]
             if g.get("nhac"):
-                self.lbl_han.configure(text=f"{g['nhac']}   ·   máy {g['may']}",
-                                       foreground=gd.MAU["canh"])
+                self._han_goc = (f"{g['nhac']}   ·   máy {g['may']}", gd.MAU["canh"])
             else:
-                self.lbl_han.configure(
-                    text=f"Bản quyền {g['goi']} · còn {con}   ·   máy {g['may']}",
-                    foreground=gd.MAU["canh"] if gap else gd.MAU["mo2"])
+                self._han_goc = (f"Bản quyền {g['goi']} · còn {con}   ·   máy {g['may']}",
+                                 gd.MAU["canh"] if gap else gd.MAU["mo2"])
+            #  13/10: + số credit (tin_dung.tom_tat) — _td_ve_nhan ghép và vẽ
+            self._td_ve_nhan()
             self._go_lop_khoa()
             self.after(60_000, self._soi_khoa)
             return
@@ -1647,7 +1649,9 @@ class App(XuLyAnhMixin, ttk.Frame):
         không — mọi đường vào việc thật đều đi qua đây.
         """
         if bq.kiem()["co_phep"] or khoa.kiem()["chay_duoc"]:
-            return False
+            #[[ 13/10: co ban quyen nhung key dang dung o MAY KHAC / may nay vua bi
+            #   day ra -> chan va hien hop "Tiep tuc dung tren may nay". ]]
+            return self._td_chan()
         self._hien_khoa(khoa.kiem())
         return True
 
@@ -1813,6 +1817,10 @@ class App(XuLyAnhMixin, ttk.Frame):
                 #   thi khi chung lech nhau se khong ai biet ben nao dung.
                 #]]
                 self.after(300, self._soi_khoa)
+                #  13/10: vào phiên ngay (key mới -> credit, máy khác đang dùng thì hỏi)
+                n = getattr(self, "_td_nhip", None)
+                if n is not None:
+                    n.ngay()
 
         self.btn_gia_han = ttk.Button(hang, text="Kích hoạt", style="Chinh.TButton",
                                       command=gui)
@@ -3067,7 +3075,8 @@ class App(XuLyAnhMixin, ttk.Frame):
                            ("Góp dữ liệu cải thiện app…", self._gop_y_cai_dat),
                            (None, None),
                            ("Tải bản tăng tốc GPU…", self.tai_gpu),
-                           ("Kiểm tra cập nhật…", self.kiem_cap_nhat)):
+                           ("Kiểm tra cập nhật…", self.kiem_cap_nhat),
+                           ("Credit & thiết bị…", self.xem_credit)):
             if nhan is None:
                 self.menu_them.add_separator()
             else:
@@ -6457,10 +6466,13 @@ class App(XuLyAnhMixin, ttk.Frame):
             self._loc_cu[str(root)] = (kq[0], kq[1])
         self.start_analyze(chuoi, loc=kq, dung_kho=dung_kho)
 
-    def start_analyze(self, chuoi: bool = False, loc=None, dung_kho: bool = False):
+    def start_analyze(self, chuoi: bool = False, loc=None, dung_kho: bool = False,
+                      chi_anh=None):
         """Đo sáng các ảnh của buổi. chuoi=True: đo xong tự áp (nút Xử lý ảnh).
         dung_kho (13/10): ảnh đã có kết quả đo lưu sẵn (at.nap_ket_qua_do, cùng bản
-        app + cùng cách đo + RAW còn nguyên) thì KHÔNG đo lại — chỉ đo ảnh còn thiếu."""
+        app + cùng cách đo + RAW còn nguyên) thì KHÔNG đo lại — chỉ đo ảnh còn thiếu.
+        chi_anh (13/10): chỉ đo các ảnh này (đường dẫn) — hộp "Hết credit" chọn phần
+        vừa đủ credit."""
         if self._khoa_chan():
             return
         #[[ Xoa co NGAY DAU. Bam "1 · Phan tich" mot minh la huy moi chuoi con
@@ -6494,6 +6506,10 @@ class App(XuLyAnhMixin, ttk.Frame):
                 return
             self._loc_luot = (f"{len(chon_pairs)}/{len(self.pairs)} ảnh · "
                               + ", ".join(sorted(may)) + " · " + ", ".join(sorted(lens)))
+        if chi_anh is not None:
+            chon_pairs = [pr for pr in chon_pairs if str(pr[0]) in chi_anh]
+            if not chon_pairs:
+                return
         #[[ 13/10 (user: "chi load cac anh ma trong lightroom dang hien thi"): anh da
         #   xoa / go khoi catalog thi khong do nua — xem _ds_lr. ]]
         if self.source_value() == "catalog" and getattr(self, "_ds_lr", None) is not None:
@@ -6547,6 +6563,7 @@ class App(XuLyAnhMixin, ttk.Frame):
                 cfg["blink"] = False
                 self.v_blink.set(False)
         self.cancel_flag = False
+        self._td_cau_luot = ""
 
         #[[ 13/10: CHI DO ANH CHUA CO KET QUA (nut Xu ly anh) — bam lai sau khi keo
         #   Bu sang / K / Tint la ap ngay, khong do lai ca buoi. ]]
@@ -6588,8 +6605,24 @@ class App(XuLyAnhMixin, ttk.Frame):
 
         t_bat_dau = time.monotonic()
 
+        def lam_lai(ds_anh):
+            """Hộp "Hết credit" -> đo lại chỉ phần vừa đủ credit (cùng kiểu lượt)."""
+            if chuoi:
+                self._xl = {"t0": time.monotonic(), "pha": "", "hop": None, "xong": False}
+            self.start_analyze(chuoi=chuoi, loc="het", dung_kho=dung_kho, chi_anh=ds_anh)
+
         def work():
             try:
+                #[[ 13/10 CREDIT: tru TRUOC khi do — 1 anh dem phan tich = 1 credit,
+                #   anh da tru (o may nao cung vay) thi khong tru nua. Chi tinh anh
+                #   SE DO (`pairs` = can_do): anh co san ket qua luu khong dung toi
+                #   credit. Bam Dung giua chung thi anh da tru van la "da tru" —
+                #   phan tich lai sau khong tru nua. Xem tin_dung.py. ]]
+                kq_td = self._td_tru_cho_do(pairs)
+                if kq_td.get("tt") not in ("ok", "ung_truoc", "tat"):
+                    self.q.put(("credit_chan", (kq_td, pairs, lam_lai)))
+                    return
+                self.q.put(("credit_ok", (kq_td, len(pairs))))
                 items, failed = at.analyze(
                     pairs, cfg, jobs,
                     progress=lambda d, t: self.q.put(("progress", (d, t))),
@@ -6653,6 +6686,18 @@ class App(XuLyAnhMixin, ttk.Frame):
                     messagebox.showerror("Lỗi khi ghi", payload)
                 elif kind == "done":
                     self._on_analyzed(*payload)
+                #  13/10: credit + phiên một máy (tin_dung_ui)
+                elif kind in ("phien", "phien_chiem"):
+                    self._td_tin(kind, payload)
+                elif kind == "credit_chan":
+                    self.chuoi = False
+                    self._td_bi_chan(*payload)
+                elif kind == "credit_ok":
+                    self._td_bao_tru(*payload)
+                elif kind == "status_credit":
+                    self.status(payload)
+                elif kind == "credit_bang":
+                    self._td_bang(payload)
                 elif kind == "error":
                     self.chuoi = False      # loi thi ngat chuoi, khong ghi tiep
                     self._set_busy(False)
@@ -6734,6 +6779,13 @@ class App(XuLyAnhMixin, ttk.Frame):
             self.status(f"Phân tích một phần: {self._loc_luot} — "
                         + str(self.lbl_status.cget("text")),
                         str(self.lbl_status.cget("foreground")))
+        #  13/10: câu credit của lượt này ("Trừ 6 credit · còn …") — refresh_plan vừa
+        #  ghi đè dòng trạng thái, nối lại vào cuối để người dùng thấy đã trừ bao nhiêu
+        cau_td = getattr(self, "_td_cau_luot", "")
+        if cau_td and not self.cancel_flag:
+            self.status(str(self.lbl_status.cget("text")) + "   ·   " + cau_td,
+                        str(self.lbl_status.cget("foreground")))
+        self._td_cau_luot = ""
 
     def refresh_plan(self):
         """Tính lại delta từ số đo có sẵn (không quét lại ảnh) và vẽ bảng."""
@@ -8284,6 +8336,11 @@ def main():
     gd.dat_theme(root)
     app = App(root)
     root.mainloop()
+    #  13/10: nhả phiên credit để máy khác mở không bị hỏi (chờ ≤ 2 giây)
+    try:
+        app._td_dung()
+    except Exception:                                        # noqa: BLE001
+        pass
     #  10/10: đóng app -> dừng trạm retouch + đóng engine (dù đang được giữ)
     try:
         import tram_retouch

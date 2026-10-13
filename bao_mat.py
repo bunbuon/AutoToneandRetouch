@@ -55,7 +55,9 @@ MA_HOA = ["autotone", "retouch", "khoa", "ban_quyen",
           #   Lightroom — de .py la ai cung sua duoc cho bo qua. ]]
           "tram_retouch",
           #  12/10: gop du lieu — chua khoa gui may nhan (BI_MAT)
-          "gop_y"]
+          "gop_y",
+          #  13/10: credit + mot may mot luc — de .py la sua mot dong la bo tru credit
+          "tin_dung", "tin_dung_ui"]
 
 #[[ Banner CẢNH BÁO + BẢN QUYỀN. Với module .py còn ship (plumbing) thì đây là
 #   răn đe; với module đã biên dịch thì nguồn không còn nên banner chỉ còn trong

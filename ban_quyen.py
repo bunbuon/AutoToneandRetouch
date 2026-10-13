@@ -210,6 +210,13 @@ LY_DO_VIET = {
     "chua_kich_hoat": "Key chưa được kích hoạt.",
     "het_han": "Giấy phép đã hết hạn.",
     "loi_may_chu": "Máy chủ đang trục trặc. Thử lại sau ít phút.",
+    # Credit + một máy một lúc (13/10) — xem tin_dung.py
+    "dang_dung_may_khac": "Key này đang được dùng trên một máy khác.",
+    "bi_day_ra": "Key này vừa được đăng nhập trên một máy khác, máy này đã bị đẩy ra.",
+    "het_credit": "Đã hết credit phân tích ảnh của key này. Liên hệ SAY Media để nạp thêm.",
+    "can_cap_nhat": "Bản AutoTone này đã cũ. Cập nhật bản mới để dùng tiếp.",
+    "ma_anh_sai": "Mã ảnh gửi lên máy chủ không hợp lệ.",
+    "qua_nhieu_anh": "Gửi quá nhiều ảnh trong một lần.",
 }
 
 
@@ -261,7 +268,10 @@ def kich_hoat(key: str) -> tuple[bool, str]:
     #   dung cua may chu. Nen o day mat mang la KHONG kich hoat duoc, va noi
     #   thang ly do thay vi bao mot loi chung chung.
     #]]
-    tl = _goi("/kich-hoat", {"key": sach(key), "may": khoa.ma_may()})
+    #[[ api 2 (13/10): may chu KHONG con khoa key vao mot may — "mot may mot
+    #   luc" do phien (tin_dung.vao_phien) lo. Khong gui api thi may chu ap
+    #   luat cu (key thu hai bi 409). ]]
+    tl = _goi("/kich-hoat", {"key": sach(key), "may": khoa.ma_may(), "api": 2})
     if tl is None:
         return False, ("Không nối được máy chủ để kích hoạt.\n\n"
                        "Lần kích hoạt đầu tiên cần mạng. Sau khi kích hoạt "
@@ -292,7 +302,11 @@ def kich_hoat(key: str) -> tuple[bool, str]:
         het = bay_gio + timedelta(days=so_ngay)
         bd = bay_gio
 
+    #[[ Giu key CU de may chu noi tai khoan (gia han bang key moi): anh da
+    #   tru credit bang key cu thi khong tru lai — xem tin_dung.vao_phien. ]]
+    them = {"bq_key_cu": sach(cu)} if cu and sach(cu) != sach(key) else {}
     khoa.ghi_trang_thai(
+        **them,
         bq_key=sach(key),
         bq_ngay=so_ngay,
         bq_kich_hoat=bd.isoformat(),
@@ -408,12 +422,19 @@ def kiem() -> dict:
         kc = None
 
     if kc is None or bay_gio - kc >= NHIP_KIEM:
-        tl = _goi("/kiem", {"key": d.get("bq_key", ""), "may": may})
+        tl = _goi("/kiem", {"key": d.get("bq_key", ""), "may": may, "api": 2})
         if tl is not None:
             _ma, kq = tl
             if kq.get("ok"):
                 khoa.ghi_trang_thai(bq_kiem_cuoi=bay_gio.isoformat())
                 kc = bay_gio
+                #[[ /kiem api 2 kem so credit + dem anh theo may — luu cho bang
+                #   "Credit & thiet bi". Hong gi cung khong duoc lam hong ban quyen. ]]
+                try:
+                    import tin_dung
+                    tin_dung.luu_tom_tat(kq)
+                except Exception:                            # noqa: BLE001
+                    pass
             else:
                 ly = kq.get("ly_do", "")
                 ra["ly_do"] = LY_DO_VIET.get(

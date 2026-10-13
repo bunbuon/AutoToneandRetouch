@@ -121,6 +121,9 @@ T_EXPBIAS          = 0x9204
 T_FLASH            = 0x9209
 #  Tên ống kính (EXIF 0xA434 LensModel) — bộ lọc máy / ống kính trước Phân tích (12/10)
 T_LENS_MODEL       = 0xA434
+#  DNG RawDataUniqueID (0xC65D, 16 byte): mã của DỮ LIỆU RAW, không đổi khi Lightroom
+#  ghi lại metadata vào file DNG — tin_dung.ma_anh dùng làm mã ảnh để trừ credit (13/10)
+T_RAW_UID          = 0xC65D
 
 
 def _entry_value(data, e, typ, cnt, valoff, size):
@@ -274,6 +277,10 @@ def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
             v = get(tag)
             if v:
                 tags[key] = v
+    if T_RAW_UID in ent and "raw_uid" not in tags:
+        v = get(T_RAW_UID)
+        if v and len(v) == 16 and any(v):
+            tags["raw_uid"] = bytes(v).hex()
     for tag, key in ((T_ISO, "iso"), (T_EXPTIME, "exposure_time"),
                      (T_FNUMBER, "fnumber"), (T_EXPBIAS, "exposure_bias"),
                      (T_ORIENTATION, "orientation"), (T_FLASH, "flash")):

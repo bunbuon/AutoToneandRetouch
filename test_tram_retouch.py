@@ -252,6 +252,17 @@ ktra("hết hạn bản quyền -> không retouch, nói lý do", a20.read_bytes(
 yc("21", a20, str(RAW / "DSC0020.ARW"))
 tram_moi(chan=lambda: "đang tải bản tăng tốc GPU").mot_vong()
 ktra("app đang tải GPU -> không retouch, nói lý do", "tải bản tăng tốc" in kq("21").get("loi", ""))
+#  13/10: một key một máy một lúc — máy đã bị đẩy ra (key đang dùng ở máy khác)
+import tin_dung as _td
+_phien_cu = _td.phien_ok
+_td.phien_ok = lambda tu_kiem=True: (False, "Key này vừa được đăng nhập trên máy «MAY-B»")
+try:
+    yc("22", a20, str(RAW / "DSC0020.ARW"))
+    tram_moi().mot_vong()
+finally:
+    _td.phien_ok = _phien_cu
+ktra("máy bị đẩy ra (tin_dung.phien_ok) -> không retouch, nói tên máy kia",
+     a20.read_bytes() == b"B" and "MAY-B" in kq("22").get("loi", ""), kq("22"))
 
 # ---------------------------------------------------------------- 9. giữ engine chung
 g = tr.GiuMay()

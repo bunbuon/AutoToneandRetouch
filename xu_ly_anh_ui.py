@@ -525,6 +525,8 @@ class XuLyAnhMixin:
                         f"({gd.so_vn(n_doi)} ảnh đổi sáng)."
                         if self.cfg.get("source") == "catalog" else
                         f"✓ Đã ghi {gd.so_vn(xl.get('so_gui', len(items)))} file .xmp.")
+            if xl.get("credit_cau"):
+                dong.append(f"· {xl['credit_cau']}.")          # 13/10: credit của lượt
             if n_loai:
                 dong.append(f"· {gd.so_vn(n_loai)} ảnh Loại đã gắn 1★ trong Lightroom.")
             elif not self.read_cfg().get("ap_anh_loai", True):

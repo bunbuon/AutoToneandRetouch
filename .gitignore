@@ -9,6 +9,8 @@
 # ===========================================================================
 tao_ma.py
 khoa.json
+#  13/10: phien + so cai credit cua RIENG mot may (chay tu ma nguon thi nam canh ma)
+credit/
 
 #  cap_key.py dung chung khoa bi mat voi ban_quyen.py — ai co no thi sinh
 #  duoc key vinh vien, tuc ca he thong ban quyen thanh vo nghia.
