@@ -152,7 +152,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         "xu_ly_ui",
         #  13/10: nút Xử lý ảnh (mixin của App), mô phỏng thông số lên ảnh xem trước,
         #  cột Thư mục kiểu Lightroom — autotone_gui.pyd import, PyInstaller không thấy
-        "xu_ly_anh_ui", "mo_phong_anh", "cot_thu_muc"]
+        "xu_ly_anh_ui", "mo_phong_anh", "cot_thu_muc",
+        #  13/10: đọc thẳng catalog Lightroom (cột Thư mục + lọc lưới) — import trong hàm
+        "catalog_lr"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).

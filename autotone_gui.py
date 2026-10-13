@@ -379,6 +379,7 @@ class App(XuLyAnhMixin, ttk.Frame):
         self.after(1200, self._bao_plugin_cap_nhat)
         self._soi_khoa()
         self.after(3000, self._soi_xuat)
+        self.after(500, self._dat_cot_thu_muc)      # 13/10: cột Thư mục có ngay lúc mở
         self.after(2500, self._mo_tram_retouch)
         self.after(4000, self._gop_y_khoi_dong)
         self.after(6000, self._tu_kiem_cap_nhat)
@@ -727,7 +728,7 @@ class App(XuLyAnhMixin, ttk.Frame):
         import cot_thu_muc
         self.cot_thu_muc = cot_thu_muc.CotThuMuc(
             than, khi_chon=self._mo_buoi_tu_cot, khi_lam_moi=self._lam_moi_thu_muc_lr,
-            rong=round(gd.don_vi(self) * 14))
+            rong=round(gd.don_vi(self) * 14), khi_gon=self._gon_thu_muc)
         self.cot_thu_muc.grid(row=0, column=0, sticky="ns")
         self._vach_thu_muc = tk.Frame(than, width=1, background=m["vien"])
         self._vach_thu_muc.grid(row=0, column=1, sticky="ns")
@@ -1166,11 +1167,27 @@ class App(XuLyAnhMixin, ttk.Frame):
             rong = self.winfo_toplevel().winfo_width()
         dv = gd.don_vi(self)
         tone = self.khau_dang == "phan_tich"
-        #[[ 13/10: cot Thu muc (14 don vi) chi khi than >= 105 don vi (~1700 px) — luoi van
-        #   chiem phan lon man hinh (kiem_man_hinh 1660 px); cua so hep hon thi giu cot Canh (loc luoi), an Thu muc —
-        #   van chon buoi duoc o nut buoi ▾. ]]
-        hien_tm = tone and rong >= round(dv * 105)
-        hien = tone and rong >= round(dv * 72)
+        #[[ 13/10 (v83 -> user: "Toi van chua thay phan folder nhu cua Lightroom"): v83 an
+        #   HAN cot Thu muc duoi ~1700 px — man hinh user phong chu (DPI) nen don vi
+        #   to, cua so to van khong du nguong. Nay cot Thu muc LUON co o Can sang:
+        #   day du (14 don vi) hoac THU GON (dai hep, nhu panel Lightroom). Nguoi
+        #   dung chon (‹ / ›, nho trong thanh_luoi "thu_muc_gon"); chua chon thi than
+        #   >= 80 don vi la day du. Cot Canh khi con cho cho no (72 don vi + cot Thu muc). ]]
+        pref = getattr(self, "_pref_thu_muc", None)
+        if pref is None:
+            try:
+                import thanh_luoi
+                pref = thanh_luoi.doc_kv("thu_muc_gon", "tu_dong")
+            except Exception:                                # noqa: BLE001
+                pref = "tu_dong"
+            self._pref_thu_muc = pref
+        mo_tm = pref == "mo" or (pref == "tu_dong" and rong >= round(dv * 80))
+        self.cot_thu_muc.dat_gon(not mo_tm)
+        hien_tm = tone
+        #[[ 13/10 (user: "khi ma chua phan tich la chua co canh thi an di. Phan tich
+        #   xong thi moi hien ra"): cot Canh chi khi DA CO canh (self.items co scene). ]]
+        co_canh = any(r.get("scene") is not None for r in (self.items or []))
+        hien = tone and co_canh and rong >= round(dv * (72 + (14 if mo_tm else 2.4)))
         for w, co in ((self.cot_thu_muc, hien_tm), (self._vach_thu_muc, hien_tm),
                       (self.cot_canh, hien), (self._vach_canh, hien)):
             if co and not w.winfo_manager():
@@ -3811,11 +3828,18 @@ class App(XuLyAnhMixin, ttk.Frame):
         root = self.folder()
         moi = None
         if root and self.source_value() == "catalog":
+            #  13/10: catalog đọc thẳng trước (không cần plugin chạy), plugin sau
             try:
-                kq = at.doc_ds_lr(root)
-                moi = kq[0] if kq else None
+                import catalog_lr
+                moi = catalog_lr.anh_trong_thu_muc(root, self.v_recursive.get())
             except Exception:                                # noqa: BLE001
                 moi = None
+            if moi is None:
+                try:
+                    kq = at.doc_ds_lr(root)
+                    moi = kq[0] if kq else None
+                except Exception:                            # noqa: BLE001
+                    moi = None
         cu = getattr(self, "_ds_lr", None)
         self._ds_lr = moi
         return cu != moi
@@ -4165,6 +4189,10 @@ class App(XuLyAnhMixin, ttk.Frame):
         for s, h in self._hang_canh.items():
             h.chon(s == self._canh_chon)
         self._nap_anh_canh()
+        #  13/10: cột Cảnh chỉ hiện khi đã có cảnh (phân tích xong) — xem _hien_cot_canh
+        if bool(nhom) != getattr(self, "_co_canh", None):
+            self._co_canh = bool(nhom)
+            self._hien_cot_canh()
 
     def _nap_anh_canh(self):
         """Ảnh nhỏ của từng cảnh lấy từ bộ đọc của lưới (đọc nền, có kho đĩa)."""
@@ -6061,7 +6089,14 @@ class App(XuLyAnhMixin, ttk.Frame):
             return
         import cot_thu_muc
         lr = None
-        if self.source_value() == "catalog":
+        #[[ 13/10: doc THANG catalog Lightroom (catalog_lr — chi doc) truoc; plugin
+        #   (thu_muc_catalog.tsv) chi la duong du phong khi khong tim thay catalog. ]]
+        try:
+            import catalog_lr
+            lr = catalog_lr.cay_thu_muc()
+        except Exception:                                    # noqa: BLE001
+            lr = None
+        if lr is None and self.source_value() == "catalog":
             if not getattr(self, "_da_xin_thu_muc", False):
                 self._da_xin_thu_muc = True
                 at.theo_doi_thu_muc_lr()
@@ -6071,9 +6106,24 @@ class App(XuLyAnhMixin, ttk.Frame):
         cot.dat(lr if lr is not None else ([] if self.source_value() != "catalog" else None),
                 cot_thu_muc.da_mo(), str(root) if root else None)
 
+    def _gon_thu_muc(self, gon: bool):
+        """Người dùng thu gọn / mở cột Thư mục — nhớ lựa chọn."""
+        self._pref_thu_muc = "gon" if gon else "mo"
+        try:
+            import thanh_luoi
+            thanh_luoi.ghi_kv("thu_muc_gon", self._pref_thu_muc)
+        except Exception:                                    # noqa: BLE001
+            pass
+        self._hien_cot_canh()
+
     def _lam_moi_thu_muc_lr(self):
         """Nút ⟳ của cột Thư mục: nhờ plugin đọc lại cây thư mục ngay."""
         at.theo_doi_thu_muc_lr(lam_moi=True)
+        try:
+            import catalog_lr
+            catalog_lr._DEM.clear()
+        except Exception:                                    # noqa: BLE001
+            pass
         self.status("Đang đọc lại thư mục từ Lightroom…", gd.MAU["mo"])
         for d in (1500, 4000, 8000):
             self.after(d, lambda: self._dat_cot_thu_muc())

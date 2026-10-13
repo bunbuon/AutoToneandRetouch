@@ -128,17 +128,29 @@ def _tu_nhien(s: str):
 class CotThuMuc(tk.Frame):
     """Cột trái của Cân sáng: ổ đĩa → thư mục (Lightroom + các buổi đã mở)."""
 
-    def __init__(self, cha, khi_chon, khi_lam_moi=None, rong: int = 220):
+    def __init__(self, cha, khi_chon, khi_lam_moi=None, rong: int = 220, khi_gon=None):
         m = gd.MAU
         super().__init__(cha, background=m["nen"])
         self._khi_chon = khi_chon
         self._khi_lam_moi = khi_lam_moi
+        self._khi_gon = khi_gon
         self._dang_dat = False
         self._dl = ([], [], None)          # (dòng Lightroom, đã mở, đang mở)
         self._ky = None
         self._mo_san: set = set()
-        tk.Frame(self, width=rong, height=1, background=m["nen"]).pack(anchor="w")
-        dau = tk.Frame(self, background=m["nen"], padx=16)
+        self.gon = False
+        #[[ HAI DANG (nhu panel Lightroom): DAY DU (cay) va THU GON (dai hep chi mot
+        #   nut mo lai). Cua so hep tu thu gon; nguoi dung bam ‹ / › de doi. ]]
+        self._day = tk.Frame(self, background=m["nen"])
+        self._day.pack(fill="both", expand=True)
+        lh0 = gd.don_vi(self)
+        self._thanh_gon = tk.Frame(self, background=m["nen"], width=round(lh0 * 2.4))
+        self.btn_mo_rong = gd.NutTron(self._thanh_gon, "", icon="thu_muc", kieu="chu",
+                                      nen=m["nen"], command=lambda: self._doi_gon(False))
+        self.btn_mo_rong.goi_y = gd.GoiY(self.btn_mo_rong, "Mở cột Thư mục")
+        self.btn_mo_rong.pack(side="top", pady=(14, 0), padx=4)
+        tk.Frame(self._day, width=rong, height=1, background=m["nen"]).pack(anchor="w")
+        dau = tk.Frame(self._day, background=m["nen"], padx=16)
         dau.pack(fill="x", pady=(14, 6))
         tk.Label(dau, text="THƯ MỤC", background=m["nen"], foreground=m["mo"],
                  font=gd.CHU_MUC).pack(side="left")
@@ -148,8 +160,12 @@ class CotThuMuc(tk.Frame):
                                          "Đọc lại thư mục từ Lightroom ngay (plugin tự cập nhật ~2 phút "
                                          "một lần)")
         self.btn_lam_moi.pack(side="right")
+        self.btn_gon = gd.NutTron(dau, "", icon="chevron_trai", kieu="chu", nen=m["nen"],
+                                  command=lambda: self._doi_gon(True))
+        self.btn_gon.goi_y = gd.GoiY(self.btn_gon, "Thu gọn cột Thư mục")
+        self.btn_gon.pack(side="right", padx=(0, 2))
         #  ô lọc thư mục
-        o = tk.Frame(self, background=m["tam"], highlightthickness=1,
+        o = tk.Frame(self._day, background=m["tam"], highlightthickness=1,
                      highlightbackground=m["vien2"], highlightcolor=m["nhan"])
         o.pack(fill="x", padx=(12, 8), pady=(0, 8))
         lh = gd.don_vi(self)
@@ -177,7 +193,7 @@ class CotThuMuc(tk.Frame):
         st.map("ThuMuc.Treeview", background=[("selected", m["noi2"])],
                foreground=[("selected", m["chu"])])
         st.layout("ThuMuc.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
-        khung = tk.Frame(self, background=m["nen"])
+        khung = tk.Frame(self._day, background=m["nen"])
         khung.pack(fill="both", expand=True, padx=(6, 2), pady=(0, 10))
         khung.columnconfigure(0, weight=1)
         khung.rowconfigure(0, weight=1)
@@ -198,9 +214,29 @@ class CotThuMuc(tk.Frame):
         self._ic_tm = bt.anh_bieu_tuong(self, "thu_muc", s, m["mo"])
         self._ic_tm_buoi = bt.anh_bieu_tuong(self, "thu_muc", s, m["nhan"])
         self._ic_dia = bt.anh_bieu_tuong(self, "phan_cung", s, m["xong"])
-        self.lbl_trong = tk.Label(self, text="", background=m["nen"], foreground=m["mo2"],
+        self.lbl_trong = tk.Label(self._day, text="", background=m["nen"], foreground=m["mo2"],
                                   font=gd.CHU_NHO, justify="left", anchor="w",
                                   wraplength=rong - 32)
+
+    # ------------------------------------------------------------ thu gọn
+    def dat_gon(self, gon: bool) -> None:
+        """Đổi dạng đầy đủ / thu gọn (không báo ra ngoài)."""
+        gon = bool(gon)
+        if gon == self.gon and (self._thanh_gon if gon else self._day).winfo_manager():
+            return
+        self.gon = gon
+        if gon:
+            self._day.pack_forget()
+            self._thanh_gon.pack(fill="y", expand=True)
+        else:
+            self._thanh_gon.pack_forget()
+            self._day.pack(fill="both", expand=True)
+
+    def _doi_gon(self, gon: bool):
+        """Người dùng bấm ‹ / biểu tượng thư mục."""
+        self.dat_gon(gon)
+        if self._khi_gon is not None:
+            self._khi_gon(gon)
 
     # ------------------------------------------------------------ phụ
     def _dat_goi_y_loc(self, hien: bool):

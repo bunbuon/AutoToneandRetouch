@@ -320,10 +320,12 @@ def main() -> int:
     ktra("bề ngang bảng điều khiển không đổi khi mở / đóng nhóm, đổi cỡ cửa sổ",
          len(rong) == 1, f"{sorted(rong)} px")
     #[[ Luoi anh la thu chinh cua man hinh: cao het vung giua (khong con khoi
-    #   tuy chon nao chen tren no), va rong it nhat 55% cua so o 1660. ]]
+    #   tuy chon nao chen tren no). 13/10: user can cot Thu muc (nhu Lightroom) VA
+    #   cot Canh -> o 1660 luoi con ~half cua so (>= 45%); cua so hep thi cot Thu
+    #   muc tu thu gon, luoi van >= 3 cot. ]]
     w1660 = dong[(1660, 940)]
     ktra("lưới ảnh chiếm phần lớn màn hình",
-         w1660[3] >= 0.55 * 1660 and all(b[4] >= 3 for b in dong.values())
+         w1660[3] >= 0.45 * 1660 and all(b[4] >= 3 for b in dong.values())
          and all(b[5] >= h - 340 for (_w, h), b in dong.items()),
          f"1660 px → lưới {w1660[3]} px · 1180 px → {dong[(1180, 680)][4]} cột")
     root.geometry("1660x940")

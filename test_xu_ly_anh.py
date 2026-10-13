@@ -43,6 +43,9 @@ def ktra(ten, dieu, mo=""):
 def main() -> int:
     tam = Path(tempfile.mkdtemp(prefix="xu_ly_anh_"))
     os.environ["AUTOTONE_DATA"] = str(tam / "du_lieu")
+    #  catalog Lightroom GIẢ (SQLite) — không đọc catalog thật của máy
+    cat_gia = tam / "Gia.lrcat"
+    os.environ["AUTOTONE_CATALOG_LR"] = str(cat_gia)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import autotone as at
     import test_2ban_quay as tq
@@ -121,12 +124,15 @@ def main() -> int:
         ktra("thanh dưới: MỘT nút Xử lý ảnh (vàng), không còn Phân tích / Áp riêng",
              str(app.btn_xu_ly.cget("text")) == "Xử lý ảnh" and app.btn_xu_ly.cget("kieu") == "chinh"
              and not hasattr(app, "btn_analyze") and not hasattr(app, "btn_ghi3"))
+        ktra("chưa phân tích: cột Cảnh ẩn", not app.cot_canh.winfo_ismapped())
         app.btn_xu_ly.invoke()
         hop = app._xl_hop()
         ktra("bấm Xử lý ảnh -> mở cửa sổ tiến trình", hop is not None and hop.winfo_exists())
         ktra("…đo xong tự gửi job sang Lightroom",
              cho(lambda: bool(app._xl.get("job"))), str(app._xl.get("job")))
         ktra("…đo đủ 6 ảnh một lần", lan_do == [6], str(lan_do))
+        vong()
+        ktra("phân tích xong: cột Cảnh hiện ra", app.cot_canh.winfo_ismapped())
         job = Path(app._xl["job"])
         ktra("…bước Phân tích xong, bước Áp đang chạy (chờ Lightroom)",
              app._xl.get("pha") == "ap" and not app._xl.get("xong"))
@@ -215,23 +221,67 @@ def main() -> int:
         vong()
         ktra("…thêm lại vào Lightroom -> lưới hiện lại đủ 6", len(app.luoi.ds) == 6,
              f"{len(app.luoi.ds)} ô")
-        # ---------------------------------------------------------------- cột Thư mục
-        (jobs / at.TEN_THU_MUC_CATALOG).write_text(
-            f"#khi=x\n{tam}\t\t0\n{buoi}\t{tam}\t6\n{tam / 'Khac'}\t{tam}\t12\n", encoding="utf-8")
+        # ---------------------------------------------------------------- catalog đọc thẳng
+        #  13/10 (v83 -> user "chưa thấy phần folder"): plugin không chạy vẫn phải có
+        #  cây thư mục + lọc lưới — đọc thẳng .lrcat (catalog_lr), plugin là dự phòng.
+        import sqlite3
+        import catalog_lr
         (tam / "Khac").mkdir()
+        con = sqlite3.connect(cat_gia)
+        con.executescript(
+            "create table AgLibraryRootFolder(id_local integer, absolutePath text);"
+            "create table AgLibraryFolder(id_local integer, rootFolder integer, pathFromRoot text);"
+            "create table AgLibraryFile(id_local integer, folder integer, baseName text, extension text);"
+            "create table Adobe_images(id_local integer, rootFile integer);")
+        goc_lr = str(tam).replace("\\", "/") + "/"
+        con.execute("insert into AgLibraryRootFolder values (1, ?)", (goc_lr,))
+        con.executemany("insert into AgLibraryFolder values (?, 1, ?)",
+                        [(10, ""), (11, buoi.name + "/"), (12, "Khac/")])
+        anh_lr = [f"SK_{i}" for i in range(6) if i != 3]          # Lightroom đã xoá SK_3
+        con.executemany("insert into AgLibraryFile values (?, 11, ?, 'ARW')",
+                        list(enumerate(anh_lr, 100)))
+        con.executemany("insert into AgLibraryFile values (?, 12, ?, 'ARW')",
+                        [(200 + k, f"K{k}") for k in range(12)])
+        con.execute("insert into Adobe_images select id_local, id_local from AgLibraryFile")
+        con.commit()
+        con.close()
+        catalog_lr._DEM.clear()
+        ktra("catalog_lr: ảnh của buổi theo catalog (5, thiếu SK_3)",
+             len(catalog_lr.anh_trong_thu_muc(buoi) or ()) == 5)
+        app._soi_xuat()
+        vong()
+        ktra("lưới theo catalog đọc thẳng (plugin không chạy cũng lọc): còn 5",
+             len(app.luoi.ds) == 5 and not any(Path(o["path"]).name == "SK_3.ARW"
+                                                for o in app.luoi.ds), f"{len(app.luoi.ds)} ô")
+        # ---------------------------------------------------------------- cột Thư mục
         app._dat_cot_thu_muc()
         vong()
         cay = app.cot_thu_muc.cay
         k_b = os.path.normcase(os.path.normpath(str(buoi)))
         ktra("cột Thư mục: cây từ Lightroom, buổi đang mở được chọn sẵn",
              cay.exists(k_b) and cay.selection() == (k_b,)
-             and cay.set(os.path.normcase(os.path.normpath(str(tam))), "so") == "18",
+             and cay.set(os.path.normcase(os.path.normpath(str(tam))), "so") == "17",
              f"{cay.selection()} · gộp {cay.set(os.path.normcase(os.path.normpath(str(tam))), 'so')}")
         k_k = os.path.normcase(os.path.normpath(str(tam / "Khac")))
         cay.selection_set(k_k)
         vong()
         ktra("bấm một thư mục khác -> mở buổi đó",
              os.path.normcase(os.path.normpath(app.v_folder.get())) == k_k, app.v_folder.get())
+        ktra("cột Thư mục LUÔN có ở Cân sáng (cửa sổ 1600 px: đầy đủ, ngoài cùng, cột Cảnh lùi vào)",
+             app.cot_thu_muc.winfo_ismapped() and not app.cot_thu_muc.gon
+             and app.cot_thu_muc.grid_info().get("column") == 0)
+        #  13/10 (user): chưa phân tích = chưa có cảnh -> cột Cảnh ẩn
+        ktra("buổi chưa phân tích: cột Cảnh ẨN", not app.items and not app.cot_canh.winfo_ismapped())
+        app.cot_thu_muc.btn_gon.invoke()
+        vong()
+        ktra("bấm ‹ -> thu gọn thành dải hẹp, vẫn còn nút mở lại",
+             app.cot_thu_muc.gon and app.cot_thu_muc.winfo_ismapped()
+             and app.cot_thu_muc.btn_mo_rong.winfo_ismapped()
+             and app.cot_thu_muc.winfo_width() < 80, f"{app.cot_thu_muc.winfo_width()} px")
+        app.cot_thu_muc.btn_mo_rong.invoke()
+        vong()
+        ktra("bấm biểu tượng thư mục -> mở lại đầy đủ", not app.cot_thu_muc.gon
+             and app.cot_thu_muc.cay.winfo_ismapped())
     finally:
         at.LR_JOB_DIR, at.analyze = job_cu, analyze_cu
         try:

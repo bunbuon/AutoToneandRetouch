@@ -1060,6 +1060,23 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
      nay Toplevel transient + grab + màn tối che cả app, nổi lên khi cửa sổ chính được focus,
      đóng = thoát app; bỏ nút CSV / Khôi phục trên hộp (user: không cho dùng khi chưa có key).
   Bài kiểm mới: test_xu_ly_anh.py (đầu-cuối), kiem_plugin_lua51 mục 7–8, kiem_bq_giao_dien.
+- v85 (2026.10.13.3, user thử OTA 13.2 = v83+v84: "vẫn chưa thấy phần folder như của Lightroom"):
+  · Nguyên nhân 1: v83 ẩn HẲN cột Thư mục dưới ~1700 px — máy user phóng chữ (DPI) nên đơn vị
+    to, cửa sổ to vẫn không đạt. Nay cột Thư mục LUÔN có ở Cân sáng: đầy đủ hoặc THU GỌN thành
+    dải hẹp (‹ / biểu tượng thư mục, nhớ thanh_luoi "thu_muc_gon": tu_dong / gon / mo; tự động
+    = đầy đủ khi thân ≥ 80 đơn vị). Cột Cảnh khi còn chỗ (72 + cột Thư mục) VÀ đã có cảnh —
+    user: "chưa phân tích là chưa có cảnh thì ẩn đi" (`_hien_cot_canh`, `_cap_nhat_canh` gọi lại).
+    kiem_man_hinh: lưới ≥ 45% ở 1660 (trước 55% — chưa có hai cột trái).
+  · Nguyên nhân 2: OTA chỉ mang module Python — plugin Lua của v83 (DanhSachCore / DenoiseCore)
+    KHÔNG tới Lightroom (Modules vẫn bản 12/10). Nay `catalog_lr.py` đọc THẲNG catalog .lrcat
+    chỉ-đọc (`file:...?mode=ro&immutable=1`, đường dẫn = libraryToLoad20 trong
+    "%APPDATA%\Adobe\Lightroom\Preferences\Lightroom Classic CC 7 Preferences.agprefs", Mac:
+    plist com.adobe.LightroomClassicCC7): cây thư mục (AgLibraryRootFolder / AgLibraryFolder +
+    đếm Adobe_images) và ảnh của buổi (AgLibraryFile) — nguồn CHÍNH cho cột Thư mục và lọc lưới,
+    plugin là dự phòng. Catalog journal_mode=delete nên Lightroom ghi xong là thấy. Khớp panel
+    Folders của user (BVDay3 1813, 1005 630). `AUTOTONE_CATALOG_LR` = ép đường dẫn / "0" tắt.
+    Denoise vẫn cần plugin mới -> cần BỘ CÀI (OTA mang plugin: phiên OTA làm ở bản sau).
+
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
 
