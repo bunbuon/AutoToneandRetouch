@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import io
 import json
 import math
@@ -4901,14 +4902,22 @@ def _curve_o(rec: dict, k: str):
 
 def curve_giong(a: dict, b: dict) -> bool:
     """Bốn curve điểm của hai bản ghi (bản xuất / mốc / dòng job) trùng nhau (≤ 0.5 mã)."""
+    return all(_o_curve_giong(str((a or {}).get(k) or ""), str((b or {}).get(k) or ""))
+               for k in COT_CURVE[1:])
+
+
+@functools.lru_cache(maxsize=4096)
+def _o_curve_giong(oa: str, ob: str) -> bool:
+    """#[[ 13/10: nhớ theo CHỮ của hai ô — attach_catalog_settings so cho MỌI ảnh mỗi lần
+    #   plan() chạy (kéo thanh trượt là chạy lại); dựng spline mỗi lần mất ~1.3 ms / ảnh,
+    #   buổi 1000 ảnh thêm ~1.3 giây mỗi lần kéo. Cả buổi thường chung vài curve. ]]"""
     import curve_lr as _cl
-    for k in COT_CURVE[1:]:
-        ca, cb = _curve_o(a, k), _curve_o(b, k)
-        if ca is None and cb is None:
-            continue
-        if _cl.lech_toi_da(ca or _cl.DONG_NHAT, cb or _cl.DONG_NHAT) > 0.5:
-            return False
-    return True
+    if oa == ob:
+        return True
+    ca, cb = _cl.doc_o(oa), _cl.doc_o(ob)
+    if ca is None and cb is None:
+        return True
+    return _cl.lech_toi_da(ca or _cl.DONG_NHAT, cb or _cl.DONG_NHAT) <= 0.5
 
 
 def co_cot_curve(rec: dict) -> bool:

@@ -1066,8 +1066,12 @@ xám phẳng); (3) **mặc định TẮT**, bật sau khi xem PDF trước / sau
 - Kiểm: `test_curve_lr`, `test_mat_na_da` (mô hình thật tuỳ chọn: AUTOTONE_ANH_MAT +
   FACE_PARSE_ONNX — đã chạy trên ảnh mặt mẫu OpenCV: mắt / miệng ngoài mặt nạ),
   `test_curve_da`, `test_curve_job`, `kiem_curve_lua` (lupa), `test_curve_xu_ly` (xvfb).
-  Thử ngược 42 đột biến (scratchpad `curve/dot_bien.py`) — lần đầu LỌT 4, đều do bài kiểm
-  (mắt / môi giả quá tối; da giả chưa cháy hẳn; Init.lua chỉ dò chữ) → sửa bài kiểm, 42/42.
+  Thử ngược 47 đột biến (scratchpad `curve/dot_bien.py`, cả 5 đột biến giao diện) — lần đầu
+  LỌT 4, đều do bài kiểm (mắt / môi giả quá tối; da giả chưa cháy hẳn; Init.lua chỉ dò
+  chữ) → sửa bài kiểm, chạy lại cả bộ trên code cuối: 47/47.
+- `curve_giong` (attach_catalog_settings so cho MỌI ảnh mỗi lần plan()) nhớ theo chữ ô
+  (`_o_curve_giong`, lru_cache): 1.3 ms → 0.04 ms / ảnh — không nhớ thì buổi 1000 ảnh
+  chậm thêm ~1.3 giây mỗi lần kéo thanh trượt.
 
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
