@@ -92,6 +92,17 @@ def chay(nhanh: bool = False) -> Bao:
     b.dat("Môi trường",
           f"python {sys.version.split()[0]} · {sys.platform} · "
           f"{'ĐÃ ĐÓNG GÓI' if dd.dong_goi() else 'chạy từ mã nguồn'}")
+    #[[ 13/10: ban OTA (cap_nhat) co dang chay khong — kiem_ota.py doc dong nay de
+    #   chac loi duoc nap TU BAN CAP NHAT chu khong phai ban trong goi. ]]
+    try:
+        import cap_nhat as _cn
+        import autotone as _at0
+        _tu_va = "cap_nhat" in Path(_at0.__file__).resolve().parts
+        b.dat("Bản đang chạy", f"{_cn.phien_ban_dang_chay()} · lõi "
+                               f"{'TỪ BẢN CẬP NHẬT' if _tu_va else 'trong gói'} "
+                               f"({Path(_at0.__file__).name})")
+    except Exception as ex:                                  # noqa: BLE001
+        b.dat("Bản đang chạy", f"không rõ ({type(ex).__name__}: {ex})")
     b.dat("Thư mục tài nguyên", dd.goc_tai_nguyen())
     b.dat("Thư mục dữ liệu", dd.goc_du_lieu())
 

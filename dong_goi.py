@@ -84,7 +84,7 @@ LOAI_TRU = [
     "test_chuoi_mau_da.py", "test_gop_y.py", "test_hsl_da.py", "test_hsl_da_cuoi.py",
     "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
     "test_phanh_da_wb.py", "test_canh_ngoai_toi.py", "test_loc_may_mau_da.py",
-    "test_mau_da_mot_dich.py", "test_xu_ly_anh.py",
+    "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe

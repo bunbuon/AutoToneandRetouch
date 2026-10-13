@@ -366,6 +366,27 @@ jobs:
           fi
           echo "Gói bảo mật đạt: lõi + saytool đều là mã máy."
 
+      #[[ 13/10 — BAN CAP NHAT OTA CHO MAC (user: "tren may mac bam cap nhat thi van
+      #   co giao dien va tinh nang moi chu"). Truoc day workflow chi ra .dmg — latest.json
+      #   chi co khoi "win", may Mac bam Kiem tra cap nhat luon nghe "dang moi nhat".
+      #   Dong tu CHINH cay .so vua bien dich (ota_tu_cay), roi thu tren CHINH goi vua
+      #   build (kiem_ota: tu kiem phai DAT va loi phai nap TU BAN CAP NHAT). Thu muc
+      #   rieng dist_ota de .zip OTA khong lan vao artifact goi. ]]
+      - name: Bản cập nhật OTA (không cần cài lại)
+        if: ${{ !inputs.khong_bao_mat }}
+        run: |
+          "$PY" ota_tu_cay.py --ra dist_ota
+          "$PY" kiem_ota.py dist/AutoTone dist_ota/app-*.zip
+
+      - name: Gửi bản cập nhật OTA ra
+        if: ${{ !inputs.khong_bao_mat }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: OTA-macOS-${{ inputs.loai_mac == 'intel' && 'Intel' || 'AppleSilicon' }}
+          path: dist_ota/*
+          if-no-files-found: error
+          retention-days: 14
+
       #[[ TAO .dmg tu THU MUC dist/AutoTone (khong .app — xem Kiem goi).
       #
       #   Vi la thu muc chu khong phai .app double-click, dong them mot launcher
