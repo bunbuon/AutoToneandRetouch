@@ -19,33 +19,118 @@ import giao_dien as gd
 import tin_dung as td
 
 
+def _gio_phut(iso) -> str:
+    """"14:05" (giờ máy này) từ thời điểm ISO máy chủ trả; hỏng thì ""."""
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone().strftime("%H:%M")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _lan_cuoi(giay) -> str:
+    """Khoảng từ lần cuối máy kia hỏi máy chủ, đọc được: "3 phút trước"..."""
+    if not isinstance(giay, (int, float)) or giay < 0:
+        return ""
+    g = int(giay)
+    if g < 60:
+        return "vừa xong"
+    if g < 3600:
+        return f"{g // 60} phút trước"
+    if g < 86400:
+        return f"{g // 3600} giờ trước"
+    return f"{g // 86400} ngày trước"
+
+
 class TinDungMixin:
     """Credit + phiên một máy — gắn vào App."""
 
     # ------------------------------------------------------------ khởi động
     def _td_khoi_dong(self):
-        """Mở app: vào phiên ở luồng nền, rồi 5 phút một nhịp."""
+        """Mở app: vào phiên ở luồng nền, rồi hỏi máy chủ 5 s (đang chạy việc) / 30 s."""
         if getattr(self, "_td_nhip", None) is not None:
             return
-        self._td_nhip = td.NhipPhien(lambda kq: self.q.put(("phien", kq))).bat_dau()
+        self._td_nhip = td.NhipPhien(lambda kq: self.q.put(("phien", kq)),
+                                     dang_ban=self._td_dang_ban).bat_dau()
 
     def _td_dung(self):
-        """Đóng app: dừng nhịp + nhả phiên (chờ tối đa 2 giây)."""
+        """Đóng app: chỉ dừng nhịp. KHÔNG nhả phiên — user 13/10: "máy A đang đăng
+        nhập thì dù có tắt máy cũng là đang đăng nhập"."""
         n = getattr(self, "_td_nhip", None)
         if n is not None:
             n.dung()
-        td.roi_nhanh(2.0)
+
+    def _td_dang_ban(self) -> bool:
+        """App có việc đang chạy không. GỌI TỪ LUỒNG NỀN (NhipPhien): chỉ đọc thuộc
+        tính Python, không gọi Tk."""
+        if getattr(self, "busy", False) or getattr(self, "_dang_cho_lr", False):
+            return True
+        xl = getattr(self, "_xl", None)
+        if xl and not xl.get("xong"):
+            return True
+        rw = getattr(self, "_retouch_win", None)
+        if rw is not None:
+            w = getattr(rw, "worker", None)
+            if w is not None and w.is_alive():
+                return True
+            x = getattr(rw, "_xuat", None)
+            if x and x.get("trang_thai") not in ("xong", "dung", "loi"):
+                return True
+        return False
+
+    def _td_dung_viec(self) -> list:
+        """Máy này vừa bị đẩy ra: dừng NGAY mọi việc đang chạy. -> tên các việc đã dừng.
+
+        #[[ User 13/10: "Khi may B bam Van truy cap la may A da phai out ra khoi
+        #   tien trinh dang chay roi." Phan tich: co dung (anh dang do xong la
+        #   thoi). Job gui Lightroom ma Lightroom CHUA nhan: huy. Retouch / luot
+        #   xuat: xin dung roi tat han engine ngay (Dung thuong cho anh dang lam
+        #   xong + 20 s moi tat). Tram retouch tu tu choi vi trang thai da ghi
+        #   "bi_day_ra" (tin_dung.phien_ok doc file, khong goi mang). ]]
+        """
+        da = []
+        try:
+            if getattr(self, "_xl_dang", lambda: False)():
+                self._xl_dung()
+                da.append("xu_ly")
+            if getattr(self, "busy", False):
+                self.do_cancel()
+                da.append("phan_tich")
+            if getattr(self, "_dang_cho_lr", False):
+                self.huy_gui()
+                da.append("gui_lr")
+        except Exception:                                    # noqa: BLE001
+            pass
+        rw = getattr(self, "_retouch_win", None)
+        if rw is not None:
+            try:
+                w = getattr(rw, "worker", None)
+                x = getattr(rw, "_xuat", None)
+                if (w is not None and w.is_alive()) or \
+                        (x and x.get("trang_thai") not in ("xong", "dung", "loi")):
+                    rw.stop()
+                    m = getattr(rw, "_may_xem", None)
+                    if m is not None and getattr(m, "dang_chay", False):
+                        m.dong()
+                    da.append("retouch")
+                rw._nghi_may_xem()
+            except Exception:                                # noqa: BLE001
+                pass
+        return da
 
     # ------------------------------------------------------------ tin từ luồng nền
     def _td_tin(self, kind: str, kq: dict):
         """_pump chuyển tin "phien" / "phien_chiem" tới đây (luồng chính)."""
         tt = (kq or {}).get("tt")
-        if tt in ("xung_dot", "bi_day_ra"):
+        if tt == "bi_day_ra":
+            da = self._td_dung_viec()
+            self._td_hop_phien({**kq, "da_dung": da})
+        elif tt == "xung_dot":
             self._td_hop_phien(kq)
         elif tt == "dung":
             self._td_dong_hop()
             if kind == "phien_chiem":
-                self.status("Đã chuyển key về máy này — máy kia sẽ bị đẩy ra ở nhịp kế tiếp.",
+                self.status("Đã chuyển key về máy này — máy kia đã bị đẩy ra.",
                             gd.MAU["xong"])
         elif kind == "phien_chiem":
             self._td_hop_loi((kq or {}).get("nhan")
@@ -95,17 +180,22 @@ class TinDungMixin:
         #  mỗi ý MỘT dòng: bản tiếng Anh (ngon_ngu) dịch theo từng dòng
         if kq.get("tt") == "bi_day_ra":
             tieu_de = "Máy này đã bị đẩy ra"
-            dong = [f"Key này vừa được đăng nhập trên máy «{ten}»."]
+            luc = _gio_phut(kq.get("luc"))
+            dong = [f"Máy «{ten}» vừa đăng nhập key này lúc {luc}." if luc else
+                    f"Máy «{ten}» vừa đăng nhập key này."]
+            if kq.get("da_dung"):
+                dong.append("Mọi việc đang chạy trên máy này đã dừng.")
         else:
-            phut = kq.get("cach_giay")
             tieu_de = "Key đang dùng trên máy khác"
-            dong = [f"Key này đang được dùng trên máy «{ten}»."]
-            if isinstance(phut, (int, float)):
-                dong.append(f"Lần cuối máy đó hoạt động: {max(1, int(phut) // 60)} phút trước."
-                            if phut >= 60 else "Máy đó đang mở tool.")
-        dong += ["Mỗi key chỉ dùng trên MỘT máy tại một thời điểm.", "",
-                 "Bấm “Tiếp tục dùng trên máy này” để chuyển key về đây — máy kia sẽ bị "
-                 "đẩy ra. Credit dùng chung, ảnh đã trừ credit ở máy kia không bị trừ lại."]
+            dong = [f"Key này đang đăng nhập trên máy «{ten}»."]
+            lan_cuoi = _lan_cuoi(kq.get("cach_giay"))
+            if lan_cuoi:
+                dong.append(f"Lần cuối máy đó hoạt động: {lan_cuoi}.")
+        dong += ["Mỗi key chỉ đăng nhập trên MỘT máy — đóng app hay tắt máy vẫn là đang "
+                 "đăng nhập.", "",
+                 "Bấm “Vẫn truy cập” để dùng key trên máy này — máy kia bị đẩy ra ngay, mọi "
+                 "việc đang chạy trên máy đó dừng lại. Credit dùng chung, ảnh đã trừ credit "
+                 "ở máy kia không bị trừ lại."]
         ly_do = "\n".join(dong)
         hop = getattr(self, "_td_lop", None)
         if hop is not None and hop.winfo_exists():
@@ -143,7 +233,7 @@ class TinDungMixin:
         hang.pack(fill="x", pady=(16, 0))
         gd.NutTron(hang, "Thoát app", kieu="phu", nen=m["tam"],
                    command=self._td_thoat).pack(side="right")
-        self.btn_td_chiem = gd.NutTron(hang, "Tiếp tục dùng trên máy này", kieu="chinh",
+        self.btn_td_chiem = gd.NutTron(hang, "Vẫn truy cập", kieu="chinh",
                                        nen=m["tam"], command=self._td_chiem)
         self.btn_td_chiem.pack(side="right", padx=(0, 8))
         try:
@@ -182,7 +272,7 @@ class TinDungMixin:
                 pass
 
     def _td_chiem(self):
-        """Bấm "Tiếp tục dùng trên máy này": chiếm phiên ở luồng nền."""
+        """Bấm "Vẫn truy cập": chiếm phiên ở luồng nền."""
         b = getattr(self, "btn_td_chiem", None)
         if b is not None:
             try:

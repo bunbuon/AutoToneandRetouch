@@ -328,11 +328,37 @@ ra(dict(t=t))''')
         r.get("t", {}).get("tt") == "het_credit" and r["t"]["can"] == 2
         and r["t"]["con_lai"] == 1 and r["t"]["cu_idx"] == [0], r)
 
-    # ── Rời phiên: máy kia mở không bị hỏi ──
-    tren(B, "td.roi(); ra({})")
-    r = tren(A, "ra(dict(v=td.vao_phien()))")
-    ket("B đóng app (rời phiên) -> A mở lại vào luôn, không bị hỏi",
-        r.get("v", {}).get("tt") == "dung", r)
+    # ── Đã đăng nhập là giữ: đóng app / tắt máy không nhả (user 13/10) ──
+    #  B "đóng app" = tiến trình con của B đã kết thúc ở trên, không gọi gì thêm.
+    r = tren(A, "ra(dict(v=td.vao_phien(), tt=td.trang_thai().get('tt')))")
+    ket("B đã đóng app: A (máy đã bị đẩy ra) mở lại VẪN thấy hộp — key ở MAY-B",
+        r.get("v", {}).get("tt") == "xung_dot" and r["v"].get("ten_may") == "MAY-B"
+        and r.get("tt") == "xung_dot", r)
+    r = tren(A, "ra(dict(n=td.nhip(), n2=td.nhip()))")
+    ket("…chưa bấm gì thì các nhịp sau vẫn là 'key ở máy khác' (không đổi sang 'bị đẩy ra')",
+        r.get("n", {}).get("tt") == "xung_dot" and r.get("n2", {}).get("tt") == "xung_dot", r)
+    r = tren(B, "ra(dict(v=td.vao_phien()))")
+    ket("chính B mở lại app: vào luôn", r.get("v", {}).get("tt") == "dung", r)
+    r = tren(A, "ra(dict(v=td.vao_phien(chiem=True)))")
+    ket("A bấm Vẫn truy cập: dùng được", r.get("v", {}).get("tt") == "dung", r)
+    r = tren(B, "ra(dict(n=td.nhip()))")
+    ket("…B bị đẩy ra ở nhịp kế tiếp, nghe tên MAY-A",
+        r.get("n", {}).get("tt") == "bi_day_ra" and r["n"].get("ten_may") == "MAY-A", r)
+    #  A đang GIỮ key (có mã phiên) rồi tắt máy; B chiếm trong lúc A tắt; A mở lại
+    r = tren(B, "ra(dict(v=td.vao_phien(chiem=True)))")
+    ket("A đang tắt, B bấm Vẫn truy cập: B dùng được", r.get("v", {}).get("tt") == "dung", r)
+    r = tren(A, "ra(dict(v=td.vao_phien(), n=td.nhip(), n2=td.nhip()))")
+    ket("A mở lại: hộp 'key đang ở MAY-B' đứng yên qua các nhịp (không đổi sang 'bị đẩy ra')",
+        r.get("v", {}).get("tt") == "xung_dot" and r.get("n", {}).get("tt") == "xung_dot"
+        and r.get("n2", {}).get("tt") == "xung_dot" and r["n2"].get("ten_may") == "MAY-B", r)
+    r = tren(A, "ra(dict(v=td.vao_phien(chiem=True)))")
+    ket("A lấy lại key (cho các mục sau)", r.get("v", {}).get("tt") == "dung", r)
+    import tin_dung as _td
+    ket("hàm nhả phiên khi đóng app không còn", not hasattr(_td, "roi")
+        and not hasattr(_td, "roi_nhanh"))
+    ket("nhịp: đang chạy việc 5 giây, rảnh 30 giây",
+        _td.khoang_nhip(True) == 5 and _td.khoang_nhip(False) == 30)
+    ket("trạm retouch hỏi lại máy chủ khi xác nhận cũ hơn 15 giây", _td.XAC_NHAN_TRAM == 15)
 
     # ── Bảng Credit & thiết bị ──
     r = tren(A, "ra(td.lay_tom_tat())")
@@ -349,6 +375,32 @@ t = td.tru(["%032x" % 1, "%032x" % 70])
 ra(dict(ok=ok, t=t, cu=khoa.doc_trang_thai().get("bq_key_cu")))''')
     ket("gia hạn bằng key mới: ảnh đã trừ ở key cũ không trừ lại",
         r.get("ok") and r.get("t", {}).get("moi") == 1 and r["t"]["cu"] == 1, r)
+
+
+# ── 2b. Nhịp thích ứng (luồng NhipPhien thật, hàm mạng thay bằng bộ đếm) ────
+def kiem_nhip_thich_ung():
+    import tin_dung as td
+    goc = (td.vao_phien, td.nhip)
+    dem = {"n": 0}
+
+    def gia(*_a, **_k):
+        dem["n"] += 1
+        return {"tt": "dung"}
+    td.vao_phien = td.nhip = gia
+    try:
+        ban = {"v": False}
+        n = td.NhipPhien(lambda kq: None, dang_ban=lambda: ban["v"]).bat_dau()
+        time.sleep(7)
+        ranh = dem["n"]
+        ban["v"] = True                 # vừa bấm Phân tích giữa lúc đang chờ 30 giây
+        time.sleep(11.5)
+        ban_n = dem["n"] - ranh
+        n.dung()
+    finally:
+        td.vao_phien, td.nhip = goc
+    ket("rảnh: 7 giây chỉ hỏi máy chủ 1 lần (lúc mở app)", ranh == 1, ranh)
+    ket("đang chạy việc: hỏi 5 giây một lần, kể cả khi đang giữa lượt chờ 30 giây",
+        2 <= ban_n <= 3, ban_n)
 
 
 # ── 3. Worker cũ / mất mạng hẳn ─────────────────────────────────────────────
@@ -398,7 +450,7 @@ def main() -> int:
         except Exception:                                    # noqa: BLE001
             pass
     try:
-        for f in (kiem_ma_anh, kiem_worker_cu, kiem_worker_that):
+        for f in (kiem_ma_anh, kiem_nhip_thich_ung, kiem_worker_cu, kiem_worker_that):
             try:
                 f()
             except Exception as e:                           # noqa: BLE001

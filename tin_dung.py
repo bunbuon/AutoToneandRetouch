@@ -8,13 +8,16 @@ credit = 1 ảnh đã bấm phân tích. Ảnh đã phân tích và trừ credit
 bấm phân tích sau không trừ nữa. Như xuất ảnh của Evoto." Rồi: "1 key chỉ dùng
 được 1 máy 1 thời điểm... máy khác cũng vào tool thì hiện cảnh báo, chọn tiếp
 tục sẽ đẩy thiết bị đang dùng kia ra." Mất mạng: cho ứng trước 2.000 ảnh.
+Chuẩn hoá cùng ngày: "Máy A đang đăng nhập thì dù có tắt máy cũng là đang đăng
+nhập. Máy B bấm Vẫn truy cập là máy A đã phải out ra khỏi tiến trình đang chạy.
+A không active thì khi mở lại sẽ thấy dialog như máy B" — KHÔNG có nhả phiên khi
+đóng app, KHÔNG có "im lâu = đã rời"; nhịp 5 giây khi đang chạy việc.
 
 MÁY CHỦ là nơi giữ số thật (Worker `autotone-key`, D1 — repo KeyActiveAutoTone,
 src/credit.js): số dư, ảnh nào đã trừ, máy nào đang giữ phiên. Module này chỉ:
     ma_anh()      mã nội dung một ảnh (không phụ thuộc tên / thư mục / máy)
     vao_phien()   xin dùng key trên máy này (hoặc chiếm từ máy khác)
-    nhip()        báo còn sống 5 phút/lần, biết mình bị đẩy ra
-    roi()         nhả phiên lúc đóng app
+    nhip()        hỏi "còn giữ key không" (5 s khi bận / 30 s khi rảnh), biết bị đẩy ra
     tru(ids)      trừ credit cho một mẻ ảnh sắp phân tích
     dong_bo_ung() trừ bù ảnh đã phân tích lúc mất mạng
 
@@ -48,7 +51,15 @@ import khoa
 #[[ Ung truoc toi da 2.000 anh MOI khi mat mang (user chot 13/10). Anh da tru
 #   tu truoc (so cai cuc bo biet) thi phan tich lai khong tinh vao han nay. ]]
 UNG_TRUOC_TOI_DA = 2000
-NHIP_GIAY = 300           # 5 phút một nhịp; máy chủ coi im > 15 phút là đã rời
+#[[ NHIP THICH UNG: may bi day ra phai dung viec NGAY (user 13/10) — dang chay
+#   phan tich / retouch / xuat thi hoi may chu 5 giay mot lan; ranh thi 30 giay
+#   (moi viec nang deu qua _khoa_chan + tru credit kiem phien, nen ranh 30 giay
+#   khong de lot viec moi). Moi nhip = 1 luot goi Worker: bac mien phi 100.000
+#   luot/ngay du cho ~30-40 may mo app ca ngay. ]]
+NHIP_BAN = 5
+NHIP_RANH = 30
+#  trạm retouch (kể cả trạm chạy ngầm khi app tắt): xác nhận cũ hơn chừng này thì hỏi lại
+XAC_NHAN_TRAM = 15
 ME_TOI_DA = 2000          # mỗi lần gọi /credit/tru (máy chủ nhận tới 5.000)
 KHOI = 64 * 1024          # ma_anh đọc 64 KiB đầu + 64 KiB giữa
 #[[ May chu chua co cua credit (Worker cu / chua tao D1): thu lai sau 6 gio,
@@ -377,7 +388,9 @@ def vao_phien(chiem: bool = False) -> dict:
         return _danh_dau_may_chu_cu()
     if kq.get("ly_do") == "dang_dung_may_khac":
         khac = {"ten_may": kq.get("ten_may") or "", "cach_giay": kq.get("cach_giay")}
-        _ghi_phien(key=key, tt="xung_dot", khac=khac)
+        #[[ Bo ma phien cu: giu lai thi nhip sau goi bang ma cu, nhan bi_day_ra
+        #   va hop doi chu "dang dung may khac" -> "may nay bi day ra" giua chung. ]]
+        _ghi_phien(key=key, tt="xung_dot", khac=khac, phien=None)
         return {"tt": "xung_dot", **khac}
     return _loi(kq, ma)
 
@@ -415,31 +428,17 @@ def nhip() -> dict:
     return _loi(kq, ma)
 
 
-def roi() -> None:
-    """Nhả phiên (đóng app) để máy khác mở không bị hỏi. Lỗi gì cũng bỏ qua."""
-    try:
-        if not bat():
-            return
-        d = _doc_phien()
-        if d.get("phien") and d.get("tt") == "dung":
-            _goi("/phien/roi", {"key": key_hien(), "phien": d["phien"]})
-            _ghi_phien(phien=None, tt="")
-    except Exception:                                        # noqa: BLE001
-        pass
-
-
-def roi_nhanh(cho: float = 2.0) -> None:
-    """roi() ở luồng riêng, chờ tối đa `cho` giây — đóng app không bị treo vì mạng."""
-    t = threading.Thread(target=roi, daemon=True, name="credit_roi")
-    t.start()
-    t.join(cho)
+def khoang_nhip(dang_ban: bool) -> float:
+    """Bao lâu hỏi máy chủ một lần: đang chạy việc 5 giây, rảnh 30 giây."""
+    return NHIP_BAN if dang_ban else NHIP_RANH
 
 
 def phien_ok(tu_kiem: bool = True) -> tuple[bool, str]:
     """Cho tiến trình KHÔNG có giao diện (trạm retouch): máy này còn giữ phiên không.
 
-    Lần xác nhận cuối quá một nhịp thì gọi nhip(). Mất mạng -> cho chạy (ân hạn
-    bản quyền vẫn do ban_quyen.kiem lo).
+    Lần xác nhận cuối cũ hơn XAC_NHAN_TRAM (15 giây) thì gọi nhip() — trạm gọi hàm
+    này mỗi mẻ ảnh Lightroom gửi sang, nên máy bị đẩy ra thôi retouch gần như ngay.
+    Mất mạng -> cho chạy (ân hạn bản quyền vẫn do ban_quyen.kiem lo).
     """
     if not bat():
         return True, ""
@@ -448,7 +447,7 @@ def phien_ok(tu_kiem: bool = True) -> tuple[bool, str]:
         return False, _cau_bi_day(d.get("khac") or {})
     try:
         luc = datetime.fromisoformat(d.get("luc_phien") or "")
-        moi = (datetime.now(timezone.utc) - luc).total_seconds() < NHIP_GIAY
+        moi = (datetime.now(timezone.utc) - luc).total_seconds() < XAC_NHAN_TRAM
     except (TypeError, ValueError):
         moi = False
     if moi and d.get("tt") == "dung":
@@ -650,16 +649,18 @@ def cau_ket_qua(kq: dict, so_anh: int) -> str:
 
 # ── Nhịp nền cho giao diện ──────────────────────────────────────────────────
 class NhipPhien:
-    """Luồng nền: vào phiên lúc mở app rồi 5 phút một nhịp.
+    """Luồng nền: vào phiên lúc mở app rồi hỏi máy chủ theo `khoang_nhip`.
 
     Báo cho giao diện qua `bao(kq)` (gọi từ luồng nền — giao diện tự chuyển về
     luồng chính, vd. đặt vào hàng đợi). Chỉ báo khi trạng thái ĐỔI, để nhịp
-    đều đặn không vẽ lại gì.
+    đều đặn không vẽ lại gì. `dang_ban()` (gọi ở luồng nền — chỉ được đọc thuộc
+    tính Python, không gọi Tk) nói app đang chạy việc hay không; xét lại mỗi
+    giây nên vừa bấm Phân tích lúc đang chờ 30 giây thì 5 giây sau đã hỏi.
     """
 
-    def __init__(self, bao, nhip_giay: float = NHIP_GIAY):
+    def __init__(self, bao, dang_ban=None):
         self.bao = bao
-        self.nhip_giay = nhip_giay
+        self.dang_ban = dang_ban
         self._dung = threading.Event()
         self._danh_thuc = threading.Event()
         self._cu = None
@@ -692,5 +693,19 @@ class NhipPhien:
                     self.bao(kq)
                 except Exception:                            # noqa: BLE001
                     pass
-            self._danh_thuc.wait(self.nhip_giay)
-            self._danh_thuc.clear()
+            self._cho()
+
+    def _ban(self) -> bool:
+        try:
+            return bool(self.dang_ban()) if self.dang_ban is not None else False
+        except Exception:                                    # noqa: BLE001
+            return False
+
+    def _cho(self):
+        t0 = time.monotonic()
+        while not self._dung.is_set():
+            if self._danh_thuc.wait(1.0):
+                self._danh_thuc.clear()
+                return
+            if time.monotonic() - t0 >= khoang_nhip(self._ban()):
+                return

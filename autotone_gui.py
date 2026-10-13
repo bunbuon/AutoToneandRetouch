@@ -4832,6 +4832,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #   dia, canh bao va TU DOI sang "retouch sau khi xuat xong" khi may yeu;
         #   nguoi dung van ep duoc. ]]
         """
+        #  13/10: Export… cũng là việc nặng (Lightroom xuất + retouch) — trước giờ không chốt
+        if self._khoa_chan():
+            return
         f = self.folder()
         if not f:
             messagebox.showinfo("Chưa chọn buổi", "Chọn thư mục buổi chụp trước.")

@@ -939,10 +939,20 @@ gói khác theo tỉ lệ ngày (500.000 × ngày / 365).
   chỉ ảnh SẼ đo (`can_do`; ảnh có sẵn kết quả lưu không đụng credit). Bấm Dừng giữa chừng:
   ảnh đã trừ vẫn là "đã trừ", phân tích lại không trừ. Hết credit → server từ chối CẢ mẻ
   (402 + `cu_idx`), hộp đề nghị phân tích phần vừa đủ (`start_analyze(chi_anh=…)`).
-- **Phiên**: `tin_dung.NhipPhien` (luồng nền) vào phiên lúc mở app, nhịp 5 phút; máy im
-  > 15 phút coi như đã rời; đóng app `roi()` (≤ 2 s). Bị đẩy ra / máy khác đang dùng →
-  `_khoa_chan()` chặn + hộp "Tiếp tục dùng trên máy này" (`tin_dung_ui._td_hop_phien`).
-  Trạm retouch (`tram_retouch.lam`) cũng kiểm `tin_dung.phien_ok()`.
+- **Phiên — chuẩn hoá 13/10 chiều** (user: "Máy A đang đăng nhập thì dù có tắt máy cũng là
+  đang đăng nhập. Máy B bấm Vẫn truy cập là máy A đã phải out ra khỏi tiến trình đang chạy.
+  A không active thì khi mở lại sẽ thấy dialog như máy B"): KHÔNG có "im lâu = đã rời", KHÔNG
+  nhả phiên khi đóng app (đã bỏ `roi()` / cửa `/phien/roi`). `tin_dung.NhipPhien` vào phiên
+  lúc mở app rồi hỏi máy chủ theo `khoang_nhip`: **5 s khi đang chạy việc** (`_td_dang_ban`:
+  busy / chuỗi Xử lý ảnh / chờ Lightroom / retouch / lượt xuất), 30 s khi rảnh — xét lại mỗi
+  giây. Nhận `bi_day_ra` → `_td_dung_viec()` dừng NGAY (do_cancel, _xl_dung, huy_gui,
+  RetouchWindow.stop + tắt hẳn engine, tắt máy xem trước) → hộp "Máy này đã bị đẩy ra".
+  Mở app khi máy khác giữ → hộp "Key đang dùng trên máy khác" (tên + lần cuối hoạt động);
+  `vao_phien` xung đột thì xoá mã phiên cũ (giữ lại thì nhịp sau đổi chữ hộp giữa chừng).
+  Nút **"Vẫn truy cập"** · Thoát. `_khoa_chan()` chặn mọi việc nặng — nay gồm cả Export…
+  (`do_xuat_hop`, trước giờ không chốt). Trạm retouch (`tram_retouch.lam`) kiểm
+  `tin_dung.phien_ok()` mỗi mẻ, hỏi lại máy chủ khi xác nhận cũ > 15 s (`XAC_NHAN_TRAM`).
+  Chi phí: mỗi nhịp = 1 lượt gọi Worker; miễn phí 100.000 lượt/ngày ≈ 30–40 máy mở cả ngày.
 - **Tắt** (chạy y như trước): chưa có key, `AUTOTONE_CREDIT=0`, hoặc Worker chưa có cửa
   credit (404 `khong_co_cua_nay` / 503 `chua_co_credit`) — thử lại sau 6 giờ. Nên app mới ra
   trước khi deploy Worker vẫn chạy. Các bài kiểm GUI cũ stub `bq.kiem` mà không lưu key →
@@ -952,9 +962,11 @@ gói khác theo tỉ lệ ngày (500.000 × ngày / 365).
 - `kiem_tham_chieu.py` giờ đọc cả file mixin (`from x_ui import YMixin`) — trước đó báo 10
   lỗi giả cho `self._xl_*()` từ ngày có nút Xử lý ảnh.
 - Thử 2 "máy" trên một máy Windows: `THU_CREDIT_2_MAY.bat` (máy thứ hai = `thu_may_thu_hai.py`,
-  dữ liệu riêng trong %TEMP%, mã máy giả).
-Kiểm: `test_tin_dung.py` (33), `test_tin_dung_gui.py` (20, xvfb), `test_tram_retouch` mục "máy bị
-đẩy ra". Thử ngược phía app 25 đột biến (mã ảnh, công tắc, Worker cũ, phiên, ứng trước, trừ bù,
+  dữ liệu riêng trong %TEMP%, mã máy giả). Cửa sổ mở sau hỏi; "Vẫn truy cập" thì cửa sổ kia
+  dừng việc và hiện hộp trong ≤ 5 s (đang chạy việc) / ≤ 30 s (rảnh).
+Kiểm: `test_tin_dung.py` (42), `test_tin_dung_gui.py` (25, xvfb — máy B chiếm giữa lúc đang
+phân tích: dừng sau ~3 s), `test_tram_retouch` mục "máy bị đẩy ra"; Worker `kiem_credit.mjs`
+(50, sửa thẳng D1 cục bộ cho nhịp cuối "năm 1970" mà vẫn bị hỏi). Thử ngược phía app 25 đột biến (mã ảnh, công tắc, Worker cũ, phiên, ứng trước, trừ bù,
 hộp hết credit, chi_anh, nhãn, trạm, kích hoạt api 2, key cũ khi gia hạn...) — lần đầu LỌT 2 do
 BÀI KIỂM thiếu (trạm chỉ thử khi đã tự biết bị đẩy ra; nhãn chỉ thử qua tin phiên, không qua
 nhịp 60 giây) -> thêm mục, chạy lại 25/25 bị bắt.

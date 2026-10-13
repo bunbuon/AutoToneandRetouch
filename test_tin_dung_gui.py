@@ -95,9 +95,16 @@ def _chay(ttd, w, tam: Path) -> int:
         return out
 
     lan_do: list = []
+    cham = {"v": False, "bi_dung": None}
 
     def analyze_gia(pairs_, cfg_, jobs_=1, progress=None, cancel=None):
         lan_do.append(len(pairs_))
+        if cham["v"]:
+            #  đo "chậm": chờ tới khi app xin dừng (tối đa 40 giây)
+            het = time.time() + 40
+            while time.time() < het and not (cancel and cancel()):
+                time.sleep(0.1)
+            cham["bi_dung"] = bool(cancel and cancel())
         return items_cua(pairs_), []
     at.analyze = analyze_gia
     at.LR_JOB_DIR = tam / "jobs"
@@ -203,17 +210,45 @@ def _chay(ttd, w, tam: Path) -> int:
         ktra("…đồng ý thì đo đúng 8 ảnh, server đã dùng 8 / 8",
              cho(lambda: lan_do[-1:] == [8]) and vi().get("da_dung") == 8, (lan_do, vi()))
 
-        # ── 4. Máy khác chiếm: máy này bị đẩy ra ──
+        # ── 4. Đang phân tích thì máy B "Vẫn truy cập": máy này dừng ngay ──
+        w.quan_tri("/credit/nap", {"key": K, "them": 100})
+        cho(lambda: not app.busy)
+        cham["v"] = True
+        app.start_analyze()
+        ktra("đang phân tích (engine đo giả đang chạy)",
+             cho(lambda: app.busy and len(lan_do) == 4, 15), (app.busy, lan_do))
+        t_chiem = time.time()
         r = tren_B("ra(td.vao_phien(chiem=True))")
-        app._td_nhip.ngay()
-        ktra("máy B chiếm lại: app hiện 'Máy này đã bị đẩy ra', nêu MAY-B",
+        ktra("máy B bấm Vẫn truy cập (KHÔNG đụng gì vào app này)", r.get("tt") == "dung", r)
+        ktra("≤ 8 giây sau: app này tự dừng phân tích (nhịp 5 giây khi đang chạy việc)",
+             cho(lambda: cham["bi_dung"] is not None, 12) and cham["bi_dung"] is True
+             and time.time() - t_chiem <= 8.5, (cham, round(time.time() - t_chiem, 1)))
+        cham["v"] = False
+        ktra("…hiện hộp 'Máy này đã bị đẩy ra', nêu MAY-B, nói việc đang chạy đã dừng",
              cho(hop_mo) and "đẩy ra" in app._td_lbl_tieu_de.cget("text")
-             and "MAY-B" in app._td_lbl_ly_do.cget("text"), r)
+             and "MAY-B" in app._td_lbl_ly_do.cget("text")
+             and "đã dừng" in app._td_lbl_ly_do.cget("text"),
+             app._td_lbl_ly_do.cget("text") if hop_mo() else "")
+        b = app.btn_td_chiem
+        ktra("…nút 'Vẫn truy cập'", b.itemcget(b._i_chu, "text") == "Vẫn truy cập",
+             b.itemcget(b._i_chu, "text"))
         so = len(lan_do)
         cho(lambda: not app.busy)
         app.start_analyze()
         vong(10)
         ktra("…bị đẩy ra thì Phân tích không chạy", len(lan_do) == so, lan_do)
+        import xuat_ui
+        mo_xuat: list = []
+        xd_cu = xuat_ui.XuatDialog
+        xuat_ui.XuatDialog = lambda *a, **k: mo_xuat.append(1) or (_ for _ in ()).throw(
+            RuntimeError("không được mở hộp Xuất khi đã bị đẩy ra"))
+        try:
+            app.do_xuat_hop()
+        except RuntimeError:
+            pass
+        finally:
+            xuat_ui.XuatDialog = xd_cu
+        ktra("…và Export… cũng không mở (đường xuất có chốt)", not mo_xuat, mo_xuat)
 
         # ── 5. Bảng Credit & thiết bị ──
         app.btn_td_chiem.invoke()
@@ -225,13 +260,14 @@ def _chay(ttd, w, tam: Path) -> int:
         app.xem_credit()
         ktra("bảng Credit & thiết bị: số còn lại + đếm theo máy",
              cho(lambda: any(h[1] == "Credit & thiết bị" for h in hoi))
-             and "còn 0 / 8" in hoi[-1][2] and "MAY-GUI: 8 / 20" in hoi[-1][2],
+             and "còn 98 / 108" in hoi[-1][2] and "MAY-GUI: 10 / 30" in hoi[-1][2],
              hoi[-1:] if hoi else "")
 
-        # ── 6. Đóng app: nhả phiên ──
+        # ── 6. Đóng app: KHÔNG nhả phiên (đóng app / tắt máy vẫn là đang đăng nhập) ──
         app._td_dung()
         r = tren_B("ra(td.vao_phien())")
-        ktra("đóng app: nhả phiên — máy B vào lại không bị hỏi", r.get("tt") == "dung", r)
+        ktra("đóng app vẫn giữ key — máy B mở sau bị hỏi, nêu MAY-GUI",
+             r.get("tt") == "xung_dot" and r.get("ten_may") == "MAY-GUI", r)
     finally:
         try:
             root.destroy()

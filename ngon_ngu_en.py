@@ -1836,17 +1836,22 @@ TU_DIEN.update({
     'Credit & thiết bị': 'Credit & devices',
     'Máy này đã bị đẩy ra': 'This machine was signed out',
     'Key đang dùng trên máy khác': 'Key in use on another machine',
-    'Key này vừa được đăng nhập trên máy «{}».': 'This key was just signed in on «{}».',
-    'Key này đang được dùng trên máy «{}».': 'This key is in use on «{}».',
-    'Lần cuối máy đó hoạt động: {} phút trước.': 'That machine was last active {} min ago.',
-    'Máy đó đang mở tool.': 'The app is open on that machine.',
-    'Mỗi key chỉ dùng trên MỘT máy tại một thời điểm.': 'Each key works on ONE machine at a time.',
-    'Bấm “Tiếp tục dùng trên máy này” để chuyển key về đây — máy kia sẽ bị đẩy ra. Credit dùng chung, ảnh đã trừ credit ở máy kia không bị trừ lại.':
-        'Click “Continue on this machine” to move the key here — the other machine will be signed out. '
-        'Credit is shared; photos already charged on the other machine are not charged again.',
-    'Tiếp tục dùng trên máy này': 'Continue on this machine',
-    'Đã chuyển key về máy này — máy kia sẽ bị đẩy ra ở nhịp kế tiếp.':
-        'Key moved to this machine — the other machine will be signed out at its next check.',
+    'Máy «{}» vừa đăng nhập key này lúc {}.': '«{}» signed in with this key at {}.',
+    'Máy «{}» vừa đăng nhập key này.': '«{}» just signed in with this key.',
+    'Mọi việc đang chạy trên máy này đã dừng.': 'Everything running on this machine has been stopped.',
+    'Key này đang đăng nhập trên máy «{}».': 'This key is signed in on «{}».',
+    'Lần cuối máy đó hoạt động: {}.': 'That machine was last active: {}.',
+    'vừa xong': 'just now', '{} phút trước': '{} min ago', '{} giờ trước': '{} h ago',
+    '{} ngày trước': '{} days ago',
+    'Mỗi key chỉ đăng nhập trên MỘT máy — đóng app hay tắt máy vẫn là đang đăng nhập.':
+        'Each key is signed in on ONE machine — closing the app or shutting down still counts as signed in.',
+    'Bấm “Vẫn truy cập” để dùng key trên máy này — máy kia bị đẩy ra ngay, mọi việc đang chạy trên máy đó dừng lại. Credit dùng chung, ảnh đã trừ credit ở máy kia không bị trừ lại.':
+        'Click “Access anyway” to use the key on this machine — the other machine is signed out right away '
+        'and everything running there stops. Credit is shared; photos already charged on the other machine '
+        'are not charged again.',
+    'Vẫn truy cập': 'Access anyway',
+    'Đã chuyển key về máy này — máy kia đã bị đẩy ra.':
+        'Key moved to this machine — the other machine has been signed out.',
     'Không nối được máy chủ. Kiểm tra mạng rồi bấm lại.': 'Could not reach the server. Check the network and try again.',
     'Không chuyển được key về máy này.': 'Could not move the key to this machine.',
     'Đang kiểm credit cho {} ảnh…': 'Checking credit for {} photos…',
