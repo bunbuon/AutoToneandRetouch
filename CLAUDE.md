@@ -930,6 +930,34 @@ khớp hết, 0 WHEA / BSOD trong 3.5 giờ. Giờ:
 - Build của chính dự án thôi ghim nhân E (`/AFFINITY FFFF0000` bỏ từ v76).
 Kiểm: `test_xuat_mot_thao_tac.py` (microcode cũ / mới / không rõ, hiệu lực, tệp bản cũ).
 
+## Xuất 1 ảnh chậm (~1 phút) — dồn máy vào từng ảnh, ảnh mồi, bỏ ghim nhân E (13/10)
+
+User: "Evoto xuất 1 ảnh hay nhiều ảnh đều nhanh; tool xuất 1 ảnh có khi mất 1 phút, phải
+xuất nhiều ảnh thì về sau mới nhanh" (NVIDIA, Lightroom Export + mô-đun Retouch, lần nào
+cũng chậm). Gốc: saytool tối ưu THÔNG LƯỢNG — chia máy cho N ảnh song song (máy 32 luồng
+đo ra 8 → mỗi ảnh 4 luồng cv2); 1 ảnh vẫn chỉ 1/8 máy, ba tầng nối đuôi. Evoto dồn cả máy
+vào từng ảnh, engine luôn nóng, phân tích lúc mở ảnh.
+- **ToolCloneEvoto** (`claude/pensive-fermat-1dcrys`): lô ≤ 4 ảnh số luồng ≤ số ảnh;
+  đọc trước DCT + giữ ảnh gốc cho khâu ghi; `cho_du_ram` không ngủ khi không còn ảnh nào
+  của tool giữ bộ nhớ (trước: tới 30 s/ảnh lúc Lightroom chiếm RAM); cuối mẻ in
+  `chi tiet (giay/anh): ...` (nạp / chờ RAM / giải nén / dò mặt / từng bước / ghi). Sửa
+  luôn lỗi CŨ ghép DCT: ảnh có số khối lẻ (rộng 3000 px…) ghi màu LỆCH CHỖ hoặc nén lại cả ảnh.
+- `tram_retouch`: chép dòng `chi tiet` vào `tram.log` — user gửi tram.log là biết chặng
+  chậm. `RANH_THOAT` 5 → 30 phút (= `GIU_GIAY`); Lightroom tắt vẫn thoát sau 30 s.
+- **Ảnh mồi hâm nóng** (`anh_moi_ds`): bản giao khách (`--bao-mat --nhe`) tách insightface
+  ra gói tải sau (GOI_TACH), mà bản đóng gói chỉ tìm `t1.jpg` ở `_MEIPASS/insightface` →
+  không thấy → hâm nóng lặng lẽ bỏ qua (nhiều khả năng chưa từng chạy ở máy user). Nay tìm
+  `<dữ liệu>/anh_moi/` → `<gói>/anh_moi/` (TAI_NGUYEN) → `t1.jpg` (cả trên sys.path),
+  tối đa 3 ảnh, xoay EXIF, cạnh dài 3000; không có ảnh mồi thì tram.log báo MỘT lần.
+  `t1.jpg` là ảnh quảng bá phim có bản quyền — KHÔNG chép vào `anh_moi/`; ảnh mồi đóng kèm
+  phải là ảnh SAY có quyền (chân dung + một ảnh toàn thân). Thư mục hiện chỉ có `DOC_TOI.txt`.
+- **Bỏ ghim nhân E khi xuất** (user: "nhân P cũng đã hết lỗi"): `xuat_ui.GHIM_NHAN_E` mặc
+  định tắt → `an_toan_hieu_luc()` (trạm) và hộp Xuất (`_an_toan`) không ghim, kể cả máy
+  không đọc được microcode. Bật lại: `AUTOTONE_GHIM_NHAN_E=1` (tự quyết như 12/10).
+Kiểm: `test_tram_retouch.py` (hâm nóng không còn phụ thuộc insightface; thử ngược 7 đột
+biến), `test_xuat_mot_thao_tac.py` (2 mục mới; thử ngược 3 đột biến). Mục "nút 3 · Xuất"
+của bài đó đỏ TỪ TRƯỚC (Linux/xvfb), không liên quan.
+
 ## Giao diện mới "SAY Auto Tone & Retouch" (12/10) — thay khung Evoto
 
 User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon) + `Icons.dc.html`:

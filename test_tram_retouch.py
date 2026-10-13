@@ -377,6 +377,13 @@ for f in THU.glob("*.txt"):
     f.unlink()
 
 # ---------------------------------------------------------------- 13. hâm nóng
+#  13/10: ảnh mồi đặt trong <dữ liệu>/anh_moi — bài kiểm không còn phụ thuộc máy có
+#  cài insightface hay không (trước đây máy thiếu insightface đỏ cả 4 mục hâm nóng)
+from PIL import Image as _Im  # noqa: E402
+MOI = TAM / "data" / tr.ANH_MOI
+MOI.mkdir(parents=True, exist_ok=True)
+_Im.new("RGB", (1200, 800), (200, 150, 120)).save(MOI / "a_chan_dung.jpg")
+_Im.new("RGB", (900, 1600), (120, 150, 200)).save(MOI / "b_toan_than.jpg")
 tn = tram_moi()
 nong = []
 tn.ham_nong_goc = tn.ham_nong
@@ -390,9 +397,9 @@ def chay_nong(goc, vao, ra, muc, engine=None, **kw):
 rt.chay = chay_nong
 tr.ghi_kv(THU / tr.XIN_NAP, {"che_do": "preset:Cưới mịn"})
 tn.mot_vong()
-ktra("hộp Export mở (xin_nap che_do=preset) -> hâm nóng bằng ảnh mẫu với đúng mức preset",
-     len(nong) == 1 and nong[0][0] == ["nong.jpg"] and nong[0][1] == {"vet": 100.0, "min_da": 60.0},
-     str(nong))
+ktra("hộp Export mở (xin_nap che_do=preset) -> hâm nóng bằng CÁC ảnh mồi với đúng mức preset",
+     len(nong) == 1 and nong[0][0] == ["nong.jpg", "nong_2.jpg"]
+     and nong[0][1] == {"vet": 100.0, "min_da": 60.0}, str(nong))
 tr.ghi_kv(THU / tr.XIN_NAP, {"che_do": "preset:Cưới mịn"})
 tn.mot_vong()
 ktra("các bước đã hâm trên engine này -> không hâm lại", len(nong) == 1)
@@ -405,6 +412,97 @@ ktra("đổi mức trong app (thêm bước mới) -> ngừng tay 2 s thì hâm 
      len(nong) == 2 and nong[1][1] == {"vet": 50, "chan": 40}, str(nong[1:]))
 ktra("nhịp báo nong=1 khi đã hâm xong", tr.doc_nhip(THU, "app").get("nong") == "1")
 rt.chay = chay_gia
+
+# ---------------------------------------------------------------- 13b. ảnh mồi (13/10)
+import duong_dan as _dd  # noqa: E402
+ds_ = tr._nguon_moi()
+ktra("ảnh mồi: lấy ở thư mục dữ liệu app, theo thứ tự tên",
+     [x.name for x in ds_] == ["a_chan_dung.jpg", "b_toan_than.jpg"], str(ds_))
+for i_ in range(5):
+    _Im.new("RGB", (64, 64)).save(MOI / f"c{i_}.png")
+ktra("ảnh mồi: tối đa ANH_MOI_TOI_DA ảnh", len(tr._nguon_moi()) == tr.ANH_MOI_TOI_DA)
+for f_ in MOI.iterdir():
+    f_.unlink()
+im_ = _Im.new("RGB", (1600, 900))
+ex_ = im_.getexif()
+ex_[0x0112] = 6
+im_.save(MOI / "doc.jpg", exif=ex_)
+ds_ra = tr.anh_moi_ds()
+kt_ = None
+if ds_ra:
+    with _Im.open(ds_ra[0]) as r_:
+        kt_ = r_.size
+ktra("ảnh mồi chụp dọc (EXIF Orientation 6) -> xoay đúng rồi đưa cạnh dài về 3000 px",
+     kt_ == (1688, 3000), str(kt_))
+for f_ in MOI.iterdir():
+    f_.unlink()
+GOI_ = TAM / "goi_app"
+(GOI_ / tr.ANH_MOI).mkdir(parents=True)
+_Im.new("RGB", (800, 600)).save(GOI_ / tr.ANH_MOI / "goi.jpg")
+(GOI_ / tr.ANH_MOI / "DOC_TOI.txt").write_text("x", encoding="utf-8")
+cu_tn = _dd.goc_tai_nguyen
+_dd.goc_tai_nguyen = lambda: GOI_
+try:
+    ds_ = tr._nguon_moi()
+    _Im.new("RGB", (640, 480)).save(MOI / "cua_toi.jpg")
+    ds_hai = tr._nguon_moi()
+    (MOI / "cua_toi.jpg").unlink()
+finally:
+    _dd.goc_tai_nguyen = cu_tn
+ktra("thư mục dữ liệu không có ảnh -> lấy ảnh mồi đóng kèm gói (bỏ qua tệp không phải ảnh)",
+     [x.name for x in ds_] == ["goi.jpg"], str(ds_))
+ktra("cả hai nơi có ảnh -> ảnh của người dùng (thư mục dữ liệu) thắng ảnh đóng kèm",
+     [x.name for x in ds_hai] == ["cua_toi.jpg"], str(ds_hai))
+#  không có ảnh mồi nào -> không gọi engine, tram.log báo MỘT lần (trước đây im lặng)
+cu_ng = tr._nguon_moi
+tr._nguon_moi = lambda: []
+nong2 = []
+
+
+def chay_dem(goc, vao, ra, muc, engine=None, **kw):
+    nong2.append(1)
+    yield ("ma", 0)
+
+
+rt.chay = chay_dem
+try:
+    tk_ = tram_moi()
+    for _ in range(2):
+        tr.ghi_kv(THU / tr.XIN_NAP, {"che_do": "preset:Cưới mịn"})
+        tk_.mot_vong()
+finally:
+    tr._nguon_moi = cu_ng
+    rt.chay = chay_gia
+nk_ = (THU / tr.NHAT_KY).read_text(encoding="utf-8")
+ktra("không có ảnh mồi -> không hâm (không gọi engine), tram.log báo MỘT lần kèm chỗ bỏ ảnh",
+     not nong2 and nk_.count("KHÔNG có ảnh mồi") == 1 and str(MOI) in nk_,
+     f"goi={len(nong2)} bao={nk_.count('KHÔNG có ảnh mồi')}")
+
+# ---------------------------------------------------------------- 13c. dòng chi tiết + giữ nóng (13/10)
+
+
+def chay_ct(goc, vao, ra, muc, engine=None, **kw):
+    for x in Path(vao).iterdir():
+        (Path(ra) / x.name).write_bytes(b"RT:" + x.read_bytes())
+    yield ("dong", "  xong 1 anh, 3s = 3.00s/anh = 1200 anh/gio")
+    yield ("dong", "  chi tiet (giay/anh): chuan bi 1.20 (vet 0.80) | mang 0.90 | ghi 0.50")
+    yield ("ma", 0)
+
+
+rt.chay = chay_ct
+tc_ = tram_moi()
+a40 = anh("DSC0040.jpg", b"E")
+yc("40", a40, str(RAW / "DSC0040.ARW"))
+tc_.mot_vong()
+rt.chay = chay_gia
+nk_ = (THU / tr.NHAT_KY).read_text(encoding="utf-8")
+ktra("dòng 'chi tiet' của saytool vào tram.log (biết xuất 1 ảnh chậm ở chặng nào)",
+     "chi tiet (giay/anh): chuan bi 1.20 (vet 0.80)" in nk_ and kq("40").get("ok") == "1",
+     str(kq("40")))
+ktra("trạm ngầm rảnh mới thoát >= thời gian app giữ engine (RANH_THOAT >= GIU_GIAY)",
+     tr.RANH_THOAT >= tr.GIU_GIAY, f"{tr.RANH_THOAT} / {tr.GIU_GIAY}")
+for f_ in THU.glob("*.txt"):
+    f_.unlink()
 
 # ---------------------------------------------------------------- 14. trạm ngầm thoát (11/10)
 #  user: Setup báo "unable to automatically close all applications" dù đã đóng app — còn

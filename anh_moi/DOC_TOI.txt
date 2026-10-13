@@ -1,0 +1,16 @@
+ẢNH MỒI ĐỂ HÂM NÓNG RETOUCH (tram_retouch.anh_moi_ds, 13/10)
+
+Bỏ 1–3 ảnh JPEG/PNG có người vào thư mục này (thư mục anh_moi/ của mã nguồn — đi kèm
+gói khi đóng gói). Trạm Retouch chạy các ảnh này qua đúng các bước đang bật ngay khi hộp
+Export của Lightroom mở / khi đổi mức trong app, để mô hình nạp xong TRƯỚC ảnh xuất đầu
+tiên.
+
+Nên có:
+  - một ảnh chân dung mặt rõ
+  - một ảnh TOÀN THÂN thấy từ hông tới cổ chân (bước kéo chân / tăng chiều cao)
+Chỉ dùng ảnh mình CÓ QUYỀN phân phối (ảnh của chính SAY Media, người trong ảnh đồng ý).
+KHÔNG chép t1.jpg của insightface vào đây: đó là ảnh quảng bá phim có bản quyền.
+
+Máy người dùng: ảnh trong <thư mục dữ liệu app>/anh_moi/ được dùng TRƯỚC ảnh ở đây.
+Không có ảnh nào ở cả hai nơi thì mới lùi về t1.jpg của insightface; không có nữa thì
+tram.log ghi "KHÔNG có ảnh mồi để hâm nóng".

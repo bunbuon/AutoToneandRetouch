@@ -277,9 +277,16 @@ def phan_sap_may():
     ma = xuat_ui.vi_ma_cpu()
     ktra("đọc được microcode của máy này (Windows)", ma > 0 or not sys.platform.startswith("win"),
          f"0x{ma:X}")
-    cu_md, cu_e = xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e
+    cu_md, cu_e, cu_g = xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e, xuat_ui.GHIM_NHAN_E
     try:
+        #  13/10 (user: nhân P đã hết lỗi): MẶC ĐỊNH không ghim — kể cả máy đề xuất bật,
+        #  kể cả xuat.json lưu tay True (trạm Retouch đọc đúng hàm này)
         xuat_ui.nhan_e = lambda: [16, 17]
+        xuat_ui.de_xuat_an_toan = lambda **k: True
+        md_tu = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": None})
+        md_tay = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": True})
+        #  AUTOTONE_GHIM_NHAN_E=1 -> tự quyết như 12/10
+        xuat_ui.GHIM_NHAN_E = True
         xuat_ui.de_xuat_an_toan = lambda **k: False
         tat = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": None})
         tay = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": True})
@@ -289,8 +296,10 @@ def phan_sap_may():
         xuat_ui.nhan_e = lambda: []
         khong_e = xuat_ui.an_toan_hieu_luc({"an_toan_cpu": True})
     finally:
-        xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e = cu_md, cu_e
-    ktra("hiệu lực: None theo đề xuất (tắt / bật), chọn tay thắng, không nhân E -> tắt",
+        xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e, xuat_ui.GHIM_NHAN_E = cu_md, cu_e, cu_g
+    ktra("13/10 mặc định KHÔNG ghim nhân E khi xuất (máy đề xuất bật / lưu tay bật vẫn tắt)",
+         not cu_g and not md_tu and not md_tay, f"GHIM_NHAN_E={cu_g} {md_tu} {md_tay}")
+    ktra("AUTOTONE_GHIM_NHAN_E=1: None theo đề xuất (tắt / bật), chọn tay thắng, không nhân E -> tắt",
          not tat and tay and bat and not tat_tay and not khong_e)
     #  12/10: tệp do bản cũ lưu (luôn lưu cứng an_toan_cpu, chưa có dấu v2) -> tự quyết
     (dd.goc_du_lieu() / "xuat.json").write_text('{"chat": 70, "an_toan_cpu": true}', encoding="utf-8")
@@ -381,6 +390,22 @@ def phan_giao_dien():
              kq and kq["song_song"] is False and kq["tu_retouch"] is True and kq["ly_do_tuan_tu"],
              str(kq and kq["ly_do_tuan_tu"]))
         ktra("cài đặt được nhớ (chat 88 -> ghi ở lần đầu, lần hai giữ)", xuat_ui.doc_cai_dat()["chat"] == 88)
+        #  13/10 (user: nhân P đã hết lỗi): hộp Xuất KHÔNG ghim nhân E, kể cả máy mà
+        #  đề xuất cũ (Intel 13/14 + microcode chưa vá / không đọc được) sẽ bật
+        cu_md2, cu_e2 = xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e
+        try:
+            xuat_ui.nhan_e = lambda: [16, 17]
+            xuat_ui.de_xuat_an_toan = lambda **k: True
+            d = xuat_ui.XuatDialog(root, buoi="Test", thu_muc_goi_y=str(TAM / "giao"), thong_so_lr=st)
+            d.update()
+            d._nhan_tn({"ram_trong_gb": 20, "vram_trong_gb": 6, "card": "RTX", "cpu": 8, "dia_trong_gb": 50})
+            d._bat_dau()
+            kq = d.ket_qua
+        finally:
+            xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e = cu_md2, cu_e2
+        ktra("hộp Xuất: máy đề xuất ghim nhân E vẫn KHÔNG ghim (an_toan_cpu False, nhan_e rỗng)",
+             kq and kq["an_toan_cpu"] is False and kq["nhan_e"] == [],
+             str(kq and (kq["an_toan_cpu"], kq["nhan_e"])))
         #  10/10: thư mục xuất đã có ảnh của buổi khác -> cảnh báo + thư mục con theo buổi
         lan = TAM / "xuat_lan_hop"
         lan.mkdir(exist_ok=True)

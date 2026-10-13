@@ -23,7 +23,8 @@ AI PHỤC VỤ
   - App đang mở: luồng Tram(loai="app") trong app, dùng GIU.
   - App tắt: plugin mở trạm chạy ngầm `AutoTone --say-tram <thư mục>` (Tram loai=
     "rieng", lệnh lấy từ tram_lenh.txt app ghi) ngay khi hộp thoại Export mở — nạp mô
-    hình trong lúc người dùng còn chọn thông số. Rảnh 10 phút thì tự thoát.
+    hình trong lúc người dùng còn chọn thông số. Rảnh RANH_THOAT (30 phút) thì tự thoát,
+    Lightroom tắt thì thoát sau KHONG_LR_THOAT.
   - Hai bên không tranh nhau: app chỉ nhận việc khi engine của nó đã nạp HOẶC không
     có trạm riêng; trạm riêng nhường hẳn khi thấy engine app đã sẵn sàng.
 
@@ -76,7 +77,10 @@ MOC_TAM = ".autotone_tam"
 DUOI_NHAN = {".jpg", ".jpeg", ".tif", ".tiff", ".png"}
 
 GIU_GIAY = 30 * 60        # giữ engine sau lần đổi mức / lần retouch cuối
-RANH_THOAT = 5 * 60       # trạm chạy ngầm rảnh chừng này thì thoát
+#[[ 13/10: 5 -> 30 phút (= GIU_GIAY). User: "lần nào xuất 1 ảnh cũng chậm". Rảnh 5 phút là
+#   thoát nên lần Export sau (cách vài phút) lại nạp ~11 mô hình từ đầu. Evoto giữ engine
+#   suốt phiên. Lightroom tắt thì vẫn thoát sau KHONG_LR_THOAT — không giữ card vô cớ. ]]
+RANH_THOAT = 30 * 60      # trạm chạy ngầm rảnh chừng này thì thoát
 KHONG_LR_THOAT = 30       # Lightroom đã tắt chừng này giây -> trạm ngầm thoát (không còn Export)
 DUNG_TRAM = "dung_tram.txt"   # trình cài / gỡ đặt ghi: trạm ngầm thoát NGAY
 CU_GIAY = 5               # nhịp cũ hơn -> coi như trạm đó không chạy
@@ -85,6 +89,11 @@ NHA_CPU_GIAY = 60         # rảnh chừng này thì trả CPU (an toàn máy)
 LO_TOI_DA = 4             # ảnh mỗi mẻ engine (song song trong engine, kết quả ra theo lô)
 ON_DINH_GIAY = 0.4        # file render đứng yên chừng này mới coi là ghi xong
 NONG_SAU_GIAY = 2.0       # người dùng ngừng đổi mức chừng này thì hâm nóng
+#[[ 13/10: saytool (ToolCloneEvoto >= 13/10) in cuối mẻ một dòng "chi tiet (giay/anh): ..."
+#   — chặng / bước nào ăn thời gian (nạp mô hình, chờ RAM, giải nén, dò mặt, từng bước,
+#   ghi). Trạm chép dòng đó vào tram.log ngay dưới dòng tóm tắt mẻ: user hỏi "xuất 1 ảnh
+#   sao mất 1 phút" thì gửi tram.log là biết chỗ chậm, không phải đoán. ]]
+CHI_TIET = "chi tiet (giay/anh):"
 
 
 # ====================================================================== tệp
@@ -198,40 +207,88 @@ def an_thu_muc(p) -> None:
         pass
 
 
+#[[ ẢNH MỒI ĐỂ HÂM NÓNG (13/10). User: "việc hâm nóng mà thiếu insightface thì đưa vào
+#   đó mặc định các ảnh lúc nào cũng ở đó chỉ để giữ việc hâm nóng — dạng như ảnh mồi".
+#
+#   Trước đây CHỈ có t1.jpg của insightface, và bản đóng gói tìm nó ở
+#   _MEIPASS/insightface — mà bản giao khách (dong_goi --bao-mat --nhe) tách insightface
+#   ra gói tài nguyên tải sau (GOI_TACH), không ở _MEIPASS. Không thấy ảnh thì ham_nong()
+#   LẶNG LẼ bỏ qua: nhiều khả năng bản cài chưa từng hâm nóng lần nào, ảnh xuất đầu tiên
+#   gánh trọn ~45 s nạp + chạy lần đầu.
+#
+#   Thứ tự tìm (dừng ở nơi đầu tiên có ảnh, lấy tối đa ANH_MOI_TOI_DA ảnh):
+#     1. <dữ liệu app>/anh_moi/   — ảnh của chính người dùng (bỏ vào là dùng, đè mặc định)
+#     2. <gói app>/anh_moi/        — ảnh mồi đóng kèm app (dong_goi.TAI_NGUYEN)
+#     3. t1.jpg của insightface    — tìm ở _MEIPASS VÀ trên sys.path (gói tài nguyên)
+#   t1.jpg KHÔNG được chép vào anh_moi/: đó là ảnh quảng bá phim có bản quyền, giấy phép
+#   MIT của insightface chỉ phủ phần mã. Ảnh mồi đóng kèm phải là ảnh mình có quyền.
+#   Ảnh mồi tốt: chân dung có mặt rõ + một ảnh TOÀN THÂN (bước kéo chân / tăng chiều cao
+#   cần thấy hông -> cổ chân), để hâm được mọi bước. ]]
+ANH_MOI = "anh_moi"
+ANH_MOI_TOI_DA = 3
+DUOI_MOI = (".jpg", ".jpeg", ".png")
+
+
+def _nguon_moi() -> list:
+    """Ảnh mồi gốc theo thứ tự ưu tiên ở trên — [Path]."""
+    import duong_dan as dd
+    for thu in (dd.goc_du_lieu() / ANH_MOI, dd.goc_tai_nguyen() / ANH_MOI):
+        try:
+            ds = sorted(p for p in thu.iterdir()
+                        if p.is_file() and p.suffix.lower() in DUOI_MOI)
+        except OSError:
+            ds = []
+        if ds:
+            return ds[:ANH_MOI_TOI_DA]
+    cho = []
+    if getattr(sys, "frozen", False):
+        cho.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "insightface")
+    try:
+        import importlib.util
+        sp = importlib.util.find_spec("insightface")
+        if sp is not None and sp.submodule_search_locations:
+            cho.append(Path(list(sp.submodule_search_locations)[0]))
+    except Exception:                                        # noqa: BLE001
+        pass
+    for g in cho:
+        f = g / "data" / "images" / "t1.jpg"
+        if f.is_file():
+            return [f]
+    return []
+
+
+def anh_moi_ds() -> list:
+    """Các ảnh mồi đã đưa về cỡ ảnh xuất thật (cạnh dài 3000 px — tool bỏ qua mặt nhỏ),
+    nằm ở thư mục tạm, khoá theo đường dẫn + cỡ + giờ sửa của ảnh gốc (đổi ảnh mồi là
+    dựng lại). [] nếu không có ảnh mồi nào."""
+    import hashlib
+    import tempfile
+    ra_ds = []
+    for nguon in _nguon_moi():
+        try:
+            from PIL import Image, ImageOps
+            st = nguon.stat()
+            k = hashlib.sha1(f"{nguon.resolve()}|{st.st_size}|{int(st.st_mtime)}"
+                             .encode("utf-8")).hexdigest()[:12]
+            ra = Path(tempfile.gettempdir()) / f"autotone_anh_nong_{k}.jpg"
+            if not ra.is_file():
+                with Image.open(nguon) as im:
+                    im = ImageOps.exif_transpose(im).convert("RGB")   # ảnh máy ảnh chụp dọc
+                    ty = 3000 / max(im.size)
+                    im = im.resize((round(im.width * ty), round(im.height * ty)), Image.LANCZOS)
+                    tam = ra.with_suffix(".part.jpg")
+                    im.save(tam, "JPEG", quality=92)
+                    os.replace(tam, ra)
+            ra_ds.append(ra)
+        except Exception:                                    # noqa: BLE001
+            continue
+    return ra_ds
+
+
 def anh_nong() -> Path | None:
-    """Ảnh mẫu có mặt người để hâm nóng (đi kèm insightface trong gói / venv), phóng lên
-    cỡ ảnh xuất thật (tool bỏ qua mặt < 150 px). None nếu không có."""
-    g = None
-    try:
-        if getattr(sys, "frozen", False):
-            g = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "insightface"
-        else:
-            import importlib.util
-            sp = importlib.util.find_spec("insightface")
-            if sp is not None and sp.submodule_search_locations:
-                g = Path(list(sp.submodule_search_locations)[0])
-    except Exception:                                        # noqa: BLE001
-        g = None
-    if g is None:
-        return None
-    nguon = g / "data" / "images" / "t1.jpg"
-    if not nguon.is_file():
-        return None
-    try:
-        import tempfile
-        from PIL import Image
-        ra = Path(tempfile.gettempdir()) / "autotone_anh_nong.jpg"
-        if not ra.is_file():
-            with Image.open(nguon) as im:
-                im = im.convert("RGB")
-                k = 3000 / max(im.size)
-                im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
-                tam = ra.with_suffix(".part.jpg")
-                im.save(tam, "JPEG", quality=92)
-                os.replace(tam, ra)
-        return ra
-    except Exception:                                        # noqa: BLE001
-        return None
+    """Ảnh mồi đầu tiên (giữ cho chỗ gọi cũ). None nếu không có."""
+    ds = anh_moi_ds()
+    return ds[0] if ds else None
 
 
 # ====================================================================== mức
@@ -422,6 +479,7 @@ class Tram:
         self._buoc_nong: set = set()       # bước đã hâm nóng trên engine hiện tại
         self._may_nong = None
         self._nong_cho = None              # (bộ mức, lý do) chờ hâm nóng
+        self._bao_thieu_moi = False        # đã báo "không có ảnh mồi" (báo một lần)
         self._t_gan_nhat = self._mtime_gan_nhat()   # mức lúc trạm bật = mức cũ
         self._t_doi_gan_nhat = 0.0
         self.dang_nong = False
@@ -621,8 +679,15 @@ class Tram:
         muc, ly_do = nong
         if not muc or self.rt.muc_trong(muc) or not self.can_nong(muc):
             return
-        anh = anh_nong()
-        if anh is None:
+        ds_moi = anh_moi_ds()
+        if not ds_moi:
+            #  13/10: trước đây im lặng bỏ qua -> không ai biết bản cài chưa từng hâm nóng
+            if not self._bao_thieu_moi:
+                self._bao_thieu_moi = True
+                import duong_dan as dd
+                self.log("KHÔNG có ảnh mồi để hâm nóng — ảnh xuất đầu tiên sẽ phải nạp mô hình. "
+                         f"Bỏ 1–3 ảnh có người (nên có một ảnh toàn thân) vào "
+                         f"{dd.goc_du_lieu() / ANH_MOI}")
             return
         may = self.lay_may(cho=180)
         if may is None:
@@ -635,13 +700,14 @@ class Tram:
         t0 = time.monotonic()
         try:
             (tam / "vao").mkdir()
-            shutil.copy2(anh, tam / "vao" / "nong.jpg")
+            for i, anh in enumerate(ds_moi):
+                shutil.copy2(anh, tam / "vao" / ("nong.jpg" if i == 0 else f"nong_{i + 1}.jpg"))
             for _loai, _gt in self.rt.chay(self.goc_tool(), tam / "vao", tam / "ra", muc,
                                            engine=may, lam_lai=True, chat_luong="auto"):
                 pass
             self._buoc_nong |= buoc
             self.log(f"hâm nóng mô hình ({ly_do}): {', '.join(sorted(buoc))} · "
-                     f"{time.monotonic() - t0:.1f} s")
+                     f"{len(ds_moi)} ảnh mồi · {time.monotonic() - t0:.1f} s")
         except Exception as ex:                              # noqa: BLE001
             self.log(f"hâm nóng lỗi: {type(ex).__name__}: {ex}")
         finally:
@@ -982,6 +1048,7 @@ class Tram:
             return
         may = self.lay_may()
         cuoi: list = []
+        chi_tiet = ""
         ma = 1
         try:
             for loai, gt in rt.chay(self.goc_tool(), vao, ra, muc, engine=may,
@@ -989,6 +1056,8 @@ class Tram:
                 if loai == "dong":
                     cuoi.append(str(gt))
                     del cuoi[:-12]
+                    if CHI_TIET in str(gt):
+                        chi_tiet = str(gt).strip()
                 elif loai == "ma":
                     ma = int(gt or 0)
         except Exception as ex:                              # noqa: BLE001
@@ -1008,6 +1077,8 @@ class Tram:
         shutil.rmtree(tam, ignore_errors=True)
         self.log(f"{len(ys)} ảnh · {mo_ta} · {giay:.2f} s/ảnh · mã {ma}"
                  + (f" · {Path(ys[0]['anh']).name}" if len(ys) == 1 else ""))
+        if chi_tiet:
+            self.log("   " + chi_tiet)
 
     # ------------------------------------------------------------ luồng nền (app)
     def bat_nen(self) -> None:
@@ -1127,7 +1198,7 @@ def main_rieng(args: list) -> int:
             lam = tram.mot_vong()
             ranh = time.time() - tram.t_viec
             if not lam and ranh > RANH_THOAT and not tram._cho_giao:
-                tram.log("rảnh 5 phút — thoát")
+                tram.log(f"rảnh {RANH_THOAT // 60} phút — thoát")
                 break
             if not lam and not tram.duoc_nhan() and ranh > 3 and not tram._cho_giao:
                 tram.log("engine app đã sẵn sàng — nhường app, thoát")

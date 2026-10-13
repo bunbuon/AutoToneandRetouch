@@ -188,8 +188,10 @@ NGAM_RETOUCH = ["retouch"]
 # Thư mục/dữ liệu phải mang theo: (nguồn, tên trong gói)
 #  12/10: fonts/ = Be Vietnam Pro + JetBrains Mono (OFL) của giao diện mới —
 #  giao_dien.nap_phong_kem() đăng ký riêng cho tiến trình lúc mở app
+#  13/10: anh_moi/ = ảnh mồi hâm nóng retouch (tram_retouch.anh_moi_ds) — bản cài
+#  trước đây không có ảnh mẫu nào (insightface ở gói tách) nên không bao giờ hâm nóng
 TAI_NGUYEN = [("models", "models"), ("AutoTone.lrplugin", "AutoTone.lrplugin"),
-              ("fonts", "fonts")]
+              ("fonts", "fonts"), ("anh_moi", "anh_moi")]
 
 #[[ THU MUC jobs/ KHONG DUOC VAO GOI.
 #

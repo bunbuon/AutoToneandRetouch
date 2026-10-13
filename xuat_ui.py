@@ -251,6 +251,16 @@ def ten_cpu() -> str:
 #   nhan E nua. May nguoi test chua cap BIOS (hoac khong doc duoc microcode) van ghim. ]]
 MICROCODE_DA_VA = 0x12B
 
+#[[ TAT HAN GHIM NHAN E KHI XUAT (13/10). User: "nhan P cung da het loi. Nen khong can
+#   phai ghim vao nhan E khi xuat". Truoc do van con TU QUYET theo microcode: may doc
+#   khong ra microcode (vi_ma_cpu = 0) van bi ghim, va ghim la don Lightroom + app +
+#   engine retouch vao nhan E dung luc xuat — phan CPU cua tung anh cham han (cung luc
+#   do user bao "xuat 1 anh co khi mat toi 1 phut"). Nay mac dinh KHONG ghim o ca hai
+#   duong: hop Xuat cua app (_an_toan) va tram Retouch khi xuat (an_toan_hieu_luc).
+#   Giu nguyen ham nhan_e / ghim_cpu / de_xuat_an_toan; may nao lai sap thi bat lai:
+#       set AUTOTONE_GHIM_NHAN_E=1   (luc do tu quyet theo microcode nhu 12/10) ]]
+GHIM_NHAN_E = (os.environ.get("AUTOTONE_GHIM_NHAN_E") or "").strip() == "1"
+
 
 def vi_ma_cpu() -> int:
     """Phiên bản microcode CPU đang chạy (Windows: registry "Update Revision"); 0 = không rõ."""
@@ -283,7 +293,10 @@ def de_xuat_an_toan(cpu: str | None = None, e: list | None = None,
 
 def an_toan_hieu_luc(cd: dict | None = None) -> bool:
     """Chế độ an toàn CPU đang có hiệu lực không: người dùng chọn tay thì theo đó,
-    để None (tự quyết) thì theo de_xuat_an_toan(). Máy không có nhân E -> False."""
+    để None (tự quyết) thì theo de_xuat_an_toan(). Máy không có nhân E -> False.
+    13/10: GHIM_NHAN_E tắt (mặc định) -> luôn False, không ghim."""
+    if not GHIM_NHAN_E:
+        return False
     v = (doc_cai_dat() if cd is None else cd).get("an_toan_cpu")
     e = nhan_e()
     if not e:
@@ -444,9 +457,11 @@ class XuatDialog(tk.Toplevel):
         self.v_ep = tk.BooleanVar(value=bool(cd["ep_song_song"]))
         #[[ 12/10 (user: "bo muc 6"): khong con o "Chi dung nhan E" — an toan CPU
         #   TU QUYET theo microcode (de_xuat_an_toan: Intel 13/14 chua va 0x12B moi
-        #   ghim nhan E). Gia tri luu cung cua ban cu bi xoa khi bam Bat dau xuat. ]]
+        #   ghim nhan E). Gia tri luu cung cua ban cu bi xoa khi bam Bat dau xuat.
+        #   13/10: mac dinh KHONG ghim nua — xem GHIM_NHAN_E. ]]
         self._nhan_e = nhan_e()
-        self._an_toan = bool(self._nhan_e) and de_xuat_an_toan(e=self._nhan_e)
+        self._an_toan = (GHIM_NHAN_E and bool(self._nhan_e)
+                         and de_xuat_an_toan(e=self._nhan_e))
         self._tn: dict = {}
         self._du_suc = True
 
