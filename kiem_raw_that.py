@@ -74,6 +74,58 @@ def doc_cfg(folder: Path) -> tuple[dict, str]:
     return cfg, nguon
 
 
+def cap_lech(items: list) -> list:
+    """Cặp ảnh LIỀN NHAU (theo giờ, trong từng máy) cùng khẩu / tốc / ISO mà ΔEV lệch > LECH_EV."""
+    ds = sorted(items, key=lambda r: (str(r.get("model") or ""), r["dt_obj"]))
+    cap = []
+    for x, y in zip(ds, ds[1:]):
+        if str(x.get("model")) != str(y.get("model")):
+            continue
+        cung = all(_so(x.get(k)) == _so(y.get(k)) and _so(x.get(k)) is not None
+                   for k in ("fnumber", "exposure_time", "iso"))
+        if not cung or x.get("delta_ev") is None or y.get("delta_ev") is None:
+            continue
+        lech = abs(float(x["delta_ev"]) - float(y["delta_ev"]))
+        if lech > LECH_EV:
+            cap.append((lech, x, y))
+    return cap
+
+
+def to_mat(ds: list, dest: Path, so_a: dict, so_c: dict, toi_da: int = 40) -> int:
+    """Tờ ảnh CẬN MẶT: khung mặt đem đo, điểm có kênh lớn nhất ≥ 220/255 tô hồng (vùng
+    "da sáng" mà cách đo theo vùng da sáng nhìn vào). Nhãn: mặt đo A (hiện tại) / C (tắt vùng da sáng)."""
+    import autotone as at
+    import numpy as np
+    from PIL import Image, ImageDraw
+    o, cot = 180, 8
+    ds = ds[:toi_da]
+    hang = (len(ds) + cot - 1) // cot
+    to = Image.new("RGB", (cot * o, max(1, hang) * (o + 34)), (24, 24, 26))
+    d = ImageDraw.Draw(to)
+    f1, f2 = _phong(12), _phong(11)
+    for i, r in enumerate(ds):
+        x, y = (i % cot) * o, (i // cot) * (o + 34)
+        b, wh = r.get("subject_box"), r.get("preview_wh")
+        im = at.anh_nho(r["path"], 1600) if b and wh else None
+        if im is not None:
+            k = im.size[0] / float(wh[0])
+            cx, cy, c = (b[0] + b[2] / 2) * k, (b[1] + b[3] / 2) * k, max(b[2], b[3]) * k * 0.75
+            cat = im.crop((int(cx - c), int(cy - c), int(cx + c), int(cy + c))).resize((o - 8, o - 8))
+            a = np.asarray(cat).copy()
+            sang = a.max(axis=2) >= 220
+            a[sang] = (0.5 * a[sang] + 0.5 * np.array([255, 0, 200])).astype(np.uint8)
+            to.paste(Image.fromarray(a), (x + 4, y + 4))
+            pct = f"{100 * sang.mean():.0f}% ≥220"
+        else:
+            pct = "không mặt"
+        d.text((x + 6, y + o + 2), Path(r["path"]).name[:26], fill=(237, 235, 231), font=f1)
+        d.text((x + 6, y + o + 17), f"mặt {_f(so_a.get(r['path']))} / {_f(so_c.get(r['path']))} · {pct}",
+               fill=(166, 163, 157), font=f2)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    to.save(dest, quality=88)
+    return len(ds)
+
+
 def khung_do(r: dict) -> str:
     """Khung mặt ĐEM ĐO (meter_boxes của chính measure): rộng×cao điểm, + số khung YuNet."""
     mb = r.get("meter_boxes") or []
@@ -152,6 +204,7 @@ def main() -> int:
     ap.add_argument("--con", action="store_true", help="gồm thư mục con")
     ap.add_argument("--ra", default="")
     ap.add_argument("--luoi", default="")
+    ap.add_argument("--mat", default="", help="tờ ảnh cận mặt của các cảnh có cặp lệch")
     ap.add_argument("--jobs", type=int, default=0)
     a = ap.parse_args()
 
@@ -216,6 +269,8 @@ def main() -> int:
     export = at.read_catalog_export(bx) if bx is not None else {}
     p(f"\n3. PLAN — bản xuất catalog: {bx.name if bx else 'KHÔNG CÓ (ΔEV tính trên nền 0)'}"
       + (f", khớp {sum(1 for q, _ in pairs if at.khoa_duong_dan(q) in export)}/{len(pairs)} ảnh" if bx else ""))
+    import copy
+    goc_do = copy.deepcopy(items)                            # số đo trước plan (plan sửa tại chỗ)
     at.plan(items, cfg, folder=folder, export=export, ban_xuat=bx)
     loat = at.chia_loat(items, cfg)
     so_loat = {id(r): i + 1 for i, ds in enumerate(loat) for r in ds}
@@ -224,18 +279,7 @@ def main() -> int:
       f"{cfg.get('loat_bo_cuc', 0.10)}, khung ≤ {cfg.get('loat_khung_ev', 0.25)} EV so tấm đầu loạt)")
 
     # ---------------------------------------------------------------- 4. cặp lệch
-    ds = sorted(items, key=lambda r: (str(r.get("model") or ""), r["dt_obj"]))
-    cap = []
-    for x, y in zip(ds, ds[1:]):
-        if str(x.get("model")) != str(y.get("model")):
-            continue
-        cung = all(_so(x.get(k)) == _so(y.get(k)) and _so(x.get(k)) is not None
-                   for k in ("fnumber", "exposure_time", "iso"))
-        if not cung or x.get("delta_ev") is None or y.get("delta_ev") is None:
-            continue
-        lech = abs(float(x["delta_ev"]) - float(y["delta_ev"]))
-        if lech > LECH_EV:
-            cap.append((lech, x, y))
+    cap = cap_lech(items)
     p(f"\n4. CẶP LIỀN NHAU cùng máy + cùng khẩu/tốc/ISO mà ΔEV lệch > {LECH_EV:.2f}: {len(cap)}")
     import numpy as np
     for lech, x, y in sorted(cap, key=lambda c: -c[0])[:30]:
@@ -249,6 +293,38 @@ def main() -> int:
           f" · khung {_f(x.get('metered_subject_ev'))}/{_f(y.get('metered_subject_ev'))}"
           f" · mặt {_f(x.get('metered_face_ev'))}/{_f(y.get('metered_face_ev'))}"
           f" · khung đo {khung_do(x)} / {khung_do(y)}")
+
+    # ---------------------------------------------------------------- 4b. thử tắt từng cơ chế
+    #  Chỉ CHẨN ĐOÁN: đo lại / tính lại bằng chính analyze() + plan() với một khoá cfg đổi.
+    #  Biến thể nào làm hết cặp lệch thì cơ chế đó là thủ phạm trên bộ ảnh này.
+    p("\n4b. THỬ TẮT TỪNG CƠ CHẾ (đo lại / tính lại bằng hàm thật — chỉ để chẩn đoán)")
+    p("   A hiện tại · B tắt 'mặt nét sáng nhất' (mat_sang_nhat) · C tắt 'đo theo vùng da sáng'"
+      f" (hl_da_ti_le {cfg.get('hl_da_ti_le')} -> 0) · D tắt cả hai")
+    do_c, _ = at.analyze(pairs, dict(cfg, hl_da_ti_le=0.0), jobs)
+    bien: dict = {"A": items}
+    for ten, goc, them in (("B", goc_do, {"mat_sang_nhat": False}),
+                           ("C", do_c, {"hl_da_ti_le": 0.0}),
+                           ("D", do_c, {"hl_da_ti_le": 0.0, "mat_sang_nhat": False})):
+        ds_b = copy.deepcopy(goc)
+        at.plan(ds_b, dict(cfg, **them), folder=folder, export=export, ban_xuat=bx)
+        bien[ten] = ds_b
+    dv = {k: {r["path"]: r.get("delta_ev") for r in v} for k, v in bien.items()}
+    mat_c = {r["path"]: r.get("metered_face_ev") for r in do_c}
+    mat_a = {r["path"]: r.get("metered_face_ev") for r in goc_do}      # số đo của measure, trước plan
+    p("   số cặp lệch > %.2f:  " % LECH_EV + " · ".join(f"{k} {len(cap_lech(v))}" for k, v in bien.items()))
+    nghi = {r["path"] for _, x, y in cap for r in (x, y)}
+    canh = {r.get("scene") for r in items if r["path"] in nghi}
+    xem = [r for r in sorted(items, key=lambda r: r["dt_obj"]) if r.get("scene") in canh][:60]
+    if xem:
+        p("   tên | ΔEV A | B | C | D | mặt đo A | mặt đo C (không đo vùng da sáng) | mặt sau plan A | cảnh")
+        for r in xem:
+            q = r["path"]
+            p(f"   {Path(q).name} | {_f(dv['A'].get(q))} | {_f(dv['B'].get(q))} | {_f(dv['C'].get(q))} | "
+              f"{_f(dv['D'].get(q))} | {_f(mat_a.get(q))} | {_f(mat_c.get(q))} | {_f(r.get('metered_face_ev'))} | "
+              f"{r.get('scene')}")
+    if a.mat and xem:
+        n = to_mat(xem, Path(a.mat), mat_a, mat_c)
+        p(f"   tờ ảnh cận mặt ({n} tấm, hồng = điểm ≥ 220/255): {a.mat}")
 
     # ---------------------------------------------------------------- 5. từng ảnh
     p("\n5. TỪNG ẢNH")
