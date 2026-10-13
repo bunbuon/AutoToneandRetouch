@@ -137,6 +137,11 @@ WBS = [("Da trắng hồng  (khuyên dùng)", "skin"),
 #   luu o <du lieu>/mau_da.json: {ten: {"trong", "ngoai", "n_anh", "n_trong", "n_ngoai",
 #   "luc"}}. Muc dau la dich mac dinh cua tool. ]]
 MAU_DA_MAC_DINH = "Mặc định (da trắng hồng · da rám ngoài trời)"
+#  13/10: English — nhãn ô chọn dịch Ở NGUỒN (giá trị biến = nhãn, tra lại bằng dict)
+import ngon_ngu                                              # noqa: E402
+MODES, METERS, WBS = (ngon_ngu.dich_bang(MODES), ngon_ngu.dich_bang(METERS),
+                      ngon_ngu.dich_bang(WBS))
+MAU_DA_MAC_DINH = ngon_ngu.t(MAU_DA_MAC_DINH)
 FILE_MAU_DA = "mau_da.json"
 #[[ LOAI BUOI (3/10) — cuoi va su kien can muc sang mat KHAC nhau. Chon o day
 #   chi dien so vao o "Bu sang ca buoi"; so do moi la thu duoc tinh. Xem chu
@@ -830,6 +835,14 @@ class App(XuLyAnhMixin, ttk.Frame):
                                       nen=m["nen"], command=lambda: self._mo_thiet_lap(False))
         self.btn_dong_tl.goi_y = gd.GoiY(self.btn_dong_tl, "Đóng thiết lập — về chi tiết ảnh")
         self.btn_dong_tl.pack(side="right")
+        #[[ 13/10 (user: "Trong setting se cho chon ngon ngu"): EN | VI o dau bang
+        #   Thiet lap — doi xong hoi khoi dong lai (nhan dung mot lan luc mo app). ]]
+        import ngon_ngu
+        self.v_ngon_ngu = tk.StringVar(value=ngon_ngu.da_chon())
+        self.chon_ngon_ngu = gd.PhanDoan(self.dau_p, self.v_ngon_ngu, [("en", "EN"), ("vi", "VI")],
+                                         command=self._doi_ngon_ngu, nen=m["nen"], deu=True)
+        self.chon_ngon_ngu.goi_y = gd.GoiY(self.chon_ngon_ngu, "Language / Ngôn ngữ")
+        self.chon_ngon_ngu.pack(side="right", padx=(0, 10))
         self._vach_dau_p = tk.Frame(self.ben_phai, height=1, background=m["vien"])
         self._vach_dau_p.grid(row=0, column=0, sticky="sew")
         #  bảng chi tiết ảnh đang chọn (đóng Thiết lập mới thấy) — xem _build_chi_tiet
@@ -1215,6 +1228,40 @@ class App(XuLyAnhMixin, ttk.Frame):
         nut = getattr(self, "btn_thiet_lap", None)
         if nut is not None:
             nut.configure(kieu="bat" if tl else "toi")
+
+    def _doi_ngon_ngu(self, *_a):
+        """Chọn EN / VI ở đầu bảng Thiết lập: ghi lựa chọn, hỏi khởi động lại."""
+        import ngon_ngu
+        from retouch_chung import hoi_nut
+        ma = self.v_ngon_ngu.get()
+        ngon_ngu.dat(ma)
+        if ma == ngon_ngu.ngon_ngu():
+            return
+        if self.busy or self._xl_dang():
+            self.status("Language changes after the app restarts." if ngon_ngu.la_en() else
+                        "Ngôn ngữ đổi khi mở lại app.", gd.MAU["canh"])
+            return
+        en = ngon_ngu.la_en()
+        kq = hoi_nut(self.winfo_toplevel(), "Language" if en else "Ngôn ngữ",
+                     "Restart the app now to switch the language?" if en else
+                     "Khởi động lại app ngay để đổi ngôn ngữ?",
+                     [("lai", "Restart now" if en else "Khởi động lại", "chinh"),
+                      ("sau", "Later" if en else "Để sau")])
+        if kq == "lai":
+            self._khoi_dong_lai()
+
+    def _khoi_dong_lai(self):
+        """Mở một tiến trình app mới rồi đóng cửa sổ này."""
+        try:
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable] + sys.argv[1:]
+            else:
+                cmd = [sys.executable] + sys.argv
+            subprocess.Popen(cmd, close_fds=True)
+        except OSError as ex:
+            messagebox.showerror("Language", f"Could not restart: {ex}", parent=self)
+            return
+        self.winfo_toplevel().destroy()
 
     def _mo_thiet_lap(self, mo: bool | None = None, nhom: str | None = None):
         """Nút Thiết lập (⚙) trên thanh trên: bật / tắt bảng tuỳ chọn cân sáng
@@ -2888,27 +2935,30 @@ class App(XuLyAnhMixin, ttk.Frame):
         if not ds:
             return
         so = lambda v, d: self._num_im(v, d)      # noqa: E731
+        #  13/10: English — dịch TỪNG MẢNH trước khi ghép (câu ghép không có trong từ điển)
+        import ngon_ngu
+        T = ngon_ngu.t
         mode = self.mode_value()
         meter = dict(METERS).get(self.v_meter.get(), "face")
         tone = [self.NGAN_MODE.get(mode, mode), self.NGAN_METER.get(meter, meter),
                 self.NGAN_WB.get(dict(WBS).get(self.v_wb.get(), "skin"), ""),
                 ("da: " + self.v_mau_da.get()) if self.v_mau_da.get() != MAU_DA_MAC_DINH else ""]
-        ghim = [t for t, b in (("Highlights", self.v_hl), ("Shadows", self.v_sh),
-                               ("HSL da", self.v_hsl_da),
-                               ("da trắng hồng", self.v_grade),
-                               ("Curve", self.v_curve)) if b.get()]
+        ghim = [T(t) for t, b in (("Highlights", self.v_hl), ("Shadows", self.v_sh),
+                                  ("HSL da", self.v_hsl_da),
+                                  ("da trắng hồng", self.v_grade),
+                                  ("Curve", self.v_curve)) if b.get()]
         canh = []
         if self.v_gap_on.get():
-            canh.append(f"nghỉ > {so(self.v_gap, 5.0):g} phút")
+            canh.append(T(f"nghỉ > {so(self.v_gap, 5.0):g} phút"))
         if self.v_scenesig.get():
-            canh.append("đổi bối cảnh")
-        tach = ("Tách cảnh khi " + " hoặc ".join(canh)) if canh else \
-            "⚠ Không tách cảnh — cả buổi là một cảnh"
-        dong = [t for t, b in (("cảnh", self.v_level),
-                               ("loạt", self.v_dong_bo_loat),
-                               ("chủ thể", self.v_dong_bo_chu_the)) if b.get()]
-        loc = [t for t, b in (("trùng khung", self.v_burst), ("mắt", self.v_blink),
-                              ("Auto Transform", self.v_upright)) if b.get()]
+            canh.append(T("đổi bối cảnh"))
+        tach = (T("Tách cảnh khi ") + T(" hoặc ").join(canh)) if canh else \
+            T("⚠ Không tách cảnh — cả buổi là một cảnh")
+        dong = [T(t) for t, b in (("cảnh", self.v_level),
+                                  ("loạt", self.v_dong_bo_loat),
+                                  ("chủ thể", self.v_dong_bo_chu_the)) if b.get()]
+        loc = [T(t) for t, b in (("trùng khung", self.v_burst), ("mắt", self.v_blink),
+                                 ("Auto Transform", self.v_upright)) if b.get()]
         loai = dict(LOAI_BUOI).get(self.v_loai_buoi.get(), "cuoi")
         chu = {
             "tone": " · ".join(t for t in tone if t),
@@ -2917,16 +2967,16 @@ class App(XuLyAnhMixin, ttk.Frame):
             "tran": (f"Dìm −{so(self.v_maxev, 1.0):.2f} · Kéo +"
                      f"{so(self.v_maxup, 1.0):.2f} · Can thiệp "
                      f"×{so(self.v_gain, 1.0):.2f}"),
-            "ghim": ((("Tự kéo " + ", ".join(ghim)) if ghim else "Tắt hết")
+            "ghim": (((T("Tự kéo ") + ", ".join(ghim)) if ghim else T("Tắt hết"))
                      + (f" · Denoise ISO ≥ {int(so(self.v_denoise_iso, 2000))}"
                         if self.v_denoise.get() else "")),
             "loai_buoi": (f"{ {'su_kien': 'Sự kiện', 'ky_yeu': 'Kỷ yếu'}.get(loai, 'Cưới') } · bù sáng "
                           f"{so(self.v_bu_sang, 0.0):+.2f} EV"
                           + (f" · WB {so(self.v_bu_k, 0.0):+.0f} K / Tint {so(self.v_bu_tint, 0.0):+.0f}"
                              if so(self.v_bu_k, 0.0) or so(self.v_bu_tint, 0.0) else "")),
-            "canh": tach + (" · đồng bộ " + " + ".join(dong) if dong else ""),
-            "loc": (("Lọc " + ", ".join(loc)) if loc else "Không lọc ảnh")
-                   + ("" if self.v_ap_loai.get() else " · chỉ áp ảnh Giữ"),
+            "canh": tach + (T(" · đồng bộ ") + " + ".join(dong) if dong else ""),
+            "loc": ((T("Lọc ") + ", ".join(loc)) if loc else T("Không lọc ảnh"))
+                   + ("" if self.v_ap_loai.get() else T(" · chỉ áp ảnh Giữ")),
         }
         for ma, n in ds.items():
             n.dat_tom_tat(chu.get(ma, ""))
@@ -8144,6 +8194,9 @@ def main():
         except Exception:                                # noqa: BLE001
             pass
 
+    #  13/10: English — móc dịch vào Tk TRƯỚC khi dựng cửa sổ (ngon_ngu.cai_moc)
+    import ngon_ngu
+    ngon_ngu.cai_moc()
     root = tk.Tk()
 
     #[[ LOI TRONG CALLBACK KHONG DUOC IM LANG (8/10). Ban .exe khong co console:

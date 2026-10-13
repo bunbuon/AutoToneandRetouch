@@ -35,6 +35,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ngon_ngu                                              # 13/10: English
 import duong_dan as dd
 import giao_dien as gd
 
@@ -572,7 +573,7 @@ class XuatDialog(tk.Toplevel):
         o6.pack(fill="x", pady=(6, 0))
         ttk.Label(o6, text="Preset retouch").pack(side="left")
         self.cb_preset = ttk.Combobox(o6, textvariable=self.v_preset, state="readonly", width=34,
-                                      values=["Tuỳ chỉnh (mức đang kéo trong Retouch)"]
+                                      values=[ngon_ngu.t("Tuỳ chỉnh (mức đang kéo trong Retouch)")]
                                       + self._ds_preset)
         if not self.v_preset.get() or self.v_preset.get() not in self._ds_preset:
             self.cb_preset.current(0)

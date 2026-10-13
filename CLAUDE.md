@@ -1076,6 +1076,26 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
     plugin là dự phòng. Catalog journal_mode=delete nên Lightroom ghi xong là thấy. Khớp panel
     Folders của user (BVDay3 1813, 1005 630). `AUTOTONE_CATALOG_LR` = ép đường dẫn / "0" tắt.
     Denoise vẫn cần plugin mới -> cần BỘ CÀI (OTA mang plugin: phiên OTA làm ở bản sau).
+- v86 (2026.10.13.4): **Import… / Export…** dưới cột Thư mục (Import = pick_folder, Export =
+  do_xuat_hop; bỏ "Xuất ảnh…" ở thanh dưới, `btn_xuat_anh` trỏ nút Export của cột).
+  **Giao diện tiếng Anh** (`ngon_ngu.py` + từ điển `ngon_ngu_en.py`, ~1.800 câu):
+  · Mã nguồn GIỮ tiếng Việt; dịch LÚC HIỂN THỊ bằng móc (`ngon_ngu.cai_moc()` trong main(),
+    trước tk.Tk): `Misc._options` (text/label/title — mọi widget, menu, chữ vẽ Canvas),
+    `Font.measure` (widget tự vẽ đo đúng chữ tiếng Anh, không cắt), Wm.title, messagebox,
+    Text.insert, Treeview. NhanGon / `_cat_chu` dịch TRƯỚC khi cắt "…". Nhãn ô chọn mà giá trị
+    biến = nhãn (MODES / METERS / WBS / MAU_DA_MAC_DINH) dịch Ở NGUỒN (`dich_bang`).
+  · Tra: nguyên câu → dòng của câu nhiều dòng → mẫu f-string ("{}" = chỗ trống; lọc trước
+    bằng tiền tố / hậu tố / đoạn dài nhất — không lọc thì một câu mất 2 phút) → tách câu ghép
+    theo "·", "—", dấu câu (thử dãy mảnh dài nhất) → thay từng cụm (không đụng đường dẫn / tên
+    file, không thay trong chữ khác). Chữ không dấu ("Chung", "Nam"…) ở `_KHONG_DAU`; tiêu đề
+    in hoa qua `_HOA`. Câu ghép quan trọng thì dịch từng mảnh Ở NGUỒN (`_tom_tat_nhom`).
+  · Chọn: kv thanh_luoi "ngon_ngu"; chưa chọn → mã nguồn "vi" (bài kiểm dựa chữ Việt), bản cài
+    với thư mục dữ liệu trống = "en", máy đã dùng (phan_tich / anh_nho / trang_thai / xem_raw /
+    retouch_anh) = "vi". EN | VI ở đầu bảng Thiết lập → hỏi khởi động lại. AUTOTONE_NGON_NGU ép.
+  · Thêm câu mới: chạy scratchpad trich_chuoi.py, dịch phần thiếu, thêm vào ngon_ngu_en.py.
+    Tên thanh kéo / nhóm mặt đến từ saytool lúc chạy — thêm tay (khối TU_DIEN.update cuối file).
+    Tên menu plugin Lightroom ("AutoTone: …") GIỮ tiếng Việt trong câu tiếng Anh.
+  Bài kiểm: test_ngon_ngu.py (hàm dịch, chọn ngôn ngữ, app dựng bằng tiếng Anh).
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT

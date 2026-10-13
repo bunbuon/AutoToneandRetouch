@@ -101,7 +101,8 @@ def _nhan_o_dia(goc: str) -> str:
         except Exception:                                    # noqa: BLE001
             ten = ""
     o = goc.rstrip("\\")
-    return f"{ten or 'Ổ đĩa'} ({o})"
+    import ngon_ngu
+    return f"{ten or ('Local Disk' if ngon_ngu.la_en() else 'Ổ đĩa')} ({o})"
 
 
 def _dung_luong(goc: str) -> str:
@@ -112,7 +113,9 @@ def _dung_luong(goc: str) -> str:
         return ""
     tb = du.total >= 1024 ** 4
     k = 1024 ** 4 if tb else 1024 ** 3
-    return f"{du.free / k:.1f} / {du.total / k:.1f} {'TB' if tb else 'GB'}"
+    #  gọn để vừa cột số (Lightroom: "67.5 / 401 GB")
+    tong = du.total / k
+    return (f"{du.free / k:.1f}/{tong:.1f} TB" if tb else f"{du.free / k:.0f}/{tong:.0f} GB")
 
 
 def _ten(p: str) -> str:
@@ -189,7 +192,8 @@ class CotThuMuc(tk.Frame):
                               foreground=m["chu"], insertbackground=m["chu"],
                               relief="flat", borderwidth=0, font=gd.CHU_NHO)
         self.o_loc.pack(side="left", fill="x", expand=True, padx=(4, 6), pady=4)
-        self._goi_y_loc = "Lọc thư mục"
+        import ngon_ngu
+        self._goi_y_loc = ngon_ngu.t("Lọc thư mục")      # chữ mờ trong ô (Entry.insert)
         self._dat_goi_y_loc(True)
         self.o_loc.bind("<FocusIn>", lambda _e: self._dat_goi_y_loc(False), add="+")
         self.o_loc.bind("<FocusOut>", lambda _e: self._dat_goi_y_loc(not self.v_loc.get()),
@@ -211,7 +215,8 @@ class CotThuMuc(tk.Frame):
         self.cay = ttk.Treeview(khung, style="ThuMuc.Treeview", show="tree",
                                 columns=("so",), selectmode="browse")
         self.cay.column("#0", width=max(120, rong - 70), stretch=True)
-        self.cay.column("so", width=56, anchor="e", stretch=False)
+        self.cay.column("so", width=max(56, round(gd.don_vi(self) * 5.2)), anchor="e",
+                        stretch=False)
         self.cay.grid(row=0, column=0, sticky="nsew")
         #[[ 13/10 (user: "them nut Import va Export ben duoi folder nhu window(s)" —
         #   anh chup Lightroom: hai nut Import… / Export… cuoi cot trai). Import = mo

@@ -2515,7 +2515,9 @@ class NhanGon(tk.Label):
         return w - 2 * int(str(tk.Label.cget(self, "padx")) or 0) - 2
 
     def _dat(self):
-        t = " ".join(self._chu_du.split())
+        #  13/10: English — dịch CẢ câu trước khi cắt "…" (cắt rồi mới dịch thì không khớp)
+        import ngon_ngu
+        t = " ".join(ngon_ngu.t(self._chu_du).split())
         gh = self._gioi_han()
         hien = t
         if gh is not None and gh > 0 and self._f.measure(t) > gh:
@@ -2830,7 +2832,8 @@ def thap_phan_vn(v, so_le: int = 2, dau: bool = True) -> str:
 
 def _cat_chu(f, chu: str, rong: int) -> str:
     """Cắt chữ cho vừa `rong` px, thêm "…"."""
-    chu = str(chu or "")
+    import ngon_ngu
+    chu = ngon_ngu.t(str(chu or ""))        # 13/10: dịch trước khi cắt
     if rong <= 0:
         return ""
     if f.measure(chu) <= rong:

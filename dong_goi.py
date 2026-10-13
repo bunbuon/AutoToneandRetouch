@@ -85,6 +85,7 @@ LOAI_TRU = [
     "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
     "test_phanh_da_wb.py", "test_canh_ngoai_toi.py", "test_loc_may_mau_da.py",
     "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",
+    "test_ngon_ngu.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe
@@ -154,7 +155,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #  cột Thư mục kiểu Lightroom — autotone_gui.pyd import, PyInstaller không thấy
         "xu_ly_anh_ui", "mo_phong_anh", "cot_thu_muc",
         #  13/10: đọc thẳng catalog Lightroom (cột Thư mục + lọc lưới) — import trong hàm
-        "catalog_lr"]
+        "catalog_lr",
+        #  13/10: giao diện tiếng Anh (móc dịch + từ điển) — import ở autotone_gui.pyd
+        "ngon_ngu", "ngon_ngu_en"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).
