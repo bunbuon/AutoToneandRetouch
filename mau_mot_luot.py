@@ -700,3 +700,46 @@ def ghi_lich_su(kq: dict, buoi: str) -> None:
                                 ensure_ascii=False) + "\n")
     except OSError:
         pass
+
+
+def file_du_doan(folder):
+    from pathlib import Path
+    import mo_hinh_lr as mh
+    return mh.thu_muc() / f"du_doan_{at.ten_job(Path(str(folder)).name)}.json"
+
+
+def luu_du_doan(items: list, folder, cfg: dict | None = None) -> None:
+    """Dự đoán của lần áp vừa rồi + đích da / vùng ổn lúc đó (KIEM_MOT_LUOT so với preview
+    Lightroom thật)."""
+    import json
+    from datetime import datetime
+    import duong_dan as dd
+    ds = {r.get("lr_path") or r["path"]: r["du_doan_lr"] for r in items if r.get("du_doan_lr")}
+    if not ds:
+        return
+    try:
+        f = file_du_doan(folder)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        cfg = cfg or {}
+        dd.ghi_ben(f, json.dumps({"luc": datetime.now().isoformat(timespec="seconds"),
+                                  "thu_muc": str(folder), "anh": ds, "luot2": [],
+                                  "cfg": {k: cfg.get(k) for k in ("mau_da_dich", "da_on_hue",
+                                                                  "da_on_chroma", "curve_mien")}},
+                                 ensure_ascii=False, default=str))
+    except OSError:
+        pass
+
+
+def danh_dau_luot2(folder, ds: list) -> None:
+    """Ảnh lượt 2 đã sửa thêm sau dự đoán — KIEM_MOT_LUOT tính riêng."""
+    import json
+    import duong_dan as dd
+    if not ds:
+        return
+    try:
+        f = file_du_doan(folder)
+        d = json.loads(f.read_text(encoding="utf-8"))
+        d["luot2"] = sorted(set(d.get("luot2") or []) | {r.get("lr_path") or r["path"] for r in ds})
+        dd.ghi_ben(f, json.dumps(d, ensure_ascii=False, default=str))
+    except (OSError, ValueError):
+        pass

@@ -56,6 +56,13 @@ C2. TỐC ĐỘ XỬ LÝ ẢNH (14/10 — user: "1000 ảnh tốn 15 phút")
   [ ] 15c. Xử lý ảnh một buổi ~1000 ảnh như thường: hộp tổng kết giờ có dòng
           "Thời gian: … (đo ảnh · Lightroom áp · hoàn thiện màu da)". Chụp lại dòng đó.
           Lượt hoàn thiện nay đo da song song — trước đây buổi 2709 mất 18 phút.
+  [ ] 15d. HỌC MÀU LIGHTROOM (KIEM_TOAN_BO mục 10, ~5–10 phút): Lightroom mở, plugin mới,
+          kéo một buổi đã phân tích có nhiều ảnh mặt. ĐỪNG sửa ảnh trong Lightroom lúc
+          chạy. Xong: mở vài ảnh trong Lightroom — thông số phải NGUYÊN như trước (History
+          có thêm bước "học màu" là bình thường). Gửi ket_qua_kiem\hoc_mau_<máy>_<giờ>.txt.
+  [ ] 15e. CHUỖI MỘT LƯỢT (sau 15d ĐẠT): mục 12 mở app (chuỗi một lượt bật) -> Xử lý ảnh
+          một buổi CÙNG MÁY -> ghi thời gian + dòng "Màu da một lượt" trong tổng kết ->
+          mục 11 (KIEM_MOT_LUOT) trên buổi đó -> gửi ket_qua_kiem\mot_luot_<buổi>_<giờ>.txt.
 
 D. CREDIT + MỘT KEY MỘT MÁY (chưa thử được)
   Máy chủ key đang chạy CHƯA có phần credit / phiên -> app chạy như cũ (một key một

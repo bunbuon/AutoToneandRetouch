@@ -69,7 +69,8 @@ NHOM = [
     ]),
     ("hoc_mau", "Học màu Lightroom + chuỗi một lượt (mới 14/10, chưa bật)", [
         "test_mo_hinh_lr.py", "test_doc_cache_lr.py", "test_do_truoc.py",
-        "test_mau_mot_luot.py", "test_mot_luot_ui.py",
+        "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py",
+        "test_kiem_mot_luot.py",
     ]),
     ("lr", "Lightroom: plugin · job · catalog · preset · bản xuất", [
         "kiem_plugin_lua51.py", "kiem_xem_preset_lua.py", "kiem_retouch_khi_xuat_lua.py",
@@ -99,7 +100,7 @@ NHOM = [
 
 DAI = {"kiem_retouch_gui.py": 1800}        # giây chờ tối đa (mặc định CHO_MAC_DINH)
 CHO_MAC_DINH = 900
-BO_KHI_NHANH = {"kiem_retouch_gui.py"}
+BO_KHI_NHANH = {"kiem_retouch_gui.py", "test_hoc_mau_lr.py"}    # 14/10: học màu giả ~2 phút
 
 #  Bài hỏng vì lý do ĐÃ BIẾT — mẫu chữ của dòng lỗi + giải thích. Hết lý do thì xoá.
 DA_BIET = {

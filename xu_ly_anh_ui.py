@@ -615,6 +615,13 @@ class XuLyAnhMixin:
                 hop.tien_do(1, 1, "")
             self._da_ap_lr = True
             xl["chua_nhan_ds"] = {at.khoa_duong_dan(p) for p, _w in (bad or [])}
+            if xl.get("n_mot_luot"):
+                try:
+                    import mau_mot_luot as ml
+                    ml.luu_du_doan(xl.get("items_ghi") or [], self.folder(),   # cho KIEM_MOT_LUOT
+                                   self.read_cfg())
+                except Exception:                            # noqa: BLE001
+                    pass
             self._xl_curve()
 
     # ------------------------------------------------------------ lượt 2: curve
@@ -788,6 +795,7 @@ class XuLyAnhMixin:
                     xl["ml_soat"] = ml.soat(xl["ml_ds"], {k: do_map[k] for k in mau_ids
                                                          if k in do_map}, cfg)
                     ghi_ds += [r for r in xl["ml_soat"]["anh_sua"] if r not in ghi_ds]
+                    ml.danh_dau_luot2(xl.get("curve_goc"), xl["ml_soat"]["anh_sua"])
                 xl["curve_job"] = curve_da.ghi_job(ghi_ds, xl["curve_ten"])
                 _moc(xl, "l2_giai_xong")
                 if curve_da.giu_anh(cfg):                       # chạy cổng: giữ để so

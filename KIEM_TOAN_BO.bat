@@ -57,6 +57,9 @@ echo   6. Cong curve da tren mot buoi          (KIEM_CONG_CURVE.bat)
 echo   7. Thu credit + mot key mot may         (THU_CREDIT_2_MAY.bat - can may chu moi)
 echo   8. Lay code moi nhat tu GitHub          (git pull)
 echo   9. Do preview Lightroom that            (KIEM_PREVIEW_LR.bat - 14/10)
+echo  10. Hoc mau Lightroom tren RAW that      (HOC_MAU_LR.bat - 14/10, ~5-10 phut)
+echo  11. Cong chuoi mau da MOT LUOT            (KIEM_MOT_LUOT.bat - sau muc 12)
+echo  12. Mo app tu ma nguon, BAT chuoi mot luot (thu chuoi moi)
 echo   0. Thoat
 echo.
 set "CHON="
@@ -70,6 +73,9 @@ if "%CHON%"=="6" goto cong_curve
 if "%CHON%"=="7" goto credit
 if "%CHON%"=="8" goto keo
 if "%CHON%"=="9" goto preview_lr
+if "%CHON%"=="10" goto hoc_mau
+if "%CHON%"=="11" goto mot_luot
+if "%CHON%"=="12" goto mo_app_mot_luot
 if "%CHON%"=="0" goto :eof
 goto menu
 
@@ -137,6 +143,23 @@ goto menu
 
 :preview_lr
 call "%~dp0KIEM_PREVIEW_LR.bat"
+goto menu
+
+:hoc_mau
+call "%~dp0HOC_MAU_LR.bat"
+goto menu
+
+:mot_luot
+call "%~dp0KIEM_MOT_LUOT.bat"
+goto menu
+
+:mo_app_mot_luot
+echo.
+echo   Chuoi mau da MOT LUOT: can da hoc mau Lightroom (muc 10) cho may cua buoi, plugin moi
+echo   (muc 3, chon C). Xu ly anh xong -^> chay muc 11 tren buoi do.
+set "AUTOTONE_MOT_LUOT=1"
+start "AutoTone - ma nguon (mot luot)" %PY% autotone_gui.py
+set "AUTOTONE_MOT_LUOT="
 goto menu
 
 rem --- :thu_py <lenh python...>  dat PY neu lenh do import duoc du thu vien ---
