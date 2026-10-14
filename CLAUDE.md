@@ -1441,6 +1441,8 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   Menu thử tay (mục 3 tuỳ chọn chép plugin mã nguồn vào Modules, trỏ jobs về repo — bản cài mở
   lên chép lại plugin của nó). `DANH_SACH_THU_TAY.txt` = những gì phải nhìn bằng mắt.
   Chưa đóng gói khi user chưa báo (build v87 14/10 sáng chỉ nằm trong dist/, không phát hành).
+  Bài credit (test_tin_dung*) chạy với Worker cục bộ: runner tự đặt AUTOTONE_KEYSERVER = ..\KeyServer
+  (repo máy chủ key trên máy này tên KeyServer, nhánh gop-quan-tri-credit — chưa push / deploy).
 - 14/10 **Dừng Denoise**: app ghi `jobs/dung_denoise.txt` (ma=<lượt>), DenoiseCore xét trước MỖI
   ảnh -> dừng, trả vùng chọn + module; file của lượt khác bị xoá (không dừng nhầm), gửi lượt mới
   cũng xoá. Ảnh đã bật trước khi dừng Lightroom vẫn xử lý nền (SDK không huỷ được).

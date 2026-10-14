@@ -253,6 +253,14 @@ def main(argv=None) -> int:
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONWARNINGS="ignore",
                OPENCV_LOG_LEVEL="ERROR", AUTOTONE_CATALOG_LR="0")
     env.pop("AUTOTONE_NGON_NGU", None)
+    #  bài credit chạy app với Worker THẬT cục bộ (wrangler dev) — repo máy chủ key trên
+    #  máy này tên KeyServer (bài tự tìm KeyActiveAutoTone); không có thì bài tự bỏ qua
+    if not env.get("AUTOTONE_KEYSERVER"):
+        for ten in ("KeyServer", "KeyActiveAutoTone", "keyactiveautotone"):
+            ks = GOC.parent / ten
+            if (ks / "node_modules").is_dir() and (ks / "src" / "credit.js").is_file():
+                env["AUTOTONE_KEYSERVER"] = str(ks)
+                break
     lupa = chuan_bi_lupa(env)
 
     try:
@@ -270,7 +278,8 @@ def main(argv=None) -> int:
     dau = [f"KIỂM TOÀN BỘ AutoTone — {datetime.now():%d/%m/%Y %H:%M}",
            f"Mã nguồn: nhánh {nhanh} · {commit} · phiên bản {ban}",
            f"Python {platform.python_version()} ({sys.executable}) · {platform.platform()}",
-           f"lupa: {lupa} · {len(chon)} bài" + (" · chế độ nhanh" if a.nhanh else ""), ""]
+           f"lupa: {lupa} · máy chủ key cục bộ: {env.get('AUTOTONE_KEYSERVER') or 'không có'}"
+           f" · {len(chon)} bài" + (" · chế độ nhanh" if a.nhanh else ""), ""]
     print("\n".join(dau))
 
     kq = []
