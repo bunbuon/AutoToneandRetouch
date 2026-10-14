@@ -1195,6 +1195,12 @@ class XuLyAnhMixin:
                 dong.append(cau_ml)
             #  15/10: ảnh liền nhau cùng khung mà ánh sáng THẬT lệch (flash không kịp hồi…) —
             #  autotone.dong_bo_cum / mau_mot_luot.can_sang_cum bù Exposure riêng
+            #  15/10: chủ thể chính (autotone.gan_chu_the)
+            ct = dict(getattr(at, "CHU_THE", {}) or {})
+            if ct.get("nguoi"):
+                dong.append(f"· Chủ thể chính: {len(ct['nguoi'])} người xuất hiện nhiều nhất ("
+                            + " · ".join(gd.so_vn(p["n_anh"]) for p in ct["nguoi"])
+                            + f" ảnh) — đo sáng + màu da theo mặt họ ở {gd.so_vn(ct.get('anh', 0))} ảnh.")
             bu = [r for r in xl.get("items_ghi") or [] if r.get("bu_cum_ev")]
             if bu:
                 dong.append(f"· Ảnh liền nhau cùng khung: {gd.so_vn(len(bu))} ảnh ánh sáng thật lệch "

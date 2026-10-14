@@ -1040,6 +1040,9 @@ def srgb_to_linear(a: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------- nhận diện mặt
 
 FACE_MODEL = dd.tai_nguyen("models", "face_detection_yunet_2023mar.onnx")
+#  15/10: nhận diện NGƯỜI (đặc trưng mặt 128 số) — OpenCV SFace, Apache-2.0, 38 MB, ~5 ms / mặt
+#  CPU; căn mặt bằng chính 5 điểm mốc YuNet. Xem gan_chu_the.
+SFACE_MODEL = dd.tai_nguyen("models", "face_recognition_sface_2021dec.onnx")
 _DETECTOR = None          # nạp một lần cho mỗi tiến trình
 
 #[[ NHẬN CẢNH TRONG NHÀ / NGOÀI TRỜI (12/10) — Places365 ResNet18 (Zhou et al., MIT CSAIL;
@@ -1211,13 +1214,59 @@ def focus_energy(im: Image.Image, tile: int = FOCUS_TILE):
     return e / (l + 0.08), tile
 
 
-def detect_faces(im: Image.Image, score: float = 0.5) -> list:
+_NHAN_DIEN = None
+
+
+def bo_nhan_dien_mat():
+    """cv2.FaceRecognizerSF (SFace), None nếu thiếu OpenCV / thiếu model."""
+    global _NHAN_DIEN
+    if _NHAN_DIEN is not None:
+        return _NHAN_DIEN or None
+    try:
+        import cv2
+        _NHAN_DIEN = (cv2.FaceRecognizerSF.create(str(SFACE_MODEL), "")
+                      if SFACE_MODEL.is_file() else False)
+    except Exception:                                        # noqa: BLE001
+        _NHAN_DIEN = False
+    return _NHAN_DIEN or None
+
+
+def dac_trung_mat(im: Image.Image, faces: list, toi_da: int = 16, canh_min: float = 24.0) -> list:
+    """[{"box": (x, y, w, h), "dt": hex 128 byte}] — đặc trưng SFace (chuẩn hoá, lượng tử
+    int8) của các mặt `faces` (detect_faces(..., tho=True): phần tử cuối là hàng YuNet 15
+    số) trên CHÍNH ảnh `im` YuNet đã chạy. Bỏ mặt cạnh < canh_min px (đám đông xa); tối
+    đa `toi_da` mặt to nhất."""
+    rec = bo_nhan_dien_mat()
+    if rec is None or not faces:
+        return []
+    try:
+        a = np.asarray(im.convert("RGB"), dtype=np.uint8)[:, :, ::-1].copy()
+    except Exception:                                        # noqa: BLE001
+        return []
+    out = []
+    for f in sorted(faces, key=lambda f: -float(f[2]) * float(f[3]))[:toi_da]:
+        if len(f) < 7 or min(float(f[2]), float(f[3])) < canh_min:
+            continue
+        try:
+            e = rec.feature(rec.alignCrop(a, np.asarray(f[6], dtype=np.float32))).ravel()
+        except Exception:                                    # noqa: BLE001
+            continue
+        n = float(np.linalg.norm(e))
+        if not n > 0:
+            continue
+        q = np.clip(np.round(np.asarray(e, dtype=np.float64) / n * 127.0), -127, 127).astype(np.int8)
+        out.append({"box": (float(f[0]), float(f[1]), float(f[2]), float(f[3])), "dt": q.tobytes().hex()})
+    return out
+
+
+def detect_faces(im: Image.Image, score: float = 0.5, tho: bool = False) -> list:
     """Nhận diện mặt trên ảnh ĐÃ XOAY ĐÚNG CHIỀU.
 
     Ảnh dọc mà chưa xoay theo EXIF thì mặt nằm ngang, YuNet gần như không thấy —
     nên bước apply_orientation() ở trên là bắt buộc, không phải cho đẹp.
 
-    Trả về list (x, y, w, h, score) theo toạ độ của chính `im`.
+    Trả về list (x, y, w, h, score, mắt) theo toạ độ của chính `im`; tho=True thêm phần tử
+    cuối = hàng YuNet 15 số (cho dac_trung_mat căn mặt).
     """
     det = face_detector()
     if det is None:
@@ -1244,7 +1293,10 @@ def detect_faces(im: Image.Image, score: float = 0.5) -> list:
             eyes = None
             if len(f) >= 15:
                 eyes = ((float(f[4]), float(f[5])), (float(f[6]), float(f[7])))
-            out.append((x, y, fw, fh, s, eyes))
+            if tho and len(f) >= 15:
+                out.append((x, y, fw, fh, s, eyes, tuple(float(v) for v in f[:15])))
+            else:
+                out.append((x, y, fw, fh, s, eyes))
     return out
 
 
@@ -1551,7 +1603,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             mf_giua_sigma: float = 0.0,
             canh_p365: bool = False,
             hl_da_tron=(),
-            hl_da_ti_le_may=()) -> dict:
+            hl_da_ti_le_may=(),
+            dac_trung: bool = False) -> dict:
     """Đọc RAW -> preview -> thống kê. Chạy trong worker process."""
     out = {"path": str(path), "ok": False, "error": ""}
     try:
@@ -1600,7 +1653,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
         if want_faces:
             imf = im.copy()
             imf.thumbnail((face_px, face_px), Image.BILINEAR)
-            faces = detect_faces(imf, face_score)
+            faces = detect_faces(imf, face_score, tho=True)
 
             #[[ CHỐT CHẶN BÁO MẶT ẢO — bỏ khung có điểm tin cậy thấp.
             #
@@ -1772,7 +1825,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             #  % da sáng để chuyển sang đo riêng vùng sáng, THEO MÁY (0 = máy này không
             #  đo theo vùng da sáng) — xem DEFAULTS["hl_da_ti_le_theo_may"]
             ti_le = so_theo_may(tags, hl_da_ti_le_may, hl_da_ti_le)
-            for x, y, bw, bh, s, _eyes in faces:
+            for x, y, bw, bh, s, _eyes, *_hang in faces:
                 cx, cy = x + bw / 2, y + bh / 2
 
                 #[[ Mặt có TRÙM điểm lấy nét thật của máy không.
@@ -1989,6 +2042,11 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                     "area_pct": 100.0 * (bw * bh) / float(max(fw_ * fh_, 1)),
                     # % da co kenh lon nhat >= hl_da_muc (None khi hl_da_ti_le = 0 o moi may)
                     "da_sang": None if da_sang_pct is None else round(da_sang_pct, 1),
+                    #  15/10: màu da (linear) + vùng sáng (p95 sRGB) RIÊNG mặt này — đổi sang
+                    #  đo / cân màu theo chủ thể chính (gan_chu_the)
+                    "rgb": [float(v) for v in px.mean(axis=0)] if len(px) else None,
+                    "p95": (float(_lin_to_srgb(float(np.quantile(px.max(axis=1), 0.95))))
+                            if len(px) else None),
                 })
 
                 # chỉ chấm điểm cho khuôn mặt NẶNG KÝ NHẤT (chủ thể)
@@ -2213,6 +2271,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 do_ear(blob, tags, faces, (fw_, fh_), out)
             out["all_boxes"] = [(float(f[0]), float(f[1]), float(f[2]),
                                  float(f[3]), float(f[4])) for f in faces]
+            if dac_trung and faces:
+                out["mat_dt"] = dac_trung_mat(imf, faces)
             if face_patches:
                 out["meter_boxes"] = [fp[5] for fp in face_patches if len(fp) > 5]
                 out["subject_box"] = max(face_patches, key=lambda fp: fp[1])[5]
@@ -3617,6 +3677,17 @@ DEFAULTS = {
     #   khác từ 18:01 14/10: Exposure trung vị −0.5 EV -> da user chọn ~0.77 -> −0.09
     #   (curve_da.dich_cua). ]]
     "da_dich_L_bu": -0.09,
+    #[[ 15/10 CHỦ THỂ CHÍNH (gan_chu_the): 6 người xuất hiện nhiều ảnh nhất -> đo sáng + cân
+    #   màu trên mặt người trọng số cao nhất có trong ảnh. ]]
+    "chu_the_chinh": True,
+    "chu_the_so_nguoi": 6,
+    "chu_the_nguong": 0.40,         # cosine SFace cùng một người
+    "chu_the_min_anh": 5,           # người xuất hiện ít hơn chừng này ảnh không làm chủ thể
+    "chu_the_min_ti": 0.03,         # ... và ít hơn 3% số ảnh có mặt
+    "chu_the_min_buoi": 20,         # buổi ít ảnh có mặt hơn -> tắt
+    "chu_the_co_min": 0.5,          # mặt chủ thể nhỏ hơn 0.5× mặt chủ thể to nhất ảnh -> người kế
+    "chu_the_co_tv": 0.7,           # người thường đứng sau / ảnh in trên phông (mặt nhỏ) không làm chủ thể
+    "chu_the_diem_tv": 0.88,
     "cum_bu_anh_sang": True,        # tấm có ánh sáng THẬT lệch (flash hụt…) -> bù Exposure riêng, xem _bu_anh_sang_cum
     "cum_bu_nguong": 0.15,          # mặt lệch trung vị cụm dưới mức này = nhiễu đo, không bù
     "cum_bu_khung_ti": 0.25,        # ... chỉ khi khung lệch cùng chiều ≥ 0.25× mặt (không: đổi mặt đo / biểu cảm)
@@ -4677,6 +4748,174 @@ def sua_mat_lech_khung(items: list, cfg: dict) -> int:
         r["metered_ev"] = float(r["metered_ev"]) + (moi - cu)
         r["notes"] = ";".join([v for v in [r.get("notes", ""), "do-mat-lech-khung"] if v])
     return len(sua)
+
+
+# ------------------------------------------------------------------ chủ thể chính (15/10)
+#: tóm tắt lần gan_chu_the gần nhất (giao diện đọc): {"nguoi": [{"hang", "n_anh"}], "anh", "co_mat"}
+CHU_THE: dict = {}
+
+
+def _vec_dt(h) -> np.ndarray | None:
+    try:
+        v = np.frombuffer(bytes.fromhex(str(h)), dtype=np.int8).astype(np.float32) / 127.0
+    except (ValueError, TypeError):
+        return None
+    return v if v.shape == (128,) else None
+
+
+def nhom_nguoi(items: list, cfg: dict) -> list:
+    """Gom mọi mặt có đặc trưng (r["mat_dt"]) cả buổi thành NGƯỜI. Gắn r["_nguoi"] =
+    [(box, id)]; trả [{"id", "n_anh", "n_mat", "co", "diem"}] xếp theo số ẢNH giảm dần —
+    co = trung vị bề rộng mặt / mặt to nhất trong ảnh, diem = trung vị điểm YuNet.
+
+    Tham lam theo cỡ mặt (mặt to, rõ lập tâm trước): cosine với tâm gần nhất ≥ chu_the_nguong
+    (SFace: khác người ≤ ~0.3, OpenCV khuyên ≥ 0.363 là cùng người) thì nhập, không thì lập
+    người mới; rồi gán lại một lượt theo tâm cuối."""
+    nguong = float(cfg.get("chu_the_nguong", 0.40))
+    mat = []
+    for i, r in enumerate(items):
+        r.pop("_nguoi", None)
+        ds_m = r.get("mat_dt") or []
+        rong = max((float(m["box"][2]) for m in ds_m), default=0.0)
+        for m in ds_m:
+            v = _vec_dt(m.get("dt"))
+            n = float(np.linalg.norm(v)) if v is not None else 0.0
+            if n > 0:
+                b = tuple(float(x) for x in m["box"][:4])
+                f = _mat_cua_box(r.get("face_debug"), b)
+                mat.append((i, b, v / n, b[2] * b[3], b[2] / max(rong, 1e-9),
+                            float(f.get("score") or 0.0) if f else 0.0))
+    if not mat:
+        return []
+    mat.sort(key=lambda x: -x[3])
+    V = np.stack([m[2] for m in mat]).astype(np.float32)
+    tong = np.zeros_like(V)
+    tam = np.zeros_like(V)
+    k = 0
+    for j in range(len(V)):
+        if k:
+            s = tam[:k] @ V[j]
+            c = int(np.argmax(s))
+            if s[c] >= nguong:
+                tong[c] += V[j]
+                tam[c] = tong[c] / max(float(np.linalg.norm(tong[c])), 1e-9)
+                continue
+        tong[k] = tam[k] = V[j]
+        k += 1
+    S = V @ tam[:k].T
+    gan = np.where(S.max(axis=1) >= nguong, S.argmax(axis=1), -1)
+    anh: dict = {}
+    so_mat: dict = {}
+    co: dict = {}
+    diem: dict = {}
+    for (i, b, _v, _a, c, d), g in zip(mat, gan):
+        if g < 0:
+            continue
+        items[i].setdefault("_nguoi", []).append((b, int(g)))
+        anh.setdefault(int(g), set()).add(i)
+        so_mat[int(g)] = so_mat.get(int(g), 0) + 1
+        co.setdefault(int(g), []).append(c)
+        diem.setdefault(int(g), []).append(d)
+    return sorted(({"id": g, "n_anh": len(a), "n_mat": so_mat[g], "co": float(np.median(co[g])),
+                    "diem": float(np.median(diem[g]))} for g, a in anh.items()),
+                  key=lambda p: -p["n_anh"])
+
+
+def _mat_cua_box(fd: list, box) -> dict | None:
+    for f in fd or []:
+        b = f.get("box")
+        if b and all(abs(float(b[t]) - float(box[t])) < 0.5 for t in range(4)):
+            return f
+    return None
+
+
+def gan_chu_the(items: list, cfg: dict) -> dict:
+    """CHỦ THỂ CHÍNH của buổi: chu_the_so_nguoi (6) người xuất hiện trong NHIỀU ẢNH nhất,
+    trọng số = số ảnh. Ảnh có ≥ 1 người trong số đó: đo sáng + cân màu da (meter_boxes,
+    face_rgb, face_p95, phép đo mặt — do_mat_chu_the) theo mặt người trọng số CAO NHẤT có mặt
+    trong ảnh. Gọi lại được (trả số gốc trước khi tính). -> CHU_THE.
+
+    #[[ User 15/10: "Cần thêm cơ chế Detect chủ thể trong bức ảnh để nhận diện trong các bộ
+    #   ảnh lấy ra được 5-6 người xuất hiện nhiều nhất và đặt trọng số cho nó. Khi 1 bức ảnh
+    #   xuất hiện 1-6 người đó thì sẽ phải ưu tiên đo sáng và cân bằng trên mặt của chủ thể
+    #   đó. Nếu xuất hiện cùng lúc 5-6 người thì ưu tiên đo sáng vào người có trọng số xuất
+    #   hiện nhiều nhất."
+    #   - đặc trưng mặt: SFace (dac_trung_mat, lúc phân tích), gom: nhom_nguoi;
+    #   - người đủ làm chủ thể: ≥ chu_the_min_anh ảnh VÀ ≥ chu_the_min_ti số ảnh có mặt;
+    #     thường là một trong những mặt TO nhất ảnh (trung vị bề rộng / mặt to nhất ≥
+    #     chu_the_co_tv) và rõ (trung vị điểm YuNet ≥ chu_the_diem_tv) — 2709: mặt cặp đôi
+    #     trong ẢNH CƯỚI IN trên phông nền lọt vào 188 / 161 ảnh (cỡ 0.46 / 0.51, điểm 0.84 /
+    #     0.87) — người thật làm chủ thể: cỡ 0.86–1.00, điểm 0.93;
+    #   - mặt dùng được: điểm YuNet ≥ mat_sang_nhat_diem, không nhỏ hơn chu_the_co_min ×
+    #     mặt chủ thể to nhất trong ảnh (người trọng số cao đứng xa, mờ thì sang người kế);
+    #   - buổi < chu_the_min_buoi ảnh có mặt: tắt (không đủ để biết ai là chủ thể). ]]"""
+    global CHU_THE
+    for r in items:
+        for k in ("meter_boxes", "face_rgb", "face_p95"):
+            if k + "_goc" in r:
+                r[k] = r.pop(k + "_goc")
+        r.pop("chu_the", None)
+    CHU_THE = {}
+    if not cfg.get("chu_the_chinh", True):
+        return CHU_THE
+    ds = [r for r in items if not r.get("bw")]
+    co_mat = sum(1 for r in ds if r.get("mat_dt"))
+    if co_mat < int(cfg.get("chu_the_min_buoi", 20)):
+        return CHU_THE
+    nguoi = nhom_nguoi(ds, cfg)
+    toi_thieu = max(int(cfg.get("chu_the_min_anh", 5)),
+                    int(np.ceil(float(cfg.get("chu_the_min_ti", 0.03)) * co_mat)))
+    top = [p for p in nguoi if p["n_anh"] >= toi_thieu
+           and p["co"] >= float(cfg.get("chu_the_co_tv", 0.7))
+           and p["diem"] >= float(cfg.get("chu_the_diem_tv", 0.88))][:int(cfg.get("chu_the_so_nguoi", 6))]
+    if not top:
+        return CHU_THE
+    hang = {p["id"]: (i + 1, p["n_anh"]) for i, p in enumerate(top)}
+    diem = float(cfg.get("mat_sang_nhat_diem", 0.6) or 0.0)
+    co_min = float(cfg.get("chu_the_co_min", 0.5))
+    n_dung = 0
+    for r in ds:
+        ung = []
+        for box, pid in r.get("_nguoi") or []:
+            if pid not in hang:
+                continue
+            f = _mat_cua_box(r.get("face_debug"), box)
+            if f is None or f.get("ev") is None or float(f.get("score") or 0.0) < diem:
+                continue
+            ung.append((hang[pid], f))
+        if not ung:
+            continue
+        rong = max(float(f["box"][2]) for _h, f in ung)
+        ung = [u for u in ung if float(u[1]["box"][2]) >= co_min * rong]
+        ung.sort(key=lambda u: (-u[0][1], u[0][0]))
+        (rank, n), f = ung[0]
+        b = tuple(float(x) for x in f["box"][:4])
+        r["chu_the"] = {"hang": rank, "n_anh": n, "box": b, "ev": float(f["ev"]), "so": len(ung)}
+        r["meter_boxes_goc"] = r.get("meter_boxes")
+        r["meter_boxes"] = [b + (float(f.get("score") or 1.0),)]
+        if f.get("rgb"):
+            r["face_rgb_goc"] = r.get("face_rgb")
+            r["face_rgb"] = [float(v) + EPS for v in f["rgb"]]
+        if f.get("p95") is not None:
+            r["face_p95_goc"] = r.get("face_p95")
+            r["face_p95"] = float(f["p95"])
+        n_dung += 1
+    CHU_THE = {"nguoi": [{"hang": i + 1, "n_anh": p["n_anh"]} for i, p in enumerate(top)],
+               "anh": n_dung, "co_mat": co_mat}
+    return CHU_THE
+
+
+def do_mat_chu_the(items: list, cfg: dict) -> int:
+    """Phép đo mặt = mặt CHỦ THỂ CHÍNH (gan_chu_the) — trước mọi bước sửa phép đo khác."""
+    n = 0
+    for r in items:
+        ct = r.get("chu_the")
+        if not ct or r.get("metered_face_ev") is None:
+            continue
+        if abs(float(ct["ev"]) - float(r["metered_face_ev"])) > 0.005:
+            _doi_mat_do(r, float(ct["ev"]), "chu-the-chinh")
+        n += 1
+    return n
 
 
 def _doi_mat_do(r: dict, moi: float, nhan: str) -> None:
@@ -7453,8 +7692,11 @@ def decide(items: list, cfg: dict) -> None:
     _tra_mat_goc(items)
     if cfg["meter"] == "face":
         #  Chon MAT nao de do truoc — moi buoc sua phep do phia sau ap len no.
-        do_mat_sang_nhat(items, cfg)
-        sua_mat_lech_khung(items, cfg)
+        #  15/10: ảnh có chủ thể chính -> đo đúng mặt họ; các bước chọn mặt khác chỉ cho ảnh còn lại
+        do_mat_chu_the(items, cfg)
+        khac = [r for r in items if not r.get("chu_the")]
+        do_mat_sang_nhat(khac, cfg)
+        sua_mat_lech_khung(khac, cfg)
         # Muc 4 truoc (hieu chinh tung may), muc 1 sau (dong thuan trong cung
         # may) — dao lai thi muc 1 lay trung vi tren so chua hieu chinh.
         bu_do_theo_may(items, cfg)
@@ -8543,7 +8785,10 @@ def _them_ghi_chu(r: dict, nhan: str) -> None:
 
 
 def _mat_tho(r: dict):
-    """Phép đo mặt GỐC của phân tích (trước mat-sang-nhat / chu-the-af-than… của decide)."""
+    """Phép đo mặt GỐC của phân tích (trước mat-sang-nhat / chu-the-af-than… của decide);
+    ảnh có chủ thể chính (gan_chu_the): mặt chủ thể — cùng một người qua cả loạt."""
+    if r.get("chu_the"):
+        return float(r["chu_the"]["ev"])
     v = r.get("metered_face_ev_tho")
     return _so(v if v is not None else r.get("metered_face_ev"))
 
@@ -10470,7 +10715,9 @@ def cau_hinh_do(cfg: dict) -> tuple:
             tuple(sorted((str(k).upper(), float(v)) for k, v in
                          dict(cfg.get("hl_da_tron_theo_may") or {}).items())),
             tuple(sorted((str(k).upper(), float(v)) for k, v in
-                         dict(cfg.get("hl_da_ti_le_theo_may") or {}).items())))
+                         dict(cfg.get("hl_da_ti_le_theo_may") or {}).items())),
+            #  15/10: đặc trưng mặt cho nhận diện chủ thể chính (gan_chu_the)
+            bool(cfg.get("chu_the_chinh", True)))
 
 
 #[[ KET QUA PHAN TICH LUU THEO BUOI (8/10).
@@ -10728,6 +10975,11 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         #   cua tool, moc atn chi giu nen 5250 — lan chay lai mat As Shot, ra so
         #   khac lan dau (4716 -> 5250). Duong catalog giu As Shot trong moc. ]]
 
+    #  15/10: chủ thể chính của buổi -> khung đo / màu da / phép đo mặt theo họ
+    try:
+        gan_chu_the(items, cfg)
+    except Exception as ex:                                  # noqa: BLE001
+        print(f"[!] Nhan dien chu the chinh loi, bo qua: {ex}", file=sys.stderr)
     #  decide() tinh temp_adj MOI -> phan "xet lai WB" cua lan plan truoc khong con
     #  nam trong do (xem _dat_wb_bu)
     for r in items:

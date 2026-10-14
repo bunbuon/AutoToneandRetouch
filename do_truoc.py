@@ -147,6 +147,11 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
     import doc_cache_lr as dc
     t0 = time.monotonic()
     huy = huy or (lambda: False)
+    #  15/10: khung đo da = mặt CHỦ THỂ CHÍNH (gan_chu_the) — như plan() sẽ dùng
+    try:
+        at.gan_chu_the(items, cfg)
+    except Exception:                                        # noqa: BLE001
+        pass
     ds = can_do(items)
     if cfg.get("mot_luot_do_moi_loat", 2):
         ds = mau_loat(ds, cfg, int(cfg.get("mot_luot_do_moi_loat", 2)))
