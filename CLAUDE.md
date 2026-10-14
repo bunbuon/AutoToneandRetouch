@@ -1481,6 +1481,12 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   `curve_da.doc_srgb` (ICC lạ -> sRGB). Plugin cũ bỏ qua `nguon=` -> Export như trước.
   kiem_curve_lua mục 8: SDK giả giữ đối tượng YẾU (bỏ `giu[i] = h` -> 8/8 bị huỷ). CHƯA thử
   Lightroom thật: preview có tươi sau khi áp không, hồ sơ màu của preview.
+  User hỏi tiếp "dùng luôn preview TRÊN TOOL để can thiệp Curve" -> ĐO (scratchpad
+  so_preview_tool_lr.py, G:\Ănhoi2009, 30 ảnh có _duyet do Lightroom dựng): ảnh nhúng trong RAW
+  + Exposure/WB khớp TỐI ƯU từng kênh vẫn lệch da so với Lightroom: hue trung vị 3.8° (p90
+  10.7°), độ đậm 15%, độ sáng 4.2 (L×100) — lớn hơn cả vùng ổn của curve (3° / 10%) và cổng
+  dự đoán ≤ 1.0°. Preview tool = màu MÁY ẢNH (picture style), không có profile Adobe / preset /
+  HSL / CG. Không dùng cho curve.
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
