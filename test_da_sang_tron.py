@@ -96,7 +96,7 @@ def anh(gain_ev: float, exif, p: Path, kieu: str = "nua_nang") -> Path:
     return p
 
 
-def mat_gia(im, score=0.5):
+def mat_gia(im, score=0.5, **_kw):
     k = im.size[0] / W
     return [(MAT[0] * k, MAT[1] * k, MAT[2] * k, MAT[3] * k, 0.95, None)]
 
@@ -172,15 +172,15 @@ def muc1():
          d["hl_da_ti_le_theo_may"] == {"CANON": 0.0}, str(d["hl_da_ti_le_theo_may"]))
     ch = at.cau_hinh_do(dict(d))
     ktra("cau_hinh_do mang cả hai bảng (đổi bảng = khoá đo khác)",
-         ch[-1] == (("CANON", 0.0),) and ch[-2] == ()
-         and at.cau_hinh_do(dict(d, hl_da_ti_le_theo_may={}))[-1] == ()
-         and at.cau_hinh_do(dict(d, hl_da_tron_theo_may={"canon": 15}))[-2] == (("CANON", 15.0),),
+         ch[-2] == (("CANON", 0.0),) and ch[-3] == ()       # 15/10: cờ chu_the_chinh đứng cuối
+         and at.cau_hinh_do(dict(d, hl_da_ti_le_theo_may={}))[-2] == ()
+         and at.cau_hinh_do(dict(d, hl_da_tron_theo_may={"canon": 15}))[-3] == (("CANON", 15.0),),
          str(ch[-2:]))
     ca = {("Canon", "Canon EOS R"): 0.0, ("Canon", "Canon PowerShot S40"): 0.0,
           ("SONY", "ILCE-7M4"): 30.0, ("NIKON CORPORATION", "NIKON Z 6_2"): 30.0,
           (None, None): 30.0, ("FUJIFILM", "X-T5"): 30.0}
-    sai = {k: at.so_theo_may({"make": k[0], "model": k[1]}, ch[-1], d["hl_da_ti_le"]) for k in ca
-           if at.so_theo_may({"make": k[0], "model": k[1]}, ch[-1], d["hl_da_ti_le"]) != ca[k]}
+    sai = {k: at.so_theo_may({"make": k[0], "model": k[1]}, ch[-2], d["hl_da_ti_le"]) for k in ca
+           if at.so_theo_may({"make": k[0], "model": k[1]}, ch[-2], d["hl_da_ti_le"]) != ca[k]}
     ktra("so_theo_may: Canon 0, Sony / Nikon / Fuji / không EXIF giữ 30", not sai, str(sai))
     sai = {k: at.tron_theo_may({"make": k[0], "model": k[1]}, (("CANON", 15.0),)) for k in ca
            if at.tron_theo_may({"make": k[0], "model": k[1]}, (("CANON", 15.0),)) != (15.0 if k[0] == "Canon" else 0.0)}
