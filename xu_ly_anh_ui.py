@@ -653,6 +653,8 @@ class XuLyAnhMixin:
             if xl.get("curve") else []
         ds += [r for r in mau if r not in ds]
         xl["ml_ds"], xl["ml_mau"] = ml_ds, {id(r) for r in mau}
+        #  14/10: lượt 2 theo cụm cùng khung tới cả ảnh một lượt KHÔNG đo (đo trước 2 ảnh / loạt)
+        xl["ml_tat"] = [r for r in ghi if r.get("mot_luot")]
         if not ds:
             xl["curve_kq"] = {"bo": "khong-anh"}
             self._xl_denoise()
@@ -797,7 +799,8 @@ class XuLyAnhMixin:
                 if xl.get("ml_ds"):
                     import mau_mot_luot as ml
                     xl["ml_soat"] = ml.soat(xl["ml_ds"], {k: do_map[k] for k in mau_ids
-                                                         if k in do_map}, cfg)
+                                                         if k in do_map}, cfg,
+                                            tat_ca=xl.get("ml_tat"))
                     ghi_ds += [r for r in xl["ml_soat"]["anh_sua"] if r not in ghi_ds]
                     ml.danh_dau_luot2(xl.get("curve_goc"), xl["ml_soat"]["anh_sua"])
                 xl["curve_job"] = curve_da.ghi_job(ghi_ds, xl["curve_ten"])

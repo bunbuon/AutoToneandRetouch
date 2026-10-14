@@ -363,6 +363,14 @@ def main() -> int:
          and any(k in cot10 for k in ("HueAdjustmentOrange", "SaturationAdjustmentOrange", "LuminanceAdjustmentOrange"))
          and all(not any(d.split("\t")[1:6]) for d in dong10), str(cot10))
     ktra("tóm tắt soát: số ảnh sửa HSL", kqs.get("hsl") == 3 and kqs.get("sua") == 3, str({k: kqs.get(k) for k in ("hsl", "sua", "n")}))
+    #  14/10: cụm cùng khung — chỉ MỘT tấm có dự đoán + số đo (đo trước 2 ảnh / loạt), lượt 2 phải
+    #  tới cả tấm không đo, cùng số TUYỆT ĐỐI (2709 bản 7: 85 cụm lệch Hue / Sat sau lượt 2)
+    for r in ds10:
+        r.pop("hsl_l2", None)
+    kq_t = ml.soat([ds10[1]], do_mau, cfg10, tat_ca=ds10)
+    ktra("lượt 2 tới cả ảnh KHÔNG đo trong cụm, cùng số tuyệt đối",
+         all(r.get("hsl_l2") for r in ds10) and len({tuple(sorted(r["hsl_l2"].items())) for r in ds10}) == 1
+         and kq_t.get("sua") == 3, str([r.get("hsl_l2") for r in ds10]))
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

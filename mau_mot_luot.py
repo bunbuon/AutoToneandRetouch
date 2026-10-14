@@ -1003,9 +1003,13 @@ def lech_soat(r: dict, do: dict, cfg: dict) -> dict | None:
             "lech": bool((dh > LECH_H or dq > LECH_Q or dL > LECH_L) and ngoai_on)}
 
 
-def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
-    """ds: ảnh chuỗi một lượt vừa áp; do_mau {id(r): do_anh} của ảnh soát. Gắn r["soat_lr"];
-    ảnh cần lượt 2 có r["curve_ghi"] (curve ghép lên curve vừa áp). -> tóm tắt."""
+def soat(ds: list, do_mau: dict, cfg: dict, tat_ca: list | None = None) -> dict:
+    """ds: ảnh chuỗi một lượt vừa áp (có dự đoán); do_mau {id(r): do_anh} của ảnh soát; tat_ca:
+    MỌI ảnh một lượt (kể cả không đo — lượt 2 theo cụm cùng khung phải tới cả chúng). Gắn
+    r["soat_lr"]; ảnh cần lượt 2 có r["curve_ghi"] / r["hsl_l2"]. -> tóm tắt."""
+    tat_ca = list(tat_ca) if tat_ca is not None else list(ds)
+    for r in tat_ca:
+        r.pop("hsl_l2", None)
     import curve_da
     kq = {"n": 0, "lech": 0, "hue": None, "q": None, "sua": 0, "anh_sua": [], "ca_buoi": False}
     for r in ds:
@@ -1055,9 +1059,8 @@ def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
     cfg = dict(cfg, curve_da=True, curve_da_sang=bool(cfg.get("mot_luot_sang_dich", True)))
     #  14/10 tối: HSL Cam theo số đo THẬT cho mọi loạt còn ngoài vùng ổn (phan_hoi_hsl); loạt
     #  đã sửa HSL thì lượt 2 không chồng thêm curve (curve tính trên số đo TRƯỚC khi đổi HSL)
-    hsl2 = phan_hoi_hsl(ds, do_mau, ket, cfg) if cfg.get("mot_luot_l2_hsl", True) else {}
-    for r in ds:
-        r.pop("hsl_l2", None)
+    hsl2 = phan_hoi_hsl(ds, do_mau, ket, cfg, tat_ca) if cfg.get("mot_luot_l2_hsl", True) else {}
+    for r in tat_ca:
         if id(r) in hsl2:
             r["hsl_l2"] = hsl2[id(r)]
     kq["hsl"] = len(hsl2)
@@ -1085,13 +1088,13 @@ def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
     finally:
         for r in ds_sua:
             r["curve_moc"] = cu_moc[id(r)]
-    at.dong_bo_cum_luot2(ds, cfg)
-    kq["anh_sua"] = [r for r in ds if r.get("curve_ghi") or r.get("hsl_l2")]
+    at.dong_bo_cum_luot2(tat_ca, cfg)
+    kq["anh_sua"] = [r for r in tat_ca if r.get("curve_ghi") or r.get("hsl_l2")]
     kq["sua"] = len(kq["anh_sua"])
     return kq
 
 
-def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict) -> dict:
+def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict, tat_ca: list | None = None) -> dict:
     """Lượt 2: HSL Cam (Hue / Sat / Luminance) theo số đo THẬT sau khi áp (14/10 tối).
 
     #[[ User 14/10 ("oke hãy thử xem sao"): lượt 2 sửa HSL từ số đo thật chứ không chỉ curve
@@ -1103,7 +1106,10 @@ def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict) -> dict:
     #     - giải 3×3 (Hue, Sat, Lum Cam -> hue, ln độ đậm, L) có trọng số theo vùng ổn, kéo
     #       mot_luot_phan phần lệch; loạt một mức (trung vị các tấm soát của loạt);
     #     - tổng so với số preset vẫn trong trần chuỗi (mot_luot_hsl_tran, hsl_da_lum_tran). ]]
-    -> {id(r): {khoá HSL: số mới}} cho mọi ảnh của loạt cần sửa."""
+    #[[ Cụm cùng khung (14/10): MỘT số TUYỆT ĐỐI cho mọi ảnh của cụm — kể cả ảnh không đo
+    #   (tat_ca: mọi ảnh một lượt) — tính từ ảnh soát (trước: mỗi ảnh "số hiện tại + Δ" kẹp
+    #   theo mốc RIÊNG từng ảnh và chỉ ảnh có đo -> 85 cụm 2709 lệch Hue / Sat sau lượt 2). ]]
+    -> {id(r): {khoá HSL: số mới}} cho mọi ảnh của cụm cần sửa."""
     import curve_da
     on_h = float(cfg.get("da_on_hue") or 3.0)
     on_c = float(cfg.get("da_on_chroma") or 0.10)
@@ -1115,12 +1121,14 @@ def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict) -> dict:
     KH, KS, KL = "HueAdjustmentOrange", "SaturationAdjustmentOrange", at.COT_HSL_L[0]
     W = np.diag([1.0 / on_h, 1.0 / math.log(1.0 + on_c), 1.0 / tol_L])
     out: dict = {}
-    for g in at.nhom_cum(list(ds), cfg):
+    co_do = {id(r) for r in ds}
+    for g in at.nhom_cum(list(tat_ca if tat_ca is not None else ds), cfg):
         ds_d = []
+        mau_r = None
         for r in g:
             l = ket.get(id(r))
             do = do_mau.get(id(r))
-            m = mo_hinh_cho(r)
+            m = mo_hinh_cho(r) if id(r) in co_do else None
             if not l or not l.get("ngoai_on") or not do or not hasattr(m, "ap"):
                 continue
             kieu = "mn" if ((r.get("du_doan_lr") or {}).get("kieu") == "mn" and do.get("da_mn") is not None) else "cu"
@@ -1159,27 +1167,28 @@ def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict) -> dict:
             except np.linalg.LinAlgError:
                 continue
             ds_d.append(D)
+            mau_r = mau_r or r
         if not ds_d:
             continue
         D = np.median(np.asarray(ds_d), axis=0)
-        for r in g:
-            if r.get("bw"):
+        #  số tuyệt đối tính MỘT lần từ ảnh soát (cụm đã cùng số hiệu lực sau lượt 1 — dong_bo_cum)
+        cu_m = cu_cua(mau_r)
+        s1 = thong_so_job(mau_r, cu_m)
+        goc = at._hsl_goc(mau_r)                                             # noqa: SLF001
+        lg = _lum_goc(mau_r, cu_m)
+        moi = {}
+        for k, d_, tran, g0 in ((KH, D[0], tran_h, goc.get(KH)), (KS, D[1], tran_s, goc.get(KS)),
+                                (KL, D[2], tran_L, lg)):
+            if g0 is None or abs(d_) < 0.5:
                 continue
-            cu_r = cu_cua(r)
-            s1 = thong_so_job(r, cu_r)
-            goc = at._hsl_goc(r)                                             # noqa: SLF001
-            lg = _lum_goc(r, cu_r)
-            moi = {}
-            for k, d_, tran, g0 in ((KH, D[0], tran_h, goc.get(KH)), (KS, D[1], tran_s, goc.get(KS)),
-                                    (KL, D[2], tran_L, lg)):
-                if g0 is None or abs(d_) < 0.5:
-                    continue
-                cur = _f(s1.get(k), g0)
-                v = float(np.clip(round(cur + d_), max(-100.0, g0 - tran), min(100.0, g0 + tran)))
-                if abs(v - cur) >= 1.0:
-                    moi[k] = v
-            if moi:
-                out[id(r)] = moi
+            cur = _f(s1.get(k), g0)
+            v = float(np.clip(round(cur + d_), max(-100.0, g0 - tran), min(100.0, g0 + tran)))
+            if abs(v - cur) >= 1.0:
+                moi[k] = v
+        if moi:
+            for r in g:
+                if not r.get("bw"):
+                    out[id(r)] = dict(moi)
     return out
 
 
