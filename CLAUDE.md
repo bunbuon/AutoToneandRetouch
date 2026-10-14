@@ -86,9 +86,18 @@ python3 test_mat_na_da.py      # mặt nạ da mặt: phân vùng / dự phòng,
 python3 test_curve_da.py       # curve da về đích + chặn trắng + nén cháy + gom loạt, đo LẠI ảnh sau (13/10)
 python3 test_curve_job.py      # curve qua mốc / bản xuất / job — chạy lại không cộng dồn (13/10)
 python3 kiem_curve_lua.py      # plugin: ô curve, so curve, xuất curve, job @curve, dựng lượt 2 (lupa; 13/10)
+python3 kiem_hoc_mau_lua.py    # plugin HocMauCore: biến thể, TRẢ LẠI, sổ khôi phục, nhường vòng lặp (lupa; 14/10)
 python3 test_cr3.py            # Canon CR3: EXIF CMT1/CMT2, ảnh nhúng, xoay, gom loạt (13/10; AUTOTONE_CR3=<file thật>)
 python3 test_dinh_dang_raw.py  # 8 đuôi CR2 CR3 CRW NEF NRW ARW SRF SR2: CRW (CIFF), ISO Nikon MakerNote, file hỏng (13/10; AUTOTONE_RAW_MAU=<thư mục>)
 python3 test_da_sang_tron.py   # đo vùng da sáng THEO MÁY: Canon không đo vùng sáng, chuyển dần (bảng tay); Sony / Nikon y hệt + SỐ CHUẨN (14/10)
+python3 test_do_song_song.py   # đo da nhiều tiến trình (BoDo): == tuần tự, pool hỏng / tiến trình chết -> tại chỗ (14/10)
+python3 test_mo_hinh_lr.py     # mô hình màu Lightroom trên "Lightroom giả" (mo_phong_lr): học lại đúng, kiểm định ĐẠT (14/10)
+python3 test_doc_cache_lr.py   # đọc thẳng cache preview / thông số Lightroom: WAL, digest, xoay, bảng Lua (14/10)
+python3 test_do_truoc.py       # đo da TRƯỚC khi áp: cache -> plugin, ảnh dọc chưa xoay, huỷ (14/10)
+python3 test_mau_mot_luot.py   # chuỗi MỘT LƯỢT đầu-cuối: dự đoán == ảnh dựng với thông số job, chạy lại không đổi (14/10)
+python3 test_hoc_mau_lr.py     # HOC_MAU_LR với plugin + Lightroom giả (~2 phút) (14/10)
+python3 test_kiem_mot_luot.py  # cổng KIEM_MOT_LUOT (14/10)
+python3 test_kiem_preview_lr.py  # KIEM_PREVIEW_LR với plugin giả (14/10)
 python3 kiem_ban_xuat.py       # app đọc lại bản xuất (cần tkinter)
 python3 kiem_xuat_lr.py        # khâu 5 — bắt đường dẫn Export
 python3 kiem_tim_tool.py       # tìm tool retouch
@@ -105,6 +114,7 @@ python3 kiem_gui_duyet.py      # khâu Duyệt nhanh & Lightroom
 python3 test_giao_dien_gon.py  # khung Evoto, nút Ghi, dải báo, một dòng, nhóm, thanh trượt, dấu ?
 python3 test_tin_dung_gui.py   # hộp "Key đang dùng trên máy khác", trừ credit khi Phân tích, hết credit (13/10)
 python3 test_curve_xu_ly.py    # bước Curve trong chuỗi Xử lý ảnh: plugin cũ, gửi / đo / job, Dừng (13/10)
+python3 test_mot_luot_ui.py    # Xử lý ảnh với chuỗi một lượt: đo trước, Dừng, chỉ soát sau khi áp, lượt 2 ảnh lệch (14/10)
 
 # cần lua5.1
 lua5.1 kiem_duyet.lua AutoTone.lrplugin
@@ -1218,6 +1228,52 @@ xám phẳng); (3) **mặc định TẮT**, bật sau khi xem PDF trước / sau
 - `curve_giong` (attach_catalog_settings so cho MỌI ảnh mỗi lần plan()) nhớ theo chữ ô
   (`_o_curve_giong`, lru_cache): 1.3 ms → 0.04 ms / ảnh — không nhớ thì buổi 1000 ảnh
   chậm thêm ~1.3 giây mỗi lần kéo thanh trượt.
+
+## Chuỗi màu da MỘT LƯỢT + học màu Lightroom + đọc thẳng cache preview (14/10) — `mau_mot_luot`, TẮT
+
+User 14/10: "xử lý 1000 ảnh … tốn 15 phút … Quy trình chỉnh Tone -> Color Mixer HSL -> Tone
+Curve -> WB -> CG"; chọn "Một lượt, dự đoán đã học" + "Ảnh RAW thật của bạn" + "Báo + tự
+chạy lượt 2 cho ảnh lệch". Kế hoạch: `~/.claude/plans/starry-dreaming-zebra.md`.
+
+**Vì sao chậm (plugin.log buổi 2709, 1.074 ảnh):** lượt 2 = Lightroom dựng preview 9 phút
+(0.50 s/ảnh, ảnh VỪA đổi thông số) + đo da MỘT LUỒNG ~0.5 s/ảnh bị Lightroom giành CPU → job
+curve sau 18 phút. Đã vá ngay (1a20f42): `curve_da.BoDo` nhiều tiến trình (513 → ~160 ms/ảnh),
+ảnh không crop bỏ dò YuNet (`mat_na(tim_lai="tu_dong")`, cần `r["cat_lr"]` từ cột Crop* mới
+của bản xuất), dòng Thời gian từng khâu trong tổng kết + trang_thai "xu_ly".
+
+**Đường mới (bật bằng `mau_mot_luot` / AUTOTONE_MOT_LUOT=1; KIEM_TOAN_BO mục 12):**
+1. `do_truoc.chay` (sau phân tích, trước áp): preview CÒN MỚI ≥1024 px đọc thẳng cache Lightroom
+   (`doc_cache_lr`), thiếu thì plugin `CFG_TRUOC` (truoc1); đo song song → `r["lr_truoc"]`
+   (+ "st" = thông số catalog đúng lúc preview dựng).
+2. `mau_mot_luot.chuoi` theo CẢNH (cảnh đa số ảnh mặt có số đo + mô hình ĐẠT): dự đoán bằng
+   `mo_hinh_lr.MoHinh.ap(px, cu, mới)` rồi quyết theo luật cũ — Tone → HSL Cam (hệ số của mô
+   hình tại hue da) → Curve (giai_da + ket_thuc, miền curve đã hiệu chỉnh, curve đi CÙNG job
+   chính qua `r["curve_ghi_mot_luot"]`) → WB chỉ vùng trắng (Jacobi từ mô hình) → CG.
+   `thong_so_job` = đúng ô job ghi (ô trống = Lightroom giữ số đang có) → `r["du_doan_lr"]`.
+3. Áp xong: không dựng lại cả buổi — `chon_soat` (một ảnh / loạt + ảnh lẻ + ngoại suy) đo
+   preview thật, `soat`: lệch dự đoán > 1.5° / 5% VÀ ngoài vùng ổn → cả loạt curve lượt 2 ghép
+   lên curve VỪA ÁP (cảnh lệch ≥ 30% → cả cảnh; trung vị buổi > 2° → tất cả + nhắc học lại).
+
+**Mô hình (`mo_hinh_lr`, học bằng HOC_MAU_LR.bat / plugin `HocMauCore` hocmau1):** 28 biến thể
+áp TẠM trên ~20 RAW có mặt rồi trả lại (sổ khôi phục + trả lại trước khi nhường vòng lặp, như
+XemPresetCore). Gỡ curve của ảnh → đường đáp ứng (kiểu "kenh" hoặc "rgb_tone" giữ sắc — Camera
+Raw dùng RefBaselineRGBTone; học từ Exposure ±0.7) → WB 3×3 theo Δmired/Δtint → Exposure → HL/SH
+→ curve → HSL (hue × chroma OkLab) → CG theo vùng L. Kiểm định để-lại-một-ảnh, ĐẠT khi hai tổ
+hợp lệch ≤ 1° / 4% / 0.015 L / 0.002 ab. Lưu `<dữ liệu>/mo_hinh_lr/<máy>__<profile>__<PV>.json`.
+Cổng buổi thật: KIEM_MOT_LUOT.bat (mục 11) — lệch trung vị ≤ 1.5° / 5% + ≥ 85% ảnh trong vùng ổn.
+
+**Cache preview Lightroom (LrC 15.5, đo 14/10):** xem bộ nhớ `doc-cache-preview-lr`. File
+`<uuid>-<digest>_<cạnh>` JPEG thô Adobe RGB chưa xoay, 13 ms/ảnh; còn mới khi digest
+previews.db == `Adobe_imageDevelopSettings.digest`; catalog có WAL → `immutable` KHÔNG thấy thay
+đổi mới → `doc_cache_lr.mo_catalog` chép .lrcat + -wal (0.85 s).
+
+**Bẫy đã gặp:** bộ giả lập `mo_phong_lr` từng để da cháy ~100% → số đo vô nghĩa (giờ da L ~0.75);
+đường đáp ứng phải học SAU khi gỡ curve của preset (mỗi ảnh một curve) và bỏ điểm chạm biên gam
+sRGB; `plan()` xoá `wb_bu` + decide tính lại temp_adj — bài kiểm gọi compute_values lại phải tự
+đặt lại temp_adj; hàm giả của bài kiểm chỉ có trong tiến trình chính → `T.cai_gia()` ép
+AUTOTONE_CURVE_THO=1; `chia_loat` cần fnumber / exposure_time / iso, loạt cách ≤ 60 s.
+**CHƯA chạy trên Lightroom thật** — bước tiếp: user chạy KIEM_PREVIEW_LR (mục 9), HOC_MAU_LR
+(mục 10), rồi mục 12 + 11 trên một buổi.
 
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
