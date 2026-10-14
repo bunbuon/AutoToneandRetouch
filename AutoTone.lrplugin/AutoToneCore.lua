@@ -699,13 +699,20 @@ local EXPORT_FIELDS = { "Exposure2012", "Highlights2012", "Shadows2012",
                         --[[ 13/10: curve diem cua preset — app ghep chinh sua da /
                              nen chay vao curve GOC nay (khong ghi de). Dat CUOI. ]]
                         "ToneCurveName2012", "ToneCurvePV2012", "ToneCurvePV2012Red",
-                        "ToneCurvePV2012Green", "ToneCurvePV2012Blue" }
+                        "ToneCurvePV2012Green", "ToneCurvePV2012Blue",
+                        --[[ 14/10: khung crop + hồ sơ màu + process version. App biết ảnh
+                             KHÔNG crop thì đo da trên preview Lightroom bằng khung mặt đã
+                             đo sẵn (bỏ dò mặt lại); hồ sơ / PV là khoá của mô hình màu
+                             Lightroom học trên RAW thật. Đặt CUỐI: app đọc theo tên cột. ]]
+                        "CropLeft", "CropTop", "CropRight", "CropBottom", "CropAngle",
+                        "CameraProfile", "ProcessVersion" }
 -- Rating KHONG phai develop setting nen phai lay rieng bang getRawMetadata,
 -- xem cho ghi tung dong ben duoi. Can de doi chieu voi nhan loc anh cua nguoi dung.
 M.EXPORT_FIELDS = EXPORT_FIELDS
 
 -- Truong la CHU chu khong phai so: "As Shot", "Custom", "Auto"...
-local EXPORT_TEXT = { WhiteBalance = true, ToneCurveName2012 = true }
+local EXPORT_TEXT = { WhiteBalance = true, ToneCurveName2012 = true,
+                      CameraProfile = true, ProcessVersion = true }
 
 local function numOrEmpty(v)
     if type(v) == "boolean" then

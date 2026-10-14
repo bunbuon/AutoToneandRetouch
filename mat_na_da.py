@@ -44,6 +44,8 @@ MAT_NHO_PARSE = 48
 MAT_NHO_DU_PHONG = 40
 DIEM_DA_TOI_THIEU = 400
 BONG = 250 / 255.0
+#: crop Lightroom coi là "không crop" khi lệch khung đầy đủ dưới mức này (toạ độ 0..1)
+SAI_CAT = 0.002
 
 _TB = np.float32([0.485, 0.456, 0.406]) * 255
 _DL = 1.0 / (np.float32([0.229, 0.224, 0.225]) * 255)
@@ -78,6 +80,17 @@ def tim_model() -> Path | None:
     return None
 
 
+def so_luong_ort() -> int:
+    """Số luồng ONNX Runtime của phiên phân vùng. 14/10: tiến trình đo song song
+    (curve_da.BoDo) đặt AUTOTONE_ORT_THREADS — N tiến trình × 4 luồng mỗi tiến trình
+    giành CPU với nhau và với Lightroom đang dựng preview."""
+    try:
+        n = int(os.environ.get("AUTOTONE_ORT_THREADS") or 0)
+    except ValueError:
+        n = 0
+    return n if n > 0 else max(1, min(4, (os.cpu_count() or 2) // 2))
+
+
 def _nap():
     """Nạp mô hình một lần. Trả (kieu, obj) hoặc None (lý do ở _LY_DO)."""
     global _PHIEN, _LY_DO, _DUONG
@@ -92,7 +105,7 @@ def _nap():
     try:
         import onnxruntime as ort
         so = ort.SessionOptions()
-        so.intra_op_num_threads = max(1, min(4, (os.cpu_count() or 2) // 2))
+        so.intra_op_num_threads = so_luong_ort()
         dung = nhan if nhan.is_file() else p
         _PHIEN = ("ort", ort.InferenceSession(str(dung), sess_options=so,
                                               providers=["CPUExecutionProvider"]))
@@ -204,6 +217,35 @@ def chon_mat(mats: list, r: dict | None, W: int, H: int) -> tuple[list, bool]:
     return [max(lon, key=lambda m: m[2] * m[3])], bool(boxes)
 
 
+def khong_cat(r: dict | None, W: int, H: int) -> bool:
+    """Ảnh dựng KHÔNG crop / xoay so với ảnh nhúng: Lightroom báo crop đồng nhất
+    (r["cat_lr"] = (trái, trên, phải, dưới, góc) — bản xuất thông số từ 14/10) VÀ cùng
+    tỉ lệ khung với ảnh nhúng (preview_wh). Thiếu cat_lr (plugin cũ) -> False: không
+    biết có crop cùng tỉ lệ hay không (khoá tỉ lệ là mặc định của công cụ Crop)."""
+    r = r or {}
+    c = r.get("cat_lr")
+    pw, ph = r.get("preview_wh") or (0, 0)
+    if not c or not pw or not ph or not W or not H:
+        return False
+    try:
+        L, T, R, B, goc = (float(v) for v in c)
+    except (TypeError, ValueError):
+        return False
+    e = SAI_CAT
+    if abs(L) > e or abs(T) > e or R < 1.0 - e or B < 1.0 - e or abs(goc) > 0.01:
+        return False
+    return abs((W / max(H, 1)) / (pw / ph) - 1.0) <= 0.02
+
+
+def khung_san(r: dict, W: int, H: int) -> list:
+    """Khung mặt tool đã đo (meter_boxes, toạ độ ảnh nhúng) quy THẲNG sang ảnh dựng —
+    không dò lại (chỉ dùng khi khong_cat). Không có mốc mắt / miệng."""
+    pw, ph = r["preview_wh"]
+    sx, sy = W / pw, H / ph
+    return [(float(b[0]) * sx, float(b[1]) * sy, float(b[2]) * sx, float(b[3]) * sy, 0.0, None)
+            for b in r.get("meter_boxes") or []]
+
+
 # ------------------------------------------------------------------- mặt nạ
 
 def _vung_cat(m, W, H):
@@ -240,20 +282,34 @@ def _du_phong(img, m) -> np.ndarray:
     return da
 
 
-def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True) -> dict:
+def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True,
+           tim_lai: str = "tu_dong") -> dict:
     """Mặt nạ da của CHỦ THỂ trên một ảnh dựng (RGB uint8).
+
+    tim_lai: "tu_dong" (14/10) — ảnh KHÔNG crop (khong_cat) và có mô hình phân vùng thì
+    dùng thẳng khung tool đã đo, bỏ YuNet (~65 ms / ảnh 2048 px); "luon" — luôn dò lại.
 
     -> {"da": (H, W) bool, "da_tho": mặt nạ TRƯỚC khi bỏ điểm bóng / tối (để biết da sáng
         tới đâu — da cháy hẳn thì "da" rỗng), "kieu": "parse" | "du_phong" | "tron" | None,
-        "mat": [khung (x, y, w, h)],
+        "mat": [khung (x, y, w, h)], "do_lai": đã dò mặt lại trên ảnh dựng,
         "crop": ảnh đã crop so với ảnh nhúng, "n": số điểm da, "ly_do": khi không có da}."""
     import cv2
     H, W = img_rgb.shape[:2]
-    mats, crop = chon_mat(tim_mat(img_rgb), r, W, H)
+    co_parse = dung_parse and bool(trang_thai()["co"])
+    #[[ 14/10: khung đo trên ảnh nhúng trùng chỗ trên ảnh dựng khi Lightroom không crop
+    #   (cat_lr đồng nhất + cùng tỉ lệ) — chon_mat cũng đã dùng khung cũ cho mặt YuNet
+    #   không dò ra. Ô phân vùng nới 45% mỗi phía nên lệch vài % (hiệu chỉnh ống kính)
+    #   vẫn trọn mặt. Không có mô hình phân vùng thì vẫn dò: mặt nạ dự phòng cần mốc
+    #   mắt / miệng của YuNet. ]]
+    do_lai = not (tim_lai == "tu_dong" and co_parse and (r or {}).get("meter_boxes")
+                  and khong_cat(r, W, H))
+    if do_lai:
+        mats, crop = chon_mat(tim_mat(img_rgb), r, W, H)
+    else:
+        mats, crop = khung_san(r, W, H), False
     da = np.zeros((H, W), bool)
     kieu_dung = None
     ly_do = "" if mats else "không thấy mặt"
-    co_parse = dung_parse and bool(trang_thai()["co"])
     for m in mats:
         fw = m[2]
         mk = None
@@ -290,5 +346,5 @@ def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True) -> dict:
     return {"da": da if n >= DIEM_DA_TOI_THIEU else np.zeros((H, W), bool),
             "da_tho": da_tho,
             "kieu": kieu_dung if n >= DIEM_DA_TOI_THIEU else None,
-            "mat": [tuple(float(v) for v in m[:4]) for m in mats],
+            "mat": [tuple(float(v) for v in m[:4]) for m in mats], "do_lai": do_lai,
             "crop": crop, "n": n if n >= DIEM_DA_TOI_THIEU else 0, "ly_do": ly_do}

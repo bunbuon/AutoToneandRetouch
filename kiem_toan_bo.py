@@ -65,7 +65,7 @@ NHOM = [
     ]),
     ("curve", "Curve da + nén vùng cháy (mới 13/10, mặc định TẮT)", [
         "test_curve_lr.py", "test_mat_na_da.py", "test_curve_da.py", "test_curve_job.py",
-        "test_curve_xu_ly.py", "kiem_curve_lua.py",
+        "test_curve_xu_ly.py", "kiem_curve_lua.py", "test_do_song_song.py",
     ]),
     ("lr", "Lightroom: plugin · job · catalog · preset · bản xuất", [
         "kiem_plugin_lua51.py", "kiem_xem_preset_lua.py", "kiem_retouch_khi_xuat_lua.py",

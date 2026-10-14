@@ -72,6 +72,43 @@ def _thoi_gian(giay: float) -> str:
     return f"{giay // 3600} giờ {giay % 3600 // 60:02d} phút"
 
 
+def _moc(xl: dict, ten: str) -> None:
+    """Mốc thời gian (lần đầu) của một khâu trong lượt Xử lý ảnh — cả luồng nền ghi."""
+    xl.setdefault("moc", {}).setdefault(ten, time.monotonic())
+
+
+#: khâu -> (mốc đầu, mốc cuối) — 14/10: user "xử lý 1000 ảnh … tốn 15 phút": biết từng
+#: khâu bao lâu thì mới biết sửa chỗ nào (ghi trang_thai "xu_ly" + dòng Thời gian)
+KHAU_XL = (("do", "t0", "phan_tich"), ("tinh", "phan_tich", "gui"), ("ap", "gui", "ap"),
+           ("l2_lr", "l2_gui", "l2_lr_xong"), ("l2_do", "l2_gui", "l2_do_xong"),
+           ("l2_giai", "l2_do_xong", "l2_giai_xong"), ("l2_ap", "l2_giai_xong", "l2_ap"),
+           ("hoan_thien", "ap", "l2_ap"), ("denoise", "denoise_gui", "denoise_xong"),
+           ("tong", "t0", "het"))
+
+
+def thoi_gian_khau(xl: dict) -> dict:
+    """{khâu: giây} cho các khâu có đủ hai mốc."""
+    moc = dict(xl.get("moc") or {}, t0=xl.get("t0"))
+    if "l2_ap" not in moc and "l2_giai_xong" in moc:
+        moc["l2_ap"] = moc.get("het")            # không có job curve: hoàn thiện tới lúc xong
+    out = {}
+    for ten, a, b in KHAU_XL:
+        if moc.get(a) is not None and moc.get(b) is not None:
+            out[ten] = round(max(0.0, moc[b] - moc[a]), 1)
+    return out
+
+
+def cau_thoi_gian(kh: dict) -> str:
+    """"đo ảnh 1:05 · Lightroom áp 0:19 · hoàn thiện màu da 9:30 · Denoise 0:40"."""
+    def mm(g):
+        g = int(round(g))
+        return f"{g // 60}:{g % 60:02d}"
+    cau = [f"{chu} {mm(kh[k])}" for k, chu in (("do", "đo ảnh"), ("ap", "Lightroom áp"),
+                                              ("hoan_thien", "hoàn thiện màu da"),
+                                              ("denoise", "Denoise")) if k in kh]
+    return " · ".join(cau)
+
+
 class HopXuLy(tk.Toplevel):
     """Cửa sổ tiến trình của MỘT lượt Xử lý ảnh."""
 
@@ -432,6 +469,7 @@ class XuLyAnhMixin:
         hop.buoc("do", "xong", f"{gd.so_vn(len(items))} ảnh"
                  + (f" · {gd.so_vn(len(self._do_hong))} ảnh không đo được"
                     if getattr(self, "_do_hong", None) else ""))
+        _moc(xl, "phan_tich")
         xl["pha"] = "ap"
         hop.buoc("ap", "dang", "đang gửi…")
         self.after(60, lambda: self.do_apply(hoi=False, tu_dong=True))
@@ -454,6 +492,7 @@ class XuLyAnhMixin:
         xl["so_gui"] = so_gui
         if job:
             xl["job"] = job
+            _moc(xl, "gui")
             hop.buoc("ap", "dang", f"đã gửi {gd.so_vn(so_gui)} ảnh — chờ Lightroom nhận…")
             hop.tien_do(0, max(1, so_gui), "Chờ Lightroom nhận…")
             return
@@ -484,6 +523,7 @@ class XuLyAnhMixin:
             hop.buoc("ap", "loi", "đã huỷ gửi")
             self._xl_ket_thuc("dung", "Đã huỷ gửi — Lightroom chưa nhận gì.")
         elif st in ("xong", "mat"):
+            _moc(xl, "ap")
             bad = at.job_unverified(job) if st == "xong" else []
             xl["chua_nhan"] = len(bad or [])
             ket = ("xong" if not bad else "loi",
@@ -533,6 +573,7 @@ class XuLyAnhMixin:
             xl["curve_kq"] = {"bo": "loi", "ly_do": str(ex)}
             self._xl_denoise()
             return
+        _moc(xl, "l2_gui")
         xl.update(pha="curve", curve_ma=ma, curve_ds=ds, curve_dest=dest, curve_do={},
                   curve_goc=root,
                   curve_cfg=cfg, curve_ten=Path(str(root)).name, t_curve=time.monotonic(),
@@ -573,7 +614,10 @@ class XuLyAnhMixin:
     @staticmethod
     def _xl_curve_luong(xl):
         """LUỒNG NỀN — không gọi Tk: đo từng ảnh Lightroom vừa dựng (lô nào xong đo lô
-        đó), rồi giải + gom loạt + ghi job curve."""
+        đó), rồi giải + gom loạt + ghi job curve.
+
+        #[[ 14/10: đo SONG SONG (curve_da.BoDo, nhiều tiến trình) — một luồng thì lượt 2
+        #   buổi 2709 mất 18 phút trong khi Lightroom trả preview xong sau 9 phút. ]]"""
         import curve_da
         ds, cfg, ma = xl["curve_ds"], xl["curve_cfg"], xl["curve_ma"]
         tuoi = None                          # None: chưa soát / không cần; True / False
@@ -583,7 +627,10 @@ class XuLyAnhMixin:
             theo.setdefault(at.khoa_duong_dan(r["path"]), r)
         da = set()
         td: dict = {}
+        bo = None
         try:
+            bo = curve_da.BoDo(cfg)
+            xl["curve_tho"] = bo.n
             while not xl.get("curve_huy"):
                 td = curve_da.tien_do()
                 bang = curve_da.bang_anh() if td.get("ma") == ma else []
@@ -614,11 +661,14 @@ class XuLyAnhMixin:
                         curve_da.yeu_cau_dung(xl["curve_goc"], ds, xl["curve_dest"], ma,
                                               nguon="export")
                         da.clear()
+                        bo.bo()
                         xl["curve_do"].clear()
                         continue
                 if td.get("cach") == "preview" and not tuoi:
                     time.sleep(0.5)
                     continue
+                if bang:
+                    _moc(xl, "l2_lr_dau")
                 moi = [(p, j) for p, j in bang if p not in da]
                 for p, j in moi:
                     if xl.get("curve_huy"):
@@ -627,24 +677,28 @@ class XuLyAnhMixin:
                     r = theo.get(at.khoa_duong_dan(p))
                     if r is None:
                         continue
-                    try:
-                        xl["curve_do"][id(r)] = curve_da.do_anh(r, j, cfg)
-                    except Exception as ex:                       # noqa: BLE001
-                        xl["curve_do"][id(r)] = {"ok": False, "ly_do": str(ex)}
-                if (td.get("ma") == ma and td.get("trang_thai") in ("xong", "dung", "loi")
-                        and all(p in da for p, _j in curve_da.bang_anh())):
-                    break
-                time.sleep(0.5)
+                    bo.gui(id(r), r, j)
+                for k, kq in bo.lay():
+                    xl["curve_do"][k] = kq
+                if td.get("ma") == ma and td.get("trang_thai") in ("xong", "dung", "loi"):
+                    _moc(xl, "l2_lr_xong")
+                    if bo.con() == 0 and all(p in da for p, _j in curve_da.bang_anh()):
+                        break
+                time.sleep(0.2 if bo.con() else 0.5)
+            _moc(xl, "l2_do_xong")
             if not xl.get("curve_huy"):
                 do_map = {k: v for k, v in xl["curve_do"].items()}
                 xl["curve_tt"] = curve_da.ket_thuc(ds, do_map, cfg)
                 xl["curve_job"] = curve_da.ghi_job(ds, xl["curve_ten"])
+                _moc(xl, "l2_giai_xong")
                 if curve_da.giu_anh(cfg):                       # chạy cổng: giữ để so
                     curve_da.luu_ket_qua(xl["curve_dest"], ds, do_map, curve_da.bang_anh(),
                                          xl["curve_job"])
         except Exception as ex:                                   # noqa: BLE001
             xl["curve_loi"] = str(ex)
         finally:
+            if bo is not None:
+                bo.dong(huy=bool(xl.get("curve_huy")))
             xl["curve_td"] = td
             if not curve_da.giu_anh(cfg):
                 shutil.rmtree(xl["curve_dest"], ignore_errors=True)
@@ -660,6 +714,7 @@ class XuLyAnhMixin:
         if xl["pha"] == "curve_ap":
             st = at.job_state(xl["curve_job"])
             if st in ("xong", "mat"):
+                _moc(xl, "l2_ap")
                 bad = at.job_unverified(xl["curve_job"]) if st == "xong" else []
                 tt = xl.get("curve_tt") or {}
                 xl["curve_kq"] = dict(tt, chua_nhan=len(bad or []))
@@ -772,6 +827,7 @@ class XuLyAnhMixin:
             self._xl_ket_thuc("loi", f"Không gửi được yêu cầu Denoise: {ex}")
             return
         xl.update(pha="denoise", denoise_ma=ma, t_denoise=time.monotonic())
+        _moc(xl, "denoise_gui")
         hop.buoc("denoise", "dang", f"{gd.so_vn(len(ds))} ảnh ISO ≥ "
                                     f"{int(cfg.get('denoise_iso') or 2000)} — chờ Lightroom nhận…")
         hop.tien_do(0, len(ds), "Chờ Lightroom nhận…")
@@ -791,6 +847,7 @@ class XuLyAnhMixin:
                 except ValueError:
                     return 0
             xl["denoise_kq"] = kq
+            _moc(xl, "denoise_xong")
             if kq.get("ly_do") == "lightroom-chua-ho-tro":
                 hop.buoc("denoise", "loi", "Lightroom này chưa hỗ trợ (cần 14.4+)")
             else:
@@ -938,6 +995,21 @@ class XuLyAnhMixin:
         self.after(1500, self._xem_lr_soi)
 
     # ------------------------------------------------------------ kết thúc
+    def _xl_ghi_thoi_gian(self, xl, kieu: str, kh: dict) -> None:
+        """Thời gian từng khâu -> trang_thai (khâu "xu_ly") — so buổi này với buổi trước."""
+        try:
+            import trang_thai as tt
+            root = self.folder()
+            if not root or not kh.get("tong"):
+                return
+            tt.ghi_khau(tt.ten_buoi(root), "xu_ly", kh["tong"], ket=kieu,
+                        so_anh=len(xl.get("items_ghi") or []),
+                        so_hoan_thien=len(xl.get("curve_ds") or []),
+                        tho=xl.get("curve_tho"), cach=xl.get("curve_cach") or xl.get("curve_nguon"),
+                        chi_tiet=kh)
+        except Exception:                                    # noqa: BLE001
+            pass                                             # đo giờ không đáng để hỏng lượt
+
     def _xl_ket_thuc(self, kieu: str, ly_do: str = ""):
         """kieu: xong / dung / loi -> hộp tổng kết."""
         xl = getattr(self, "_xl", None)
@@ -946,7 +1018,10 @@ class XuLyAnhMixin:
         self._xl_chot_ap()                  # dừng giữa lượt 2: bước Áp (lượt 1) vẫn đã xong
         xl["xong"] = True
         hop = xl.get("hop")
+        _moc(xl, "het")
         giay = time.monotonic() - xl["t0"]
+        kh = thoi_gian_khau(xl)
+        self._xl_ghi_thoi_gian(xl, kieu, kh)
         dong = []
         if kieu == "xong":
             items = xl.get("items_ghi") or []
@@ -995,7 +1070,8 @@ class XuLyAnhMixin:
         else:
             tieu_de = "Chưa xử lý xong"
             dong.append(ly_do or "Có lỗi — xem dòng trạng thái.")
-        dong.append(f"\nThời gian: {_thoi_gian(giay)}")
+        dong.append(f"\nThời gian: {_thoi_gian(giay)}"
+                    + (f" ({cau_thoi_gian(kh)})" if kieu == "xong" and cau_thoi_gian(kh) else ""))
         if hop is not None:
             hop.ket_thuc(tieu_de, dong, loi=(kieu == "loi"))
         try:

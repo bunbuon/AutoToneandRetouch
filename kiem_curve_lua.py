@@ -163,9 +163,17 @@ ef = list(Core.EXPORT_FIELDS.values())
 CU = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature", "Tint", "AsShotTemperature",
       "AsShotTint", "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012", "ConvertToGrayscale"]
 ktra("EXPORT_FIELDS: cột cũ giữ nguyên vị trí", ef[:len(CU)] == CU, str(ef[:len(CU)]))
-ktra("EXPORT_FIELDS: năm cột curve ở CUỐI", ef[-5:] == ["ToneCurveName2012", "ToneCurvePV2012",
-                                                         "ToneCurvePV2012Red", "ToneCurvePV2012Green",
-                                                         "ToneCurvePV2012Blue"], str(ef[-5:]))
+#  14/10: crop + hồ sơ màu + PV thêm vào CUỐI, sau năm cột curve (13/10)
+MOI_1410 = ["CropLeft", "CropTop", "CropRight", "CropBottom", "CropAngle", "CameraProfile",
+            "ProcessVersion"]
+ktra("EXPORT_FIELDS: năm cột curve ngay trước các cột 14/10",
+     ef[-12:-7] == ["ToneCurveName2012", "ToneCurvePV2012", "ToneCurvePV2012Red",
+                    "ToneCurvePV2012Green", "ToneCurvePV2012Blue"], str(ef[-12:-7]))
+ktra("EXPORT_FIELDS: crop / CameraProfile / ProcessVersion ở CUỐI", ef[-7:] == MOI_1410,
+     str(ef[-7:]))
+ktra("exportCell CameraProfile: chữ (tab -> dấu cách)",
+     Core.exportCell("CameraProfile", "Adobe\tStandard") == "Adobe Standard")
+ktra("exportCell CropLeft: số", Core.exportCell("CropLeft", 0.125) == "0.125")
 import autotone as at  # noqa: E402
 ktra("EXPORT_FIELDS (Lua) chứa đủ COT_CURVE của app", all(k in ef for k in at.COT_CURVE))
 

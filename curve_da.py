@@ -54,9 +54,14 @@ import autotone as at
 import curve_lr as cl
 import mat_na_da as mn
 
-#: tối đa số điểm ảnh giữ lại cho mỗi tập (da, trung tính, mẫu khung)
+#: tối đa số điểm ảnh giữ lại cho mỗi tập (da, trung tính, mẫu khung). 14/10: khung
+#: 60k -> 20k (chỉ để đếm % cháy sau curve, ±0.1%) — kết quả đo cả buổi giữ trong RAM
+#: tới lúc giải: 1.074 ảnh × 60k điểm float64 là ~1.4 GB riêng tập khung.
 TOI_DA_DIEM = 20_000
-TOI_DA_KHUNG = 60_000
+TOI_DA_KHUNG = 20_000
+#: ảnh dựng lớn hơn cạnh này thì thu nhỏ trước khi đo (14/10: Lightroom trả preview
+#: 2048 px dù xin 1600 — mức preview gần nhất nó có; YuNet + lấy mẫu chậm theo diện tích)
+CANH_DO = 1600
 BO_TRUNG_TINH = (0.30, 0.96, 0.025)     # L thấp, L cao, chroma tối đa
 CHAM_TRANG = 0.25                       # trọng số dải ≥ này = điểm trung tính "bị chạm"
 NGUONG_CHAY = 250
@@ -167,12 +172,16 @@ def do_anh(r: dict | None, anh, cfg: dict) -> dict:
         img = doc_srgb(anh)
     except (OSError, ValueError) as e:
         return {"ok": False, "ly_do": f"không đọc được ảnh dựng ({e})"}
+    if max(img.shape[:2]) > CANH_DO:
+        k = CANH_DO / max(img.shape[:2])
+        img = cv2.resize(img, (max(1, round(img.shape[1] * k)), max(1, round(img.shape[0] * k))),
+                         interpolation=cv2.INTER_AREA)
     H, W = img.shape[:2]
     arr = img.astype(np.float32) / 255.0
     #  mặt nạ da cần cho CẢ hai việc: curve da (đo da) và nén cháy (knee trên mức da)
     m = mn.mat_na(img, r)
     out = {"ok": True, "wh": (W, H), "mien": mien, "mat_na": m["kieu"], "n_da": m["n"],
-           "mat": m["mat"], "crop": m["crop"], "ly_do": m["ly_do"]}
+           "mat": m["mat"], "crop": m["crop"], "do_lai": m.get("do_lai"), "ly_do": m["ly_do"]}
     if m["n"]:
         out["da_mn"] = cl.srgb_sang_mien(_mau(arr[m["da"]], TOI_DA_DIEM), mien)
     cu = [at.chon_da_hop(arr, b) for b in m["mat"]]
@@ -228,6 +237,162 @@ def da_mau_mn(anh, r: dict | None) -> np.ndarray | None:
         return None
     px = img[m["da"]].astype(np.float32) / 255.0
     return at.srgb_to_linear(_mau(px, TOI_DA_DIEM)).mean(axis=0)
+
+
+# ------------------------------------------------------------------- đo song song
+
+#[[ 14/10 (user: "xử lý 1000 ảnh theo cách hiện tại thì thời gian phải tốn 15 phút"):
+#   lượt 2 buổi 2709 (1.074 ảnh) — Lightroom trả preview xong sau 9 phút (0.50 s/ảnh)
+#   mà job curve 18 phút mới ghi: đo MỘT LUỒNG ~0.5 s/ảnh (đo riêng: YuNet 65 ms, phân
+#   vùng 144 ms/mặt × 1.8 mặt, còn lại lấy mẫu / OkLab) và bị Lightroom giành CPU.
+#   Nhiều tiến trình, mỗi tiến trình ít luồng ORT -> đo không còn là khâu chậm nhất.
+#   Tiến trình con chỉ nhận vài khoá của r (KHOA_R_DO) + đường dẫn ảnh; trả mảng float32
+#   (nửa RAM, nửa lượng chép qua ống). ]]
+KHOA_R_DO = ("meter_boxes", "preview_wh", "cat_lr")
+
+
+def r_gon(r: dict | None) -> dict | None:
+    return {k: r[k] for k in KHOA_R_DO if k in r} if r else None
+
+
+def _gon(out: dict) -> dict:
+    return {k: (v.astype(np.float32) if isinstance(v, np.ndarray) and v.dtype == np.float64
+                else v) for k, v in out.items()}
+
+
+_GIOI_HAN = None
+
+
+def _tho_khoi_tao(luong: int) -> None:
+    """Khởi tạo tiến trình đo: số luồng ORT, nạp mô hình phân vùng MỘT lần.
+
+    #[[ 14/10 đo trên preview buổi 2709: 8 tiến trình chỉ được 144 ms/ảnh (mỗi tiến
+    #   trình ~1.1 s/ảnh, một mình 0.33 s) — OpenBLAS (phép nhân ma trận OkLab trên
+    #   240k điểm) và OpenCV (resize / morphology) trong MỖI tiến trình mở số luồng bằng
+    #   số nhân máy, cả bầy giành nhau. Mỗi tiến trình con một luồng cho hai thư viện đó. ]]"""
+    global _GIOI_HAN
+    os.environ["AUTOTONE_ORT_THREADS"] = str(int(luong))
+    try:
+        import cv2
+        cv2.setNumThreads(1)
+    except Exception:                                        # noqa: BLE001
+        pass
+    try:
+        from threadpoolctl import threadpool_limits
+        _GIOI_HAN = threadpool_limits(limits=1)
+    except Exception:                                        # noqa: BLE001
+        pass
+    try:
+        mn.trang_thai()
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
+def _tho_do(viec) -> dict:
+    r, anh, cfg = viec
+    try:
+        return _gon(do_anh(r, anh, cfg))
+    except Exception as e:                                   # noqa: BLE001
+        return {"ok": False, "ly_do": f"{type(e).__name__}: {e}"}
+
+
+def so_tho() -> tuple[int, int]:
+    """(số tiến trình đo, số luồng ORT mỗi tiến trình). Chừa phần lớn CPU cho Lightroom
+    (đang dựng preview cùng lúc). AUTOTONE_CURVE_THO=n để ép."""
+    cpu = os.cpu_count() or 4
+    try:
+        n = int(os.environ.get("AUTOTONE_CURVE_THO") or 0)
+    except ValueError:
+        n = 0
+    if n <= 0:
+        n = max(1, min(4, cpu // 6))
+        #  RAM: mỗi tiến trình ~400 MB (mô hình + ảnh 1600 px + mảng trung gian)
+        n = at.safe_jobs(n)
+    return n, max(1, min(2, cpu // (4 * n)))
+
+
+class BoDo:
+    """Đo nhiều ảnh dựng song song. gui(khoá, r, ảnh) -> lay() trả [(khoá, kết quả)] đã
+    xong; con() = số đang chờ; bo() bỏ mọi việc chưa xong; dong(). Một tiến trình (máy
+    yếu / không mở được tiến trình con / tiến trình con chết) -> đo ngay trong luồng gọi."""
+
+    def __init__(self, cfg: dict, n: int | None = None):
+        self.cfg = {"curve_mien": cfg.get("curve_mien") or at.DEFAULTS["curve_mien"]}
+        n, luong = so_tho() if n is None else (int(n), 1)
+        self.ex = None
+        if n > 1:
+            try:
+                from concurrent.futures import ProcessPoolExecutor
+                self.ex = ProcessPoolExecutor(max_workers=n, initializer=_tho_khoi_tao,
+                                              initargs=(luong,))
+            except Exception:                                # noqa: BLE001
+                self.ex = None
+        self.n = n if self.ex is not None else 1
+        self.cho: dict = {}
+        self.xong: list = []
+
+    def _tai_cho(self, k, r, anh):
+        self.xong.append((k, _tho_do((r, anh, self.cfg))))
+
+    def gui(self, k, r, anh) -> None:
+        if self.ex is not None:
+            try:
+                self.cho[k] = (self.ex.submit(_tho_do, (r_gon(r), str(anh), self.cfg)), r, anh)
+                return
+            except Exception:                                # noqa: BLE001
+                self._tat()
+        self._tai_cho(k, r, anh)
+
+    def lay(self) -> list:
+        out = []
+        for k, (f, r, anh) in list(self.cho.items()):
+            if k not in self.cho or not f.done():       # _tat() đã chuyển hết sang tại chỗ
+                continue
+            del self.cho[k]
+            try:
+                out.append((k, f.result()))
+            except Exception:                                # noqa: BLE001
+                #  tiến trình con chết (hết RAM...) -> đo lại tấm này tại chỗ
+                self._tat()
+                out.append((k, _tho_do((r, anh, self.cfg))))
+        out, self.xong = self.xong + out, []
+        return out
+
+    def con(self) -> int:
+        return len(self.cho)
+
+    def bo(self) -> None:
+        for f, _r, _a in self.cho.values():
+            f.cancel()
+        self.cho.clear()
+        self.xong.clear()
+
+    def _tat(self) -> None:
+        """Bỏ pool hỏng: việc đang chờ chuyển sang đo tại chỗ ở lần lay() sau."""
+        ex, self.ex = self.ex, None
+        cho, self.cho = self.cho, {}
+        if ex is not None:
+            try:
+                ex.shutdown(wait=False, cancel_futures=True)
+            except Exception:                                # noqa: BLE001
+                pass
+        for k, (f, r, anh) in cho.items():
+            try:
+                if f.done() and not f.cancelled() and f.exception() is None:
+                    self.xong.append((k, f.result()))
+                    continue
+            except Exception:                                # noqa: BLE001
+                pass
+            self._tai_cho(k, r, anh)
+        self.n = 1
+
+    def dong(self, huy: bool = False) -> None:
+        ex, self.ex = self.ex, None
+        if ex is not None:
+            try:
+                ex.shutdown(wait=not huy, cancel_futures=huy)
+            except Exception:                                # noqa: BLE001
+                pass
 
 
 # ------------------------------------------------------------------- giải

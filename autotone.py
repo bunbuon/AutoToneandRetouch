@@ -9537,6 +9537,21 @@ def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
     return n
 
 
+#: 14/10: khung crop của ảnh trong Lightroom (bản xuất từ plugin 14/10)
+COT_CAT = ("CropLeft", "CropTop", "CropRight", "CropBottom", "CropAngle")
+
+
+def cat_lr_cua(cur: dict | None) -> tuple | None:
+    """(trái, trên, phải, dưới, góc) crop Lightroom từ một dòng bản xuất; None khi bản
+    xuất không có cột crop (plugin cũ) / ô trống — lúc đó KHÔNG được coi là không crop."""
+    if not cur:
+        return None
+    try:
+        return tuple(float(cur[k]) for k in COT_CAT)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
                             persist: bool = True, bo_moc: bool = False) -> tuple[int, int]:
     """Gắn thông số catalog vào items. Trả về (số ảnh khớp, số ảnh không có trong export).
@@ -9562,6 +9577,11 @@ def attach_catalog_settings(items: list, export: dict[str, dict], folder: Path,
                  if isinstance(old, dict) and key in da_curve and co_cot_curve(old) else {})
         r["ngoai_xuat"] = False
         r.pop("moc_moi", None)
+        #[[ 14/10: thông số catalog HIỆN TẠI (preview Lightroom hiện đúng cái này — r["crs"]
+        #   là MỐC) + khung crop: đo da trên preview Lightroom (curve_da / mat_na_da) và
+        #   dự đoán màu từ trạng thái đang thấy. ]]
+        r["crs_hien"] = dict(cur) if cur else None
+        r["cat_lr"] = cat_lr_cua(cur)
         if bo_moc and cur:
             old = None                      # moc cu het dung: lay catalog hien tai
             r["moc_moi"] = True

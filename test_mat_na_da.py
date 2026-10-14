@@ -152,9 +152,53 @@ def muc8():
         ktra("ảnh thật: giữa miệng KHÔNG trong mặt nạ", not m["da"][int(mieng[1]), int(mieng[0])])
 
 
+def muc9():
+    """9. (14/10) không crop -> dùng khung tool đã đo, KHÔNG dò mặt lại"""
+    gia()
+    goi = []
+    that = mn.tim_mat
+    mn.tim_mat = lambda img: (goi.append(1), that(img))[1]
+    W, H = T.W, T.H
+    r = T.anh()
+    ktra("thiếu cat_lr (plugin cũ) -> chưa biết có crop không", not mn.khong_cat(r, W, H))
+    r_kc = dict(r, cat_lr=(0.0, 0.0, 1.0, 1.0, 0.0))
+    ktra("crop đồng nhất + cùng tỉ lệ -> không crop", mn.khong_cat(r_kc, W, H))
+    ktra("crop cùng tỉ lệ (trái 0.1) -> CÓ crop",
+         not mn.khong_cat(dict(r, cat_lr=(0.1, 0.0, 1.0, 0.9, 0.0)), W, H))
+    ktra("xoay 2° -> CÓ crop", not mn.khong_cat(dict(r, cat_lr=(0.0, 0.0, 1.0, 1.0, 2.0)), W, H))
+    ktra("crop đồng nhất mà khác tỉ lệ ảnh nhúng -> không tin",
+         not mn.khong_cat(dict(r_kc, preview_wh=(W, H * 2)), W, H))
+    a = anh_u8()
+    m_cu = mn.mat_na(a, r)
+    n_cu = len(goi)
+    m_moi = mn.mat_na(a, r_kc)
+    ktra("không crop: KHÔNG gọi YuNet, do_lai = False", len(goi) == n_cu and m_moi["do_lai"] is False,
+         f"gọi {len(goi) - n_cu} lần")
+    ktra("không crop: mặt = khung tool đã đo", m_moi["mat"] == [tuple(float(v) for v in T.MAT)],
+         str(m_moi["mat"]))
+    ktra("mặt nạ khung sẵn == mặt nạ dò lại (khung trùng nhau)",
+         m_cu["do_lai"] is True and np.array_equal(m_cu["da"], m_moi["da"]) and m_moi["n"] > 400,
+         f"{m_cu['n']} / {m_moi['n']}")
+    ktra("tim_lai='luon' -> vẫn dò lại", mn.mat_na(a, r_kc, tim_lai="luon")["do_lai"] is True)
+    gia(parse=False)
+    m_dp = mn.mat_na(anh_u8(mat_mau_da=True), r_kc)
+    ktra("không có mô hình phân vùng -> vẫn dò (dự phòng cần mốc mắt / miệng)",
+         m_dp["do_lai"] is True and m_dp["kieu"] == "du_phong")
+    mn.tim_mat = that
+    cu = os.environ.get("AUTOTONE_ORT_THREADS")
+    os.environ["AUTOTONE_ORT_THREADS"] = "1"
+    ktra("AUTOTONE_ORT_THREADS=1 -> một luồng ORT", mn.so_luong_ort() == 1)
+    os.environ["AUTOTONE_ORT_THREADS"] = "x"
+    ktra("AUTOTONE_ORT_THREADS hỏng -> mặc định (1..4)", 1 <= mn.so_luong_ort() <= 4)
+    if cu is None:
+        os.environ.pop("AUTOTONE_ORT_THREADS", None)
+    else:
+        os.environ["AUTOTONE_ORT_THREADS"] = cu
+
+
 def main():
     m = None
-    for f in (muc1, muc2, muc3, muc4, muc5, muc6, muc7, muc8):
+    for f in (muc1, muc2, muc3, muc4, muc5, muc6, muc7, muc9, muc8):
         print(f.__doc__.splitlines()[0])
         try:
             if f is muc1:

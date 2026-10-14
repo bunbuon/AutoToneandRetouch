@@ -110,8 +110,11 @@ def main() -> int:
             return ds
 
         def mo_luot(items):
-            app._xl = {"t0": time.monotonic(), "pha": "ap", "hop": None, "xong": False,
-                       "items_ghi": items, "so_gui": len(items), "job": jobs / "apply_x_Buoi.tsv"}
+            t = time.monotonic()
+            #  mốc của hai khâu bài này bỏ qua (đo, gửi job) — thời gian từng khâu (14/10)
+            app._xl = {"t0": t - 2.0, "pha": "ap", "hop": None, "xong": False,
+                       "items_ghi": items, "so_gui": len(items), "job": jobs / "apply_x_Buoi.tsv",
+                       "moc": {"phan_tich": t - 1.0, "gui": t - 0.5}}
             app._xl_bat_dau(0, len(items), len(items))
             return app._xl["hop"]
 
@@ -184,6 +187,15 @@ def main() -> int:
              "Curve" not in tong and "chỉnh da 1 ảnh, nén cháy 1 ảnh"
              in app._xl_tong_ket_curve_chi_tiet(app._xl.get("curve_kq") or {}),
              tong.replace("\n", " | ")[:220])
+        #  14/10: thời gian từng khâu — dòng Thời gian + trang_thai "xu_ly"
+        import trang_thai as tt_mod
+        kh = (tt_mod.doc(tt_mod.ten_buoi(buoi)).get("khau") or {}).get("xu_ly") or {}
+        ct = kh.get("chi_tiet") or {}
+        ktra("thời gian từng khâu ghi vào trang_thai (đo / áp / hoàn thiện / tổng)",
+             all(k in ct for k in ("do", "ap", "hoan_thien", "l2_do", "tong")) and kh.get("ket") == "xong",
+             str(kh)[:200])
+        ktra("…dòng Thời gian nói từng khâu", "hoàn thiện màu da" in tong and "Lightroom áp" in tong,
+             tong.split("Thời gian:")[-1][:120])
         hop.destroy()
         # ------------------------------------------------------------ 4. chi tiết
         cb = app._curve_bao.get(at.khoa_duong_dan(items[0]["path"]))

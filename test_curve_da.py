@@ -32,6 +32,7 @@ Chạy:  python test_curve_da.py
 from __future__ import annotations
 
 import math
+import os
 import shutil
 import sys
 import tempfile
@@ -153,6 +154,9 @@ def cai_gia():
     mn.tim_mat = gia_mat
     mn.nhan_vung = gia_phan_vung
     mn.trang_thai = lambda: {"co": True, "kieu": "gia", "duong": "", "ly_do": ""}
+    #  14/10: hàm giả chỉ có trong tiến trình này — đo song song (curve_da.BoDo, tiến
+    #  trình con) sẽ chạy mô hình THẬT. Bài kiểm dùng hàm giả thì đo tại chỗ.
+    os.environ["AUTOTONE_CURVE_THO"] = "1"
 
 
 def luu(arr, ten):
