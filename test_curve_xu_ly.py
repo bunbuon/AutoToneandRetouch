@@ -21,6 +21,8 @@ Chạy:  xvfb-run -a python3.12 test_curve_xu_ly.py
 from __future__ import annotations
 
 import os
+
+import numpy as np
 import shutil
 import sys
 import tempfile
@@ -197,6 +199,65 @@ def main() -> int:
              and cho(lambda: app._xl.get("xong"), 5) and hop.lbl_tieu_de.cget("text") == "Đã dừng")
         hop.destroy()
         ktra("BUOC không còn bước Curve riêng", "curve" not in dict(xl_ui.BUOC))
+        # ------------------------------------------------------------ 6. preview (14/10)
+        #  user: "Tại sao k chỉ load lại Preview của Lightroom rồi can thiệp" -> lượt 2 xin
+        #  PREVIEW; vài ảnh xuất thật để soát preview còn tươi.
+        from PIL import Image
+
+        def chay_preview(toi: float):
+            hop_ = mo_luot(lam_items())
+            app._xl_job(app._xl["job"], "mat")
+            yc_ = (jobs / cd.TEN_YEU_CAU).read_text(encoding="utf-8").splitlines()
+            ma_ = next(d.split("=", 1)[1] for d in yc_ if d.startswith("ma="))
+            dest_ = Path(next(d.split("=", 1)[1] for d in yc_ if d.startswith("dest=")))
+            kiem_ = [d.split("=", 1)[1] for d in yc_ if d.startswith("kiem_anh=")]
+            (jobs / cd.TEN_YEU_CAU).unlink()
+            (dest_ / "_kiem").mkdir(parents=True, exist_ok=True)
+            goc = T.u8(T.canh(lech=(0.02, 0.0, -0.015)))
+            for t in ("A", "B"):
+                Image.fromarray(goc).save(dest_ / "_kiem" / f"{t}.jpg", quality=97)
+                pv = np.clip(goc.astype(np.float32) * toi, 0, 255).astype(np.uint8)
+                Image.fromarray(pv).save(dest_ / f"{t}.jpg", quality=90)
+            (jobs / cd.TEN_KIEM).write_text("path\tjpg\n" + "".join(
+                f"{buoi / t}.ARW\t{dest_ / '_kiem' / t}.jpg\n" for t in ("A", "B")), encoding="utf-8")
+            (jobs / cd.TEN_BANG).write_text("path\tjpg\n" + "".join(
+                f"{buoi / t}.ARW\t{dest_ / t}.jpg\n" for t in ("A", "B")), encoding="utf-8")
+            (jobs / cd.TEN_TIEN_DO).write_text(
+                f"trang_thai=xong\nxong=2\ntong=2\nloi=0\nma={ma_}\ncach=preview\n", encoding="utf-8")
+            return hop_, yc_, kiem_
+
+        hop, yc, kiem = chay_preview(1.0)
+        ktra("lượt 2 xin PREVIEW (nguon=preview) + ảnh soát kiem_anh= (ảnh đổi nhiều nhất)",
+             "nguon=preview" in yc and len(kiem) == 2, str([d for d in yc if not d.startswith("anh=")]))
+        ktra("preview khớp bản xuất thật -> đo đủ 2 ảnh preview (không gửi lại Export)",
+             cho(lambda: app._xl.get("curve_luong_xong"), 20)
+             and app._xl.get("curve_cach") == "preview" and len(app._xl.get("curve_do") or {}) == 2
+             and not cd.dang_cho(jobs),
+             f"{app._xl.get('curve_cach')} · đo {len(app._xl.get('curve_do') or {})}")
+        cho(lambda: app._xl.get("pha") == "curve_ap" or app._xl.get("xong"), 20)
+        if app._xl.get("curve_job") and Path(app._xl["curve_job"]).exists():
+            os.replace(app._xl["curve_job"], Path(app._xl["curve_job"]).with_suffix(".done"))
+        cho(lambda: app._xl.get("xong"), 20)
+        hop.destroy()
+        hop, yc, kiem = chay_preview(0.72)                 # preview CŨ: tối hơn ~0,5 EV
+        ktra("preview LỆCH bản xuất (preview cũ) -> xin plugin dừng + gửi lại bằng Export",
+             cho(lambda: cd.dang_cho(jobs), 20)
+             and "nguon=export" in (jobs / cd.TEN_YEU_CAU).read_text(encoding="utf-8")
+             and "lệch" in str(app._xl.get("curve_cach")), str(app._xl.get("curve_cach")))
+        ma_moi = next(d.split("=", 1)[1] for d in (jobs / cd.TEN_YEU_CAU).read_text(
+            encoding="utf-8").splitlines() if d.startswith("ma="))
+        ktra("…lượt gửi lại mang MÃ MỚI, app chờ mã đó (không đo nhầm preview cũ)",
+             ma_moi != next(d.split("=", 1)[1] for d in yc if d.startswith("ma="))
+             and app._xl.get("curve_ma") == ma_moi and not app._xl.get("curve_do"))
+        hop.btn_dung.invoke()
+        cho(lambda: app._xl.get("xong"), 10)
+        hop.destroy()
+        a0 = T.u8(T.canh())
+        f1, f2 = tam / "so_a.jpg", tam / "so_b.jpg"
+        Image.fromarray(a0).save(f1, quality=97)
+        Image.fromarray(a0).resize((a0.shape[1] // 2, a0.shape[0] // 2)).save(f2, quality=85)
+        ktra("so_tuoi: cùng ảnh, khác cỡ / chất lượng JPEG -> vẫn KHỚP",
+             cd.so_tuoi(f2, f1)[0], str(cd.so_tuoi(f2, f1)[1]))
     finally:
         at.LR_JOB_DIR = job_cu
         try:

@@ -89,7 +89,27 @@ M.CFG_DUYET = { yeuCau = M.YEU_CAU, tienDo = M.TIEN_DO, bang = M.BANG,
                 coDung = M.CO_DUNG, ten = "duyet" }
 M.CFG_CURVE = { yeuCau = "request_do_curve.txt", tienDo = "do_curve_tiendo.txt",
                 bang = "do_curve_anh.tsv", coDung = "request_do_curve_dung.txt",
-                ten = "do_curve" }
+                ten = "do_curve", kiem = "do_curve_kiem.tsv" }
+
+--[[ 14/10 — ẢNH PREVIEW thay cho Export (lượt 2 của Xử lý ảnh, app gửi nguon=preview).
+
+     User 14/10 (thấy "Export 25 files" chạy liên tục trong lúc hoàn thiện): "Tại sao k
+     chỉ load lại Preview của Lightroom rồi can thiệp".
+
+     photo:requestJpegThumbnail ĐÃ thử 6/9 (warmPreviews) và "callback không bao giờ
+     nổ" — warmPreviews KHÔNG GIỮ đối tượng mà hàm trả về; SDK huỷ yêu cầu khi đối tượng
+     đó bị dọn rác. Ở đây mọi đối tượng nằm trong bảng `giu` tới khi callback chạy / hết
+     giờ.
+
+     KIỂM TƯƠI: preview có thể còn là bản TRƯỚC khi áp — đo trên đó là curve sai mà
+     không ai biết. Các ảnh kiem_anh= (app chọn ảnh đổi nhiều nhất) được XUẤT THẬT thêm
+     vào dest/_kiem + bảng do_curve_kiem.tsv; app so preview với bản xuất, lệch thì xin
+     dừng và gửi lại nguon=export.
+
+     Ảnh không trả preview -> xuất bù cuối lượt. Nhóm ĐẦU không ảnh nào trả preview ->
+     bỏ hẳn (trả nil), chayYeuCau xuất cả lượt như cũ. ]]
+M.NHOM_PREVIEW = 8
+M.CHO_PREVIEW = 30          -- giây tối đa chờ một nhóm preview
 
 --[[ XIN DỪNG GIỮA CHỪNG.
 
@@ -124,7 +144,8 @@ function M.ghiTienDo(bang, cfg)
     local tmp = dest .. ".part"
     local fh = io.open(tmp, "w")
     if not fh then return nil end
-    for _, k in ipairs({ "trang_thai", "xong", "tong", "loi", "thu_muc", "tsv", "thong_bao", "ma" }) do
+    for _, k in ipairs({ "trang_thai", "xong", "tong", "loi", "thu_muc", "tsv", "thong_bao", "ma",
+                         "cach" }) do
         if bang[k] ~= nil then
             fh:write(k .. "=" .. tostring(bang[k]) .. "\n")
         end
@@ -339,6 +360,118 @@ function M.xuatDuyet(photos, dest, opts, tienDo, cfg)
              da_lam = #photos }
 end
 
+--[[ Ghi JPEG (chuỗi byte) ra đĩa. ]]
+local function ghiNhiPhan(path, du_lieu)
+    local fh = io.open(path, "wb")
+    if not fh then return false end
+    fh:write(du_lieu)
+    fh:close()
+    return true
+end
+
+--[[ Ảnh PREVIEW của Lightroom cho cả danh sách (xem đầu file, M.CFG_CURVE). Trả về bảng
+     như xuatDuyet, hoặc nil khi Lightroom không trả preview nào ở nhóm đầu. ]]
+function M.layPreview(photos, dest, opts, cfg)
+    cfg = cfg or M.CFG_CURVE
+    if not LrFileUtils.exists(dest) then LrFileUtils.createAllDirectories(dest) end
+    local canh = tonumber(opts.canh) or M.CANH
+    local chat = tonumber(opts.chat) or M.CHAT
+
+    -- 1. kiểm tươi: XUẤT THẬT vài ảnh app chọn
+    if type(opts.kiem_anh) == "table" and #opts.kiem_anh > 0 and cfg.kiem then
+        local kiem = Core.try("pvLocKiem", function()
+            local ra
+            LrApplication.activeCatalog():withReadAccessDo(function()
+                ra = Core.locTheoDs(photos, opts.kiem_anh,
+                                    function(ph) return ph:getRawMetadata("path") end)
+            end)
+            return ra
+        end)
+        if type(kiem) == "table" and #kiem > 0 then
+            local dk = LrPathUtils.child(dest, "_kiem")
+            LrFileUtils.createAllDirectories(dk)
+            local capK = xuatMotLo(kiem, dk, M.thongSo(dk, canh, chat))
+            M.ghiBang(capK, dk, { bang = cfg.kiem })
+        end
+    end
+
+    -- 2. preview từng nhóm
+    local cap, hong = {}, {}
+    local n = #photos
+    local idx = 1
+    while idx <= n do
+        local last = math.min(idx + M.NHOM_PREVIEW - 1, n)
+        local giu, ve, src = {}, {}, {}
+        local cho = 0
+        for i = idx, last do
+            local ph = photos[i]
+            src[i] = Core.try("pvPath", function() return ph:getRawMetadata("path") end)
+            local h = Core.try("pvXin", function()
+                return ph:requestJpegThumbnail(canh, canh, function(jpg)
+                    ve[i] = (type(jpg) == "string" and #jpg > 0) and jpg or false
+                end)
+            end)
+            if h then
+                giu[i] = h               -- GIỮ đối tượng: mất nó là SDK huỷ yêu cầu
+            elseif ve[i] == nil then
+                ve[i] = false
+            end
+        end
+        local t0 = os.time()
+        while os.time() - t0 < M.CHO_PREVIEW do
+            cho = 0
+            for i = idx, last do if ve[i] == nil then cho = cho + 1 end end
+            if cho == 0 then break end
+            LrTasks.sleep(0.05)
+        end
+        local coAnh = false
+        for i = idx, last do
+            local jpg = ve[i]
+            local f = src[i] and M.tenRa(dest, src[i])
+            if jpg and f and ghiNhiPhan(f, jpg) then
+                cap[#cap + 1] = { src = src[i], jpg = f }
+                coAnh = true
+            else
+                hong[#hong + 1] = photos[i]
+            end
+        end
+        giu = nil
+        if idx == 1 and not coAnh then
+            Core.log(cfg.ten .. ": Lightroom khong tra preview nao o nhom dau -> xuat nhu cu")
+            return nil
+        end
+        M.ghiBang(cap, dest, cfg)
+        M.ghiTienDo({ trang_thai = "dang_chay", xong = last, tong = n, loi = #hong,
+                      thu_muc = dest, ma = opts.ma, cach = "preview" }, cfg)
+        LrTasks.yield()
+        idx = last + 1
+        if M.xinDung(cfg) then
+            M.xoaCoDung(cfg)
+            Core.log(string.format(cfg.ten .. ": dung o anh %d/%d (preview)", last, n))
+            return { cap = cap, loi = 0, tsv = M.ghiBang(cap, dest, cfg), da_dung = true,
+                     da_lam = last }
+        end
+    end
+
+    -- 3. ảnh không trả preview: xuất bù
+    if #hong > 0 then
+        Core.log(string.format(cfg.ten .. ": %d anh khong co preview -> xuat bu", #hong))
+        local thongSo = M.thongSo(dest, canh, chat)
+        local j = 1
+        while j <= #hong do
+            local k = math.min(j + M.LO - 1, #hong)
+            local nhom = {}
+            for i = j, k do nhom[#nhom + 1] = hong[i] end
+            for _, c in ipairs(xuatMotLo(nhom, dest, thongSo)) do cap[#cap + 1] = c end
+            M.ghiBang(cap, dest, cfg)
+            LrTasks.yield()
+            j = k + 1
+        end
+    end
+    return { cap = cap, loi = n - #cap, tsv = M.ghiBang(cap, dest, cfg), da_dung = false,
+             da_lam = n, preview = n - #hong }
+end
+
 --[[ Bảng ánh xạ ảnh gốc -> ảnh duyệt, để app biết mở file nào cho tấm nào. ]]
 function M.ghiBang(cap, dest, cfg)
     local d = Core.jobDir()
@@ -422,6 +555,9 @@ function M.chayYeuCau(cfg)
                      (luot 2 cua Xu ly anh: anh vua ap thong so, khong ca thu muc). ]]
                 opts.anh = opts.anh or {}
                 opts.anh[#opts.anh + 1] = v
+            elseif k == "kiem_anh" then
+                opts.kiem_anh = opts.kiem_anh or {}
+                opts.kiem_anh[#opts.kiem_anh + 1] = v
             elseif k then
                 opts[k] = v
             end
@@ -491,11 +627,22 @@ function M.chayYeuCau(cfg)
     local chat = tonumber(opts.chat)
     if chat and chat > 1 then chat = chat / 100 end   -- app gửi 70, SDK cần 0.7
 
-    local res, err = Core.try("xuatDuyet", function()
-        return M.xuatDuyet(photos, dest, { canh = canh, chat = chat,
-                                           lo = tonumber(opts.lo), ma = opts.ma },
-                           nil, cfg)
-    end)
+    local res, err, cach
+    if opts.nguon == "preview" then
+        res, err = Core.try("layPreview", function()
+            return M.layPreview(photos, dest, { canh = canh, chat = chat, ma = opts.ma,
+                                                kiem_anh = opts.kiem_anh }, cfg)
+        end)
+        if res then cach = "preview" end
+    end
+    if not res then
+        res, err = Core.try("xuatDuyet", function()
+            return M.xuatDuyet(photos, dest, { canh = canh, chat = chat,
+                                               lo = tonumber(opts.lo), ma = opts.ma },
+                               nil, cfg)
+        end)
+        cach = "export"
+    end
     if not res then
         Core.log(cfg.ten .. ": LOI -> " .. tostring(err))
         M.ghiTienDo({ trang_thai = "loi", thong_bao = tostring(err), ma = opts.ma }, cfg)
@@ -508,7 +655,7 @@ function M.chayYeuCau(cfg)
                   xong = #res.cap, tong = res.da_lam or #photos,
                   loi = res.loi, thu_muc = dest, tsv = res.tsv,
                   thong_bao = string.format("%d giay, %.2f giay/anh",
-                                            giay, moi_anh), ma = opts.ma }, cfg)
+                                            giay, moi_anh), ma = opts.ma, cach = cach }, cfg)
     Core.log(string.format(
         cfg.ten .. ": %s %d/%d anh (%s), bo %d anh %s sao, %d giay (%.2f s/anh) -> %s",
         res.da_dung and "DUNG GIUA CHUNG sau" or "xuat",

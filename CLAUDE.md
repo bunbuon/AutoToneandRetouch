@@ -1470,6 +1470,17 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   `lo=1`, không thì vòng từng ảnh (ảnh đầu trong `daBat`, không bật lại). App: "gom 1 lệnh: N ảnh",
   không gom được mà ≥ 2 ảnh -> mẹo bật Auto Sync. CHƯA thử Lightroom thật (Auto Sync có lan sang
   Denoise không là GIẢ ĐỊNH đọc từ Develop.lrmodule: autoSync / runEnhanceInBackground).
+- 14/10 **Lượt 2 lấy PREVIEW thay Export** (user thấy "Export 25 files" chạy liên tục: "Tại sao
+  k chỉ load lại Preview của Lightroom rồi can thiệp"): app gửi `nguon=preview` + `kiem_anh=`
+  (`curve_da.chon_kiem`: 3 ảnh đổi nhiều nhất). `DuyetCore.layPreview`: requestJpegThumbnail theo
+  nhóm 8, GIỮ đối tượng trả về trong `giu` (6/9 warmPreviews không giữ -> SDK huỷ, "callback
+  không bao giờ nổ"), ảnh soát XUẤT THẬT vào `dest/_kiem` + `do_curve_kiem.tsv`, ảnh không có
+  preview xuất bù, nhóm đầu không có preview nào -> Export cả lượt; tiến độ `cach=preview|export`.
+  App (`_xl_soat_tuoi` + `curve_da.so_tuoi`, ngưỡng `NGUONG_TUOI` (6, 4) mã trên ảnh 256 px):
+  preview lệch bản xuất = preview CŨ -> xin dừng, gửi lại `nguon=export` mã mới. Ảnh đọc qua
+  `curve_da.doc_srgb` (ICC lạ -> sRGB). Plugin cũ bỏ qua `nguon=` -> Export như trước.
+  kiem_curve_lua mục 8: SDK giả giữ đối tượng YẾU (bỏ `giu[i] = h` -> 8/8 bị huỷ). CHƯA thử
+  Lightroom thật: preview có tươi sau khi áp không, hồ sơ màu của preview.
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT

@@ -65,7 +65,12 @@ TEN_YEU_CAU = "request_do_curve.txt"
 TEN_TIEN_DO = "do_curve_tiendo.txt"
 TEN_BANG = "do_curve_anh.tsv"
 TEN_CO_DUNG = "request_do_curve_dung.txt"
+TEN_KIEM = "do_curve_kiem.tsv"          # 14/10: ảnh XUẤT THẬT để soát preview còn tươi
 KHA_NANG = "curve1"
+#: preview lệch bản xuất thật quá mức này (mã 0–255, ảnh thu về 256 px) = preview CŨ
+#: (chưa theo thông số vừa áp) -> bỏ preview, xin dựng lại bằng Export
+NGUONG_TUOI = (6.0, 4.0)                # (lệch tuyệt đối trung bình, lệch độ sáng trung bình)
+SO_KIEM = 3
 
 
 def _f(cfg: dict, k: str) -> float:
@@ -102,15 +107,64 @@ def _goc(d: float) -> float:
 
 # ------------------------------------------------------------------- đo
 
-def do_anh(r: dict | None, anh, cfg: dict) -> dict:
-    """Đo một ảnh Lightroom dựng (JPEG sRGB). -> dict (xem cuối hàm); "ok": False khi
-    không đọc được."""
-    import cv2
+def doc_srgb(anh, draft=None) -> np.ndarray:
+    """JPEG -> mảng RGB uint8 TRONG sRGB. 14/10: ảnh preview của Lightroom
+    (requestJpegThumbnail) có thể mang hồ sơ màu khác sRGB (Adobe RGB / Display P3...)
+    — có ICC lạ thì đổi về sRGB trước khi đo; không có ICC thì coi là sRGB như Export."""
     from PIL import Image
+    with Image.open(anh) as im:
+        if draft:
+            im.draft("RGB", draft)
+        icc = im.info.get("icc_profile")
+        im = im.convert("RGB")
+        if icc:
+            try:
+                import io as _io
+                from PIL import ImageCms
+                nguon = ImageCms.ImageCmsProfile(_io.BytesIO(icc))
+                ten = (ImageCms.getProfileDescription(nguon) or "").lower()
+                if "srgb" not in ten:
+                    im = ImageCms.profileToProfile(im, nguon, ImageCms.createProfile("sRGB"),
+                                                   outputMode="RGB")
+            except Exception:                                    # noqa: BLE001
+                pass
+        return np.asarray(im)
+
+
+def so_tuoi(preview, xuat) -> tuple[bool, dict]:
+    """Preview có phải bản ĐÃ áp thông số không: so với ảnh XUẤT THẬT cùng tấm (cả hai
+    thu về 256 px, sRGB). Lệch nhiều = preview cũ."""
+    from PIL import Image
+    a = Image.fromarray(doc_srgb(preview, (512, 512)))
+    b = Image.fromarray(doc_srgb(xuat, (512, 512)))
+    co = (256, max(1, round(256 * a.height / max(1, a.width))))
+    a = np.asarray(a.resize(co, Image.BILINEAR), dtype=np.float32)
+    b = np.asarray(b.resize(co, Image.BILINEAR), dtype=np.float32)
+    lech = float(np.abs(a - b).mean())
+    sang = float(abs(a.mean() - b.mean()))
+    return (lech <= NGUONG_TUOI[0] and sang <= NGUONG_TUOI[1]), {"lech": round(lech, 2),
+                                                                    "sang": round(sang, 2)}
+
+
+def chon_kiem(items: list, n: int = SO_KIEM) -> list:
+    """Ảnh để soát preview: ảnh ĐỔI NHIỀU nhất (Exposure + nhiệt màu) — preview cũ của ảnh
+    đổi ít thì trông như mới, soát không ra."""
+    def doi(r):
+        try:
+            dt = abs(float(r.get("new_temp") or 0) - float(r.get("old_temp") or 0)) / 400.0
+        except (TypeError, ValueError):
+            dt = 0.0
+        return abs(float(r.get("delta_ev") or 0.0)) + dt
+    return [r.get("lr_path") or r["path"] for r in sorted(items, key=doi, reverse=True)[:n]]
+
+
+def do_anh(r: dict | None, anh, cfg: dict) -> dict:
+    """Đo một ảnh Lightroom dựng (JPEG; preview thì đổi về sRGB). -> dict (xem cuối
+    hàm); "ok": False khi không đọc được."""
+    import cv2
     mien = str(cfg.get("curve_mien") or at.DEFAULTS["curve_mien"])
     try:
-        with Image.open(anh) as im:
-            img = np.asarray(im.convert("RGB"))
+        img = doc_srgb(anh)
     except (OSError, ValueError) as e:
         return {"ok": False, "ly_do": f"không đọc được ảnh dựng ({e})"}
     H, W = img.shape[:2]
@@ -166,9 +220,7 @@ def da_mau_mn(anh, r: dict | None) -> np.ndarray | None:
     if not mn.trang_thai()["co"]:
         return None
     try:
-        with Image.open(anh) as im:
-            im.draft("RGB", (2048, 2048))
-            img = np.asarray(im.convert("RGB"))
+        img = doc_srgb(anh, (2048, 2048))
     except (OSError, ValueError):
         return None
     m = mn.mat_na(img, r)
@@ -618,19 +670,24 @@ def thu_muc_dung(folder, ma: str) -> Path:
 
 
 def yeu_cau_dung(folder, items: list, dest, ma: str, canh: int = 1600, chat: int = 80,
-                 lo: int = 25, job_dir: Path | None = None) -> Path:
-    """Nhờ plugin dựng ảnh lượt 2 cho ĐÚNG các ảnh `items` (dòng anh=)."""
+                 lo: int = 25, job_dir: Path | None = None, nguon: str = "export",
+                 kiem: list | None = None) -> Path:
+    """Nhờ plugin dựng ảnh lượt 2 cho ĐÚNG các ảnh `items` (dòng anh=).
+    14/10: nguon="preview" -> ảnh preview của Lightroom (không chạy Export), kèm
+    kiem_anh= vài ảnh XUẤT THẬT để soát preview còn tươi (so_tuoi). Plugin cũ không biết
+    nguon= -> vẫn Export như trước."""
     d = Path(job_dir or at.LR_JOB_DIR)
     d.mkdir(parents=True, exist_ok=True)
-    for ten in (TEN_TIEN_DO, TEN_BANG, TEN_CO_DUNG):
+    for ten in (TEN_TIEN_DO, TEN_BANG, TEN_CO_DUNG, TEN_KIEM):
         try:
             (d / ten).unlink()
         except OSError:
             pass
     Path(dest).mkdir(parents=True, exist_ok=True)
     body = [str(Path(str(folder))), f"dest={Path(dest)}", f"canh={int(canh)}",
-            f"chat={int(chat)}", f"lo={int(lo)}", "bo_sao=1", f"ma={ma}"]
+            f"chat={int(chat)}", f"lo={int(lo)}", "bo_sao=1", f"ma={ma}", f"nguon={nguon}"]
     body += [f"anh={r.get('lr_path') or r['path']}" for r in items]
+    body += [f"kiem_anh={p}" for p in (kiem or [])]
     f = d / TEN_YEU_CAU
     tmp = d / (TEN_YEU_CAU + ".part")
     tmp.write_text("\n".join(body) + "\n", encoding="utf-8")
@@ -676,10 +733,11 @@ def tien_do(job_dir: Path | None = None) -> dict:
     return out
 
 
-def bang_anh(job_dir: Path | None = None) -> list[tuple[str, str]]:
-    """(đường dẫn Lightroom, ảnh dựng) — plugin ghi lại sau MỖI lô."""
+def bang_anh(job_dir: Path | None = None, ten: str = TEN_BANG) -> list[tuple[str, str]]:
+    """(đường dẫn Lightroom, ảnh dựng) — plugin ghi lại sau MỖI lô. ten=TEN_KIEM: bảng
+    ảnh xuất thật để soát preview."""
     try:
-        lines = (Path(job_dir or at.LR_JOB_DIR) / TEN_BANG).read_text(
+        lines = (Path(job_dir or at.LR_JOB_DIR) / ten).read_text(
             encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []

@@ -524,12 +524,16 @@ class XuLyAnhMixin:
         ma = datetime.now().strftime("%Y%m%d_%H%M%S")
         dest = curve_da.thu_muc_dung(root, ma)
         try:
-            curve_da.yeu_cau_dung(root, ds, dest, ma)
+            #  14/10 (user: "Tại sao k chỉ load lại Preview của Lightroom rồi can thiệp"):
+            #  preview thay Export; vài ảnh xuất thật để soát preview còn tươi
+            curve_da.yeu_cau_dung(root, ds, dest, ma, nguon="preview",
+                                  kiem=curve_da.chon_kiem(ds))
         except OSError as ex:
             xl["curve_kq"] = {"bo": "loi", "ly_do": str(ex)}
             self._xl_denoise()
             return
         xl.update(pha="curve", curve_ma=ma, curve_ds=ds, curve_dest=dest, curve_do={},
+                  curve_goc=root,
                   curve_cfg=cfg, curve_ten=Path(str(root)).name, t_curve=time.monotonic(),
                   curve_luong_xong=False, curve_huy=False)
         hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
@@ -538,11 +542,37 @@ class XuLyAnhMixin:
         self.after(1000, self._xl_soi_curve)
 
     @staticmethod
+    def _xl_soat_tuoi(bang):
+        """LUỒNG NỀN: preview của các ảnh soát có khớp bản XUẤT THẬT không (curve_da.so_tuoi).
+        None = chưa đủ ảnh để soát (đợi tiếp); True / False."""
+        import curve_da
+        xong = curve_da.tien_do().get("trang_thai") in ("xong", "dung", "loi")
+        kiem = curve_da.bang_anh(ten=curve_da.TEN_KIEM)
+        if not kiem:
+            #  plugin xuất ảnh soát TRƯỚC preview: nhóm preview đầu đã ra mà chưa có bảng
+            #  soát = không xuất được ảnh nào để soát -> không có gì để so, tin preview
+            return True if (xong or bang) else None
+        pv = {at.khoa_duong_dan(p): j for p, j in bang}
+        cap = [(pv.get(at.khoa_duong_dan(p)), j) for p, j in kiem]
+        if any(a is None for a, _ in cap):
+            if not xong:
+                return None              # preview của ảnh soát chưa tới — đợi
+            cap = [(a, b) for a, b in cap if a]
+        kq = []
+        for a, b in cap:
+            try:
+                kq.append(curve_da.so_tuoi(a, b)[0])
+            except (OSError, ValueError):
+                pass
+        return all(kq) if kq else True
+
+    @staticmethod
     def _xl_curve_luong(xl):
         """LUỒNG NỀN — không gọi Tk: đo từng ảnh Lightroom vừa dựng (lô nào xong đo lô
         đó), rồi giải + gom loạt + ghi job curve."""
         import curve_da
         ds, cfg, ma = xl["curve_ds"], xl["curve_cfg"], xl["curve_ma"]
+        tuoi = None                          # None: chưa soát / không cần; True / False
         theo = {}
         for r in ds:
             theo[at.khoa_duong_dan(r.get("lr_path") or r["path"])] = r
@@ -553,6 +583,31 @@ class XuLyAnhMixin:
             while not xl.get("curve_huy"):
                 td = curve_da.tien_do()
                 bang = curve_da.bang_anh() if td.get("ma") == ma else []
+                #[[ 14/10: ảnh là PREVIEW -> soát vài tấm với bản xuất thật TRƯỚC khi đo.
+                #   Preview cũ (chưa theo thông số vừa áp) -> xin dừng, gửi lại Export. ]]
+                if td.get("cach") == "preview" and tuoi is None:
+                    tuoi = XuLyAnhMixin._xl_soat_tuoi(bang)
+                    if tuoi is None:
+                        time.sleep(0.5)
+                        continue
+                    xl["curve_cach"] = "preview" if tuoi else "export (preview lệch)"
+                    if not tuoi:
+                        curve_da.xin_dung()
+                        het = time.monotonic() + 120
+                        while time.monotonic() < het and not xl.get("curve_huy"):
+                            if curve_da.tien_do().get("trang_thai") in ("dung", "xong", "loi"):
+                                break
+                            time.sleep(0.5)
+                        ma = datetime.now().strftime("%Y%m%d_%H%M%S") + "x"
+                        xl["curve_ma"], xl["t_curve"] = ma, time.monotonic()
+                        curve_da.yeu_cau_dung(xl["curve_goc"], ds, xl["curve_dest"], ma,
+                                              nguon="export")
+                        da.clear()
+                        xl["curve_do"].clear()
+                        continue
+                if td.get("cach") == "preview" and not tuoi:
+                    time.sleep(0.5)
+                    continue
                 moi = [(p, j) for p, j in bang if p not in da]
                 for p, j in moi:
                     if xl.get("curve_huy"):

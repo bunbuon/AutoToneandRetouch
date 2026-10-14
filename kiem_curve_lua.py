@@ -231,6 +231,85 @@ ktra("Init.lua gọi Duyet.runRequestCurve trong vòng lặp (không bị chặn
                r'Core\.try\("autoDoCurve", Duyet\.runRequestCurve\)', src_init) is not None
      and "if Duyet then" in src_init[:src_init.find("Duyet.runRequestCurve")][-2000:])
 
+# ---- 8. 14/10: lượt 2 lấy PREVIEW (requestJpegThumbnail) thay Export
+#  SDK giả đúng tính chất thật: callback chạy SAU (khi task nhường — LrTasks.sleep), và
+#  yêu cầu bị HUỶ nếu đối tượng requestJpegThumbnail trả về đã bị dọn rác (lỗi 6/9:
+#  warmPreviews không giữ đối tượng -> "callback không bao giờ nổ").
+anh2 = tam / "Buoi2"
+anh2.mkdir()
+L.execute('''
+PV = { hang = {}, song = setmetatable({}, { __mode = "k" }), xuat = 0, xin = 0, kieu = {} }
+local T = import("LrTasks")
+T.sleep = function()
+  collectgarbage("collect")
+  local h = PV.hang
+  PV.hang = {}
+  for _, r in ipairs(h) do
+    --  hàng đợi chỉ giữ đối tượng YẾU (như SDK): plugin không giữ thì nó bị dọn -> huỷ
+    if r.ref.h ~= nil then r.cb(r.du_lieu) else PV.huy = (PV.huy or 0) + 1 end
+  end
+end
+local ds2 = {}
+for _, ten in ipairs({ "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10" }) do
+  local ph = { getRawMetadata = function(self, k)
+                 if k == "rating" then return 0 end
+                 return "%s/" .. ten .. ".ARW" end }
+  function ph:requestJpegThumbnail(w, h, cb)
+    PV.xin = PV.xin + 1
+    local handle = { ten = ten }
+    PV.song[handle] = true
+    local kieu = PV.kieu[ten]
+    local du_lieu = "JPEG-" .. ten
+    if kieu == "rong" then du_lieu = nil end      -- (cond and nil or x) luôn ra x trong Lua
+    PV.hang[#PV.hang + 1] = { ref = setmetatable({ h = handle }, { __mode = "v" }), cb = cb,
+                              du_lieu = du_lieu }
+    return handle
+  end
+  ds2[#ds2 + 1] = ph
+end
+PV.ds = ds2
+local cat2 = { getFolderByPath = function(self, p) return { getPhotos = function() return ds2 end } end,
+               withReadAccessDo = function(self, fn) fn() end,
+               withWriteAccessDo = function(self, n, fn) fn() end,
+               findPhotoByPath = function() return nil end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat2 end
+local XS = import("LrExportSession")
+''' % str(anh2).replace("\\", "/"))
+L.execute("require('DuyetCore').CHO_PREVIEW = 2")
+dest2 = tam / "do_curve" / "Buoi2" / "m2"
+items2 = [{"path": str(anh2 / f"P{i}.ARW").replace("\\", "/")} for i in range(1, 11)]
+kiem2 = [items2[3]["path"], items2[8]["path"]]                 # P4, P9 (ở nhóm 1 và 2)
+L.execute("PV.kieu.P7 = 'rong'")                                  # P7: Lightroom trả rỗng
+cdm.yeu_cau_dung(anh2, items2, dest2, "m2", job_dir=jobs, nguon="preview", kiem=kiem2)
+Dc.runRequestCurve()
+PVg = L.globals().PV
+td2 = cdm.tien_do(jobs)
+bang2 = dict((Path(a).name, Path(b)) for a, b in cdm.bang_anh(jobs))
+kiem_bang = cdm.bang_anh(jobs, ten=cdm.TEN_KIEM)
+ktra("preview: xin 10 ảnh, KHÔNG yêu cầu nào bị huỷ vì dọn rác (giữ đối tượng)",
+     PVg.xin == 10 and not PVg.huy, f"xin={PVg.xin} huy={PVg.huy}")
+ktra("preview: 9 ảnh ghi từ byte preview, P7 (preview rỗng) XUẤT BÙ",
+     len(bang2) == 10 and (dest2 / "P1.jpg").read_bytes() == b"JPEG-P1"
+     and (dest2 / "P7.jpg").read_bytes() == b"x", str(sorted(bang2)))
+ktra("preview: tiến độ xong 10/10, cach=preview, mang mã lượt",
+     td2.get("trang_thai") == "xong" and td2.get("xong") == 10 and td2.get("cach") == "preview"
+     and td2.get("ma") == "m2", str(td2))
+ktra("preview: ảnh soát P4, P9 XUẤT THẬT vào _kiem + bảng do_curve_kiem.tsv",
+     sorted(Path(a).name for a, _b in kiem_bang) == ["P4.ARW", "P9.ARW"]
+     and all("_kiem" in b and Path(b).exists() for _a, b in kiem_bang), str(kiem_bang))
+#  Lightroom không trả preview nào ở nhóm đầu -> xuất cả lượt như cũ
+L.execute("for _, t in ipairs({'P1','P2','P3','P4','P5','P6','P7','P8','P9','P10'}) do PV.kieu[t] = 'rong' end")
+dest3 = tam / "do_curve" / "Buoi2" / "m3"
+cdm.yeu_cau_dung(anh2, items2, dest3, "m3", job_dir=jobs, nguon="preview", kiem=kiem2)
+Dc.runRequestCurve()
+td3 = cdm.tien_do(jobs)
+ktra("preview không có ở nhóm đầu -> XUẤT cả lượt (cach=export), đủ 10 ảnh",
+     td3.get("cach") == "export" and td3.get("xong") == 10
+     and (dest3 / "P1.jpg").read_bytes() == b"x", str(td3))
+src_dc = (GOC / "DuyetCore.lua").read_text(encoding="utf-8")
+ktra("DuyetCore giữ đối tượng requestJpegThumbnail (giu[i] = h)", "giu[i] = h" in src_dc)
+
 shutil.rmtree(tam, ignore_errors=True)
 print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
 sys.exit(1 if LOI else 0)
