@@ -188,10 +188,12 @@ def main() -> int:
     ktra("…vùng trắng ≤ 0.002", lech_t and max(lech_t) <= 0.002, f"{max(lech_t) if lech_t else None}")
     ktra("da về gần đích hơn chỉ Tone (mọi ảnh)", gan_hon == len(do_dc), f"{gan_hon}/{len(do_dc)}")
     ktra("vùng trắng gần đích trắng hơn trước WB", trang_hon == len(do_dc), f"{trang_hon}/{len(do_dc)}")
-    hsl = {r["scene"]: (r.get("hsl_moi") or {}).get("HueAdjustmentOrange") for r in moi if r.get("hsl_ghi")}
-    ktra("HSL: một mức mỗi cảnh, trong trần ±15 / ±20",
-         all(len({(r.get("hsl_moi") or {}).get("HueAdjustmentOrange") for r in moi if r["scene"] == c}) == 1 for c in hsl)
-         and all(abs(v) <= 15 for v in hsl.values() if v is not None), str(hsl))
+    #  14/10: một mức mỗi LOẠT (trước: mỗi cảnh)
+    hsl = [[(r.get("hsl_moi") or {}).get("HueAdjustmentOrange") for r in g]
+           for g in at.chia_loat([r for r in moi if r.get("hsl_ghi")], CFG)]
+    ktra("HSL: một mức mỗi loạt, trong trần ±15 / ±20",
+         hsl and all(len(set(g)) == 1 for g in hsl)
+         and all(abs(v) <= 15 for g in hsl for v in g if v is not None), str(hsl))
     loat2 = [r for r in moi if r["scene"] == 0 and r["path"] >= "G:/Buoi/DSC0003"]
     cv = [r.get("curve_ghi_mot_luot") for r in loat2]
     ktra("curve: cả loạt một curve, kể cả tấm không đo được", all(c for c in cv)
@@ -261,8 +263,9 @@ def main() -> int:
     kq9 = ml.chuoi(ds9, cfg9, folder=buoi9)
     lum = [(r.get("hsl_l_moi") or {}).get("LuminanceAdjustmentOrange") for r in ds9]
     ktra("Tone kẹp +0.1 EV", abs(kq9["mot_luot"]["sang"].get("e", 0) - 0.1) < 1e-6, str(kq9["mot_luot"]["sang"]))
-    ktra("…phần sáng còn thiếu -> Luminance Cam (một mức cả cảnh, trong trần ±25, cộng vào số preset 10)",
-         all(r.get("hsl_l_ghi") for r in ds9) and len(set(lum)) == 1 and 10 < lum[0] <= 35,
+    tran_l = float(cfg9.get("hsl_da_lum_tran") or 35)
+    ktra(f"…phần sáng còn thiếu -> Luminance Cam (một mức cả loạt, trong trần ±{tran_l:.0f}, cộng vào số preset 10)",
+         all(r.get("hsl_l_ghi") for r in ds9) and len(set(lum)) == 1 and 10 < lum[0] <= 10 + tran_l,
          f"{lum} · {kq9['mot_luot']['lum']}")
     Ls = [r["mau_da_bao"]["L"] for r in ds9]
     ktra("L dự đoán cuối gần đích hơn L sau Tone", all(abs(x["cuoi"] - x["dich"]) < abs(x["tone"] - x["dich"]) for x in Ls),

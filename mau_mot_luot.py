@@ -586,27 +586,40 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
                 m["lum"] = li
                 do_lai(r, m)
 
-    #  ---- 2. HSL Cam — một mức mỗi cảnh, hệ số theo mô hình tại hue da
+    #  ---- 2. HSL Cam — một mức mỗi LOẠT chụp, hệ số theo mô hình tại hue da
+    #[[ 14/10: theo LOẠT, không theo cảnh. Chạy thật 2709 với một mức mỗi cảnh: dự đoán khớp
+    #   Lightroom (lệch 1.1°) mà chỉ 19% da vào vùng ổn — trong một cảnh mỗi loạt (người,
+    #   chỗ đứng) da khác nhau, một mức cả cảnh chỉ kéo được trung vị. Loạt = cùng khoảnh
+    #   khắc: vẫn đều trong loạt; loạt không đo được theo trung vị các loạt của cảnh. ]]
     def he_so(r):
         m = mm[id(r)]
         s = m["s"]
         h_ = _da(du(r, dict(s, HueAdjustmentOrange=_f(s.get("HueAdjustmentOrange")) + 10)))[1]
         q_ = _da(du(r, dict(s, SaturationAdjustmentOrange=_f(s.get("SaturationAdjustmentOrange")) + 10)))[2]
         return (at._goc_lech(h_ - m["h0"]) / 10.0, math.log(max(q_, 1e-9) / max(m["q0"], 1e-9)) / 10.0)  # noqa: SLF001
-    muc_canh: dict = {}
+    k_canh: dict = {}
+
+    def k_cua(canh):
+        if canh not in k_canh:
+            dung_c = [r for r in theo_canh.get(canh, []) if id(r) in mm]
+            mau = [dung_c[int(i)] for i in np.linspace(0, len(dung_c) - 1, min(len(dung_c), 8)).round()]
+            ks = np.array([he_so(r) for r in mau]) if mau else np.zeros((1, 2))
+            k_h, k_s = float(np.median(ks[:, 0])), float(np.median(ks[:, 1]))
+            #  mô hình không thấy phản ứng (da ngoài dải Cam…) -> hằng số đo tay cũ
+            if not k_h > 0.05:
+                k_h = float(cfg.get("hsl_da_k_hue") or 0.418)
+            if not k_s > 0.002:
+                k_s = float(cfg.get("hsl_da_k_sat") or 0.01085)
+            k_canh[canh] = (k_h, k_s)
+        return k_canh[canh]
+    muc_loat: dict = {}                       # id(r) -> (ui, vi)
     us, vs = [], []
-    for canh, ds in theo_canh.items():
+    for ds in (at.chia_loat([r for r in items if not r.get("bw")], cfg) if hsl_bat else []):
         dung = [r for r in ds if id(r) in mm]
-        if not dung or not hsl_bat:
+        if not dung:
             continue
-        #  hệ số của mô hình tại hue da (trung vị cảnh); mô hình không thấy phản ứng
-        #  (da ngoài dải Cam…) -> hằng số đo tay cũ
-        ks = np.array([he_so(r) for r in dung])
-        k_h, k_s = float(np.median(ks[:, 0])), float(np.median(ks[:, 1]))
-        if not k_h > 0.05:
-            k_h = float(cfg.get("hsl_da_k_hue") or 0.418)
-        if not k_s > 0.002:
-            k_s = float(cfg.get("hsl_da_k_sat") or 0.01085)
+        canh = dung[0].get("scene")
+        k_h, k_s = k_cua(canh)
         dh = np.array([mm[id(r)]["dh0"] for r in dung])
         lr = np.array([mm[id(r)]["lr0"] for r in dung])
         u = v = 0.0
@@ -635,21 +648,29 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
                 v, chan = gh, True
         ui, vi = int(round(u)), int(round(v))
         kq["hsl"]["canh_chan"] += int(chan)
-        muc_canh[canh] = (ui, vi, k_h, k_s)
+        for r in ds:
+            muc_loat[id(r)] = (ui, vi)
         if ui or vi:
             kq["hsl"]["canh_chinh"] += 1
             us.append(ui)
             vs.append(vi)
         else:
             kq["hsl"]["canh_on"] += 1
+    #  loạt không đo được da: trung vị các loạt đã có mức của cùng cảnh
+    for canh, ds in theo_canh.items():
+        co = [muc_loat[id(r)] for r in ds if id(r) in muc_loat]
+        if co:
+            tv = (int(round(float(np.median([c[0] for c in co])))), int(round(float(np.median([c[1] for c in co])))))
+            for r in ds:
+                muc_loat.setdefault(id(r), tv)
     if us:
         kq["hsl"]["hue"], kq["hsl"]["sat"] = int(np.median(us)), int(np.median(vs))
     for r in items:
         #  tắt ô HSL -> mức 0 (trả số preset cho ảnh tool từng ghi), như chuoi_mau_da_mau;
         #  bật mà cảnh chưa đo được da -> không đụng
-        if r.get("bw") or (hsl_bat and r.get("scene") not in muc_canh):
+        if r.get("bw") or (hsl_bat and id(r) not in muc_loat):
             continue
-        ui, vi = muc_canh[r.get("scene")][:2] if hsl_bat else (0, 0)
+        ui, vi = muc_loat[id(r)] if hsl_bat else (0, 0)
         goc = at._hsl_goc(r)                                         # noqa: SLF001
         moi = dict(goc)
         moi["HueAdjustmentOrange"] = float(np.clip(goc["HueAdjustmentOrange"] + ui, -100, 100))

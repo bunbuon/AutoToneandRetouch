@@ -3583,8 +3583,9 @@ DEFAULTS = {
     #   nào thấy |L da − L đích| ≤ da_on_L thì không chỉnh sáng. ]]
     "mot_luot_sang_dich": True,
     "da_on_L": 0.02,                # OkLab L: vùng ổn độ sáng da (~2.5% RGB)
-    "mot_luot_ev_sang_tran": 0.6,   # Tone: đổi tối đa bấy nhiêu EV so với decide() để da về sáng đích
-    "hsl_da_lum_tran": 25,          # HSL: Luminance Cam tối đa ± bấy nhiêu điểm so với preset
+    #  14/10 chạy thật 2709: trần 0.6 EV / +25 -> da dừng ở L 0.840 (đích 0.864), 56% trong ±0.03
+    "mot_luot_ev_sang_tran": 0.8,   # Tone: đổi tối đa bấy nhiêu EV so với decide() để da về sáng đích
+    "hsl_da_lum_tran": 35,          # HSL: Luminance Cam tối đa ± bấy nhiêu điểm so với preset
     "curve_da_sang": False,         # curve_da: kéo cả L về đích (chuỗi một lượt bật riêng)
     "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
     "curve_da_trang_max": 0.003,    # vung trung tinh trong dai da lech ab toi da (= trang_tran_cg)
