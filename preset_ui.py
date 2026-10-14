@@ -83,7 +83,10 @@ class DieuPhoiPreset:
         #   khong con so sanh duoc ca bo. Anh lon / engine van lay ban preset qua
         #   nguon_xem.anh_xem. ]]
         import luoi_anh
-        luoi_anh.dat_nguon(None)
+        #  14/10 (user: "làm luôn hiện preview"): ô có preview LIGHTROOM sau khi áp (xem_lr)
+        #  thì đọc nó — vẫn là màu đang có trong Lightroom, không phải bản thử preset
+        import xem_lr
+        luoi_anh.dat_nguon(xem_lr.anh)
 
     def _nguon(self, path):
         p = self.p

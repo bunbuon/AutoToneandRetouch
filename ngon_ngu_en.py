@@ -2023,6 +2023,13 @@ TU_DIEN.update({
         '⚠ {} photos did not take the skin-tone finishing in Lightroom.',
     'gom 1 lệnh: {} ảnh': 'one batch: {} photos',
     'Denoise {} / {} ảnh': 'Denoise {} / {} photos',
+    #  14/10: lưới / ảnh lớn hiện preview Lightroom sau khi áp
+    '· Lưới đang đổi sang preview Lightroom (giống hệt Lightroom).':
+        '· The grid is switching to Lightroom previews (exactly as in Lightroom).',
+    'Lightroom chưa cập nhật preview sau khi áp — lưới giữ ảnh của tool.':
+        'Lightroom has not refreshed its previews after applying — the grid keeps the tool previews.',
+    'Lưới đã hiện preview Lightroom ({} ảnh).': 'The grid now shows Lightroom previews ({} photos).',
+    'Preview Lightroom (sau khi áp)': 'Lightroom preview (after applying)',
     ('  Mẹo: bật Auto Sync trong Develop (công tắc cạnh nút Sync) để Lightroom Denoise cả danh '
      'sách trong một tác vụ, không phải chọn từng ảnh.'):
         ('  Tip: turn on Auto Sync in Develop (the switch next to the Sync button) so Lightroom '

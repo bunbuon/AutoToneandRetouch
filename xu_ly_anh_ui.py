@@ -542,12 +542,15 @@ class XuLyAnhMixin:
         self.after(1000, self._xl_soi_curve)
 
     @staticmethod
-    def _xl_soat_tuoi(bang):
-        """LUỒNG NỀN: preview của các ảnh soát có khớp bản XUẤT THẬT không (curve_da.so_tuoi).
+    def _xl_soat_tuoi(bang, kiem=None, xong=None):
+        """Preview của các ảnh soát có khớp bản XUẤT THẬT không (curve_da.so_tuoi). Mặc
+        định đọc bảng của lượt 2 (curve); preview lưới (xem_lr) truyền kiem / xong.
         None = chưa đủ ảnh để soát (đợi tiếp); True / False."""
         import curve_da
-        xong = curve_da.tien_do().get("trang_thai") in ("xong", "dung", "loi")
-        kiem = curve_da.bang_anh(ten=curve_da.TEN_KIEM)
+        if xong is None:
+            xong = curve_da.tien_do().get("trang_thai") in ("xong", "dung", "loi")
+        if kiem is None:
+            kiem = curve_da.bang_anh(ten=curve_da.TEN_KIEM)
         if not kiem:
             #  plugin xuất ảnh soát TRƯỚC preview: nhóm preview đầu đã ra mà chưa có bảng
             #  soát = không xuất được ảnh nào để soát -> không có gì để so, tin preview
@@ -840,6 +843,84 @@ class XuLyAnhMixin:
             cau += f" · ⚠ {cv['chua_nhan']} ảnh Lightroom chưa nhận curve"
         return cau + "."
 
+    # ------------------------------------------------------------ preview Lightroom (14/10)
+    def _xem_lr_bat_dau(self, xl) -> bool:
+        """User 14/10: "oke làm luôn hiện preview" — áp xong thì lưới / ảnh lớn của tool hiện
+        PREVIEW LIGHTROOM (xem_lr). Nhờ plugin lấy preview các ảnh vừa áp (CHỈ preview, có
+        ảnh soát tươi); False khi plugin cũ / không có gì để lấy."""
+        import curve_da
+        import xem_lr
+        if xem_lr.KHA_NANG not in at.plugin_kha_nang():
+            return False
+        bo = xl.get("chua_nhan_ds") or set()
+        items = [r for r in (xl.get("items_ghi") or [])
+                 if at.khoa_duong_dan(r.get("lr_path") or r["path"]) not in bo]
+        if not items:
+            return False
+        ap = {}
+        for r in items:
+            ve = (r.get("new_exposure"), r.get("new_temp"), r.get("new_tint"))
+            for p in {r.get("lr_path") or r["path"], r["path"]}:
+                ap[at.khoa_duong_dan(p)] = ve
+        ma = datetime.now().strftime("%Y%m%d_%H%M%S")
+        try:
+            xem_lr.yeu_cau(self.folder(), [r.get("lr_path") or r["path"] for r in items], ma,
+                           kiem=curve_da.chon_kiem(items))
+        except OSError:
+            return False
+        self._xem_lr_luot = {"ma": ma, "ap": ap, "da": set(), "tuoi": None,
+                             "t0": time.monotonic(), "n": 0}
+        self.after(1500, self._xem_lr_soi)
+        return True
+
+    def _xem_lr_soi(self):
+        import curve_da
+        import xem_lr
+        lt = getattr(self, "_xem_lr_luot", None)
+        if not lt:
+            return
+        td = xem_lr.tien_do()
+        if td.get("ma") != lt["ma"]:
+            if xem_lr.dang_cho() and time.monotonic() - lt["t0"] > CHO_CURVE * 2:
+                xem_lr.rut_yeu_cau()             # Lightroom tắt / plugin cũ: thôi
+                self._xem_lr_luot = None
+                return
+            self.after(1500, self._xem_lr_soi)
+            return
+        xong = td.get("trang_thai") in ("xong", "dung", "loi")
+        bang = xem_lr.bang_anh()
+        if lt["tuoi"] is None and td.get("cach") == "preview":
+            lt["tuoi"] = XuLyAnhMixin._xl_soat_tuoi(
+                bang, kiem=xem_lr.bang_anh(xem_lr.TEN_KIEM), xong=xong)
+            if lt["tuoi"] is False:
+                xem_lr.xin_dung()
+                self.status("Lightroom chưa cập nhật preview sau khi áp — lưới giữ ảnh của tool.",
+                            gd.MAU["mo"])
+                self._xem_lr_luot = None
+                self.after(5000, lambda: xem_lr.don_tam(lt["ma"]))
+                return
+        if lt["tuoi"]:
+            moi = [(p, j) for p, j in bang if p not in lt["da"]]
+            if moi:
+                da = xem_lr.nhan(moi, lt["ap"])
+                lt["da"].update(p for p, _j in moi)
+                lt["n"] += len(da)
+                if da:
+                    theo = {at.khoa_duong_dan(o["path"]): o["path"] for o in self.luoi.ds}
+                    self.luoi.lam_moi_anh([theo[at.khoa_duong_dan(p)] for p in da
+                                           if at.khoa_duong_dan(p) in theo])
+                    self._cap_nhat_luoi(giu_cuon=True)      # mô phỏng: chỉ phần đổi sau khi áp
+                    if getattr(self, "_che_do_ct", "luoi") == "mot" and self._anh_ct:
+                        self._nap_mot_ct(self._anh_ct, giu_khung=True)
+        if xong and (lt["tuoi"] is not None or td.get("cach") != "preview"):
+            if lt["n"]:
+                self.status(f"Lưới đã hiện preview Lightroom ({gd.so_vn(lt['n'])} ảnh).",
+                            gd.MAU["xong"])
+            self._xem_lr_luot = None
+            xem_lr.don_tam(lt["ma"])
+            return
+        self.after(1500, self._xem_lr_soi)
+
     # ------------------------------------------------------------ kết thúc
     def _xl_ket_thuc(self, kieu: str, ly_do: str = ""):
         """kieu: xong / dung / loi -> hộp tổng kết."""
@@ -888,6 +969,8 @@ class XuLyAnhMixin:
                             "(cần Lightroom Classic 14.4 trở lên).")
             if self.source_value() == "catalog":
                 dong.append("Không cần Read Metadata from File — sang Develop là thấy.")
+                if self._xem_lr_bat_dau(xl):
+                    dong.append("· Lưới đang đổi sang preview Lightroom (giống hệt Lightroom).")
             tieu_de = "Xử lý xong"
             self.status(f"✓ Xử lý xong · {_thoi_gian(giay)}", gd.MAU["xong"])
         elif kieu == "dung":

@@ -1487,6 +1487,18 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   10.7°), độ đậm 15%, độ sáng 4.2 (L×100) — lớn hơn cả vùng ổn của curve (3° / 10%) và cổng
   dự đoán ≤ 1.0°. Preview tool = màu MÁY ẢNH (picture style), không có profile Adobe / preset /
   HSL / CG. Không dùng cho curve.
+- 14/10 **Lưới / ảnh lớn hiện PREVIEW LIGHTROOM sau khi áp** (user: "oke làm luôn hiện preview"):
+  `_xl_ket_thuc("xong")` (nguồn catalog, nhịp khai `xem1`) -> `_xem_lr_bat_dau`: `xem_lr.yeu_cau`
+  (request_xem_lr.txt: nguon=preview, chi_preview=1 — KHÔNG Export bù, + 3 ảnh soát) ->
+  `DuyetCore.runRequestXem` (CFG_XEM) -> `_xem_lr_soi` (1,5 s): soát tươi (`_xl_soat_tuoi`, dùng
+  chung lượt 2), tươi thì `xem_lr.nhan` cất <dữ liệu>/xem_lr/ + chỉ mục (khoá ảnh -> file, thông
+  số LÚC ÁP), `luoi.lam_moi_anh` + `_cap_nhat_luoi`. Lưới: `luoi_anh.dat_nguon(xem_lr.anh)`
+  (preset_ui._dat_nguon — trước là None; ảnh thử preset vẫn KHÔNG lên ô nhỏ). Ảnh lớn:
+  nguon_xem "lr" (sau preset, trước duyệt). Mô phỏng `_mp_cua(r, "lr")` = chỉ phần đổi so với
+  Exposure / K / Tint lúc áp. Preview cũ -> không cất, xin dừng, giữ preview trước đó. Kiểm:
+  test_xem_lr.py. CHƯA thử Lightroom thật.
+- 14/10 chip "Loại 1★" + "Chưa có sao" BỎ (user) — `gd.LocSao(co_chua=False)`, "Tất cả" bỏ cả
+  lọc sao; thanh bước còn 3 (bỏ Nguồn ảnh, Lọc ảnh).
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT

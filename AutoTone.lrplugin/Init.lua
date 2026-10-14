@@ -204,6 +204,11 @@ LrTasks.startAsyncTask(function()
                 local _, errCv = Core.try("autoDoCurve", Duyet.runRequestCurve)
                 if errCv then Core.log("LOI yeu cau do curve: " .. tostring(errCv)) end
             end
+            --  14/10: preview Lightroom cho lưới của tool sau khi áp (chỉ đọc)
+            if type(Duyet.runRequestXem) == "function" then
+                local _, errXm = Core.try("autoXemLr", Duyet.runRequestXem)
+                if errXm then Core.log("LOI yeu cau xem preview: " .. tostring(errXm)) end
+            end
             local _, errM = Core.try("autoDanhDau", Duyet.runDanhDau)
             if errM then Core.log("LOI yeu cau danh dau: " .. tostring(errM)) end
         end

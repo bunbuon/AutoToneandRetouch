@@ -75,7 +75,7 @@ NHOM = [
         "kiem_xuat_lr.py", "kiem_ghi_de.py", "kiem_duyet_py.py",
     ]),
     ("gd", "Giao diện: Xử lý ảnh · chấm / lọc sao · Thư mục · lưới · tiếng Anh", [
-        "test_xu_ly_anh.py", "test_cham_sao.py", "test_ngon_ngu.py", "test_giao_dien_gon.py",
+        "test_xu_ly_anh.py", "test_cham_sao.py", "test_xem_lr.py", "test_ngon_ngu.py", "test_giao_dien_gon.py",
         "kiem_man_hinh.py",
         "kiem_ve_that.py", "kiem_khung_anh.py", "kiem_gui_duyet.py", "kiem_nhan_keo.py",
         "test_luu_phan_tich.py", "test_trang_thai.py", "kiem_da_tien_trinh.py",

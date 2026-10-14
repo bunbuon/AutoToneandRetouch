@@ -108,6 +108,12 @@ M.CFG_CURVE = { yeuCau = "request_do_curve.txt", tienDo = "do_curve_tiendo.txt",
 
      Ảnh không trả preview -> xuất bù cuối lượt. Nhóm ĐẦU không ảnh nào trả preview ->
      bỏ hẳn (trả nil), chayYeuCau xuất cả lượt như cũ. ]]
+--[[ 14/10 (user: "oke làm luôn hiện preview"): sau khi Xử lý ảnh áp xong, app xin
+     preview Lightroom cho lưới / ảnh lớn của tool (xem_lr.py). CHỈ preview — không bao
+     giờ Export bù (chi_preview=1): thiếu thì tool giữ ảnh của nó. ]]
+M.CFG_XEM = { yeuCau = "request_xem_lr.txt", tienDo = "xem_lr_tiendo.txt",
+              bang = "xem_lr_anh.tsv", coDung = "request_xem_lr_dung.txt",
+              ten = "xem_lr", kiem = "xem_lr_kiem.tsv" }
 M.NHOM_PREVIEW = 8
 M.CHO_PREVIEW = 30          -- giây tối đa chờ một nhóm preview
 
@@ -453,8 +459,11 @@ function M.layPreview(photos, dest, opts, cfg)
         end
     end
 
-    -- 3. ảnh không trả preview: xuất bù
-    if #hong > 0 then
+    -- 3. ảnh không trả preview: xuất bù (trừ khi app chỉ muốn preview)
+    if #hong > 0 and opts.chi_preview then
+        Core.log(string.format(cfg.ten .. ": %d anh khong co preview (chi preview, khong xuat bu)",
+                               #hong))
+    elseif #hong > 0 then
         Core.log(string.format(cfg.ten .. ": %d anh khong co preview -> xuat bu", #hong))
         local thongSo = M.thongSo(dest, canh, chat)
         local j = 1
@@ -631,9 +640,16 @@ function M.chayYeuCau(cfg)
     if opts.nguon == "preview" then
         res, err = Core.try("layPreview", function()
             return M.layPreview(photos, dest, { canh = canh, chat = chat, ma = opts.ma,
-                                                kiem_anh = opts.kiem_anh }, cfg)
+                                                kiem_anh = opts.kiem_anh,
+                                                chi_preview = opts.chi_preview == "1" }, cfg)
         end)
         if res then cach = "preview" end
+        if not res and opts.chi_preview == "1" then
+            M.ghiTienDo({ trang_thai = "loi", thong_bao = "khong co preview", ma = opts.ma,
+                          cach = "preview" }, cfg)
+            Core.log(cfg.ten .. ": Lightroom khong tra preview (chi preview -> khong xuat)")
+            return 0
+        end
     end
     if not res then
         res, err = Core.try("xuatDuyet", function()
@@ -672,6 +688,11 @@ end
      và vùng cháy (curve_da.py). ]]
 function M.runRequestCurve()
     return M.chayYeuCau(M.CFG_CURVE)
+end
+
+--[[ 14/10: preview Lightroom cho lưới của tool sau khi áp (M.CFG_XEM). ]]
+function M.runRequestXem()
+    return M.chayYeuCau(M.CFG_XEM)
 end
 
 -- ------------------------------------------------------- đánh dấu ảnh cần sửa

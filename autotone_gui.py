@@ -3503,7 +3503,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self._anh_ct = path
         src, nguon = nguon_xem.anh_xem(path)
         truoc = None
-        if nguon in ("preset", "duyet"):
+        if nguon in ("preset", "duyet", "lr"):
             try:
                 truoc = nguon_xem.anh_nhung(path)
             except Exception:                                # noqa: BLE001
@@ -3514,6 +3514,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #   duyet da mang thong so catalog -> chi phan doi. Khong co ban "Truoc"
         #   rieng thi Truoc = CHINH file do, khong bien doi. ]]
         mp = self._mp_cua(self._r_cua(path),
+                          "lr" if nguon == "lr" else
                           "tuong_doi" if nguon in ("preset", "duyet") else "tuyet_doi")
         self._mp_ct = (path, mp)
         bd = None
@@ -3530,6 +3531,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         p = self.dp_preset().p
         mo_ta = {"preset": f"Preset Lightroom “{(p or {}).get('ten', '')}”",
                  "duyet": "Ảnh duyệt Lightroom",
+                 "lr": "Preview Lightroom (sau khi áp)",
                  "nhung": "Preview trong RAW (màu máy ảnh, chưa qua preset)",
                  "anh": ""}.get(nguon, "")
         if p and nguon_xem.la_raw(path):
@@ -3744,12 +3746,13 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                     "sao": sao_cua(path), **kw}
 
         if self.items:
+            import xem_lr
             ds = [o_cua(r["path"], dev=r.get("delta_ev"), canh=r.get("scene"),
                         loai=(self._tags(r) or ("",))[0],
                         sao1=(r.get("cull") or "") in ("nham-mat", "loat", "tay"),
                         bo="không ghi" if r.get("ngoai_xuat") else "",
                         bw=bool(r.get("bw")), nhan=self._nhan_cua(r),
-                        mp=self._mp_cua(r))
+                        mp=self._mp_cua(r, "lr" if xem_lr.anh(r["path"]) else "tuyet_doi"))
                   for r in self.items]
         else:
             #[[ Chua phan tich: anh khong co trong ban xuat Lightroom chi danh dau
@@ -6972,11 +6975,19 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self._lam_moi_anh_lon()
 
     def _mp_cua(self, r, kieu: str = "tuyet_doi"):
-        """Thông số mô phỏng (ev, wb) của một ảnh đã tính — None nếu chưa có / không đổi."""
+        """Thông số mô phỏng (ev, wb) của một ảnh đã tính — None nếu chưa có / không đổi.
+        kieu "lr" (14/10): nguồn là preview Lightroom lấy SAU khi áp (xem_lr) -> chỉ mô
+        phỏng phần đổi so với Exposure / K / Tint LÚC ÁP (kéo thanh sau khi áp)."""
         if not r:
             return None
         try:
             import mo_phong_anh
+            if kieu == "lr":
+                import xem_lr
+                ap = xem_lr.ap_cua(r.get("path"))
+                if ap is not None:
+                    r = dict(r, old_exposure=ap[0], old_temp=ap[1], old_tint=ap[2])
+                kieu = "tuong_doi"
             return mo_phong_anh.tham_so_anh(r, getattr(self, "cfg", None), kieu)
         except Exception:                                    # noqa: BLE001
             return None
@@ -6990,6 +7001,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
             import nguon_xem
             _src, nguon = nguon_xem.anh_xem(self._anh_ct)
             mp = self._mp_cua(self._r_cua(self._anh_ct),
+                              "lr" if nguon == "lr" else
                               "tuong_doi" if nguon in ("preset", "duyet") else "tuyet_doi")
             if getattr(self, "_mp_ct", None) != (self._anh_ct, mp):
                 self._nap_mot_ct(self._anh_ct, giu_khung=True)

@@ -120,6 +120,14 @@ def anh_xem(p) -> tuple:
         f = None
     if f is not None:
         return f, "preset"
+    #  14/10: preview Lightroom lấy sau khi Xử lý ảnh áp xong (xem_lr) — giống Lightroom
+    try:
+        import xem_lr
+        f = xem_lr.anh(p)
+    except Exception:                                        # noqa: BLE001
+        f = None
+    if f is not None:
+        return f, "lr"
     d = anh_duyet(p)
     if d is not None:
         return d, "duyet"

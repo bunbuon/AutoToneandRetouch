@@ -166,15 +166,16 @@ if root is not None:
     #[[ 12/10 (giao dien moi): loc o Can sang la CHIP Tat ca / Giu / Loai 1★ /
     #   Can xem — anh 1 sao cua bo loc la "Loai 1★". ]]
     so = {ma: c._so for ma, c in app.chip_loc.chip.items()}
-    ktra("chip lọc Cân sáng: đếm trên cả buổi",
-         so.get("tat_ca") == "6" and so.get("loai") == "1" and len(app.luoi.ds) == 6,
-         str(so))
-    app.chip_loc._chon("loai")              # như bấm chip (cửa sổ kiểm có thể chưa hiện)
+    #  14/10 (user): bỏ chip "Loại 1★" — ảnh 1★ lọc bằng ô sao (= ★)
+    ktra("chip lọc Cân sáng: đếm trên cả buổi (Tất cả · Giữ, không còn Loại 1★)",
+         so.get("tat_ca") == "6" and "loai" not in so and len(app.luoi.ds) == 6, str(so))
+    app.loc_sao.dat_loc("eq", 1)
+    app._doi_loc()
     chay(3)
-    ktra("chip “Loại 1★” -> lưới chỉ còn ảnh bị loại",
+    ktra("ô sao '= ★' -> lưới chỉ còn ảnh 1★",
          [Path(o["path"]).name for o in app.luoi.ds] == ["DSC0003.ARW"],
          str([Path(o["path"]).name for o in app.luoi.ds]))
-    app.v_loc.set("tat_ca")
+    app.loc_sao.dat_loc()
     app._cap_nhat_luoi()
     chay(3)
 
@@ -243,7 +244,9 @@ if root is not None:
     ktra("nút báo tiến độ Lightroom (ảnh đang xem)", "1/3" in app.nut_preset_ct.lbl.cget("text")
          and "đang xem" in app.nut_preset_ct.lbl.cget("text"), app.nut_preset_ct.lbl.cget("text"))
     import luoi_anh
-    ktra("ô nhỏ của lưới GIỮ màu gốc (chỉ ảnh lớn theo preset)", luoi_anh.NGUON is None)
+    ktra("ô nhỏ của lưới GIỮ màu gốc (chỉ ảnh lớn theo preset; nguồn lưới chỉ là preview "
+         "Lightroom SAU KHI ÁP — 14/10)",
+         luoi_anh.NGUON is None or luoi_anh.NGUON(raws[2]) is None)
     app._ve_luoi_ct()
     chay(3)
     ktra("bấm đúp ảnh lớn (về lưới) -> lưới hiện, cuộn tới tấm đang xem",
@@ -293,7 +296,8 @@ if root is not None:
     # bỏ preset
     dp.chon(None)
     ktra("bỏ preset -> xin dừng plugin, lưới đọc ảnh như cũ",
-         (JOBS / "request_xempreset_dung.txt").exists() and luoi_anh.NGUON is None
+         (JOBS / "request_xempreset_dung.txt").exists()
+         and (luoi_anh.NGUON is None or luoi_anh.NGUON(raws[2]) is None)
          and preset_lr.chon_hien() is None)
     app._nap_mot_ct = goc_nap
     try:
