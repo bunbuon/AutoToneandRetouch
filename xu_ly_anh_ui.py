@@ -385,8 +385,25 @@ class XuLyAnhMixin:
             try:
                 (Path(at.LR_JOB_DIR) / at.TEN_YC_DENOISE).unlink()
                 self._xl_ket_thuc("dung", "Đã huỷ Denoise — Lightroom chưa nhận yêu cầu.")
+                return
             except OSError:
-                self.status("Lightroom đang Denoise — không ngắt giữa chừng được.", gd.MAU["canh"])
+                pass
+            #  14/10: Lightroom nhận rồi -> xin plugin dừng ngay sau ảnh đang làm (trước
+            #  đây chỉ báo "không ngắt được" và Lightroom chạy hết danh sách)
+            ma = xl.get("denoise_ma") or ""
+            try:
+                at.dung_denoise(ma)
+            except OSError as ex:
+                self.status(f"Không gửi được lệnh dừng Denoise: {ex}", gd.MAU["do"])
+                return
+            td = at.tien_do_denoise(ma)
+            xong, tong = td.get("xong") or 0, td.get("tong") or xl.get("denoise_tong") or 0
+            hop = xl.get("hop")
+            if hop is not None:
+                hop.buoc("denoise", "bo", f"đã dừng — {gd.so_vn(xong)}/{gd.so_vn(tong)} ảnh")
+            self._xl_ket_thuc("dung", f"Đã dừng Denoise — Lightroom không bật thêm ảnh nào "
+                                      f"({gd.so_vn(xong)}/{gd.so_vn(tong)} ảnh đã bật trước khi "
+                                      "dừng; Lightroom vẫn xử lý nốt các ảnh đó ở nền).")
 
     # ------------------------------------------------------------ các pha
     def _xl_sau_do(self, items, cfg) -> bool:

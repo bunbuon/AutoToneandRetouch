@@ -170,6 +170,34 @@ def main() -> int:
         ktra("…Denoise tắt -> xong ngay sau khi áp", cho(lambda: app._xl.get("xong"))
              and "denoise" not in app._xl["hop"].hang)
         app._xl["hop"].destroy()
+        #  14/10 user: "Khi Denoise ảnh mà bấm dừng thì vẫn đang chạy tiếp"
+        app.v_denoise.set(True)
+        app.btn_xu_ly.invoke()
+        ktra("Dừng Denoise: chạy lại có Denoise -> gửi job", cho(lambda: bool(app._xl.get("job"))))
+        j3 = Path(app._xl["job"])
+        os.replace(j3, j3.with_suffix(".done"))
+        ktra("…sang Denoise: có yêu cầu", cho(lambda: (jobs / at.TEN_YC_DENOISE).is_file()))
+        ma3 = (jobs / at.TEN_YC_DENOISE).read_text(encoding="utf-8").splitlines()[0].split("=", 1)[1]
+        #  "plugin" NHẬN yêu cầu (đổi tên) và đang làm ảnh 1/3
+        os.replace(jobs / at.TEN_YC_DENOISE, jobs / (at.TEN_YC_DENOISE + ".claimed"))
+        (jobs / at.TEN_TD_DENOISE).write_text(f"ma={ma3}\nxong=1\ntong=3\n", encoding="utf-8")
+        vong()
+        hop3 = app._xl["hop"]
+        hop3.btn_dung.invoke()
+        vong()
+        f_dung = jobs / at.TEN_DUNG_DENOISE
+        ktra("…bấm Dừng khi Lightroom ĐANG Denoise -> gửi lệnh dừng đúng mã lượt",
+             f_dung.is_file() and f_dung.read_text(encoding="utf-8").strip() == f"ma={ma3}",
+             f_dung.read_text(encoding="utf-8").strip() if f_dung.is_file() else "không có file")
+        ktra("…lượt kết thúc NGAY (không chờ Lightroom chạy hết), hộp nói đã dừng 1/3",
+             app._xl.get("xong") and "1/3" in hop3.lbl_tong.cget("text")
+             and "dừng" in hop3.lbl_tong.cget("text"),
+             hop3.lbl_tong.cget("text").replace("\n", " | ")[:160])
+        ktra("…nút Xử lý ảnh mở lại sau khi dừng",
+             cho(lambda: str(app.btn_xu_ly.cget("state")) == "normal"))
+        hop3.destroy()
+        (jobs / (at.TEN_YC_DENOISE + ".claimed")).unlink()
+        app.v_denoise.set(False)
         # ---------------------------------------------------------------- 3. mô phỏng
         r0 = next(r for r in app.items if r.get("new_exposure") is not None)
         mp0 = app._mp_cua(r0)

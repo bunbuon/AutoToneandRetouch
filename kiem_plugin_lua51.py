@@ -466,7 +466,8 @@ DC_GIA = {
   getEnhancePanelState = function()
     return { denoiseEnabled = true, denoiseState = DN.trangThai[DN.chon and DN.chon.localIdentifier] or false }
   end,
-  setEnhance = function(ten, v) DN.goi = DN.goi + 1; DN.trangThai[DN.chon.localIdentifier] = v end,
+  setEnhance = function(ten, v) DN.goi = DN.goi + 1; DN.trangThai[DN.chon.localIdentifier] = v
+    if DN.khiBat then DN.khiBat() end end,
 }
 AV_GIA = { getCurrentModuleName = function() return DN.module end,
            switchToModule = function(m) DN.module = m; DN.vao[#DN.vao + 1] = m end }
@@ -515,6 +516,40 @@ ktra("Denoise: vao Develop roi tra ve module cu (library); tien do 2/2; yeu cau 
      and td_dn["cho"] is False, f"{G.module} · {td_dn}")
 ktra("tien_do_denoise: ma luot khac -> khong lan ket qua",
      at_.tien_do_denoise("m-khac", job_dir=jobs)["ket_qua"] is None)
+# 8b. 14/10 user: "Khi Denoise ảnh mà bấm dừng thì vẫn đang chạy tiếp" -> dừng ngay
+L.execute('''
+DN.trangThai = {}; DN.goi = 0; DN.vao = {}; DN.module = "library"
+local function anh(i, p) return { localIdentifier = i, p = p,
+    getFormattedMetadata = function(self) return self.p end } end
+DN.ds["G:/B/A6.ARW"] = anh(6, "A6"); DN.ds["G:/B/A7.ARW"] = anh(7, "A7")
+''')
+f_dung = jobs / at_.TEN_DUNG_DENOISE
+G.khiBat = lambda: at_.dung_denoise("m10", job_dir=jobs)     # bấm Dừng ngay sau ảnh đầu
+at_.yeu_cau_denoise(["G:/B/A1.ARW", "G:/B/A6.ARW", "G:/B/A7.ARW"], "m10", job_dir=jobs)
+DN.runRequest()
+G.khiBat = None
+kq10 = at_.tien_do_denoise("m10", job_dir=jobs)["ket_qua"] or {}
+ktra("Dừng Denoise: app xin dừng sau ảnh 1 -> plugin dừng NGAY (bật 1/3, dung=1)",
+     kq10.get("bat") == "1" and kq10.get("dung") == "1" and kq10.get("ly_do") == "dung"
+     and G.goi == 1 and not G.trangThai[6] and not G.trangThai[7], str(kq10))
+ktra("Dừng Denoise: vẫn trả module cũ (library) + xoá file dừng",
+     G.module == "library" and not f_dung.exists(), f"{G.module} · {f_dung.exists()}")
+L.execute('DN.trangThai = {}; DN.goi = 0; DN.module = "library"')
+at_.yeu_cau_denoise(["G:/B/A1.ARW", "G:/B/A6.ARW"], "m11", job_dir=jobs)
+at_.dung_denoise("m-cu", job_dir=jobs)                       # lệnh dừng của lượt KHÁC
+DN.runRequest()
+kq11 = at_.tien_do_denoise("m11", job_dir=jobs)["ket_qua"] or {}
+ktra("Dừng Denoise: file dừng của lượt khác KHÔNG dừng lượt này (bật 2/2) và bị xoá",
+     kq11.get("bat") == "2" and not kq11.get("dung") and not f_dung.exists(), str(kq11))
+at_.dung_denoise("m11", job_dir=jobs)
+at_.yeu_cau_denoise(["G:/B/A1.ARW"], "m12", job_dir=jobs)
+ktra("yeu_cau_denoise: gửi lượt mới thì xoá lệnh dừng cũ (plugin không dừng nhầm)",
+     not f_dung.exists())
+(jobs / at_.TEN_YC_DENOISE).unlink()
+ma_d, = [x for x in [L.eval('require("DenoiseCore")').xinDung("ma=m5\n", "m5")]]
+ktra("DenoiseCore.xinDung: đúng mã -> true, khác mã / rỗng -> false",
+     ma_d is True and DN.xinDung("ma=m5\n", "m6") is False and DN.xinDung("", "m5") is False)
+
 L.execute('DC_GIA.setEnhance = nil; DC_GIA.toggleEnhance = nil')
 at_.yeu_cau_denoise(["G:/B/A1.ARW"], "m9", job_dir=jobs)
 DN.runRequest()

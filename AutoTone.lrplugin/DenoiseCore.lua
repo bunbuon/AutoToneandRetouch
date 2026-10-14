@@ -38,6 +38,9 @@ local M = {}
 M.YEU_CAU = "request_denoise.txt"
 M.TIEN_DO = "denoise_tien_do.txt"
 M.KET_QUA = "ketqua_denoise.txt"
+-- 14/10 user: "bấm dừng thì vẫn đang chạy tiếp" — app ghi file này (ma=<mã lượt>);
+-- xét trước MỖI ảnh, dừng ngay sau ảnh đang làm.
+M.DUNG = "dung_denoise.txt"
 
 --[[ Hàm THUẦN: (mã, danh sách đường dẫn) từ nội dung file yêu cầu. ]]
 function M.phanTich(chu)
@@ -52,6 +55,14 @@ function M.phanTich(chu)
         end
     end
     return ma, ds
+end
+
+--[[ Hàm THUẦN: nội dung file dừng có xin dừng ĐÚNG lượt `ma` không. ]]
+function M.xinDung(chu, ma)
+    local m = string.match(chu or "", "ma=([^\r\n]*)")
+    if m == nil then return false end
+    m = string.gsub(m, "^%s*(.-)%s*$", "%1")
+    return m == (ma or "")
 end
 
 --[[ Lightroom này có bật Denoise qua SDK được không. ]]
@@ -91,7 +102,18 @@ end
 
 local function ketQua(t)
     ghiKv(M.KET_QUA, t, { "ma", "tong", "bat", "da_co", "khong_ho_tro", "khong_thay",
-                           "loi", "ly_do", "khi" })
+                           "loi", "dung", "ly_do", "khi" })
+end
+
+--[[ App xin dừng lượt `ma` chưa. File của lượt KHÁC (cũ) thì xoá, không dừng. ]]
+local function kiemDung(ma)
+    local f = LrPathUtils.child(Core.jobDir(), M.DUNG)
+    if not LrFileUtils.exists(f) then return false end
+    local fh = io.open(f, "r")
+    local chu = fh and fh:read("*a") or ""
+    if fh then fh:close() end
+    Core.try("denoiseXoaDung", function() LrFileUtils.delete(f) end)
+    return M.xinDung(chu, ma)
 end
 
 local function idCua(photo)
@@ -141,10 +163,22 @@ function M.runRequest()
     end
     local catalog = LrApplication.activeCatalog()
     local photos = {}
+    local dung = false
     for i = 1, #ds do
         local p = Core.try("denoiseTim", function() return catalog:findPhotoByPath(ds[i]) end)
         if p then photos[#photos + 1] = p else kq.khong_thay = kq.khong_thay + 1 end
-        if i % 200 == 0 then LrTasks.yield() end
+        if i % 200 == 0 then
+            LrTasks.yield()
+            if kiemDung(ma) then dung = true break end
+        end
+    end
+    if dung or kiemDung(ma) then
+        kq.dung = 1
+        kq.ly_do = "dung"
+        kq.khi = os.date("%Y-%m-%d %H:%M:%S")
+        ketQua(kq)
+        Core.log("denoise: app xin dung truoc khi bat anh nao")
+        return 0
     end
     Core.log(string.format("denoise: %d anh (%d khong thay trong catalog)", #photos,
                            kq.khong_thay))
@@ -158,6 +192,12 @@ function M.runRequest()
     tienDo(ma, 0, #photos)
     for i = 1, #photos do
         local photo = photos[i]
+        if kiemDung(ma) then
+            kq.dung = 1
+            kq.ly_do = "dung"
+            Core.log(string.format("denoise: app xin dung o anh %d/%d", i, #photos))
+            break
+        end
         if not chonAnh(catalog, photo) then
             kq.loi = kq.loi + 1
         else

@@ -10601,6 +10601,9 @@ def doc_ds_lr(folder, job_dir: Path | None = None):
 TEN_YC_DENOISE = "request_denoise.txt"
 TEN_TD_DENOISE = "denoise_tien_do.txt"
 TEN_KQ_DENOISE = "ketqua_denoise.txt"
+#: 14/10 user: "Khi Denoise ảnh mà bấm dừng thì vẫn đang chạy tiếp" — app ghi file này
+#: (ma=<mã lượt>), plugin xét trước MỖI ảnh và dừng ngay sau ảnh đang làm.
+TEN_DUNG_DENOISE = "dung_denoise.txt"
 
 
 def anh_can_denoise(items: list, cfg: dict) -> list:
@@ -10623,9 +10626,25 @@ def yeu_cau_denoise(paths: list, ma: str, job_dir: Path | None = None) -> Path:
     tiến độ / kết quả, app phân biệt lượt cũ)."""
     d = Path(job_dir or LR_JOB_DIR)
     d.mkdir(parents=True, exist_ok=True)
+    try:
+        (d / TEN_DUNG_DENOISE).unlink()       # lệnh dừng của lượt TRƯỚC (plugin đã xong)
+    except OSError:
+        pass
     dest = d / TEN_YC_DENOISE
     tmp = d / (TEN_YC_DENOISE + ".part")
     tmp.write_text(f"#ma={ma}\n" + "".join(f"{p}\n" for p in paths), encoding="utf-8")
+    os.replace(tmp, dest)
+    return dest
+
+
+def dung_denoise(ma: str, job_dir: Path | None = None) -> Path:
+    """Xin plugin DỪNG lượt Denoise `ma` ngay sau ảnh đang làm. Plugin xoá file khi
+    đã dừng; lượt khác mã thì plugin bỏ qua (và xoá) — không dừng nhầm lượt sau."""
+    d = Path(job_dir or LR_JOB_DIR)
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / TEN_DUNG_DENOISE
+    tmp = d / (TEN_DUNG_DENOISE + ".part")
+    tmp.write_text(f"ma={ma}\n", encoding="utf-8")
     os.replace(tmp, dest)
     return dest
 
