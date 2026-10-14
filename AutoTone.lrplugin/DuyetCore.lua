@@ -344,7 +344,7 @@ function M.xuatDuyet(photos, dest, opts, tienDo, cfg)
         M.ghiBang(cap, dest, cfg)
         if tienDo then tienDo(last, #photos, #cap) end
         M.ghiTienDo({ trang_thai = "dang_chay", xong = last, tong = #photos,
-                      loi = last - #cap, thu_muc = dest, ma = opts.ma }, cfg)
+                      loi = last - #cap, thu_muc = dest, ma = opts.ma, cach = "export" }, cfg)
         LrTasks.yield()
         idx = last + 1
 
@@ -398,6 +398,17 @@ function M.layPreview(photos, dest, opts, cfg)
             LrFileUtils.createAllDirectories(dk)
             local capK = xuatMotLo(kiem, dk, M.thongSo(dk, canh, chat))
             M.ghiBang(capK, dk, { bang = cfg.kiem })
+            --[[ 14/10 (user: "tool đứng im ở ảnh số 8"): preview của ẢNH SOÁT lấy TRƯỚC
+                 TIÊN — app chỉ đo tiếp khi đã so được chúng; để theo thứ tự buổi thì ảnh
+                 soát (ảnh đổi nhiều nhất) có thể nằm cuối, app đứng chờ cả lượt. ]]
+            local la_kiem = {}
+            for _, ph in ipairs(kiem) do la_kiem[ph] = true end
+            local xep = {}
+            for _, ph in ipairs(kiem) do xep[#xep + 1] = ph end
+            for _, ph in ipairs(photos) do
+                if not la_kiem[ph] then xep[#xep + 1] = ph end
+            end
+            photos = xep
         end
     end
 
@@ -630,7 +641,8 @@ function M.chayYeuCau(cfg)
     M.xoaCoDung(cfg)
 
     local t0 = os.time()
-    M.ghiTienDo({ trang_thai = "dang_chay", xong = 0, tong = #photos, thu_muc = dest, ma = opts.ma }, cfg)
+    M.ghiTienDo({ trang_thai = "dang_chay", xong = 0, tong = #photos, thu_muc = dest, ma = opts.ma,
+                  cach = (opts.nguon == "preview") and "preview" or "export" }, cfg)
 
     local canh = tonumber(opts.canh)
     local chat = tonumber(opts.chat)

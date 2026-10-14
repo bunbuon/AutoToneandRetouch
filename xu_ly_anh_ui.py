@@ -528,6 +528,7 @@ class XuLyAnhMixin:
             #  preview thay Export; vài ảnh xuất thật để soát preview còn tươi
             curve_da.yeu_cau_dung(root, ds, dest, ma, nguon="preview",
                                   kiem=curve_da.chon_kiem(ds))
+            xl["curve_nguon"] = "preview"
         except OSError as ex:
             xl["curve_kq"] = {"bo": "loi", "ly_do": str(ex)}
             self._xl_denoise()
@@ -586,6 +587,12 @@ class XuLyAnhMixin:
             while not xl.get("curve_huy"):
                 td = curve_da.tien_do()
                 bang = curve_da.bang_anh() if td.get("ma") == ma else []
+                #[[ 14/10 (user: "tool đứng im ở ảnh số 8"): đã XIN preview mà plugin chưa
+                #   nói đang dựng bằng gì -> chưa đo (8 ảnh đầu từng bị đo trước khi soát). ]]
+                if (xl.get("curve_nguon") == "preview" and not td.get("cach")
+                        and td.get("trang_thai") not in ("xong", "dung", "loi")):
+                    time.sleep(0.5)
+                    continue
                 #[[ 14/10: ảnh là PREVIEW -> soát vài tấm với bản xuất thật TRƯỚC khi đo.
                 #   Preview cũ (chưa theo thông số vừa áp) -> xin dừng, gửi lại Export. ]]
                 if td.get("cach") == "preview" and tuoi is None:
@@ -603,6 +610,7 @@ class XuLyAnhMixin:
                             time.sleep(0.5)
                         ma = datetime.now().strftime("%Y%m%d_%H%M%S") + "x"
                         xl["curve_ma"], xl["t_curve"] = ma, time.monotonic()
+                        xl["curve_nguon"] = "export"
                         curve_da.yeu_cau_dung(xl["curve_goc"], ds, xl["curve_dest"], ma,
                                               nguon="export")
                         da.clear()
@@ -688,7 +696,15 @@ class XuLyAnhMixin:
         td = curve_da.tien_do()
         n_do = len(xl["curve_do"])
         if td.get("ma") == xl["curve_ma"]:
-            hop.tien_do(n_do, len(ds), f"Hoàn thiện {gd.so_vn(n_do)} / {gd.so_vn(len(ds))} ảnh")
+            lr = int(td.get("xong") or 0)
+            if lr > n_do + 8:
+                #  đo còn chờ (soát preview / máy bận): nói Lightroom đã trả tới đâu
+                hop.tien_do(n_do + lr, 2 * len(ds),
+                            f"Hoàn thiện {gd.so_vn(n_do)} / {gd.so_vn(len(ds))} ảnh · "
+                            f"Lightroom đã dựng {gd.so_vn(lr)}")
+            else:
+                hop.tien_do(n_do, len(ds),
+                            f"Hoàn thiện {gd.so_vn(n_do)} / {gd.so_vn(len(ds))} ảnh")
         elif curve_da.dang_cho() and time.monotonic() - xl["t_curve"] > CHO_CURVE:
             curve_da.rut_yeu_cau()
             xl["curve_huy"] = True

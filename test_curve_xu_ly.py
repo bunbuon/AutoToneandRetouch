@@ -239,6 +239,7 @@ def main() -> int:
             os.replace(app._xl["curve_job"], Path(app._xl["curve_job"]).with_suffix(".done"))
         cho(lambda: app._xl.get("xong"), 20)
         hop.destroy()
+        time.sleep(1.1)        # mã lượt theo GIÂY: hai lượt cùng giây = cùng thư mục tạm
         hop, yc, kiem = chay_preview(0.72)                 # preview CŨ: tối hơn ~0,5 EV
         ktra("preview LỆCH bản xuất (preview cũ) -> xin plugin dừng + gửi lại bằng Export",
              cho(lambda: cd.dang_cho(jobs), 20)
