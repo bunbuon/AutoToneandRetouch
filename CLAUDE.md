@@ -1354,6 +1354,35 @@ hơn bản 8 (hue 27° vs 36°, WB 4688 → 5066 + Hue Cam +7 → −6, mô hìn
 soát không bắt vì số đo soát khác số đo danh_gia_cache ~4°.
 Kiểm: `test_dong_bo_cum.py` (mục 5), `test_mau_mot_luot.py` (mục 11).
 
+## Ảnh sửa tay bị ghi đè + "vẫn dư sáng" (15/10 sáng) — `danh_dau_nguoi_sua` mọi ô, `da_dich_L_bu` −0.09, BẬT
+
+User 15/10 (DSC_9800/9791, DSC09393/94, DSC09296/97): "loạt ảnh này vẫn bị dư sáng kiểm tra lại
+trước". Đọc LỊCH SỬ develop trong catalog (Adobe_libraryImageDevelopHistoryStep, text nén zlib bỏ
+4 byte đầu; bước tool tên "AutoTone") — đáp án tay thật của user:
+- **Tool ghi đè ảnh user sửa tay.** (1) chỉ so Exposure: SUB_6464 Luminance Cam 53 -> 44,
+  DSC_9617 Contrast 5 -> 14 không nhận ra; (2) chỉ so job MỚI NHẤT: lượt 23:43 bỏ qua DSC09296 /
+  09338 nên job đó không có dòng của chúng -> lượt 00:30 ghi đè; (3) bản xuất cũ hơn lần ghi -> tắt
+  cả bộ lọc. Nay `danh_dau_nguoi_sua` so MỌI ô tool ghi ở lần áp chính gần nhất của từng ảnh (+ job
+  @curve sau nó — `lan_ghi_cuoi`; KHÔNG gộp job cũ hơn: user có thể đã Synchronize cả buổi, curve
+  cũ còn trong job -> nhận nhầm SUB_6728) với số đọc THẲNG catalog (`thong_so_catalog`, 1.5 s, có
+  Luminance Cam mà bản xuất plugin không có); job `-khoiphuc` còn nguyên số = ảnh user. 2709 nhận
+  đúng 8 ảnh (cả DSC09332 user đổi Tint lúc 04:38 giữa hai lượt). Đã trả lại DSC09338 / SUB_6464 /
+  DSC_9617 bằng job khôi phục từ bước sửa tay cuối (scratchpad `tra_sua_tay.py`).
+- **Da user muốn tối hơn mẫu:** các lần user hạ Exposure từ 18:01 14/10: trung vị −0.5 EV
+  (DSC_0032 −0.40, DSC_9724/9729 −0.56, DSC_9778 −0.45, DSC09296/97 −0.68, DSC09338 −0.19 + Lum
+  53 -> 34); da cuối user chọn L ~0.77 vs mẫu "Lễ Vu Quy" 0.864 -> `da_dich_L_bu` −0.09 trong
+  `curve_da.dich_cua` (R G B % 86/80/76 -> 77/72/68, giữ hue + độ đậm; mọi chỗ dùng đích đi qua đây).
+- **Luminance Cam +35 (trần) trên 1.027 ảnh** do chuỗi một lượt kéo da lên đích sáng — làm sáng cả
+  mảng kem / be / cam; user tự hạ đúng ô này. Đổi mẫu về "Mặc định" (đường cũ) thì Lum / curve một
+  lượt CÒN NGUYÊN -> `tra_lum_ve_moc` + `anh_da_curve` đọc cả job chính (curve một lượt đi job chính,
+  trước bị coi là "người dùng sửa" nên không bao giờ trả).
+- DSC_9791 (43 mm) chung cụm DSC_9800 (24 mm) -> bù cụm kéo +0.8 EV: tiêu cự lệch > 15% -> khác cụm
+  (`cum_tieu_cu_ti`, EXIF FocalLength `focal`).
+- Ảnh Sony ngoài trời (DSC09296/97, 09393/94): tool KHÔNG tăng sáng (EV 0 / −0.2) — máy chụp sẵn
+  sáng (khung cháy 30%, da đúng 86/80/76 = đích cũ); muốn tối hơn: đích mới (một lượt) hoặc "Bù sáng
+  cả buổi" âm (đường cũ không có đích độ sáng da).
+Kiểm: `test_nguoi_sua_lich_su.py` (mới), `test_curve_da.py` mục 11, `test_dong_bo_cum.py` mục 6.
+
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
 Chế độ an toàn CPU (ghim Lightroom + app + engine vào nhân E khi Xuất, v58) sinh ra vì

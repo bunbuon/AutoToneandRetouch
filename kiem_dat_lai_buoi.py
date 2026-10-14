@@ -126,8 +126,9 @@ def main() -> int:
         (jobs / job.with_suffix(".done").name).touch()
 
         def sau_ghi(i):
+            #  Lightroom sau khi áp mang MỌI ô job ghi (15/10: danh_dau_nguoi_sua so mọi ô)
             h = da_gui[f"HUY0{4300 + i}"]
-            return dict(MOI, Exposure2012=h[cot.index("Exposure2012")])
+            return dict(MOI, **{c: v for c, v in zip(cot, h) if c != "path" and v != ""})
         ds2 = chay(buoi, jobs, sau_ghi)
         ktra("… lần chạy kế tiếp (catalog = số tool vừa ghi): không 'dat-lai', không lọc",
              at.DAT_LAI_BUOI == "" and at.SO_ANH_NGUOI_SUA == 0 and len(ds2) == N,
