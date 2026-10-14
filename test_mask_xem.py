@@ -52,7 +52,6 @@ def main() -> int:
     from PIL import Image
 
     T.cai_gia()
-    W, H = T.W, T.H
     #  ảnh giả: mặt (da) + vùng xám trung tính + vùng cháy + một điểm bóng trên má +
     #  một "mặt khách" xám sáng (không phải chủ thể)
     a = T.u8(T.canh(xam_pct=20.0, chay_pct=8.0))
@@ -76,6 +75,12 @@ def main() -> int:
          not (ma[khach[1] + 10:khach[1] + khach[3] - 10, khach[0] + 10:khach[0] + khach[2] - 10] == 4).any())
     ktra("tóm tắt nói kiểu mặt nạ + số mặt", "1 mặt" in mx.tom_tat(kq) and "điểm da" in mx.tom_tat(kq),
          mx.tom_tat(kq))
+    #  14/10: R G B % (Melissa — như Lightroom) của da + của đích
+    cau = mx.tom_tat(kq, [237, 201, 191])
+    ktra("tóm tắt có R G B % của da và của đích (Melissa: 237/201/191 -> R 86.2 G 80.3 B 75.7)",
+         "da R " in cau and "đích R 86.2 G 80.3 B 75.7 %" in cau, cau)
+    R, G_, B = kq["rgb_da"]
+    ktra("R G B % da: da hồng giả có R > G > B", R > G_ > B, str(kq["rgb_da"]))
 
     print("2. phu()")
     im = Image.fromarray(a).resize((450, 300))

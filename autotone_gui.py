@@ -3533,7 +3533,16 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         if getattr(self, "v_mask", None) is not None and self.v_mask.get() and src is not None:
             import mask_xem
             kq_m = self._bo_mask().lay(src, self._r_cua(path))
-            mask_cau = mask_xem.tom_tat(kq_m)
+            #  14/10: R G B % của da cạnh R G B % của ĐÍCH (đúng đích ảnh này: trong / ngoài)
+            dich = None
+            try:
+                import curve_da
+                r_ = self._r_cua(path)
+                if r_ is not None:
+                    dich = curve_da.dich_cua(r_, self.read_cfg(), "mn")[0]
+            except Exception:                                # noqa: BLE001
+                dich = None
+            mask_cau = mask_xem.tom_tat(kq_m, dich)
             if kq_m is None:
                 self._mask_ct_cho = str(src)            # tính xong -> nạp lại (_soi_mask)
             else:

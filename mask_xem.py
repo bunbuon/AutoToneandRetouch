@@ -14,6 +14,10 @@ thiện / chuỗi một lượt (mat_na_da.mat_na trên ảnh cạnh 1600, khung
 
 Mask tính trên ĐÚNG file ảnh đang hiện (preview Lightroom nếu có, không thì JPEG nhúng),
 ở luồng nền, nhớ theo file (đĩa: <dữ liệu>/mask_da/) — mở lại buổi không tính lại.
+
+R G B % (14/10): user "Với mỗi 1 màu đích đều chia theo R G B" — ảnh lớn ghi màu trung
+bình của đúng vùng da xanh lá theo R G B % như Lightroom hiện ở Develop (miền Melissa:
+gam ProPhoto, đường sRGB), cạnh R G B % của màu đích — so trực tiếp được với ô lấy mẫu.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ from pathlib import Path
 import numpy as np
 
 CANH = 1600
-PHIEN = 2                        # đổi cách tính -> đổi khoá kho (2: vùng trắng bỏ mọi mặt + điểm cháy)
+PHIEN = 3                        # đổi cách tính -> đổi khoá kho (3: + R G B % của da)
 #: mã điểm ảnh -> (màu, độ phủ)
 MAU = {1: ((60, 220, 90), 0.50), 2: ((255, 196, 40), 0.60), 3: ((255, 48, 48), 0.55),
        4: ((70, 150, 255), 0.35)}
@@ -99,7 +103,18 @@ def tinh(src, r: dict | None) -> dict | None:
         ma[tho & ~m["da"]] = 2
     ma[m["da"]] = 1
     return {"wh": (W, H), "ma": ma, "mat": [list(b) for b in m["mat"]], "kieu": m.get("kieu"),
-            "n": int(m.get("n") or 0), "ly_do": m.get("ly_do") or "", "do_lai": m.get("do_lai")}
+            "n": int(m.get("n") or 0), "ly_do": m.get("ly_do") or "", "do_lai": m.get("do_lai"),
+            "rgb_da": rgb_pt(img[m["da"]]) if m["da"].any() else None}
+
+
+def rgb_pt(px_u8) -> list | None:
+    """Điểm sRGB 0–255 -> R G B % trung bình theo miền Lightroom hiện (Melissa)."""
+    import curve_lr as cl
+    px = np.asarray(px_u8, dtype=np.float64).reshape(-1, 3) / 255.0
+    if not len(px):
+        return None
+    w = cl.srgb_sang_mien(px, "melissa").mean(axis=0) * 100.0
+    return [round(float(v), 1) for v in w]
 
 
 def luu(k: str, kq: dict) -> None:
@@ -149,14 +164,21 @@ def phu(im, kq: dict | None, vien: bool = True):
     return out
 
 
-def tom_tat(kq: dict | None) -> str:
-    """"mặt nạ phân vùng · 3 mặt · 12.840 điểm da · cháy 37%"."""
+def tom_tat(kq: dict | None, dich=None) -> str:
+    """"mặt nạ phân vùng · 3 mặt · 12.840 điểm da · da R 70.6 G 65.0 B 61.1 % · đích R 86.2
+    G 80.3 B 75.7 % · cháy 37%". dich: màu đích sRGB 0–255 (None = không ghi)."""
     if kq is None:
         return "đang tính mask da…"
     kieu = {"parse": "mặt nạ phân vùng", "du_phong": "mặt nạ DỰ PHÒNG (elip — mặt nhỏ / không có mô hình)",
             "tron": "phân vùng + dự phòng"}.get(kq.get("kieu") or "", "không thấy da")
     ma = kq["ma"]
     cau = f"{kieu} · {len(kq.get('mat') or [])} mặt · {int((ma == 1).sum()):,} điểm da".replace(",", ".")
+    if kq.get("rgb_da"):
+        R, G, B = kq["rgb_da"]
+        cau += f" · da R {R:.1f} G {G:.1f} B {B:.1f} %"
+    if dich is not None:
+        R, G, B = rgb_pt(np.asarray(dich, dtype=np.float64).reshape(1, 3))
+        cau += f" · đích R {R:.1f} G {G:.1f} B {B:.1f} %"
     chay = float((ma == 3).mean() * 100)
     if chay >= 0.1:
         cau += f" · cháy {chay:.0f}%"
