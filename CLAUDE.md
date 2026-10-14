@@ -1457,6 +1457,19 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   "Chưa có sao") lọc TRƯỚC khi đếm chip. `LuoiAnh.dat_ds(giu_cuon=True)` nay giữ chỗ cuộn cả khi
   tập ảnh đổi. Kiểm: test_cham_sao.py (thử ngược 4/4), kiem_plugin_lua51 mục 9. CHƯA thử trên
   Lightroom thật (setRawMetadata rating 0).
+- 14/10 **Curve lượt 2 chạy NGẦM** (user: "vẫn giữ áp 2 lần để lấy được thông số của lần 1.
+  Nhưng sẽ không hiển thị ra bên ngoài"; đã nghe: gộp hẳn vào Phân tích = phải DỰ ĐOÁN ảnh sau
+  WB/Tone/HSL/CG vì Lightroom không dựng ảnh với thông số chưa ghi): BUOC không còn "curve";
+  `xl["curve"]` quyết lượt 2; lượt 1 xong thì bước Áp giữ "đang" ("Lightroom đã áp — đang hoàn
+  thiện…", `xl["ap_ket"]`), `_xl_chot_ap()` (đầu `_xl_denoise` / `_xl_ket_thuc`) mới chốt. Tổng kết
+  chỉ có dòng ⚠ khi lượt 2 hỏng (`_xl_tong_ket_curve`); câu đầy đủ ở `_xl_tong_ket_curve_chi_tiet`
+  + bảng Chi tiết ảnh. `HopXuLy.tt` = trạng thái từng bước (bài kiểm).
+- 14/10 **Denoise gom 1 lệnh** (user chọn "thử gom, lỗi thì từng ảnh"): SDK chỉ bật Denoise trên
+  ảnh ĐANG XEM; Develop bật Auto Sync thì một setEnhance áp cho mọi ảnh đang chọn (một tác vụ nền).
+  `thuGomLo`: ảnh cuối + ảnh đầu chưa có Denoise -> chọn cả lô, bật ảnh đầu, soát ảnh cuối; có thì
+  `lo=1`, không thì vòng từng ảnh (ảnh đầu trong `daBat`, không bật lại). App: "gom 1 lệnh: N ảnh",
+  không gom được mà ≥ 2 ảnh -> mẹo bật Auto Sync. CHƯA thử Lightroom thật (Auto Sync có lan sang
+  Denoise không là GIẢ ĐỊNH đọc từ Develop.lrmodule: autoSync / runEnhanceInBackground).
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT

@@ -114,12 +114,15 @@ def main() -> int:
             return app._xl["hop"]
 
         hop = mo_luot(lam_items())
-        ktra("nguồn catalog + bật: hộp có bước Curve", "curve" in hop.hang)
+        #  14/10 (user: "vẫn giữ áp 2 lần ... Nhưng sẽ không hiển thị ra bên ngoài")
+        ktra("nguồn catalog + bật: lượt 2 BẬT nhưng hộp KHÔNG có dòng Curve riêng",
+             app._xl.get("curve") is True and "curve" not in hop.hang
+             and list(hop.hang) == ["do", "ap"], str(list(hop.hang)))
         hop.destroy()
         app.v_curve_da.set(False)
         app.v_curve_chay.set(False)
         hop = mo_luot(lam_items())
-        ktra("tắt cả hai ô: không có bước Curve", "curve" not in hop.hang)
+        ktra("tắt cả hai ô: không có lượt 2", app._xl.get("curve") is False)
         hop.destroy()
         app.v_curve_da.set(True)
         app.v_curve_chay.set(True)
@@ -137,7 +140,10 @@ def main() -> int:
         (jobs / at.NHIP_PLUGIN).write_text("vong=1\nkhi=x\nkha_nang=curve1\n", encoding="utf-8")
         items = lam_items()
         hop = mo_luot(items)
-        app._xl_curve()
+        app._xl_job(app._xl["job"], "mat")          # lượt 1 xong (job đã được nhận)
+        ktra("lượt 1 xong: bước Áp CHƯA xong, chữ 'đang hoàn thiện' (lượt 2 chạy ngầm)",
+             hop.tt.get("ap") == "dang" and "hoàn thiện" in str(tk.Label.cget(hop.hang["ap"][2], "text"))
+             and app._xl.get("ap_ket") is not None, f"{hop.tt.get('ap')} · {app._xl.get('ap_ket')}")
         ktra("gửi yêu cầu dựng lượt 2", cd.dang_cho(jobs))
         yc = (jobs / cd.TEN_YEU_CAU).read_text(encoding="utf-8").splitlines()
         anh = sorted(Path(d.split("=", 1)[1]).name for d in yc if d.startswith("anh="))
@@ -168,8 +174,14 @@ def main() -> int:
         ktra("Lightroom áp curve -> 'Xử lý xong'", cho(lambda: app._xl.get("xong"), 20)
              and hop.lbl_tieu_de.cget("text") == "Xử lý xong", hop.lbl_tieu_de.cget("text"))
         tong = hop.lbl_tong.cget("text")
-        ktra("…tổng kết có dòng Curve: chỉnh da 1, nén cháy 1",
-             "Curve: chỉnh da 1 ảnh, nén cháy 1 ảnh" in tong, tong.replace("\n", " | ")[:220])
+        ktra("…bước Áp xong với chữ của lượt 1 (Lightroom đã áp … kiểm chứng đủ)",
+             hop.tt.get("ap") == "xong"
+             and "Lightroom đã áp" in str(tk.Label.cget(hop.hang["ap"][2], "text")),
+             str(tk.Label.cget(hop.hang["ap"][2], "text")))
+        ktra("…tổng kết KHÔNG có dòng Curve (lượt 2 ngầm), số liệu vẫn tính đủ",
+             "Curve" not in tong and "chỉnh da 1 ảnh, nén cháy 1 ảnh"
+             in app._xl_tong_ket_curve_chi_tiet(app._xl.get("curve_kq") or {}),
+             tong.replace("\n", " | ")[:220])
         hop.destroy()
         # ------------------------------------------------------------ 4. chi tiết
         cb = app._curve_bao.get(at.khoa_duong_dan(items[0]["path"]))
@@ -184,7 +196,7 @@ def main() -> int:
         ktra("Dừng lúc chờ dựng: rút yêu cầu, 'Đã dừng'", not cd.dang_cho(jobs)
              and cho(lambda: app._xl.get("xong"), 5) and hop.lbl_tieu_de.cget("text") == "Đã dừng")
         hop.destroy()
-        ktra("tiêu đề bước có trong BUOC", dict(xl_ui.BUOC).get("curve") == "Curve da mặt & vùng cháy")
+        ktra("BUOC không còn bước Curve riêng", "curve" not in dict(xl_ui.BUOC))
     finally:
         at.LR_JOB_DIR = job_cu
         try:

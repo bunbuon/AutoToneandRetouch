@@ -34,8 +34,11 @@ from datetime import datetime
 import giao_dien as gd
 import autotone as at
 
+#[[ 14/10 (user: "vẫn giữ áp 2 lần để lấy được thông số của lần 1. Nhưng sẽ không hiển
+#   thị ra bên ngoài"): lượt 2 (curve da mặt / vùng cháy) chạy NGẦM trong bước "Áp vào
+#   Lightroom" — bước đó chỉ xong khi lượt 2 xong; không còn dòng Curve riêng. ]]
 BUOC = (("do", "Phân tích ảnh"), ("ap", "Áp vào Lightroom"),
-        ("curve", "Curve da mặt & vùng cháy"), ("denoise", "Denoise ảnh ISO cao"))
+        ("denoise", "Denoise ảnh ISO cao"))
 #  chờ yêu cầu Denoise được nhận tối đa bấy nhiêu giây (plugin cũ / Lightroom tắt)
 CHO_DENOISE = 90
 #  chờ Lightroom nhận yêu cầu dựng ảnh lượt 2 (curve) tối đa bấy nhiêu giây
@@ -99,9 +102,10 @@ class HopXuLy(tk.Toplevel):
         self.lbl_buoi.pack(fill="x", pady=(2, 12))
         #  các bước
         self.hang: dict = {}
+        self.tt: dict = {}
         s = gd.don_vi(self) + 6
         for ma, ten in BUOC:
-            if (ma == "denoise" and not co_denoise) or (ma == "curve" and not co_curve):
+            if ma == "denoise" and not co_denoise:
                 continue
             h = tk.Frame(o, background=m["nen"])
             h.pack(fill="x", pady=4)
@@ -192,6 +196,7 @@ class HopXuLy(tk.Toplevel):
         """Đặt trạng thái một bước: cho / dang / xong / loi / bo (bỏ qua)."""
         if ma not in self.hang:
             return
+        self.tt[ma] = tt                    # trạng thái hiện tại của bước (bài kiểm đọc)
         try:
             self._ve_trang_thai(ma, tt)
             ct = self.hang[ma][2]
@@ -369,8 +374,8 @@ class XuLyAnhMixin:
                 curve_da.rut_yeu_cau()
             else:
                 curve_da.xin_dung()
-            self._xl_ket_thuc("dung", "Đã dừng ở bước Curve — WB / Tone đã áp vào Lightroom, "
-                                      "curve chưa ghi.")
+            self._xl_ket_thuc("dung", "Đã dừng — WB / Tone đã áp vào Lightroom, phần hoàn thiện "
+                                      "màu da chưa ghi.")
         elif pha == "curve_ap":
             job = xl.get("curve_job")
             if job is not None and at.job_state(job) == "cho":
@@ -378,9 +383,11 @@ class XuLyAnhMixin:
                     Path(job).unlink()
                 except OSError:
                     pass
-                self._xl_ket_thuc("dung", "Đã huỷ gửi curve — WB / Tone đã áp, curve chưa ghi.")
+                self._xl_ket_thuc("dung", "Đã dừng — WB / Tone đã áp vào Lightroom, phần hoàn "
+                                          "thiện màu da chưa ghi.")
             else:
-                self.status("Lightroom đang áp curve — không ngắt giữa chừng được.", gd.MAU["canh"])
+                self.status("Lightroom đang hoàn thiện — không ngắt giữa chừng được.",
+                            gd.MAU["canh"])
         elif pha == "denoise":
             try:
                 (Path(at.LR_JOB_DIR) / at.TEN_YC_DENOISE).unlink()
@@ -456,8 +463,6 @@ class XuLyAnhMixin:
                                      "trên lưới ảnh.")
             return
         hop.buoc("ap", "xong", f"đã ghi {gd.so_vn(so_gui)} file .xmp")
-        if "curve" in hop.hang:
-            hop.buoc("curve", "bo", "cần Lightroom (nguồn catalog)")
         if "denoise" in hop.hang:
             hop.buoc("denoise", "bo", "cần Lightroom (nguồn catalog)")
         self._xl_ket_thuc("xong")
@@ -481,10 +486,15 @@ class XuLyAnhMixin:
         elif st in ("xong", "mat"):
             bad = at.job_unverified(job) if st == "xong" else []
             xl["chua_nhan"] = len(bad or [])
-            hop.buoc("ap", "xong" if not bad else "loi",
-                     f"Lightroom đã áp {gd.so_vn(xl.get('so_gui', 0))} ảnh"
-                     + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else " · kiểm chứng đủ"))
-            hop.tien_do(1, 1, "")
+            ket = ("xong" if not bad else "loi",
+                   f"Lightroom đã áp {gd.so_vn(xl.get('so_gui', 0))} ảnh"
+                   + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else " · kiểm chứng đủ"))
+            if xl.get("curve"):
+                xl["ap_ket"] = ket                 # chốt khi lượt 2 (ngầm) xong — _xl_chot_ap
+                hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
+            else:
+                hop.buoc("ap", *ket)
+                hop.tien_do(1, 1, "")
             self._da_ap_lr = True
             xl["chua_nhan_ds"] = {at.khoa_duong_dan(p) for p, _w in (bad or [])}
             self._xl_curve()
@@ -495,11 +505,10 @@ class XuLyAnhMixin:
         import curve_da
         xl = self._xl
         hop = xl.get("hop")
-        if "curve" not in hop.hang:
+        if not xl.get("curve"):
             self._xl_denoise()
             return
         if curve_da.KHA_NANG not in at.plugin_kha_nang():
-            hop.buoc("curve", "bo", "plugin trong Lightroom là bản cũ")
             xl["curve_kq"] = {"bo": "plugin-cu"}
             self._xl_denoise()
             return
@@ -508,7 +517,6 @@ class XuLyAnhMixin:
         ds = [r for r in curve_da.chon_anh(xl.get("items_ghi") or [], cfg)
               if at.khoa_duong_dan(r.get("lr_path") or r["path"]) not in bo]
         if not ds:
-            hop.buoc("curve", "bo", "không ảnh nào cần đo")
             xl["curve_kq"] = {"bo": "khong-anh"}
             self._xl_denoise()
             return
@@ -518,15 +526,14 @@ class XuLyAnhMixin:
         try:
             curve_da.yeu_cau_dung(root, ds, dest, ma)
         except OSError as ex:
-            hop.buoc("curve", "loi", "không gửi được yêu cầu")
             xl["curve_kq"] = {"bo": "loi", "ly_do": str(ex)}
             self._xl_denoise()
             return
         xl.update(pha="curve", curve_ma=ma, curve_ds=ds, curve_dest=dest, curve_do={},
                   curve_cfg=cfg, curve_ten=Path(str(root)).name, t_curve=time.monotonic(),
                   curve_luong_xong=False, curve_huy=False)
-        hop.buoc("curve", "dang", f"{gd.so_vn(len(ds))} ảnh — chờ Lightroom dựng…")
-        hop.tien_do(0, len(ds), "Chờ Lightroom nhận…")
+        hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
+        hop.tien_do(0, len(ds), "Hoàn thiện…")
         threading.Thread(target=self._xl_curve_luong, args=(xl,), daemon=True).start()
         self.after(1000, self._xl_soi_curve)
 
@@ -590,56 +597,43 @@ class XuLyAnhMixin:
                 bad = at.job_unverified(xl["curve_job"]) if st == "xong" else []
                 tt = xl.get("curve_tt") or {}
                 xl["curve_kq"] = dict(tt, chua_nhan=len(bad or []))
-                hop.buoc("curve", "xong" if not bad else "loi", self._xl_cau_curve(tt)
-                         + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else ""))
-                hop.tien_do(1, 1, "")
                 self._xl_luu_bao_curve(ds)
                 self._xl_denoise()
                 return
             if st == "huy":
-                hop.buoc("curve", "loi", "đã huỷ gửi")
-                self._xl_ket_thuc("dung", "Đã huỷ gửi curve — WB / Tone đã áp.")
+                self._xl_ket_thuc("dung", "Đã dừng — WB / Tone đã áp vào Lightroom, phần hoàn "
+                                          "thiện màu da chưa ghi.")
                 return
-            hop.buoc("curve", "dang", "Lightroom đang áp curve" if st == "dang"
-                     else "đã gửi — chờ Lightroom nhận…")
+            hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
             self.after(1000, self._xl_soi_curve)
             return
         if xl.get("curve_luong_xong"):
             if xl.get("curve_loi"):
-                hop.buoc("curve", "loi", "lỗi khi đo / giải")
                 xl["curve_kq"] = {"bo": "loi", "ly_do": xl["curve_loi"]}
                 self._xl_denoise()
                 return
             tt = xl.get("curve_tt") or {}
             td = xl.get("curve_td") or {}
             if td.get("trang_thai") == "loi" and not tt.get("do"):
-                hop.buoc("curve", "loi", f"Lightroom không dựng được ảnh "
-                                         f"({td.get('thong_bao') or 'lỗi'})")
                 xl["curve_kq"] = {"bo": "loi", "ly_do": td.get("thong_bao") or ""}
                 self._xl_denoise()
                 return
             if xl.get("curve_job") is None:
                 xl["curve_kq"] = dict(tt)
-                hop.buoc("curve", "xong", self._xl_cau_curve(tt))
                 self._xl_luu_bao_curve(ds)
                 self._xl_denoise()
                 return
             xl["pha"] = "curve_ap"
-            hop.buoc("curve", "dang", f"đã gửi curve {gd.so_vn(tt.get('doi', 0))} ảnh — "
-                                      "chờ Lightroom nhận…")
+            hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
             self.after(1000, self._xl_soi_curve)
             return
         td = curve_da.tien_do()
         n_do = len(xl["curve_do"])
         if td.get("ma") == xl["curve_ma"]:
-            hop.buoc("curve", "dang", f"Lightroom dựng {gd.so_vn(td.get('xong', 0))} / "
-                                      f"{gd.so_vn(td.get('tong', len(ds)))} · đã đo "
-                                      f"{gd.so_vn(n_do)}")
-            hop.tien_do(n_do, len(ds), f"Đo da + vùng cháy {gd.so_vn(n_do)} / {gd.so_vn(len(ds))} ảnh")
+            hop.tien_do(n_do, len(ds), f"Hoàn thiện {gd.so_vn(n_do)} / {gd.so_vn(len(ds))} ảnh")
         elif curve_da.dang_cho() and time.monotonic() - xl["t_curve"] > CHO_CURVE:
             curve_da.rut_yeu_cau()
             xl["curve_huy"] = True
-            hop.buoc("curve", "loi", "Lightroom chưa nhận yêu cầu dựng ảnh")
             xl["curve_kq"] = {"bo": "khong-nhan"}
             self._xl_denoise()
             return
@@ -667,9 +661,25 @@ class XuLyAnhMixin:
             if r.get("curve_bao"):
                 bao[at.khoa_duong_dan(r["path"])] = r["curve_bao"]
 
+    def _xl_chot_ap(self):
+        """Lượt 2 (ngầm) xong / dừng: bước "Áp vào Lightroom" mới xong — chữ của lượt 1,
+        cộng ảnh Lightroom chưa nhận curve (nếu có)."""
+        xl = getattr(self, "_xl", None)
+        ket = xl.pop("ap_ket", None) if xl else None
+        hop = xl.get("hop") if xl else None
+        if not ket or hop is None:
+            return
+        tt, chu = ket
+        n = int((xl.get("curve_kq") or {}).get("chua_nhan") or 0)
+        if n:
+            tt, chu = "loi", chu + f" · {n} ảnh chưa nhận đủ"
+        hop.buoc("ap", tt, chu)
+        hop.tien_do(1, 1, "")
+
     def _xl_denoise(self):
         xl = self._xl
         hop = xl.get("hop")
+        self._xl_chot_ap()
         if "denoise" not in hop.hang:
             self._xl_ket_thuc("xong")
             return
@@ -712,15 +722,18 @@ class XuLyAnhMixin:
             else:
                 bat, co, kht, loi = so("bat"), so("da_co"), so("khong_ho_tro"), so("loi")
                 hop.buoc("denoise", "xong" if not loi else "loi",
-                         f"bật {gd.so_vn(bat)} ảnh"
+                         (f"gom 1 lệnh: {gd.so_vn(bat)} ảnh" if so("lo") else
+                          f"bật {gd.so_vn(bat)} ảnh")
                          + (f" · {co} ảnh đã có" if co else "")
                          + (f" · {kht} ảnh không hỗ trợ" if kht else "")
                          + (f" · {loi} lỗi" if loi else ""))
+                hop.tien_do(1, 1, "")
             self._xl_ket_thuc("xong")
             return
         if td.get("tong"):
             hop.buoc("denoise", "dang", "Lightroom đang bật Denoise (module Develop)")
-            hop.tien_do(td["xong"], td["tong"])
+            hop.tien_do(td["xong"], td["tong"],
+                        f"Denoise {gd.so_vn(td['xong'])} / {gd.so_vn(td['tong'])} ảnh")
         elif td.get("cho") and time.monotonic() - xl["t_denoise"] > CHO_DENOISE:
             #  plugin cũ (chưa có DenoiseCore) / Lightroom tắt: rút yêu cầu, đừng để nó
             #  chạy bất ngờ lúc Lightroom mở lại
@@ -738,15 +751,25 @@ class XuLyAnhMixin:
 
     @staticmethod
     def _xl_tong_ket_curve(cv: dict) -> str:
+        """14/10: lượt 2 chạy ngầm — tổng kết CHỈ nói khi nó hỏng (cần người dùng làm gì).
+        Số liệu từng ảnh vẫn ở bảng Chi tiết ảnh (_dong_curve)."""
         bo = cv.get("bo")
         if bo == "plugin-cu":
-            return ("⚠ Curve: plugin trong Lightroom là bản cũ — cài lại AutoTone (bản đầy đủ, "
-                    "cập nhật OTA không mang plugin) rồi khởi động lại Lightroom.")
+            return ("⚠ Màu da chưa hoàn thiện: plugin trong Lightroom là bản cũ — cài lại "
+                    "AutoTone (bản đầy đủ, cập nhật OTA không mang plugin) rồi khởi động lại "
+                    "Lightroom.")
         if bo == "khong-nhan":
-            return (f"⚠ Curve: Lightroom không nhận yêu cầu dựng ảnh sau {CHO_CURVE} giây — "
-                    "curve chưa ghi.")
+            return (f"⚠ Màu da chưa hoàn thiện: Lightroom không dựng ảnh sau {CHO_CURVE} giây.")
         if bo == "loi":
-            return f"⚠ Curve: lỗi — {cv.get('ly_do') or 'xem nhật ký'}."
+            return f"⚠ Màu da chưa hoàn thiện: lỗi — {cv.get('ly_do') or 'xem nhật ký'}."
+        if cv.get("chua_nhan"):
+            return f"⚠ {cv['chua_nhan']} ảnh Lightroom chưa nhận phần hoàn thiện màu da."
+        return ""
+
+    @staticmethod
+    def _xl_tong_ket_curve_chi_tiet(cv: dict) -> str:
+        """Câu đầy đủ (bài kiểm / nhật ký) — không hiện trong hộp từ 14/10."""
+        bo = cv.get("bo")
         if bo == "khong-anh":
             return "· Curve: không ảnh nào cần đo."
         mn = cv.get("mat_na") or {}
@@ -768,6 +791,7 @@ class XuLyAnhMixin:
         xl = getattr(self, "_xl", None)
         if not xl or xl.get("xong"):
             return
+        self._xl_chot_ap()                  # dừng giữa lượt 2: bước Áp (lượt 1) vẫn đã xong
         xl["xong"] = True
         hop = xl.get("hop")
         giay = time.monotonic() - xl["t0"]
@@ -792,13 +816,18 @@ class XuLyAnhMixin:
                 dong.append(f"⚠ {xl['chua_nhan']} ảnh Lightroom chưa nhận đúng — bấm dòng trạng "
                             "thái trên thanh trên để xem.")
             cv = xl.get("curve_kq")
-            if cv is not None:
+            if cv is not None and self._xl_tong_ket_curve(cv):
                 dong.append(self._xl_tong_ket_curve(cv))
             kq = xl.get("denoise_kq")
             if kq is not None and kq.get("ly_do") != "lightroom-chua-ho-tro":
                 dong.append(f"· Denoise: bật {kq.get('bat', 0)} ảnh ISO ≥ "
                             f"{int(xl.get('denoise_iso') or 2000)} — Lightroom xử lý nền, xem "
                             "tiến độ ở góc trên bên trái Lightroom.")
+                #  14/10: gom 1 lệnh chỉ được khi Develop bật Auto Sync — chưa thì nhắc
+                if kq.get("lo") != "1" and int(float(kq.get("bat") or 0)) >= 2:
+                    dong.append("  Mẹo: bật Auto Sync trong Develop (công tắc cạnh nút Sync) để "
+                                "Lightroom Denoise cả danh sách trong một tác vụ, không phải "
+                                "chọn từng ảnh.")
             elif kq is not None:
                 dong.append("⚠ Denoise: Lightroom này chưa cho bật Denoise qua plugin "
                             "(cần Lightroom Classic 14.4 trở lên).")

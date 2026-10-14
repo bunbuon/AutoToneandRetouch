@@ -466,13 +466,19 @@ DC_GIA = {
   getEnhancePanelState = function()
     return { denoiseEnabled = true, denoiseState = DN.trangThai[DN.chon and DN.chon.localIdentifier] or false }
   end,
-  setEnhance = function(ten, v) DN.goi = DN.goi + 1; DN.trangThai[DN.chon.localIdentifier] = v
+  setEnhance = function(ten, v) DN.goi = DN.goi + 1
+    --  Auto Sync bật trong Develop: thay đổi áp cho MỌI ảnh đang chọn (như Lightroom)
+    if DN.autoSync and DN.chonDs then
+      for _, p in ipairs(DN.chonDs) do DN.trangThai[p.localIdentifier] = v end
+    else
+      DN.trangThai[DN.chon.localIdentifier] = v
+    end
     if DN.khiBat then DN.khiBat() end end,
 }
 AV_GIA = { getCurrentModuleName = function() return DN.module end,
            switchToModule = function(m) DN.module = m; DN.vao[#DN.vao + 1] = m end }
 local cat = { findPhotoByPath = function(self, p) return DN.ds[p] end,
-              setSelectedPhotos = function(self, a, ds) DN.chon = a end,
+              setSelectedPhotos = function(self, a, ds) DN.chon = a; DN.chonDs = ds end,
               getTargetPhoto = function(self) return DN.chon end,
               getTargetPhotos = function(self) return {} end }
 local LrApplication = import("LrApplication")
@@ -549,6 +555,32 @@ ktra("yeu_cau_denoise: gửi lượt mới thì xoá lệnh dừng cũ (plugin k
 ma_d, = [x for x in [L.eval('require("DenoiseCore")').xinDung("ma=m5\n", "m5")]]
 ktra("DenoiseCore.xinDung: đúng mã -> true, khác mã / rỗng -> false",
      ma_d is True and DN.xinDung("ma=m5\n", "m6") is False and DN.xinDung("", "m5") is False)
+
+# 8c. 14/10 user: "gom hết vào thành 1 list rồi cho hiển thị theo tiến trình"
+L.execute('DN.trangThai = {}; DN.goi = 0; DN.module = "library"; DN.autoSync = true')
+at_.yeu_cau_denoise(["G:/B/A1.ARW", "G:/B/A6.ARW", "G:/B/A7.ARW"], "m13", job_dir=jobs)
+DN.runRequest()
+kq13 = at_.tien_do_denoise("m13", job_dir=jobs)["ket_qua"] or {}
+td13 = at_.tien_do_denoise("m13", job_dir=jobs)
+ktra("Gom 1 lệnh: Auto Sync bật -> MỘT setEnhance cho cả 3 ảnh, lo=1, tiến độ 3/3",
+     G.goi == 1 and kq13.get("lo") == "1" and kq13.get("bat") == "3"
+     and G.trangThai[1] and G.trangThai[6] and G.trangThai[7] and td13["xong"] == 3,
+     f"goi={G.goi} · {kq13}")
+ktra("…vẫn trả module cũ", G.module == "library")
+L.execute('DN.trangThai = {}; DN.goi = 0; DN.module = "library"; DN.autoSync = false')
+at_.yeu_cau_denoise(["G:/B/A1.ARW", "G:/B/A6.ARW", "G:/B/A7.ARW"], "m14", job_dir=jobs)
+DN.runRequest()
+kq14 = at_.tien_do_denoise("m14", job_dir=jobs)["ket_qua"] or {}
+ktra("Auto Sync tắt: thử gom không được -> từng ảnh, ảnh đầu KHÔNG bật lại (3 lệnh, bật 3)",
+     G.goi == 3 and not kq14.get("lo") and kq14.get("bat") == "3" and kq14.get("da_co") == "0"
+     and G.trangThai[1] and G.trangThai[6] and G.trangThai[7], f"goi={G.goi} · {kq14}")
+L.execute('DN.trangThai = {}; DN.goi = 0; DN.autoSync = true; DN.trangThai[7] = true')
+at_.yeu_cau_denoise(["G:/B/A1.ARW", "G:/B/A6.ARW", "G:/B/A7.ARW"], "m15", job_dir=jobs)
+DN.runRequest()
+kq15 = at_.tien_do_denoise("m15", job_dir=jobs)["ket_qua"] or {}
+ktra("ảnh cuối đã có Denoise từ trước: không soát được -> không gom (không báo gom nhầm)",
+     not kq15.get("lo") and kq15.get("da_co") == "1" and kq15.get("bat") == "2", str(kq15))
+L.execute('DN.autoSync = false')
 
 L.execute('DC_GIA.setEnhance = nil; DC_GIA.toggleEnhance = nil')
 at_.yeu_cau_denoise(["G:/B/A1.ARW"], "m9", job_dir=jobs)

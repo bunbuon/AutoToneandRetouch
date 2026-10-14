@@ -158,6 +158,8 @@ def main() -> int:
         tong = hop.lbl_tong.cget("text")
         ktra("…tổng kết nói số ảnh đã áp + Denoise", "6 file .xmp" in tong or "6 ảnh" in tong
              and "Denoise" in tong, tong.replace("\n", " | ")[:160])
+        ktra("…Denoise từng ảnh (Lightroom không gom được) -> nhắc bật Auto Sync",
+             "Auto Sync" in tong, tong.replace("\n", " | ")[-200:])
         ktra("…nút Xử lý ảnh mở lại", cho(lambda: str(app.btn_xu_ly.cget("state")) == "normal"))
         hop.destroy()
         #  bấm lại: ảnh đã có kết quả -> KHÔNG đo lại, áp ngay

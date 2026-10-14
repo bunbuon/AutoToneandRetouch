@@ -102,7 +102,7 @@ end
 
 local function ketQua(t)
     ghiKv(M.KET_QUA, t, { "ma", "tong", "bat", "da_co", "khong_ho_tro", "khong_thay",
-                           "loi", "dung", "ly_do", "khi" })
+                           "loi", "dung", "lo", "ly_do", "khi" })
 end
 
 --[[ App xin dừng lượt `ma` chưa. File của lượt KHÁC (cũ) thì xoá, không dừng. ]]
@@ -134,6 +134,71 @@ local function chonAnh(catalog, photo)
         end
     end
     return false
+end
+
+local function trangThai()
+    return Core.try("denoiseTrangThai", function()
+        if type(LrDevelopController.getEnhancePanelState) == "function" then
+            return LrDevelopController.getEnhancePanelState()
+        end
+        return nil
+    end)
+end
+
+local function batDenoise()
+    local _, err = Core.try("denoiseBat", function()
+        if type(LrDevelopController.setEnhance) == "function" then
+            LrDevelopController.setEnhance("denoise", true)
+        else
+            LrDevelopController.toggleEnhance("denoise")
+        end
+        return true
+    end)
+    return err
+end
+
+--[[ Chọn CẢ danh sách, `xem` là ảnh đang xem; đợi Develop nhận ảnh đó (~5 giây). ]]
+local function chonCaLo(catalog, photos, xem)
+    Core.try("denoiseChonLo", function() catalog:setSelectedPhotos(xem, photos) end)
+    local muon = idCua(xem)
+    for _ = 1, 25 do
+        LrTasks.sleep(0.2)
+        local t = catalog:getTargetPhoto()
+        if t and idCua(t) == muon then
+            LrTasks.sleep(0.4)
+            return true
+        end
+    end
+    return false
+end
+
+--[[ 14/10 (user: "Phần Denoise đang chạy từng ảnh. Có thể nào gom hết vào thành 1 list
+     rồi cho hiển thị theo tiến trình không?"): THỬ MỘT LỆNH cho cả danh sách. SDK chỉ bật
+     Denoise trên ẢNH ĐANG XEM; Develop bật Auto Sync thì thay đổi đó áp cho MỌI ảnh đang
+     chọn và Lightroom xử lý thành MỘT tác vụ nền (một thanh tiến trình). SDK không bật
+     được Auto Sync -> soát bằng ảnh CUỐI: trước khi bật nó chưa có Denoise, sau khi bật
+     ảnh đầu nó có -> Lightroom đã gom. Không thì trả false; ảnh đầu đã bật nằm trong
+     `daBat` để vòng từng ảnh không bật lại / không đếm hai lần.
+     CHƯA thử trên Lightroom thật. ]]
+local function thuGomLo(catalog, photos, kq, daBat)
+    if #photos < 2 then return false end
+    local dau, cuoi = photos[1], photos[#photos]
+    if not chonCaLo(catalog, photos, cuoi) then return false end
+    local st = trangThai()
+    if type(st) ~= "table" or st.denoiseEnabled == false or M.dangBat(st) then
+        return false                -- ảnh cuối đã có / không hỗ trợ: không soát được
+    end
+    if not chonCaLo(catalog, photos, dau) then return false end
+    st = trangThai()
+    if type(st) ~= "table" or st.denoiseEnabled == false or M.dangBat(st) then
+        return false                -- ảnh đầu đã có / không hỗ trợ: vòng từng ảnh lo
+    end
+    if batDenoise() then return false end
+    kq.bat = kq.bat + 1
+    daBat[idCua(dau)] = true
+    LrTasks.sleep(1.0)
+    if not chonCaLo(catalog, photos, cuoi) then return false end
+    return M.dangBat(trangThai())
 end
 
 function M.runRequest()
@@ -190,6 +255,14 @@ function M.runRequest()
     Core.try("denoiseVaoDevelop", function() LrApplicationView.switchToModule("develop") end)
     LrTasks.sleep(1.5)
     tienDo(ma, 0, #photos)
+    local daBat = {}
+    if not kiemDung(ma) and thuGomLo(catalog, photos, kq, daBat) then
+        kq.lo = 1
+        kq.bat = #photos
+        tienDo(ma, #photos, #photos)
+        Core.log(string.format("denoise: gom 1 lenh (Auto Sync) cho %d anh", #photos))
+        photos = {}                 -- xong cả lô: bỏ vòng từng ảnh
+    end
     for i = 1, #photos do
         local photo = photos[i]
         if kiemDung(ma) then
@@ -198,28 +271,18 @@ function M.runRequest()
             Core.log(string.format("denoise: app xin dung o anh %d/%d", i, #photos))
             break
         end
-        if not chonAnh(catalog, photo) then
+        if daBat[idCua(photo)] then
+            -- đã bật ở lượt thử gom (đã đếm), không chọn lại
+        elseif not chonAnh(catalog, photo) then
             kq.loi = kq.loi + 1
         else
-            local st = Core.try("denoiseTrangThai", function()
-                if type(LrDevelopController.getEnhancePanelState) == "function" then
-                    return LrDevelopController.getEnhancePanelState()
-                end
-                return nil
-            end)
+            local st = trangThai()
             if type(st) == "table" and st.denoiseEnabled == false then
                 kq.khong_ho_tro = kq.khong_ho_tro + 1
             elseif M.dangBat(st) then
                 kq.da_co = kq.da_co + 1
             else
-                local _, err = Core.try("denoiseBat", function()
-                    if type(LrDevelopController.setEnhance) == "function" then
-                        LrDevelopController.setEnhance("denoise", true)
-                    else
-                        LrDevelopController.toggleEnhance("denoise")
-                    end
-                    return true
-                end)
+                local err = batDenoise()
                 if err then
                     kq.loi = kq.loi + 1
                     Core.log("denoise LOI " .. tostring(photo:getFormattedMetadata("fileName"))

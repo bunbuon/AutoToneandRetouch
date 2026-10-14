@@ -2003,4 +2003,28 @@ TU_DIEN.update({
     'đã dừng — {}/{} ảnh': 'stopped — {}/{} photos',
     'Không gửi được lệnh dừng Denoise: {}': 'Could not send the Denoise stop request: {}',
     'Đã huỷ Denoise — Lightroom chưa nhận yêu cầu.': 'Denoise cancelled — Lightroom had not picked up the request.',
+    #  14/10: lượt 2 (curve) chạy ngầm trong bước Áp + Denoise gom 1 lệnh
+    'Lightroom đã áp — đang hoàn thiện…': 'Applied in Lightroom — finishing…',
+    'Hoàn thiện…': 'Finishing…',
+    'Hoàn thiện {} / {} ảnh': 'Finishing {} / {} photos',
+    ' · {} ảnh chưa nhận đủ': ' · {} photos not fully applied',
+    'Đã dừng — WB / Tone đã áp vào Lightroom, phần hoàn thiện màu da chưa ghi.':
+        'Stopped — WB / Tone are applied in Lightroom; the skin-tone finishing was not written.',
+    'Lightroom đang hoàn thiện — không ngắt giữa chừng được.':
+        'Lightroom is finishing — it cannot be interrupted midway.',
+    ('⚠ Màu da chưa hoàn thiện: plugin trong Lightroom là bản cũ — cài lại AutoTone (bản đầy '
+     'đủ, cập nhật OTA không mang plugin) rồi khởi động lại Lightroom.'):
+        ('⚠ Skin tones not finished: the Lightroom plugin is outdated — reinstall AutoTone '
+         '(full installer; OTA updates do not carry the plugin), then restart Lightroom.'),
+    '⚠ Màu da chưa hoàn thiện: Lightroom không dựng ảnh sau {} giây.':
+        '⚠ Skin tones not finished: Lightroom did not render the photos after {} seconds.',
+    '⚠ Màu da chưa hoàn thiện: lỗi — {}.': '⚠ Skin tones not finished: error — {}.',
+    '⚠ {} ảnh Lightroom chưa nhận phần hoàn thiện màu da.':
+        '⚠ {} photos did not take the skin-tone finishing in Lightroom.',
+    'gom 1 lệnh: {} ảnh': 'one batch: {} photos',
+    'Denoise {} / {} ảnh': 'Denoise {} / {} photos',
+    ('  Mẹo: bật Auto Sync trong Develop (công tắc cạnh nút Sync) để Lightroom Denoise cả danh '
+     'sách trong một tác vụ, không phải chọn từng ảnh.'):
+        ('  Tip: turn on Auto Sync in Develop (the switch next to the Sync button) so Lightroom '
+         'denoises the whole list in one task instead of photo by photo.'),
 })
