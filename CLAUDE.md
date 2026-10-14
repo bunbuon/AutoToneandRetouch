@@ -1499,6 +1499,12 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   test_xem_lr.py. CHƯA thử Lightroom thật.
 - 14/10 chip "Loại 1★" + "Chưa có sao" BỎ (user) — `gd.LocSao(co_chua=False)`, "Tất cả" bỏ cả
   lọc sao; thanh bước còn 3 (bỏ Nguồn ảnh, Lọc ảnh).
+- 14/10 lượt 2 "đứng ở 8 / 1.074": preview chạy (0,47 s/ảnh), app CHỜ ảnh soát nằm cuối buổi +
+  8 ảnh đo trước khi biết cach -> plugin lấy preview ẢNH SOÁT TRƯỚC, ghi cach ngay từ đầu; app
+  xin preview mà chưa có cach thì chưa đo. Chẩn đoán: jobs/do_curve_tiendo.txt + plugin.log.
+- 14/10 **bỏ khoá ISO ngoài trời** (user: "đang dùng lib để phân biệt trong nhà và ngoài trời"):
+  iso_ngoai_troi 0; ngoai_troi() Trộn = EV100, thiếu EV100 -> canh_ngoai (Places365), không có
+  -> đèn. Places365 vẫn KHÔNG thay EV100 (nhà bạt / mái che ban ngày Places365 gọi "trong").
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT
