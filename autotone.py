@@ -3586,6 +3586,9 @@ DEFAULTS = {
     #  14/10 chạy thật 2709: trần 0.6 EV / +25 -> da dừng ở L 0.840 (đích 0.864), 56% trong ±0.03
     "mot_luot_ev_sang_tran": 0.8,   # Tone: đổi tối đa bấy nhiêu EV so với decide() để da về sáng đích
     "hsl_da_lum_tran": 35,          # HSL: Luminance Cam tối đa ± bấy nhiêu điểm so với preset
+    "mot_luot_hsl_tran": (20, 35),  # HSL Hue / Sat Cam tối đa ± (chuỗi một lượt — xem mau_mot_luot)
+    "mot_luot_phan": 0.9,           # phần lệch HSL kéo về mỗi lượt (đường cũ 0.8)
+    "mot_luot_do_moi_loat": 2,      # đo da trên preview tối đa bấy nhiêu ảnh mỗi loạt (0 = mọi ảnh)
     "curve_da_sang": False,         # curve_da: kéo cả L về đích (chuỗi một lượt bật riêng)
     "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
     "curve_da_trang_max": 0.003,    # vung trung tinh trong dai da lech ab toi da (= trang_tran_cg)
@@ -8301,6 +8304,15 @@ def chia_loat(items: list, cfg: dict) -> list:
         if len(cur) >= 2:
             ds_loat.append(cur)
     return ds_loat
+
+
+def nhom_loat(items: list, cfg: dict) -> list:
+    """chia_loat + mỗi ảnh KHÔNG thuộc loạt nào thành một nhóm riêng. chia_loat chỉ trả loạt
+    ≥ 2 ảnh; chuỗi một lượt (14/10) quyết Tone / Luminance / HSL theo loạt — ảnh lẻ phải có
+    nhóm của chính nó, không thì bị bỏ sót (chạy thật 2709: ~200 ảnh lẻ không được nâng sáng)."""
+    loats = chia_loat(items, cfg)
+    co = {id(r) for g in loats for r in g}
+    return loats + [[r] for r in items if id(r) not in co]
 
 
 def dong_bo_loat(items: list, cfg: dict) -> int:

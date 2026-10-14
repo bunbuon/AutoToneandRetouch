@@ -24,6 +24,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
 import autotone as at
 
 TEN_YEU_CAU = "request_do_truoc.txt"
@@ -44,6 +46,24 @@ def can_do(items: list) -> list:
     """Ảnh cần đo trước: có mặt, không đen trắng, không 1★, có trong catalog."""
     return [r for r in items if r.get("meter_boxes") and not r.get("bw") and r.get("ok", True)
             and int(r.get("rating") or 0) != 1 and not r.get("ngoai_xuat")]
+
+
+def mau_loat(ds: list, cfg: dict, n: int = 2) -> list:
+    """Tối đa `n` ảnh mỗi LOẠT chụp (rải đều trong loạt) — đủ cho chuỗi một lượt.
+
+    #[[ 14/10 đo thật 2709 sau khi áp: trong một loạt da lệch nhau ~3% độ đậm / 0.004 L,
+    #   giữa các loạt ~27% / 0.044 — mọi quyết định của chuỗi (Tone theo cảnh, Luminance /
+    #   HSL / Curve theo loạt) cần số đo của LOẠT, không cần từng tấm. Đo đủ 1.056 ảnh mất
+    #   ~4 phút (mô hình tách da ~0.5 s/ảnh). Tấm không đo theo loạt của nó. ]]"""
+    if n <= 0:
+        return list(ds)
+    out = []
+    for g in at.nhom_loat(list(ds), cfg) if ds else []:
+        if len(g) <= n:
+            out += g
+        else:
+            out += [g[int(i)] for i in np.linspace(0, len(g) - 1, n).round()]
+    return out
 
 
 def _khoa(r) -> str:
@@ -122,6 +142,8 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
     t0 = time.monotonic()
     huy = huy or (lambda: False)
     ds = can_do(items)
+    if cfg.get("mot_luot_do_moi_loat", 2):
+        ds = mau_loat(ds, cfg, int(cfg.get("mot_luot_do_moi_loat", 2)))
     theo = {_khoa(r): r for r in ds}
     for r in items:
         r.pop("lr_truoc", None)

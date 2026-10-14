@@ -65,6 +65,7 @@ def main() -> int:
     du = {at.khoa_duong_dan(p): v for p, v in (d.get("anh") or {}).items()}
     luot2 = {at.khoa_duong_dan(p) for p in d.get("luot2") or []}
     cfg = dict(at.DEFAULTS, **{k: v for k, v in (d.get("cfg") or {}).items() if v is not None})
+    cfg["mot_luot_do_moi_loat"] = 0          # cổng: đo MỌI ảnh có dự đoán (không lấy mẫu theo loạt)
     items = [r for r in hm.nap_phan_tich(folder)
              if at.khoa_duong_dan(r.get("lr_path") or r["path"]) in du]
     noi(f"Dự đoán lúc {d.get('luc')}: {len(du)} ảnh · có kết quả phân tích {len(items)} · lượt 2 "

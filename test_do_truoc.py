@@ -153,7 +153,7 @@ def main() -> int:
     th = threading.Thread(target=plugin_gia, args=(jobs, anh, dung, nk), daemon=True)
     th.start()
     try:
-        kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS), job_dir=jobs, catalog=cat)
+        kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS, mot_luot_do_moi_loat=0), job_dir=jobs, catalog=cat)
     finally:
         dung.set()
         th.join(2)
@@ -178,13 +178,13 @@ def main() -> int:
 
     print("4. plugin cũ")
     (jobs / at.NHIP_PLUGIN).write_text("vong=1\nkha_nang=curve1,xem1\n", encoding="utf-8")
-    kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS), job_dir=jobs, catalog=cat)
+    kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS, mot_luot_do_moi_loat=0), job_dir=jobs, catalog=cat)
     ktra("ảnh cache vẫn đo; ảnh thiếu bỏ + lý do 'truoc1'",
          kq["do"] == 2 and "lr_truoc" not in r["A3"] and "truoc1" in kq["ly_do"], str(kq))
 
     print("5. huỷ")
     (jobs / at.NHIP_PLUGIN).write_text("vong=1\nkha_nang=curve1,xem1,truoc1\n", encoding="utf-8")
-    kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS), job_dir=jobs, catalog=cat, huy=lambda: True)
+    kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS, mot_luot_do_moi_loat=0), job_dir=jobs, catalog=cat, huy=lambda: True)
     ktra("huy() -> không chờ Lightroom, không để lại yêu cầu, lý do 'đã dừng'",
          not (jobs / dt.TEN_YEU_CAU).exists() and kq["plugin"] == 0 and kq["ly_do"] == "đã dừng", str(kq))
 
@@ -193,11 +193,20 @@ def main() -> int:
     th = threading.Thread(target=plugin_gia, args=(jobs, anh, dung, nk), daemon=True)
     th.start()
     try:
-        kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS), job_dir=jobs, catalog=tam / "khong.lrcat")
+        kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS, mot_luot_do_moi_loat=0), job_dir=jobs, catalog=tam / "khong.lrcat")
     finally:
         dung.set()
         th.join(2)
     ktra("mọi ảnh qua plugin, vẫn đo đủ 3", kq["do"] == 3 and kq["plugin"] == 3 and kq["cache"] == 0, str(kq))
+
+    print("7. lấy mẫu theo loạt (14/10: trong loạt da lệch ~3% — đo tối đa 2 ảnh mỗi loạt)")
+    from datetime import timedelta
+    t0_ = T.anh("x")["dt_obj"]
+    loat = [dict(T.anh(f"L{i}", dt=t0_ + timedelta(seconds=2 * i))) for i in range(5)]
+    le = dict(T.anh("LE", dt=t0_ + timedelta(hours=1)))
+    chon = [Path(r["path"]).stem for r in dt.mau_loat(loat + [le], dict(at.DEFAULTS), 2)]
+    ktra("loạt 5 ảnh -> 2 ảnh rải đều (đầu, cuối); ảnh lẻ giữ", chon == ["L0", "L4", "LE"], str(chon))
+    ktra("n = 0 -> mọi ảnh", len(dt.mau_loat(loat + [le], dict(at.DEFAULTS), 0)) == 6)
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

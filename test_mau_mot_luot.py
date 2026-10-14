@@ -191,9 +191,10 @@ def main() -> int:
     #  14/10: một mức mỗi LOẠT (trước: mỗi cảnh)
     hsl = [[(r.get("hsl_moi") or {}).get("HueAdjustmentOrange") for r in g]
            for g in at.chia_loat([r for r in moi if r.get("hsl_ghi")], CFG)]
-    ktra("HSL: một mức mỗi loạt, trong trần ±15 / ±20",
+    th, ts = CFG.get("mot_luot_hsl_tran") or (15, 20)
+    ktra(f"HSL: một mức mỗi loạt, trong trần ±{th} / ±{ts}",
          hsl and all(len(set(g)) == 1 for g in hsl)
-         and all(abs(v) <= 15 for g in hsl for v in g if v is not None), str(hsl))
+         and all(abs(v) <= th for g in hsl for v in g if v is not None), str(hsl))
     loat2 = [r for r in moi if r["scene"] == 0 and r["path"] >= "G:/Buoi/DSC0003"]
     cv = [r.get("curve_ghi_mot_luot") for r in loat2]
     ktra("curve: cả loạt một curve, kể cả tấm không đo được", all(c for c in cv)
@@ -256,11 +257,16 @@ def main() -> int:
     buoi9.mkdir()
     #  cảnh TỐI (da L thấp hơn đích sáng), Tone chỉ được +0.1 EV
     ds9 = [anh(40 + i, 5, t0 + timedelta(hours=6, seconds=2 * i), lum=10, sang=0.55) for i in range(3)]
-    for r in ds9:
+    #  ảnh LẺ (không thuộc loạt nào) cùng cảnh — chia_loat không trả nó (14/10: ~200 ảnh lẻ
+    #  của 2709 không được nâng sáng)
+    le9 = anh(45, 5, t0 + timedelta(hours=7), lum=10, sang=0.55)
+    for r in ds9 + [le9]:
         r["crs"].pop("LuminanceAdjustmentOrange", None)          # mốc chốt trước 14/10: chưa có ô này
-    at.save_baseline(buoi9, {at.khoa_duong_dan(r["path"]): dict(r["crs"], __lrpath=r["path"]) for r in ds9})
+    at.save_baseline(buoi9, {at.khoa_duong_dan(r["path"]): dict(r["crs"], __lrpath=r["path"]) for r in ds9 + [le9]})
     cfg9 = dict(CFG, mot_luot_ev_sang_tran=0.1, grade=False)
-    kq9 = ml.chuoi(ds9, cfg9, folder=buoi9)
+    kq9 = ml.chuoi(ds9 + [le9], cfg9, folder=buoi9)
+    ktra("ảnh LẺ cũng được nâng sáng (Tone) + Luminance của riêng nó",
+         "sang-dich" in str(le9.get("notes")) and le9.get("hsl_l_ghi"), str(le9.get("notes")))
     lum = [(r.get("hsl_l_moi") or {}).get("LuminanceAdjustmentOrange") for r in ds9]
     ktra("Tone kẹp +0.1 EV", abs(kq9["mot_luot"]["sang"].get("e", 0) - 0.1) < 1e-6, str(kq9["mot_luot"]["sang"]))
     tran_l = float(cfg9.get("hsl_da_lum_tran") or 35)

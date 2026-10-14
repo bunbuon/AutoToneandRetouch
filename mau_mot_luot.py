@@ -79,7 +79,9 @@ def _co_mat(r: dict) -> bool:
 
 
 def chon_duong(items: list, cfg: dict, ti_le: float = 0.5) -> tuple[list, list]:
-    """(ảnh chuỗi một lượt, ảnh đường cũ) — theo CẢNH."""
+    """(ảnh chuỗi một lượt, ảnh đường cũ) — theo CẢNH: cảnh đi một lượt khi ≥ ti_le số LOẠT
+    có mặt của nó có ảnh đo được trên preview + mô hình đạt (14/10: đo trước chỉ lấy tối đa
+    hai ảnh mỗi loạt — do_truoc.mau_loat — nên đếm theo loạt, không theo tấm)."""
     if not bat(cfg):
         return [], list(items)
     theo: dict = {}
@@ -88,8 +90,9 @@ def chon_duong(items: list, cfg: dict, ti_le: float = 0.5) -> tuple[list, list]:
     moi, cu = [], []
     for ds in theo.values():
         mat = [r for r in ds if _co_mat(r)]
-        ok = [r for r in mat if r.get("lr_truoc") and mo_hinh_cho(r) is not None]
-        if mat and len(ok) >= max(1, math.ceil(ti_le * len(mat))):
+        loats = at.nhom_loat(mat, cfg) if mat else []
+        ok = [g for g in loats if any(r.get("lr_truoc") and mo_hinh_cho(r) is not None for r in g)]
+        if loats and len(ok) >= max(1, math.ceil(ti_le * len(loats))):
             moi += ds
         else:
             cu += ds
@@ -407,8 +410,9 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
         for r in ds:
             e_cua[id(r)] = E
     #  ảnh không đo được (không mặt…) cùng LOẠT với ảnh đã có mức -> theo loạt (như
-    #  dong_bo_loat); ảnh không mặt đứng riêng giữ nguyên (giu_anh_khong_mat)
-    for loat in at.chia_loat([r for r in items if not r.get("bw")], cfg):
+    #  dong_bo_loat); ảnh không mặt đứng riêng giữ nguyên (giu_anh_khong_mat); ảnh LẺ đã đo
+    #  là nhóm của chính nó (nhom_loat)
+    for loat in at.nhom_loat([r for r in items if not r.get("bw")], cfg):
         co = [e_cua[id(r)] for r in loat if id(r) in e_cua]
         if not co:
             continue
@@ -442,8 +446,11 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     import curve_da
     on_h = float(cfg.get("da_on_hue") or 3.0)
     on_c = float(cfg.get("da_on_chroma") or 0.10)
-    phan = float(cfg.get("hsl_da_cuoi_phan") or 0.8)
-    tran_h, tran_s = (float(v) for v in (cfg.get("hsl_da_cuoi_tran") or (15, 20)))
+    #  14/10: chuỗi một lượt nâng sáng da (Exposure / Luminance) làm da NHẠT đi -> Sat phải bù
+    #  nhiều hơn đường cũ; chạy thật 2709: 331 ảnh chạm trần +15 / +20 -> trần riêng (20, 35)
+    phan = float(cfg.get("mot_luot_phan") or cfg.get("hsl_da_cuoi_phan") or 0.8)
+    tran_h, tran_s = (float(v) for v in (cfg.get("mot_luot_hsl_tran") or cfg.get("hsl_da_cuoi_tran")
+                                         or (15, 20)))
     #[[ 14/10: chuỗi một lượt chạy ĐỦ năm bước (user: "đưa màu của da mặt ảnh về đúng với màu
     #   đó dù can thiệp qua bước nào") — ô HSL da / Color Grading của giao diện cũ chỉ bật /
     #   tắt đường cũ. Buổi 2709 chạy với hai ô đó tắt: da dự đoán cuối lệch hue −3.4°. ]]
@@ -523,7 +530,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     lum_cua: dict = {}                       # id(r) -> mức
     if sang_bat:
         k_canh: dict = {}
-        theo_loat = at.chia_loat([r for r in items if not r.get("bw")], cfg)
+        theo_loat = at.nhom_loat([r for r in items if not r.get("bw")], cfg)
         for loat in theo_loat:
             dung = [r for r in loat if id(r) in mm and mm[id(r)]["s"].get("LuminanceAdjustmentOrange") is not None]
             if not dung:
@@ -614,7 +621,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
         return k_canh[canh]
     muc_loat: dict = {}                       # id(r) -> (ui, vi)
     us, vs = [], []
-    for ds in (at.chia_loat([r for r in items if not r.get("bw")], cfg) if hsl_bat else []):
+    for ds in (at.nhom_loat([r for r in items if not r.get("bw")], cfg) if hsl_bat else []):
         dung = [r for r in ds if id(r) in mm]
         if not dung:
             continue
