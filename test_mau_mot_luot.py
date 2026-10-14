@@ -408,6 +408,19 @@ def main() -> int:
     ml.chuoi(ds12, cfg10)
     ktra("preview máy đòi bù mà Lightroom thấy da đã bằng -> không bù (về Exposure chung)",
          len({r["new_exposure"] for r in ds12}) == 1, str([(r["new_exposure"], r.get("bu_cum_lr")) for r in ds12]))
+
+    print("12. Tone theo CỤM, không theo cảnh (15/10)")
+    #  cùng cảnh 11: cụm 1 da rất sáng (ngoài trời, như DSC09393–95), cụm 2 cách 3 phút da bình
+    #  tối hơn đích -> cụm 1 hạ Exposure CẢ ẢNH đủ mức, cụm 2 không bị kéo theo (trước: trung vị cảnh)
+    t13 = t0 + timedelta(hours=13)
+    ds13 = [anh(110 + i, 11, t13 + timedelta(seconds=2 * i), sang=1.8, goc=110) for i in range(3)]
+    ds13 += [anh(120 + i, 11, t13 + timedelta(minutes=3, seconds=2 * i), sang=0.55, goc=120) for i in range(3)]
+    ev13 = [r["new_exposure"] for r in ds13]
+    kq13 = ml.chuoi(ds13, dict(cfg10, da_dich_L_bu=0.0))
+    e1 = [round(r["new_exposure"] - e, 2) for r, e in zip(ds13[:3], ev13[:3])]
+    e2 = [round(r["new_exposure"] - e, 2) for r, e in zip(ds13[3:], ev13[3:])]
+    ktra("cụm da sáng: hạ Exposure cả cụm, một mức; cụm da thường cùng cảnh: không hạ",
+         len(set(e1)) == 1 and e1[0] <= -0.2 and all(x > -0.05 for x in e2), f"{e1} / {e2} · {kq13['mot_luot']['sang']}")
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

@@ -346,7 +346,8 @@ def chay_lr(items: list, mm: dict, cfg: dict, du) -> dict:
 
 # ------------------------------------------------------------------ sáng da theo đích (Tone)
 def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
-    """Bước TONE kéo ĐỘ SÁNG da dự đoán về L của màu đích — Exposure MỘT mức mỗi cảnh (14/10).
+    """Bước TONE kéo ĐỘ SÁNG da dự đoán về L của màu đích — Exposure MỘT mức mỗi CỤM CÙNG
+    KHUNG (15/10; 14/10 theo cảnh).
 
     #[[ User 14/10: "Với mỗi 1 màu đích đều chia theo R G B. Vậy nên cần phải đưa màu của da
     #   mặt ảnh về đúng với màu đó dù can thiệp qua bước nào. Nếu các bước trước đó đã cho ra
@@ -365,15 +366,18 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
     len_e = float(cfg.get("mot_luot_ev_sang_len", 0.0) or 0.0)
     xuong = float(cfg["max_ev"])
     len_ = float(cfg.get("max_ev_up") or cfg["max_ev"])
+    #[[ 15/10: một mức mỗi CỤM CÙNG KHUNG (at.nhom_cum), không theo CẢNH. Theo cảnh thì cảnh
+    #   ngoài trời 2709 (DSC09393–09395, da L 0.88, khung cháy 27%) chỉ ra trung vị −0.16 EV
+    #   — các cụm khác trong cảnh da không sáng — phần còn lại dồn sang Luminance Cam −35 và
+    #   curve: làm tối RIÊNG da, nền vẫn cháy. User tự sửa DSC09296 / 09297: hạ CẢ ẢNH −0.68
+    #   EV. Trong cụm vẫn một mức (ảnh liền nhau cùng ánh sáng — không "bức tăng bức giảm"). ]]
     tk = {"canh": 0, "tang": 0, "giam": 0, "e": []}
-    e_cua: dict = {}
-    theo: dict = {}
-    for r in items:
-        if id(r) in mm and not r.get("bw") and r.get("new_exposure") is not None:
-            theo.setdefault(r.get("scene"), []).append(r)
-    for _canh, ds in theo.items():
+    for g in at.nhom_cum([r for r in items if not r.get("bw")], cfg):
+        ds = [r for r in g if id(r) in mm and r.get("new_exposure") is not None]
+        if not ds:
+            continue
         es, lech = [], []
-        #  mức của CẢNH là trung vị: 12 ảnh rải đều đủ (cảnh 300 ảnh tính 300 lần thì chậm)
+        #  mức của CỤM là trung vị: 12 ảnh rải đều đủ
         mau = [ds[int(i)] for i in np.linspace(0, len(ds) - 1, min(len(ds), 12)).round()]
         for r in mau:
             m = mm[id(r)]
@@ -413,20 +417,10 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
             continue
         tk["canh"] += 1
         tk["e"].append(E)
-        for r in ds:
-            e_cua[id(r)] = E
-    #  ảnh không đo được (không mặt…) cùng LOẠT với ảnh đã có mức -> theo loạt (như
-    #  dong_bo_loat); ảnh không mặt đứng riêng giữ nguyên (giu_anh_khong_mat); ảnh LẺ đã đo
-    #  là nhóm của chính nó (nhom_loat)
-    for loat in at.nhom_cum([r for r in items if not r.get("bw")], cfg):
-        co = [e_cua[id(r)] for r in loat if id(r) in e_cua]
-        if not co:
-            continue
-        E_l = round(float(np.median(co)), 2)
-        for r in loat:
+        #  cả cụm (kể cả tấm không đo được da) một mức; cụm không có tấm nào đo được giữ nguyên
+        for r in g:
             if r.get("new_exposure") is None:
                 continue
-            E = e_cua.get(id(r), E_l)
             moi = float(np.clip(_f(r.get("delta_ev")) + E, -xuong, len_))
             if abs(moi - _f(r.get("delta_ev"))) < 1e-6:
                 continue
