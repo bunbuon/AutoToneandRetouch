@@ -48,6 +48,15 @@ C. CURVE DA + NÉN VÙNG CHÁY (mặc định TẮT — chỉ thử khi muốn b
   [ ] 15. Mục 6 (KIEM_CONG_CURVE): "mo" -> Xử lý ảnh một buổi -> chạy lại với tên buổi
           -> xem so_sanh_curve.pdf (trước / sau).
 
+C2. TỐC ĐỘ XỬ LÝ ẢNH (14/10 — user: "1000 ảnh tốn 15 phút")
+  [ ] 15b. KIEM_TOAN_BO mục 9 (KIEM_PREVIEW_LR): Lightroom đang mở, plugin mới (mục 3,
+          chọn C), kéo một thư mục buổi ĐÃ PHÂN TÍCH vào (vd G:\2709). Đo ~2 phút,
+          KHÔNG đổi gì trong catalog. Gửi lại ket_qua_kiem\preview_lr_<giờ>.txt.
+          (Số này quyết định có làm chuỗi màu da MỘT LƯỢT hay không.)
+  [ ] 15c. Xử lý ảnh một buổi ~1000 ảnh như thường: hộp tổng kết giờ có dòng
+          "Thời gian: … (đo ảnh · Lightroom áp · hoàn thiện màu da)". Chụp lại dòng đó.
+          Lượt hoàn thiện nay đo da song song — trước đây buổi 2709 mất 18 phút.
+
 D. CREDIT + MỘT KEY MỘT MÁY (chưa thử được)
   Máy chủ key đang chạy CHƯA có phần credit / phiên -> app chạy như cũ (một key một
   máy, không trừ credit). Thử mục 7 (THU_CREDIT_2_MAY) SAU KHI cập nhật máy chủ.

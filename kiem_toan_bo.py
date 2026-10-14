@@ -72,7 +72,7 @@ NHOM = [
         "test_cho_lightroom.py", "test_plugin_modules.py", "test_preset_lr.py",
         "test_preset_khong_wb_tone.py", "kiem_nut_catalog.py", "kiem_ban_xuat.py",
         "kiem_moc_va_xuat.py", "kiem_dat_lai_buoi.py", "test_dung_lai_buoi.py",
-        "kiem_xuat_lr.py", "kiem_ghi_de.py", "kiem_duyet_py.py",
+        "kiem_xuat_lr.py", "kiem_ghi_de.py", "kiem_duyet_py.py", "test_kiem_preview_lr.py",
     ]),
     ("gd", "Giao diện: Xử lý ảnh · chấm / lọc sao · Thư mục · lưới · tiếng Anh", [
         "test_xu_ly_anh.py", "test_cham_sao.py", "test_xem_lr.py", "test_ngon_ngu.py", "test_giao_dien_gon.py",

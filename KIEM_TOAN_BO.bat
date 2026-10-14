@@ -56,6 +56,7 @@ echo   5. Kiem curve tren Lightroom that      (KIEM_CURVE_LR.bat)
 echo   6. Cong curve da tren mot buoi          (KIEM_CONG_CURVE.bat)
 echo   7. Thu credit + mot key mot may         (THU_CREDIT_2_MAY.bat - can may chu moi)
 echo   8. Lay code moi nhat tu GitHub          (git pull)
+echo   9. Do preview Lightroom that            (KIEM_PREVIEW_LR.bat - 14/10)
 echo   0. Thoat
 echo.
 set "CHON="
@@ -68,6 +69,7 @@ if "%CHON%"=="5" goto curve_lr
 if "%CHON%"=="6" goto cong_curve
 if "%CHON%"=="7" goto credit
 if "%CHON%"=="8" goto keo
+if "%CHON%"=="9" goto preview_lr
 if "%CHON%"=="0" goto :eof
 goto menu
 
@@ -131,6 +133,10 @@ goto menu
 :keo
 git pull --ff-only
 pause
+goto menu
+
+:preview_lr
+call "%~dp0KIEM_PREVIEW_LR.bat"
 goto menu
 
 rem --- :thu_py <lenh python...>  dat PY neu lenh do import duoc du thu vien ---
