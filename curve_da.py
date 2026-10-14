@@ -163,13 +163,18 @@ def chon_kiem(items: list, n: int = SO_KIEM) -> list:
     return [r.get("lr_path") or r["path"] for r in sorted(items, key=doi, reverse=True)[:n]]
 
 
-def do_anh(r: dict | None, anh, cfg: dict) -> dict:
+def do_anh(r: dict | None, anh, cfg: dict, xoay: str | None = None) -> dict:
     """Đo một ảnh Lightroom dựng (JPEG; preview thì đổi về sRGB). -> dict (xem cuối
-    hàm); "ok": False khi không đọc được."""
+    hàm); "ok": False khi không đọc được. xoay (14/10): file cache preview của Lightroom
+    lưu CHƯA xoay — mã AB/BC/CD/DA (doc_cache_lr)."""
     import cv2
     mien = str(cfg.get("curve_mien") or at.DEFAULTS["curve_mien"])
     try:
-        img = doc_srgb(anh)
+        if xoay:
+            import doc_cache_lr
+            img = doc_cache_lr.doc(anh, xoay)
+        else:
+            img = doc_srgb(anh)
     except (OSError, ValueError) as e:
         return {"ok": False, "ly_do": f"không đọc được ảnh dựng ({e})"}
     if max(img.shape[:2]) > CANH_DO:
@@ -289,9 +294,10 @@ def _tho_khoi_tao(luong: int) -> None:
 
 
 def _tho_do(viec) -> dict:
-    r, anh, cfg = viec
+    r, anh, cfg = viec[:3]
+    xoay = viec[3] if len(viec) > 3 else None
     try:
-        return _gon(do_anh(r, anh, cfg))
+        return _gon(do_anh(r, anh, cfg, xoay))
     except Exception as e:                                   # noqa: BLE001
         return {"ok": False, "ly_do": f"{type(e).__name__}: {e}"}
 
@@ -331,17 +337,19 @@ class BoDo:
         self.cho: dict = {}
         self.xong: list = []
 
-    def _tai_cho(self, k, r, anh):
-        self.xong.append((k, _tho_do((r, anh, self.cfg))))
+    def _tai_cho(self, k, r, anh, xoay=None):
+        self.xong.append((k, _tho_do((r, anh, self.cfg, xoay))))
 
-    def gui(self, k, r, anh) -> None:
+    def gui(self, k, r, anh, xoay: str | None = None) -> None:
+        """xoay: mã xoay khi `anh` là file cache preview Lightroom (doc_cache_lr)."""
         if self.ex is not None:
             try:
-                self.cho[k] = (self.ex.submit(_tho_do, (r_gon(r), str(anh), self.cfg)), r, anh)
+                self.cho[k] = (self.ex.submit(_tho_do, (r_gon(r), str(anh), self.cfg, xoay)),
+                               r, (anh, xoay))
                 return
             except Exception:                                # noqa: BLE001
                 self._tat()
-        self._tai_cho(k, r, anh)
+        self._tai_cho(k, r, anh, xoay)
 
     def lay(self) -> list:
         out = []
@@ -354,7 +362,8 @@ class BoDo:
             except Exception:                                # noqa: BLE001
                 #  tiến trình con chết (hết RAM...) -> đo lại tấm này tại chỗ
                 self._tat()
-                out.append((k, _tho_do((r, anh, self.cfg))))
+                a, x = anh if isinstance(anh, tuple) else (anh, None)
+                out.append((k, _tho_do((r, a, self.cfg, x))))
         out, self.xong = self.xong + out, []
         return out
 
@@ -383,7 +392,8 @@ class BoDo:
                     continue
             except Exception:                                # noqa: BLE001
                 pass
-            self._tai_cho(k, r, anh)
+            a, x = anh if isinstance(anh, tuple) else (anh, None)
+            self._tai_cho(k, r, a, x)
         self.n = 1
 
     def dong(self, huy: bool = False) -> None:
