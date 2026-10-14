@@ -1383,6 +1383,30 @@ trước". Đọc LỊCH SỬ develop trong catalog (Adobe_libraryImageDevelopHi
   cả buổi" âm (đường cũ không có đích độ sáng da).
 Kiểm: `test_nguoi_sua_lich_su.py` (mới), `test_curve_da.py` mục 11, `test_dong_bo_cum.py` mục 6.
 
+## Chủ thể chính của buổi (15/10) — `gan_chu_the`, `chu_the_chinh` BẬT
+
+User: "Detect chủ thể ... lấy ra được 5-6 người xuất hiện nhiều nhất và đặt trọng số ... ảnh xuất
+hiện 1-6 người đó thì ưu tiên đo sáng và cân bằng trên mặt của chủ thể đó; xuất hiện cùng lúc thì
+ưu tiên người có trọng số xuất hiện nhiều nhất."
+- Phân tích (`measure`, tham số cuối `dac_trung` = `chu_the_chinh` — nằm trong khoá kết quả đo):
+  đặc trưng SFace (`models/face_recognition_sface_2021dec.onnx`, opencv_zoo, Apache-2.0, 38 MB,
+  ~5 ms / mặt CPU, căn mặt bằng hàng YuNet 15 số — `detect_faces(tho=True)`) cho ≤ 16 mặt to nhất
+  cạnh ≥ 24 px -> `r["mat_dt"]` (hex int8); `face_debug[]` thêm `rgb` (linear) + `p95` từng mặt.
+  KHÔNG dùng buffalo_l (insightface: non-commercial) — AuraFace (FindFaceID, Apache-2.0) chính xác
+  hơn nhưng 260 MB và chậm trên CPU / Mac.
+- `nhom_nguoi`: gom tham lam theo cỡ mặt, cosine ≥ 0.40 (khác người ≤ ~0.3), gán lại theo tâm.
+  `gan_chu_the` (đầu plan() + do_truoc): 6 người nhiều ẢNH nhất, đủ `chu_the_min_anh` / 3% ảnh có mặt,
+  trung vị cỡ mặt / mặt to nhất ảnh ≥ 0.7 và điểm YuNet ≥ 0.88 — 2709: mặt cặp đôi trong ẢNH CƯỚI
+  IN trên phông (188 / 161 ảnh, cỡ 0.46 / 0.51, điểm 0.84 / 0.87) bị loại; độ nét KHÔNG tách được.
+  Ảnh có chủ thể: người trọng số cao nhất (mặt ≥ 0.5× mặt chủ thể to nhất ảnh, không thì người
+  kế) -> `meter_boxes` / `face_rgb` / `face_p95` (số cũ giữ ở `*_goc`, gọi lại trả về) + phép đo
+  mặt (`do_mat_chu_the` trong decide, TRƯỚC mat_sang_nhat / sua_mat_lech_khung — hai bước đó chỉ
+  chạy cho ảnh còn lại); `_mat_tho` (bù cụm) theo mặt chủ thể.
+- 2709 (bản 12): cô dâu 685 · chú rể 328 · mẹ 187 · bố 174 · 142 · 142 ảnh; 836 ảnh đo theo chủ
+  thể; Exposure đổi > 0.15 EV ở 118 ảnh (±0.5 ở vài loạt gia đình). Phân tích lại 1.074 ảnh mất
+  40 s (12 tiến trình). Tờ ghép mặt kiểm bằng mắt: scratchpad `thu_chu_the.py`.
+Kiểm: `test_chu_the.py`.
+
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
 Chế độ an toàn CPU (ghim Lightroom + app + engine vào nhân E khi Xuất, v58) sinh ra vì
