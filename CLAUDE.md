@@ -1308,6 +1308,52 @@ AUTOTONE_CURVE_THO=1; `chia_loat` cần fnumber / exposure_time / iso, loạt c�
   sau khi plugin dựng xong preview lưới (heartbeat đứng ~7 phút lúc đó, mọi yêu cầu khác báo
   "không nhận"). KHÔNG chụp màn hình để xem app.
 
+## Cụm cùng khung: ảnh liền nhau ra CÙNG ánh sáng / màu, bù flash hụt (14–15/10) — `dong_bo_cum` + `cum_bu_anh_sang`, BẬT
+
+User 14/10 (4 cặp 2709 trong Lightroom Survey): "các bức ảnh chụp liên tiếp cùng khung hình này sao
+lại ra ánh sáng khác nhau. Phải giải quyết triệt để vấn đề này." Ba nguyên nhân, ba cách sửa:
+1. **Loạt quá chặt** — `chia_loat` đòi khẩu / tốc / ISO giống hệt, bố cục ≤ 0.10, khung ≤ 0.25 EV:
+   DSC_9797/9798 đổi ISO 1000 → 640, DSC_9727/9726 thêm người ở mép, DSC_9768/9767 khung lệch vì
+   nội dung → nhóm riêng, mỗi nhóm WB / HSL / curve / Exposure riêng. `nhom_cum` (cùng thiết bị,
+   cách ≤ `cum_gio_s` 30 s, bố cục ≤ `cum_bo_cuc` 0.20 với tấm trước và ≤ 1.5× với tấm đầu, cùng
+   bit flash, ánh sáng cảnh = khung đo − `h_may` lệch ≤ `cum_khung_ev` 1.0) + `dong_bo_cum` cuối
+   plan() và trong chuỗi một lượt: đại diện = Exposure "theo ánh sáng cảnh" (new_exposure + h_may,
+   h_may = log2(ISO·t/N²)) gần trung vị; tấm khác Exposure = của đại diện bù h_may, tông / WB / HSL /
+   Luminance / CG / curve = số HIỆU LỰC của đại diện (ghi ra job cả khi mốc từng tấm khác nhau).
+2. **Mốc HSL từng tấm khác nhau** (DSC_9689/9687 cùng loạt mà Sat −22 / −45) + lượt 2 chỉ tới tấm có
+   đo → lượt 2 (`phan_hoi_hsl`, `dong_bo_cum_luot2`) một số TUYỆT ĐỐI cho cả cụm, kể cả tấm không đo.
+3. **Ánh sáng THẬT đổi giữa hai tấm** (15/10, sau bản 8): loạt flash bấm nhanh, flash không kịp hồi
+   — DSC_9736–9746 11 tấm / 3 s, 5 tấm mặt tối ~0.9 EV trên RAW (cả nền gần cũng tối). Bản 8 ép cùng
+   Exposure nên tệ HƠN bản 6 (decide từng tấm còn bù một phần): chênh da L trong cụm 0.05 → 0.137.
+   Sửa (`_bu_anh_sang_cum`, `lech_mat_cum`, `la_anh_sang_lech`):
+   - mặt đo preview máy (`metered_face_ev` gốc − h_may) lệch trung vị cụm; xét theo NHÓM mặt gần nhau
+     (khe 0.3 EV) để tấm giống nhau cùng một quyết định (SUB_6698–6713 nắng / râm: xét từng tấm thì
+     hạ 2 trong 7 tấm mặt sáng — tạo đúng cái "liền nhau mà sáng khác");
+   - CHỈ bù khi khung đo của nhóm lệch CÙNG chiều ≥ `cum_bu_khung_ti` 0.25 × mặt (flash hụt: 0.35–1.6;
+     ảnh nhóm ĐỔI MẶT ĐO DSC_0142 / 0146–0150 mặt −2.4 EV, khung 0.01–0.08 → không bù, không thì
+     sáng thêm 1 EV) và |lệch| > `cum_bu_nguong` 0.15;
+   - preview máy → Lightroom: r 0.85 nhưng hệ số ~0.58 (573 ảnh bản 8) → bù `cum_bu_he_so` 0.5 ×
+     lệch, kẹp ±`cum_bu_toi_da` 1.0. Đo trên da Lightroom bản 8: tốt hơn 17 ảnh, tệ hơn 2 (nhỏ);
+   - chuỗi một lượt: `mau_mot_luot.can_sang_cum` cân ĐÚNG MỨC trên da dự đoán Lightroom (tham chiếu =
+     trung vị tấm thường có đo; cùng chiều preview máy, ≤ 1.5× lệch, không cháy mới > hl_hard_pct;
+     Lightroom thấy đã bằng → bỏ phần bù), ghi `bu_cum_lr`; `do_truoc.mau_loat` đo thêm các tấm lệch
+     (`anh_lech_sang_cum`). Phần bù lưu `bu_cum_ev` — dong_bo_cum gọi lại không cộng dồn; plan() xoá.
+**Đo thật 2709 (da Lightroom sau khi áp, `so_cum_lr.py` trong scratchpad):**
+| | v6 (loạt) | v8 (cụm) | v9 (cụm + bù) |
+|---|---|---|---|
+| cụm DSC_9736 (flash hụt) L | 0.714–0.764 | 0.624–0.761 | **0.745–0.767** |
+| DSC_9727 / 9726 | 0.762 / 0.798 | 0.711 / 0.751 | **0.746 / 0.747** |
+| DSC_9768 / 9767 | – | 0.757 / 0.684 | **0.758 / 0.766** |
+| DSC_9797 / 9798 (đổi ISO) | 0.801 / 0.726 | 0.798 / 0.798 | **0.801 / 0.800** |
+| \|L − trung vị cụm\| TB · ảnh > 0.04 | 0.0157 · 28 (93 cụm) | 0.0163 · 61 | **0.0140 · 47** (160 cụm) |
+v9: 30 ảnh được bù, 154/169 cụm cùng hệt WB / HSL / Luminance / CG / curve (còn lại = Exposure bù
+có chủ đích + DSC09290/91 lệch 1 mã curve đỏ). Thời gian 5:53 (đổi engine → phân tích lại 0:37).
+Còn lại: cụm gom theo chữ ký nên vài tấm đổi hướng máy vẫn chung cụm (DSC_9799/9800); mặt ra / vào
+nắng mà nền không đổi thì KHÔNG bù (không tách được với đổi mặt đo). Màu da cụm 9726–9729 bản 9 hồng
+hơn bản 8 (hue 27° vs 36°, WB 4688 → 5066 + Hue Cam +7 → −6, mô hình đoán 34°) — chuyện dự đoán màu,
+soát không bắt vì số đo soát khác số đo danh_gia_cache ~4°.
+Kiểm: `test_dong_bo_cum.py` (mục 5), `test_mau_mot_luot.py` (mục 11).
+
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
 Chế độ an toàn CPU (ghim Lightroom + app + engine vào nhân E khi Xuất, v58) sinh ra vì

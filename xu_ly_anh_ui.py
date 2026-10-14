@@ -1193,6 +1193,12 @@ class XuLyAnhMixin:
             cau_ml = self._xl_cau_mot_luot(xl)
             if cau_ml:
                 dong.append(cau_ml)
+            #  15/10: ảnh liền nhau cùng khung mà ánh sáng THẬT lệch (flash không kịp hồi…) —
+            #  autotone.dong_bo_cum / mau_mot_luot.can_sang_cum bù Exposure riêng
+            bu = [r for r in xl.get("items_ghi") or [] if r.get("bu_cum_ev")]
+            if bu:
+                dong.append(f"· Ảnh liền nhau cùng khung: {gd.so_vn(len(bu))} ảnh ánh sáng thật lệch "
+                            "(flash không kịp hồi…) được bù sáng riêng cho đều với cả loạt.")
             kq = xl.get("denoise_kq")
             if kq is not None and kq.get("ly_do") != "lightroom-chua-ho-tro":
                 dong.append(f"· Denoise: bật {kq.get('bat', 0)} ảnh ISO ≥ "

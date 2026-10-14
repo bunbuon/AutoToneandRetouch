@@ -12,6 +12,10 @@ Mục kiểm
        HSL / Luminance / CG / curve = đại diện (kể cả khi mốc HSL hai ảnh lệch nhau)
     3. ảnh đen trắng không bị kéo; tắt dong_bo_cum -> không đổi gì
     4. lượt 2: curve / HSL lượt 2 của một tấm -> cả cụm
+    5. ánh sáng THẬT lệch (15/10): tấm flash không kịp hồi (mặt + khung cùng tối) được bù
+       0.5 × lệch; ảnh nhóm đổi mặt đo (mặt tối 2.4 EV, khung không đổi) KHÔNG bù; nhóm mặt
+       giống nhau cùng một quyết định; gọi lại không cộng dồn; số cân trên Lightroom
+       (bu_cum_lr) được dùng thay; đo trước thêm các tấm lệch (do_truoc.mau_loat)
 
 Chạy:  python test_dong_bo_cum.py
 """
@@ -154,6 +158,49 @@ def main() -> int:
     n4 = at.dong_bo_cum_luot2([a4, b4, c4], cfg)
     ktra("curve + HSL lượt 2 của một tấm -> cả cụm", n4 == 4 and a4.get("curve_ghi") == b4["curve_ghi"]
          and c4.get("hsl_l2") == b4["hsl_l2"], f"{n4}")
+    print("5. ánh sáng thật lệch trong cụm")
+    #  loạt flash 11 tấm / 3 giây (2709 DSC_9736–9746): tấm 2, 4 flash không kịp hồi
+    mat5 = [-1.1, -1.1, -2.0, -1.1, -2.05, -1.12]
+    khung5 = [-2.6, -2.6, -3.1, -2.62, -3.15, -2.6]
+    ds5 = [anh(f"DSC_98{10 + i}", 0.3 * i, khung=k, metered_face_ev=f) for i, (f, k) in enumerate(zip(mat5, khung5))]
+    at.dong_bo_cum(ds5, cfg)
+    ev5 = [r["new_exposure"] for r in ds5]
+    ktra("tấm flash hụt (mặt −0.9 EV, khung −0.5 EV) được bù ~0.5 × lệch, tấm thường giữ chung",
+         abs(ev5[2] - 0.45) < 0.03 and abs(ev5[4] - 0.47) < 0.03 and len({ev5[i] for i in (0, 1, 3, 5)}) == 1
+         and ev5[0] == 0.0, str(ev5))
+    ktra("ghi phần bù (bu_cum_ev) + ghi chú", ds5[2].get("bu_cum_ev") == round(ev5[2], 2)
+         and "dong-bo-cum" in ds5[2]["notes"] and not ds5[0].get("bu_cum_ev"), str([r.get("bu_cum_ev") for r in ds5]))
+    at.dong_bo_cum(ds5, cfg)
+    ktra("gọi lại (plan() rồi chuỗi một lượt) không cộng bù lần nữa", [r["new_exposure"] for r in ds5] == ev5,
+         str([r["new_exposure"] for r in ds5]))
+    ktra("đo trước thêm đúng các tấm lệch (anh_lech_sang_cum -> do_truoc.mau_loat)",
+         at.anh_lech_sang_cum(ds5, cfg) == {id(ds5[2]), id(ds5[4])}, "")
+    import do_truoc
+    ktra("…mau_loat chứa cả hai tấm đó", {id(ds5[2]), id(ds5[4])} <= {id(r) for r in do_truoc.mau_loat(ds5, cfg, 1)})
+    #  chuỗi một lượt cân trên Lightroom -> số đó thay phần bù preview máy
+    ds5[2]["bu_cum_lr"] = 0.8
+    at.dong_bo_cum(ds5, cfg)
+    ktra("bu_cum_lr (cân trên da dự đoán Lightroom) được dùng thay", abs(ds5[2]["new_exposure"] - 0.8) < 0.011,
+         str(ds5[2]["new_exposure"]))
+    #  ảnh nhóm đổi mặt đo (DSC_0142: 1 trong 8 mặt, mặt tối 2.4 EV, khung gần như không đổi)
+    ds6 = [anh(f"DSC_01{40 + i}", 0.4 * i, khung=k, metered_face_ev=f)
+           for i, (f, k) in enumerate(zip([4.5, 4.6, 2.2, 4.55, 4.5], [2.6, 2.62, 2.55, 2.6, 2.63]))]
+    at.dong_bo_cum(ds6, cfg)
+    ktra("ảnh nhóm đổi mặt đo (mặt −2.4 EV, khung −0.06): KHÔNG bù", len({r["new_exposure"] for r in ds6}) == 1,
+         str([r["new_exposure"] for r in ds6]))
+    #  mặt lúc nắng lúc râm, khung chỉ nhích ở VÀI tấm (SUB_6698–6713): nhóm mặt sáng cùng một
+    #  quyết định — không được hạ 2 tấm, giữ 5 tấm
+    mat7 = [4.32, 4.43, 4.34, 4.27, 4.28, 3.4, 3.42, 3.5, 3.38, 3.45, 3.41, 3.36]
+    khung7 = [4.31, 4.32, 4.36, 3.96, 3.97, 4.1, 4.08, 4.09, 4.09, 4.17, 4.06, 4.1]
+    ds7 = [anh(f"SUB_67{i:02d}", 2.0 * i, khung=k, metered_face_ev=f) for i, (f, k) in enumerate(zip(mat7, khung7))]
+    at.dong_bo_cum(ds7, cfg)
+    sang7 = {ds7[i]["new_exposure"] for i in range(5)}
+    ktra("nhóm mặt giống nhau -> cùng một quyết định (khung không theo mặt -> không bù)",
+         len(sang7) == 1 and len({r["new_exposure"] for r in ds7}) == 1, str([r["new_exposure"] for r in ds7]))
+    ds8 = [anh(f"DSC_97{10 + i}", 0.3 * i, khung=k, metered_face_ev=f) for i, (f, k) in enumerate(zip(mat5, khung5))]
+    at.dong_bo_cum(ds8, dict(cfg, cum_bu_anh_sang=False))
+    ktra("tắt cum_bu_anh_sang -> cả cụm cùng Exposure (như bản 8)", len({r["new_exposure"] for r in ds8}) == 1,
+         str([r["new_exposure"] for r in ds8]))
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

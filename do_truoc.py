@@ -55,6 +55,9 @@ def mau_loat(ds: list, cfg: dict, n: int = 2) -> list:
     #   giữa các loạt ~27% / 0.044 — mọi quyết định của chuỗi (Tone theo cảnh, Luminance /
     #   HSL / Curve theo loạt) cần số đo của LOẠT, không cần từng tấm. Đo đủ 1.056 ảnh mất
     #   ~4 phút (mô hình tách da ~0.5 s/ảnh). Tấm không đo theo loạt của nó. ]]"""
+    #[[ 15/10: thêm mọi tấm mà mặt đo lệch trung vị CỤM CÙNG KHUNG (autotone.anh_lech_sang_cum
+    #   — flash không kịp hồi, ra / vào bóng râm…): chuỗi một lượt cân sáng chúng trên da đo
+    #   Lightroom (mau_mot_luot.can_sang_cum); 2709: ~140 tấm. ]]
     if n <= 0:
         return list(ds)
     out = []
@@ -63,6 +66,9 @@ def mau_loat(ds: list, cfg: dict, n: int = 2) -> list:
             out += g
         else:
             out += [g[int(i)] for i in np.linspace(0, len(g) - 1, n).round()]
+    co = {id(r) for r in out}
+    them = at.anh_lech_sang_cum(list(ds), cfg) if ds else set()
+    out += [r for r in ds if id(r) in them and id(r) not in co]
     return out
 
 

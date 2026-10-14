@@ -3605,6 +3605,13 @@ DEFAULTS = {
     "cum_gio_s": 30.0,              # tấm sau cách tấm trước tối đa (giây)
     "cum_bo_cuc": 0.20,             # chữ ký bố cục lệch tấm trước tối đa (loạt: 0.10)
     "cum_khung_ev": 1.0,            # ánh sáng cảnh (khung đo − h_may) lệch tấm đầu tối đa
+    "cum_bu_anh_sang": True,        # tấm có ánh sáng THẬT lệch (flash hụt…) -> bù Exposure riêng, xem _bu_anh_sang_cum
+    "cum_bu_nguong": 0.15,          # mặt lệch trung vị cụm dưới mức này = nhiễu đo, không bù
+    "cum_bu_khung_ti": 0.25,        # ... chỉ khi khung lệch cùng chiều ≥ 0.25× mặt (không: đổi mặt đo / biểu cảm)
+    "cum_bu_he_so": 0.5,            # EV bù / EV mặt lệch trên preview máy (đo 2709: ~0.58)
+    "cum_bu_toi_da": 1.0,
+    "cum_bu_on_L": 0.012,           # chuỗi một lượt: da dự đoán lệch tham chiếu cụm dưới mức này -> không bù thêm
+    "cum_bu_lr_boi": 1.5,           # ... bù trên Lightroom tối đa 1.5× lệch preview máy (chặn số đo hỏng)
     "curve_da_sang": False,         # curve_da: kéo cả L về đích (chuỗi một lượt bật riêng)
     "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
     "curve_da_trang_max": 0.003,    # vung trung tinh trong dai da lech ab toi da (= trang_tran_cg)
@@ -8447,17 +8454,27 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
         hs = [h_may(r) for r in g]
         if len(g) < 2 or any(h is None for h in hs):
             continue
-        X = [float(r["new_exposure"]) + h for r, h in zip(g, hs)]
+        #  Exposure TRƯỚC phần bù ánh sáng của lần gọi trước (plan() rồi chuỗi một lượt cùng
+        #  gọi) — không thì gọi lại cộng bù lần nữa
+        X = [float(r["new_exposure"]) - float(r.get("bu_cum_ev") or 0.0) + h for r, h in zip(g, hs)]
         tv = float(np.median(X))
         i_dd = min(range(len(g)), key=lambda i: (round(abs(X[i] - tv), 3),
                                                  -len(g[i].get("meter_boxes") or [])))
         dd = g[i_dd]
         hl_dd = _hieu_luc_cum(dd)
+        bu = _bu_anh_sang_cum(g, hs, cfg)
         for r, h in zip(g, hs):
-            if r is dd:
-                continue
             doi = []
-            ev = round(X[i_dd] - h, 2)
+            ev = round(X[i_dd] - h + bu[id(r)], 2)
+            if bu[id(r)] or r.get("bu_cum_ev"):
+                r["bu_cum_ev"] = round(bu[id(r)], 2)
+            if r is dd:
+                if abs(ev - float(r["new_exposure"])) >= 0.005:
+                    r["new_exposure"] = ev
+                    r["delta_ev"] = round(ev - get_f({"e": r.get("old_exposure")}, "e", 0.0), 4)
+                    n += 1
+                    _them_ghi_chu(r, "dong-bo-cum:anh-sang")
+                continue
             if abs(ev - float(r["new_exposure"])) >= 0.005:
                 r["new_exposure"] = ev
                 r["delta_ev"] = round(ev - get_f({"e": r.get("old_exposure")}, "e", 0.0), 4)
@@ -8487,9 +8504,118 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
                 doi.append("curve")
             if doi:
                 n += 1
-                nhan = "dong-bo-cum:" + "+".join(dict.fromkeys(doi))
-                r["notes"] = ";".join(x for x in [str(r.get("notes", "")), nhan] if x)
+                _them_ghi_chu(r, "dong-bo-cum:" + "+".join(dict.fromkeys(doi)))
     return n
+
+
+def _them_ghi_chu(r: dict, nhan: str) -> None:
+    """Thêm nhãn vào r["notes"] nếu chưa có (dong_bo_cum chạy hai lần: chuỗi một lượt + plan)."""
+    cu = [x for x in str(r.get("notes", "")).split(";") if x]
+    if nhan not in cu:
+        r["notes"] = ";".join(cu + [nhan])
+
+
+def _mat_tho(r: dict):
+    """Phép đo mặt GỐC của phân tích (trước mat-sang-nhat / chu-the-af-than… của decide)."""
+    v = r.get("metered_face_ev_tho")
+    return _so(v if v is not None else r.get("metered_face_ev"))
+
+
+def lech_mat_cum(g: list, hs: list, khe: float = 0.3) -> dict:
+    """{id(r): (Δ mặt, Δ mặt NHÓM, Δ khung NHÓM)} EV — mặt đo / khung đo (đã trừ h_may) lệch
+    trung vị cụm bao nhiêu, thang preview của máy. NHÓM = các tấm có mặt đo gần nhau (xếp
+    theo mặt, hai tấm liền kề cách > khe EV thì tách) — quyết định "ánh sáng thật đổi" theo
+    nhóm để những tấm giống nhau được đối xử như nhau. Tấm không mặt đo: không có; cụm < 2
+    mặt: {}."""
+    F = {id(r): _mat_tho(r) - h for r, h in zip(g, hs)
+         if h is not None and r.get("meter_boxes") and _mat_tho(r) is not None}
+    if len(F) < 2:
+        return {}
+    K = {id(r): _so(r.get("metered_subject_ev")) - h for r, h in zip(g, hs)
+         if h is not None and _so(r.get("metered_subject_ev")) is not None}
+    f_tv = float(np.median(list(F.values())))
+    k_tv = float(np.median(list(K.values()))) if K else 0.0
+    xep = sorted(F, key=F.get)
+    nhom, cur = [], [xep[0]]
+    for a, b in zip(xep, xep[1:]):
+        if F[b] - F[a] > khe:
+            nhom.append(cur)
+            cur = []
+        cur.append(b)
+    nhom.append(cur)
+    out = {}
+    for n_ in nhom:
+        fm = float(np.mean([F[i] for i in n_])) - f_tv
+        ks = [K[i] for i in n_ if i in K]
+        km = float(np.mean(ks)) - k_tv if ks else 0.0
+        for i in n_:
+            out[i] = (F[i] - f_tv, fm, km)
+    return out
+
+
+def la_anh_sang_lech(d, cfg: dict) -> bool:
+    """d = lech_mat_cum()[id] -> tấm có ÁNH SÁNG THẬT đổi (không phải nhiễu đo / đổi mặt đo):
+    mặt của tấm VÀ của nhóm lệch > cum_bu_nguong, khung của nhóm lệch cùng chiều ≥
+    cum_bu_khung_ti × mặt nhóm."""
+    if not d:
+        return False
+    df, fm, km = d
+    nguong = float(cfg.get("cum_bu_nguong", 0.15))
+    return (abs(df) > nguong and abs(fm) > nguong and df * fm > 0 and km * fm > 0
+            and abs(km) >= float(cfg.get("cum_bu_khung_ti", 0.25)) * abs(fm))
+
+
+def _bu_anh_sang_cum(g: list, hs: list, cfg: dict) -> dict:
+    """{id(r): EV bù so với Exposure chung của cụm} cho tấm có ÁNH SÁNG THẬT lệch trong cụm
+    (flash không kịp hồi, ra / vào bóng râm, đèn người khác…).
+
+    #[[ 15/10 (2709 sau bản 8 — cụm cùng thông số): user gửi DSC_9727 / 9726 vẫn lệch sáng.
+    #   Trên RAW: loạt DSC_9736–9746 bấm 11 tấm trong 3 giây có flash, 5 tấm flash không kịp
+    #   hồi — mặt trên preview máy tối ~0.9 EV, da Lightroom L 0.64 vs 0.75. Cùng thông số máy
+    #   mà ánh sáng thật khác (đúng cái phương án "cùng thông số cùng Exposure" bị bác 29/9).
+    #   So 573 ảnh trong cụm có da đo trên Lightroom (bản 8):
+    #     - mặt đo preview máy lệch trung vị cụm ~ cần bù trên Lightroom: r 0.85 nhưng hệ số
+    #       chỉ ~0.58 (thang preview máy dốc hơn Lightroom) -> bù cum_bu_he_so (0.5) × lệch;
+    #     - chỉ khi khung đo lệch CÙNG chiều và ≥ cum_bu_khung_ti (0.25) × mặt (la_anh_sang_lech):
+    #       flash hụt thì nền gần cũng tối (khung / mặt 0.35–1.6), còn ẢNH NHÓM ĐỔI MẶT ĐO
+    #       (DSC_0142 / 0146–0150: 1 trong 8 mặt, mặt tối hơn 2.4 EV, khung 0.01–0.08 EV) thì
+    #       không — chặn "cùng chiều bất kỳ" thì các tấm đó bị sáng thêm 1 EV;
+    #     - xét theo NHÓM mặt gần nhau (lech_mat_cum): SUB_6698–6713 mặt lúc nắng lúc râm, 7
+    #       tấm mặt sáng mà xét từng tấm thì 2 tấm (khung nhích 0.2 EV) bị hạ 0.4 EV, 5 tấm
+    #       giữ nguyên — tạo ra đúng cái "liền nhau mà sáng khác";
+    #     - |lệch| ≤ cum_bu_nguong (0.15 EV) = nhiễu đo; kẹp ±cum_bu_toi_da.
+    #   Chuỗi một lượt có da đo trên preview Lightroom thì cân thẳng trên da dự đoán
+    #   (mau_mot_luot.can_sang_cum) và ghi r["bu_cum_lr"] — số đó được dùng thay. ]]"""
+    nguong = float(cfg.get("cum_bu_nguong", 0.15))
+    he_so = float(cfg.get("cum_bu_he_so", 0.5))
+    toi_da = float(cfg.get("cum_bu_toi_da", 1.0))
+    out = {id(r): 0.0 for r in g}
+    if not cfg.get("cum_bu_anh_sang", True):
+        return out
+    lech = lech_mat_cum(g, hs)
+    for r in g:
+        if r.get("bu_cum_lr") is not None:
+            out[id(r)] = float(r["bu_cum_lr"])
+            continue
+        d = lech.get(id(r))
+        if la_anh_sang_lech(d, cfg) and abs(d[0]) > nguong:
+            out[id(r)] = float(np.clip(-he_so * d[0], -toi_da, toi_da))
+    return out
+
+
+def anh_lech_sang_cum(items: list, cfg: dict) -> set:
+    """id ảnh có ÁNH SÁNG THẬT lệch trong CỤM CÙNG KHUNG (la_anh_sang_lech) — đo trước cả
+    những tấm này trên preview Lightroom (do_truoc.mau_loat) để chuỗi một lượt cân đúng mức."""
+    if not cfg.get("dong_bo_cum", True) or not cfg.get("cum_bu_anh_sang", True):
+        return set()
+    out: set = set()
+    for g in nhom_cum([r for r in items if not r.get("bw")], cfg):
+        if len(g) < 2:
+            continue
+        for i, d in lech_mat_cum(g, [h_may(r) for r in g]).items():
+            if la_anh_sang_lech(d, cfg):
+                out.add(i)
+    return out
 
 
 def dong_bo_cum_luot2(items: list, cfg: dict, khoa=("curve_ghi", "hsl_l2")) -> int:
@@ -10325,6 +10451,11 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
 
     ban_xuat: file mà `export` đọc ra (nguồn catalog) — để chốt "bản xuất cũ
     hơn lần ghi" so đúng file đó. None -> tự tìm theo thư mục."""
+    #  phần bù ánh sáng cụm (dong_bo_cum / chuỗi một lượt) của lần plan trước — GUI gọi lại
+    #  plan() trên cùng items khi đổi tuỳ chọn, decide() tính lại Exposure từ đầu
+    for r in items:
+        r.pop("bu_cum_ev", None)
+        r.pop("bu_cum_lr", None)
     # Hai bộ lọc ĐỘC LẬP, chạy nối tiếp: trùng khung trước, nhắm mắt sau.
     # Bật/tắt riêng, ngưỡng riêng, nhãn riêng. Ảnh đã bị loại ở bước trước thì
     # bước sau bỏ qua, nên mỗi ảnh chỉ mang đúng MỘT lý do loại.

@@ -440,6 +440,120 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
     return tk
 
 
+# ------------------------------------------------------------------ cân sáng trong cụm
+def can_sang_cum(items: list, mm: dict, cfg: dict, du) -> dict:
+    """CỤM CÙNG KHUNG — tấm có ÁNH SÁNG THẬT lệch (autotone.la_anh_sang_lech: flash không kịp
+    hồi…) được bù Exposure đúng mức trên da DỰ ĐOÁN Lightroom cho bằng tấm thường của cụm.
+    Ghi r["bu_cum_lr"] (EV so với Exposure chung của cụm) — dong_bo_cum lần sau giữ.
+
+    #[[ 15/10 (2709 sau bản 8, cụm cùng thông số): loạt DSC_9736–9746 flash không kịp hồi — da
+    #   Lightroom L 0.64 vs 0.75; DSC_9767 / 9768 (một trong 4 cặp user gửi) 0.684 vs 0.757.
+    #   Phần bù từ preview máy (_bu_anh_sang_cum, 0.5 × lệch) chỉ là ước lượng — trên preview
+    #   máy cần bù thật ~0.58× nhưng rải 0.3–1.0× theo máy / mức sáng. Ở đây:
+    #     - CÓ bù hay không vẫn do preview máy quyết (la_anh_sang_lech) — số đo da Lightroom
+    #       cũng trúng mặt khác ở ảnh nhóm (DSC_0146: 1 trong 7 mặt, L 0.40 vs 0.75 cả cụm),
+    #       để nó tự quyết là sáng thêm 1 EV cả tấm;
+    #     - tham chiếu = trung vị L dự đoán của tấm THƯỜNG có đo (mặt lệch ≤ cum_bu_nguong);
+    #       cụm không có tấm thường đo được -> giữ phần bù preview máy;
+    #     - bù = Exposure cho L = tham chiếu (chia đôi 7 lần), CÙNG chiều preview máy (ngược
+    #       chiều -> về Exposure chung, Lightroom thấy đã bằng -> bỏ phần bù preview máy), ≤
+    #       cum_bu_lr_boi × lệch preview máy, ±cum_bu_toi_da, không làm cháy MỚI quá
+    #       hl_hard_pct; hue da dự đoán ngoài 10–70° (mặt nạ trúng áo / tóc) -> bỏ. ]]"""
+    tk = {"cum": 0, "anh": 0, "chenh_truoc": 0.0, "chenh_sau": 0.0}
+    if not cfg.get("dong_bo_cum", True) or not cfg.get("cum_bu_anh_sang", True):
+        return tk
+    nguong = float(cfg.get("cum_bu_nguong", 0.15))
+    on_L = float(cfg.get("cum_bu_on_L", 0.012))
+    boi = float(cfg.get("cum_bu_lr_boi", 1.5))
+    toi_da = float(cfg.get("cum_bu_toi_da", 1.0))
+    hard = float(cfg.get("hl_hard_pct") or 8.0)
+    truoc, sau = [], []
+    for g in at.nhom_cum([r for r in items if not r.get("bw") and r.get("new_exposure") is not None], cfg):
+        if len(g) < 2:
+            continue
+        hs = [at.h_may(r) for r in g]
+        if any(h is None for h in hs):
+            continue
+        lech = at.lech_mat_cum(g, hs)
+        lech_that = {id(r) for r in g if at.la_anh_sang_lech(lech.get(id(r)), cfg)}
+        if not lech_that:
+            continue
+        do = []
+        for r in g:
+            if id(r) not in mm:
+                continue
+            s = thong_so_job(r, mm[id(r)]["cu"])
+            L, h, _q = _da(du(r, s))
+            if 10.0 <= h <= 70.0:
+                do.append((r, s, L))
+        thuong = [L for r, _s, L in do if id(r) not in lech_that
+                  and abs((lech.get(id(r)) or (0.0, 0.0, 0.0))[0]) <= nguong]
+        can = [(r, s, L) for r, s, L in do if id(r) in lech_that]
+        if not thuong or not can:
+            continue
+        tk["cum"] += 1
+        L_ref = float(np.median(thuong))
+        L_sau = list(thuong)
+        for r, s, L in can:
+            if abs(L - L_ref) <= on_L:
+                L_sau.append(L)
+                continue
+            ev0 = _f(s.get("Exposure2012"))
+
+            def f(e, r=r, s=s, ev0=ev0):
+                return _da(du(r, dict(s, Exposure2012=ev0 + e)))[0] - L_ref
+            lo, hi = -toi_da, toi_da
+            if f(lo) > 0:
+                hi = lo
+            elif f(hi) < 0:
+                lo = hi
+            else:
+                for _ in range(7):
+                    mid = (lo + hi) / 2.0
+                    if f(mid) < 0:
+                        lo = mid
+                    else:
+                        hi = mid
+            bu0 = _f(r.get("bu_cum_ev"))
+            bu = bu0 + (lo + hi) / 2.0
+            df = lech[id(r)][0]
+            #  Lightroom đòi bù NGƯỢC chiều preview máy -> hai số đo cãi nhau: về Exposure chung
+            bu = 0.0 if bu * df > 0 else float(np.clip(bu, -min(toi_da, boi * abs(df)),
+                                                        min(toi_da, boi * abs(df))))
+            de = bu - bu0
+            if de > 0:
+                c0 = _phan_chay(du(r, s, "khung"))
+
+                def chay_them(d_, r=r, s=s, ev0=ev0, c0=c0):
+                    return _phan_chay(du(r, dict(s, Exposure2012=ev0 + d_), "khung")) - c0
+                if chay_them(de) > hard:
+                    a, b = 0.0, de
+                    for _ in range(6):
+                        mid = (a + b) / 2.0
+                        if chay_them(mid) > hard:
+                            b = mid
+                        else:
+                            a = mid
+                    de = a
+            if abs(de) < 0.03:
+                L_sau.append(L)
+                continue
+            r["new_exposure"] = round(_f(r.get("new_exposure")) + de, 2)
+            r["delta_ev"] = round(_f(r.get("delta_ev")) + de, 4)
+            r["bu_cum_ev"] = r["bu_cum_lr"] = round(bu0 + de, 2)
+            nhan = f"can-sang-cum:{de:+.2f}"
+            r["notes"] = ";".join(x for x in [str(r.get("notes", "")), nhan] if x)
+            tk["anh"] += 1
+            L_sau.append(_da(du(r, dict(s, Exposure2012=ev0 + de)))[0])
+        L_dau = list(thuong) + [L for _r, _s, L in can]
+        truoc.append(max(L_dau) - min(L_dau))
+        sau.append(max(L_sau) - min(L_sau))
+    if truoc:
+        tk["chenh_truoc"] = round(float(np.percentile(truoc, 90)), 3)
+        tk["chenh_sau"] = round(float(np.percentile(sau, 90)), 3)
+    return tk
+
+
 # ------------------------------------------------------------------ chuỗi
 _XOA = ("hsl_ghi", "hsl_moi", "hsl_thieu_cot", "da_lech0", "da_lech1", "da_duyet", "da_goc",
         "mau_da_bao", "_md", "curve_ghi_mot_luot", "curve_bao_mot_luot", "du_doan_lr", "gr_ghi",
@@ -860,8 +974,10 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     kq["grade_n"] = at._grade_hoan_tat(items, dict(cfg, grade=True) if grade_bat else cfg,  # noqa: SLF001
                                        tran_cg)
 
-    #  ---- cụm cùng khung: cùng ánh sáng / màu (14/10) — TRƯỚC dự đoán cuối
+    #  ---- cụm cùng khung: cùng ánh sáng / màu (14/10) — TRƯỚC dự đoán cuối; rồi cân da dự
+    #  đoán trong cụm (tấm có ánh sáng thật lệch, 15/10)
     kq["mot_luot"]["cum"] = at.dong_bo_cum(items, cfg)
+    kq["mot_luot"]["can_sang"] = can_sang_cum(items, mm, cfg, du)
 
     #  ---- dự đoán cuối + báo cáo
     bao = []

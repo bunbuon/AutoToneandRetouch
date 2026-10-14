@@ -82,9 +82,10 @@ def main() -> int:
                          "khung": cl.srgb_sang_mien(px, mien), "trung_ti_le": 0.2,
                          "nguon": "cache", "st": dict(cu)}
 
-    def anh(i, canh, t0, may="SIM", lum=None, sang=1.0, **kw):
+    def anh(i, canh, t0, may="SIM", lum=None, sang=1.0, goc=None, **kw):
+        """goc: cảnh gốc dùng chung (ảnh liên tiếp cùng khung) — mặc định mỗi ảnh một cảnh."""
         p = f"G:/Buoi/DSC{i:04d}.ARW"
-        scene, loai = sim.canh(100 + i)
+        scene, loai = sim.canh(100 + (i if goc is None else goc))
         scene = scene * sang
         #  vùng "trắng" của cảnh: xám sáng (L ~0.7–0.9 sau dựng)
         scene[loai == 1] = np.random.default_rng(i).uniform(0.30, 0.55, (int((loai == 1).sum()), 1)) * [1, 1, 1]
@@ -371,6 +372,41 @@ def main() -> int:
     ktra("lượt 2 tới cả ảnh KHÔNG đo trong cụm, cùng số tuyệt đối",
          all(r.get("hsl_l2") for r in ds10) and len({tuple(sorted(r["hsl_l2"].items())) for r in ds10}) == 1
          and kq_t.get("sua") == 3, str([r.get("hsl_l2") for r in ds10]))
+
+    print("11. cụm cùng khung: tấm flash không kịp hồi -> cân sáng trên da dự đoán Lightroom (15/10)")
+    #  6 tấm cùng thông số, 2 giây / tấm; tấm 1 và 4 RAW tối 0.86 EV (scene × 0.55): mặt preview
+    #  máy tối 0.86 EV, khung tối 0.5 EV
+    t11 = t0 + timedelta(hours=11)
+    ds11 = []
+    for i in range(6):
+        toi = i in (1, 4)
+        ds11.append(anh(80 + i, 9, t11 + timedelta(seconds=2 * i), sang=0.55 if toi else 1.0, goc=80,
+                        metered_face_ev=-1.86 if toi else -1.0, metered_subject_ev=-2.5 if toi else -2.0))
+    kq11 = ml.chuoi(ds11, cfg10)
+    L11 = [r["du_doan_lr"]["L"] for r in ds11]
+    ev11 = [r["new_exposure"] for r in ds11]
+    thuong = [L11[i] for i in (0, 2, 3, 5)]
+    ktra("da dự đoán tấm tối = tấm thường (±0.015 L)",
+         all(abs(L11[i] - float(np.median(thuong))) <= 0.015 for i in (1, 4)), f"L {L11}")
+    ktra("…bù trên Lightroom (bu_cum_lr) mạnh hơn phần bù preview máy (0.5 × 0.86 = 0.43)",
+         all(ds11[i].get("bu_cum_lr") and ds11[i]["bu_cum_lr"] > 0.5 for i in (1, 4))
+         and all(ds11[i].get("bu_cum_lr") is None for i in (0, 2, 3, 5)),
+         f"{[r.get('bu_cum_lr') for r in ds11]} · EV {ev11}")
+    ktra("…tấm thường cùng một Exposure; tóm tắt can_sang", len({ev11[i] for i in (0, 2, 3, 5)}) == 1
+         and kq11["mot_luot"]["can_sang"]["anh"] == 2
+         and kq11["mot_luot"]["can_sang"]["chenh_sau"] < kq11["mot_luot"]["can_sang"]["chenh_truoc"],
+         str(kq11["mot_luot"]["can_sang"]))
+    at.dong_bo_cum(ds11, cfg10)
+    ktra("dong_bo_cum cuối plan() giữ nguyên số đã cân", [r["new_exposure"] for r in ds11] == ev11,
+         str([r["new_exposure"] for r in ds11]))
+    #  preview máy nói tấm tối hơn nhưng da Lightroom bằng (số đo preview máy lệch) -> bỏ phần bù
+    ds12 = []
+    for i in range(6):
+        ds12.append(anh(90 + i, 10, t11 + timedelta(hours=1, seconds=2 * i), goc=90,
+                        metered_face_ev=-1.86 if i == 1 else -1.0, metered_subject_ev=-2.5 if i == 1 else -2.0))
+    ml.chuoi(ds12, cfg10)
+    ktra("preview máy đòi bù mà Lightroom thấy da đã bằng -> không bù (về Exposure chung)",
+         len({r["new_exposure"] for r in ds12}) == 1, str([(r["new_exposure"], r.get("bu_cum_lr")) for r in ds12]))
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 
