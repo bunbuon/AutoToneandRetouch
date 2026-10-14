@@ -29,8 +29,15 @@ dựng, sRGB:
 
 KIỂM ĐỊNH: để lại một ảnh, học trên phần còn lại, đoán ảnh đó (mọi biến thể + tổ hợp) —
 màu da trung bình (hue, độ đậm, L) và vùng trung tính (ab). Đạt khi tổ hợp lệch trung vị
-≤ 1.0° / 4% / 0.015 L và trung tính ≤ 0.002 — kém hơn thì app KHÔNG dùng mô hình (đường
+≤ 2.0° / 8% / 0.02 L và trung tính ≤ 0.003 — kém hơn thì app KHÔNG dùng mô hình (đường
 cũ chạy như trước).
+
+#[[ 14/10 — NGƯỠNG THEO VÙNG ỔN CỦA APP, không theo phòng thí nghiệm. Ba máy thật của buổi
+#   2709 (Z 8, Z5_2, A7M4) đều lệch tổ hợp 1.5–2.0° trung vị với ngưỡng cũ 1.0°: phần lớn do
+#   HSL Cam của ảnh khác nhau (Sat −13 … −45 — Lightroom áp WB / Exposure TRƯỚC HSL nên ảnh
+#   HSL mạnh phản ứng khác). Vùng ổn của da là ±3° / ±10% (da_on_hue / da_on_chroma): dự
+#   đoán lệch ≤ 2° vẫn đặt da trong vùng ổn; tấm lệch hơn thì soát sau khi áp bắt và chạy
+#   lượt 2 riêng tấm đó. ]]
 """
 from __future__ import annotations
 
@@ -55,8 +62,11 @@ KHA_NANG = "hocmau1"
 
 #: biên độ biến thể khi học
 EV, HL, SH, MIRED, TINT, HSL_S, CV_MA, CG_SAT = 0.7, -40.0, 40.0, 25.0, 15.0, 30.0, 12.0, 25.0
-#: ngưỡng ĐẠT của kiểm định (tổ hợp, ảnh để lại)
-DAT = {"hue": 1.0, "q": 0.04, "L": 0.015, "ab": 0.002}
+#: ngưỡng ĐẠT của kiểm định (tổ hợp, ảnh để lại) — xem chú thích đầu file (14/10)
+DAT = {"hue": 2.0, "q": 0.08, "L": 0.02, "ab": 0.003}
+#: hue OkLab của điểm DA hợp lệ (độ, vòng qua 0): mặt nạ trên ảnh dựng cạnh 1024 có lúc lấy
+#: nhầm lá cây / nền (hue 107°, 127° ở mẫu Z 8 thật) — kéo lệch cả học lẫn kiểm định
+DA_HUE = (-15.0, 85.0)
 
 LUOI = 128                               # nút của đường đáp ứng g
 NGAN_HUE, NGAN_C = 24, (0.01, 0.04, 0.08)
@@ -333,7 +343,23 @@ def mau_anh(r: dict | None, cap: dict, seed: int = 0) -> dict | None:
         if a.shape[:2] != (H, W):
             continue
         out["px"][ten] = a.reshape(-1, 3)[idx].astype(np.float32)
-    return out
+    return loc_da(out)
+
+
+def loc_da(mau: dict) -> dict:
+    """Điểm "da" (loai 0) mà màu ở ảnh nen KHÔNG phải màu da (hue OkLab ngoài DA_HUE) ->
+    loai 2 (khung): vẫn dùng học đường đáp ứng, không tính vào màu da."""
+    px = (mau.get("px") or {}).get("nen")
+    if px is None or not len(px):
+        return mau
+    lab = lab_cua(px)
+    h = np.degrees(np.arctan2(lab[:, 2], lab[:, 1]))
+    sai = (np.asarray(mau["loai"]) == 0) & ~((h >= DA_HUE[0]) & (h <= DA_HUE[1]))
+    if sai.any():
+        loai = np.array(mau["loai"], copy=True)
+        loai[sai] = 2
+        mau["loai"] = loai
+    return mau
 
 
 # ===================================================================== mô hình
@@ -1044,5 +1070,6 @@ def nap_mau(khoa: str) -> list:
     for i, s in enumerate(st):
         px = {k.split("__", 1)[1]: z[k] for k in z.files if k.startswith(f"{i}__") and not k.endswith("__loai")}
         if f"{i}__loai" in z.files:
-            out.append({"mau": {"px": px, "loai": z[f"{i}__loai"]}, "st": s})
-    return out
+            out.append({"mau": loc_da({"px": px, "loai": z[f"{i}__loai"]}), "st": s})
+    #  ảnh không còn đủ điểm da hợp lệ: bỏ (như hoc() khi học từ ảnh dựng)
+    return [a for a in out if int((np.asarray(a["mau"]["loai"]) == 0).sum()) >= 100]

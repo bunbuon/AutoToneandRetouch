@@ -196,6 +196,65 @@ def main() -> int:
     bc = "\n".join(H.DONG)
     ktra("--tat_ca --lai: học lại máy đó, ĐẠT, có tổng kết", ma == 0 and len(nk) == 1
          and "TỔNG KẾT" in bc and f"{khoa}: ĐẠT" in bc, bc[-300:])
+
+    print("5. học tiếp lượt dựng đã gửi (--tiep) + đọc trúng file tiến độ đang ghi")
+    #  14/10: công cụ thoát lúc plugin đang dựng 312/580 — một lần đọc file tiến độ rỗng sau
+    #  phút thứ 2 bị coi là "Lightroom không nhận". Lượt này: plugin giả ghi tiến độ RỖNG
+    #  ở giữa; giữ ảnh dựng (AUTOTONE_GIU_HOC_MAU) để học tiếp bằng --tiep.
+    os.environ["AUTOTONE_GIU_HOC_MAU"] = "1"
+    dung, nk = threading.Event(), []
+    th = threading.Thread(target=plugin, args=(dung, nk), daemon=True)
+    th.start()
+    (jobs / at.NHIP_PLUGIN).write_text(nhip, encoding="utf-8")
+    goc_cho = H.time.monotonic
+    lech = [0.0]
+
+    def dong_ho():
+        return goc_cho() + lech[0]
+    goc_td = mh.tien_do
+    pha = [0]
+
+    def td_kich_ban(job_dir=None):
+        """Plugin nhận yêu cầu (dang_chay) -> 5 lần đọc trúng file đang ghi (rỗng), đồng hồ
+        nhảy qua phút thứ 2 -> rồi đọc thật (plugin giả ghi 'xong')."""
+        if nk and pha[0] == 0:
+            pha[0] = 1
+            return {"id": nk[-1]["id"], "trang_thai": "dang_chay", "xong": 1, "tong": 10}
+        if 1 <= pha[0] <= 5:
+            pha[0] += 1
+            lech[0] += 60.0
+            return {}
+        return goc_td(job_dir)
+    H.time.monotonic, mh.tien_do = dong_ho, td_kich_ban
+    sys.argv = ["hoc_mau_lr.py", str(buoi), "--jobs", str(jobs), "--may", "SIM", "--n", str(N),
+                "--cho_toi_da", "99999"]
+    H.DONG.clear()
+    try:
+        ma = H.main()
+    finally:
+        H.time.monotonic, mh.tien_do = goc_cho, goc_td
+        dung.set()
+        th.join(5)
+    ktra("đọc trúng tiến độ rỗng sau 2 phút -> vẫn chờ, học xong (không báo 'không nhận')", ma == 0
+         and pha[0] > 5 and not any("không nhận" in d for d in H.DONG), "\n".join(H.DONG)[-300:])
+    ma_cu = nk[0]["id"] if nk else ""
+    ktra("giữ ảnh dựng + yeu_cau_hoc.json khi AUTOTONE_GIU_HOC_MAU",
+         (Path(os.environ["AUTOTONE_DATA"]) / "hoc_mau" / ma_cu / "yeu_cau_hoc.json").is_file(), ma_cu)
+    #  --tiep: plugin giả vẫn chạy (trả bản xuất thông số) — không được nhận yêu cầu dựng mới
+    dung, nk2 = threading.Event(), []
+    th = threading.Thread(target=plugin, args=(dung, nk2), daemon=True)
+    th.start()
+    (jobs / at.NHIP_PLUGIN).write_text(nhip, encoding="utf-8")
+    sys.argv = ["hoc_mau_lr.py", str(buoi), "--jobs", str(jobs), "--tiep", ma_cu]
+    H.DONG.clear()
+    try:
+        ma = H.main()
+    finally:
+        dung.set()
+        th.join(5)
+    ktra("--tiep: học từ ảnh dựng đã có, không gửi lại, ĐẠT", ma == 0 and not nk2
+         and any("Học tiếp" in d for d in H.DONG), "\n".join(H.DONG)[-300:])
+    os.environ.pop("AUTOTONE_GIU_HOC_MAU", None)
     for f in (GOC / "ket_qua_kiem").glob("hoc_mau_*.txt"):
         if f.stat().st_mtime > time.time() - 600:
             f.unlink()

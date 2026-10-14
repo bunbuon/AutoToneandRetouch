@@ -14,7 +14,10 @@ xin plugin dừng — ảnh được trả lại trước khi thoát.
 Chạy:   python hoc_mau_lr.py <thư mục buổi> [--n 20] [--canh 1024] [--jobs <thư mục jobs>]
                 [--may "Z 8"]      chỉ máy có tên chứa chữ này (mặc định: máy đông ảnh nhất)
                 [--tat_ca [--lai]] lần lượt MỌI máy / profile của buổi (≥ 6 ảnh); máy đã có
-                                   mô hình ĐẠT thì bỏ qua, --lai để học lại
+                                   mẫu học thì bỏ qua (học lại từ mẫu: --phan_tich), --lai
+                                   để dựng lại
+                [--tiep <mã>]      học tiếp từ lượt dựng <mã> (hoc_mau/<mã>) đã gửi trước —
+                                   công cụ thoát giữa chừng nhưng plugin vẫn dựng xong
         python hoc_mau_lr.py --phan_tich <khoá>      (học lại từ mẫu đã lưu, không cần Lightroom)
 Kết quả: <dữ liệu>/mo_hinh_lr/<khoá>.json + ket_qua_kiem/hoc_mau_<giờ>.txt
 """
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pickle
 import shutil
 import sys
@@ -225,7 +229,8 @@ def main() -> int:
     ap.add_argument("--cho_toi_da", type=float, default=3600.0, help="giây chờ tối đa")
     ap.add_argument("--may", default=None, help="chỉ máy có tên chứa chữ này (vd \"Z 8\", 7M4)")
     ap.add_argument("--tat_ca", action="store_true", help="lần lượt mọi máy / profile của buổi")
-    ap.add_argument("--lai", action="store_true", help="--tat_ca: học lại cả máy đã có mô hình ĐẠT")
+    ap.add_argument("--lai", action="store_true", help="--tat_ca: dựng lại cả máy đã có mẫu học")
+    ap.add_argument("--tiep", default=None, help="mã lượt dựng (hoc_mau/<mã>) để học tiếp")
     a = ap.parse_args()
     import autotone as at
     import mo_hinh_lr as mh
@@ -267,6 +272,12 @@ def main() -> int:
         return 2
     noi("Đọc thông số hiện tại (catalog + bản xuất của plugin)…")
     cur = thong_so_hien_tai(folder, jobs)
+    if a.tiep:
+        ds, khoa = ds_luot_cu(items, cur, a.tiep, jobs)
+        ma_ra = hoc_mot(folder, jobs, ds, khoa, a, ma=a.tiep)
+        f = luu_bao_cao(khoa or "loi")
+        print(f"Đã lưu báo cáo: {f}\nGửi file báo cáo cho Claude.")
+        return ma_ra
     if not a.tat_ca:
         ds, khoa = chon_anh_hoc(items, cur, a.n, may=a.may)
         ma_ra = hoc_mot(folder, jobs, ds, khoa, a)
@@ -279,9 +290,11 @@ def main() -> int:
     ma_ra, ket = 0, []
     for k, n in ds_khoa:
         cu = mh.nap(k)
-        if cu is not None and cu.dat and not a.lai:
-            noi(f"\n— {k}: đã có mô hình ĐẠT ({cu.thong_tin.get('ngay')}) — bỏ qua (--lai để học lại)")
-            ket.append((k, "đã có"))
+        if cu is not None and not a.lai and (cu.dat or (mh.thu_muc() / f"{k}_mau.npz").is_file()):
+            noi(f"\n— {k}: đã có {'mô hình ĐẠT' if cu.dat else 'mẫu học (mô hình chưa đạt)'} "
+                f"({cu.thong_tin.get('ngay')}) — bỏ qua (học lại từ mẫu: --phan_tich {k}; "
+                "dựng lại: --lai)")
+            ket.append((k, "đã có" if cu.dat else "đã có mẫu, chưa đạt"))
             continue
         noi(f"\n=== {k} ({n} ảnh dùng được) ===")
         ds, _k = chon_anh_hoc(items, cur, a.n, khoa=k)
@@ -297,8 +310,32 @@ def main() -> int:
     return ma_ra
 
 
-def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a) -> int:
+def ds_luot_cu(items: list, cur: dict, ma: str, jobs: Path) -> tuple[list, str]:
+    """Ảnh của lượt dựng `ma` đã gửi: hoc_mau/<ma>/yeu_cau_hoc.json (lượt mới), không có thì
+    theo bảng ảnh dựng của plugin. -> (ds như chon_anh_hoc, khoá)."""
+    import autotone as at
+    import duong_dan as dd
+    import mo_hinh_lr as mh
+    try:
+        yc = json.loads((dd.goc_du_lieu() / "hoc_mau" / ma / "yeu_cau_hoc.json").read_text(encoding="utf-8"))
+        paths, khoa = list(yc.get("paths") or []), str(yc.get("khoa") or "")
+    except (OSError, ValueError):
+        paths, khoa = list(mh.bang_anh(jobs)), ""
+    muon = {at.khoa_duong_dan(p) for p in paths}
+    ds = []
+    for r, c, k in _ung_vien(items, cur):
+        if at.khoa_duong_dan(r.get("lr_path") or r["path"]) in muon and (not khoa or k == khoa):
+            khoa = khoa or k
+            ds.append({"path": r.get("lr_path") or r["path"], "cur": c, "r": r})
+    #  đúng thứ tự đã gửi (biến thể tính theo ds)
+    thu = {at.khoa_duong_dan(p): i for i, p in enumerate(paths)}
+    ds.sort(key=lambda x: thu.get(at.khoa_duong_dan(x["path"]), 0))
+    return ds, khoa
+
+
+def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a, ma: str | None = None) -> int:
     """Một máy / profile: gửi biến thể cho plugin, chờ dựng xong, học + kiểm định, lưu.
+    ma: lượt dựng đã gửi trước (--tiep) — không gửi lại, chờ / dùng ảnh dựng của nó.
     -> 0 ĐẠT · 1 chưa đạt / không chạy hết · 2 Lightroom không nhận."""
     import autotone as at
     import mo_hinh_lr as mh
@@ -323,26 +360,39 @@ def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a) -> int:
     except Exception:                                        # noqa: BLE001
         preview = {}
     import duong_dan as dd
-    ma = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest = dd.goc_du_lieu() / "hoc_mau" / ma
-    mh.yeu_cau(dest, [{"path": x["path"], "cur": x["cur"]} for x in ds], bien, canh=a.canh,
-               ma=ma, job_dir=jobs)
     tong = len(ds) * (len(bien) + 1)
-    noi(f"Đã gửi {len(bien)} biến thể × {len(ds)} ảnh = {tong} lần dựng. Đừng sửa ảnh trong "
-        "Lightroom lúc này. (Ctrl+C để dừng — ảnh được trả lại.)")
+    if ma is None:
+        ma = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dest = dd.goc_du_lieu() / "hoc_mau" / ma
+        dest.mkdir(parents=True, exist_ok=True)
+        #  để học tiếp được nếu công cụ thoát giữa chừng (plugin vẫn dựng xong): --tiep <mã>
+        (dest / "yeu_cau_hoc.json").write_text(json.dumps(
+            {"khoa": khoa, "paths": [x["path"] for x in ds], "canh": a.canh}, ensure_ascii=False),
+            encoding="utf-8")
+        mh.yeu_cau(dest, [{"path": x["path"], "cur": x["cur"]} for x in ds], bien, canh=a.canh,
+                   ma=ma, job_dir=jobs)
+        noi(f"Đã gửi {len(bien)} biến thể × {len(ds)} ảnh = {tong} lần dựng. Đừng sửa ảnh trong "
+            "Lightroom lúc này. (Ctrl+C để dừng — ảnh được trả lại.)")
+    else:
+        dest = dd.goc_du_lieu() / "hoc_mau" / ma
+        noi(f"Học tiếp lượt dựng {ma} ({len(ds)} ảnh) — không gửi lại.")
     t0 = time.monotonic()
     td: dict = {}
+    #  đã thấy tiến độ của lượt này chưa: đọc trúng lúc plugin đang ghi file tiến độ (rỗng /
+    #  khoá) KHÔNG phải "Lightroom không nhận" — 14/10 công cụ thoát khi plugin đang dựng 312/580
+    da_thay = False
     try:
         while True:
             td = mh.tien_do(jobs)
             if td.get("id") == ma:
+                da_thay = True
                 x = int(td.get("xong") or 0)
                 da = time.monotonic() - t0
                 con_lai = f" · còn ~{(da / x * (tong - x)) / 60:.0f} phút" if x > 10 else ""
                 print(f"\r  dựng {x}/{tong} · {td.get('bien', '')}{con_lai}      ", end="", flush=True)
                 if td.get("trang_thai") in ("xong", "dung", "loi", "thay"):
                     break
-            elif time.monotonic() - t0 > 120:
+            elif not da_thay and time.monotonic() - t0 > 120:
                 noi("\n[!] Lightroom không nhận yêu cầu sau 2 phút.")
                 return 2
             if time.monotonic() - t0 > a.cho_toi_da:
@@ -374,7 +424,8 @@ def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a) -> int:
         return 1
     mh.luu(m, mau)
     bao_cao_mo_hinh(m)
-    shutil.rmtree(dest, ignore_errors=True)                  # mẫu đã lưu (.npz) đủ để học lại
+    if not os.environ.get("AUTOTONE_GIU_HOC_MAU"):
+        shutil.rmtree(dest, ignore_errors=True)              # mẫu đã lưu (.npz) đủ để học lại
     noi(f"\nĐã lưu mô hình: {mh.thu_muc() / (khoa + '.json')}")
     return 0 if m.dat else 1
 

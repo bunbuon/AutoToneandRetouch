@@ -157,6 +157,7 @@ def main() -> int:
     anh_dir.mkdir()
     goc = (np.random.default_rng(2).random((H, W, 3)) * 200 + 20).astype(np.uint8)
     goc[10:30, 20:40] = (128, 128, 128)                 # vùng xám -> trung tính
+    goc[35:55, 50:75] = (200, 150, 140)                 # vùng mặt nạ da: màu da (loc_da giữ)
     cap = {}
     for i, t in enumerate(("goc", "nen", "ev+")):
         f = anh_dir / f"{t}.png"
@@ -179,6 +180,10 @@ def main() -> int:
          np.allclose(mu["px"]["ev+"] - mu["px"]["nen"], 10 / 255, atol=1.01 / 255)
          or float(np.median(mu["px"]["ev+"] - mu["px"]["nen"])) * 255 > 9)
     ktra("ảnh dựng khác cỡ -> bỏ, không làm hỏng", "le" not in mu["px"] and da.sum() == mk.sum())
+    #  14/10: mặt nạ lấy nhầm lá cây (hue 107°/127° ở mẫu Z 8 thật) -> không tính là da
+    px = np.array([[0.80, 0.60, 0.55]] * 3 + [[0.30, 0.65, 0.30], [0.62, 0.62, 0.62]], np.float32)
+    lo = m.loc_da({"px": {"nen": px}, "loai": np.array([0, 0, 0, 0, 1])})["loai"].tolist()
+    ktra("loc_da: điểm 'da' màu lá cây -> khung (2); da thật + trung tính giữ", lo == [0, 0, 0, 2, 1], str(lo))
 
     print("10. yêu cầu plugin")
     jobs = tam / "jobs"
