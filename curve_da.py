@@ -508,9 +508,16 @@ def giai_da(do: dict, r: dict, cfg: dict, tran_tren: float = 0.96) -> dict:
     h0, q0 = hue_q(lab0)
     out = {"delta": [0.0, 0.0, 0.0], "h0": h0, "q0": q0, "h_t": h_t, "q_t": q_t,
            "h1": h0, "q1": q0, "kieu": kieu, "ngoai": ngoai, "trang_lech": 0.0, "thu": 1.0,
-           "ly_do": ""}
+           "L0": float(lab0[0]), "L_t": float(lt[0]), "L1": float(lab0[0]), "ly_do": ""}
     on_h, on_c = _f(cfg, "da_on_hue"), _f(cfg, "da_on_chroma")
-    if abs(_goc(h_t - h0)) <= on_h and abs(q0 / max(q_t, 1e-9) - 1.0) <= on_c:
+    #[[ 14/10 — curve_da_sang (chuỗi một lượt): đích là R G B, kéo cả ĐỘ SÁNG da về L của
+    #   màu đích khi Tone / HSL trước đó chưa đưa tới (lệch > da_on_L); trong vùng ổn thì
+    #   giữ L như cũ. Tắt: giữ L (curve chỉ sửa màu — như 13/10). ]]
+    L_dich = float(lab0[0])
+    if cfg.get("curve_da_sang") and abs(float(lt[0]) - L_dich) > _f(cfg, "da_on_L"):
+        L_dich = float(lt[0])
+    if (abs(_goc(h_t - h0)) <= on_h and abs(q0 / max(q_t, 1e-9) - 1.0) <= on_c
+            and abs(L_dich - float(lab0[0])) < 1e-9):
         out["ly_do"] = "da-on"
         return out
     B = do.get("da_mn") if do.get("da_mn") is not None else P
@@ -521,7 +528,7 @@ def giai_da(do: dict, r: dict, cfg: dict, tran_tren: float = 0.96) -> dict:
         dai.append((a, b))
         ws.append(cl.bump(a, b, chan, 0.06, tran_tren))
     out["dai"] = dai
-    L0 = float(lab0[0])
+    L0 = L_dich
     lq_on = math.log(1.0 + on_c)
 
     def sai(D, wh, wq):
@@ -564,7 +571,9 @@ def giai_da(do: dict, r: dict, cfg: dict, tran_tren: float = 0.96) -> dict:
     D = D * thu
     out["thu"], out["trang_lech"] = thu, lech
     out["delta"] = [float(v) for v in D]
-    out["h1"], out["q1"] = hue_q(thong_ke(_ap_g(P, D, ws), mien))
+    lab1 = thong_ke(_ap_g(P, D, ws), mien)
+    out["h1"], out["q1"] = hue_q(lab1)
+    out["L1"] = float(lab1[0])
     return out
 
 

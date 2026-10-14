@@ -3576,6 +3576,16 @@ DEFAULTS = {
     "curve_mien": "melissa",        # mien curve cua Lightroom — V0 (kiem_curve_lr) chot
     "curve_kieu_tong": "kenh",      # curve tong ap tung kenh / "rgb_tone" giu sac — V0 chot
     "curve_da_tran": 0.030,         # |Delta| moi kenh (thang 0..1) — ~7.7 ma, curve van don dieu
+    #[[ 14/10 — ĐÍCH LÀ R G B (cả sáng lẫn màu). User: "Nếu các bước trước đó đã cho ra ánh
+    #   sáng và màu sắc da đúng như da đích thì các bước sau sẽ không chỉnh gì thêm. Nếu
+    #   chưa ra thì mới căn chỉnh tiếp". Chuỗi một lượt: Tone (Exposure theo cảnh, chặn
+    #   cháy) -> HSL (Luminance Cam) -> Curve (cả L) kéo độ sáng da về L của màu đích; bước
+    #   nào thấy |L da − L đích| ≤ da_on_L thì không chỉnh sáng. ]]
+    "mot_luot_sang_dich": True,
+    "da_on_L": 0.02,                # OkLab L: vùng ổn độ sáng da (~2.5% RGB)
+    "mot_luot_ev_sang_tran": 0.6,   # Tone: đổi tối đa bấy nhiêu EV so với decide() để da về sáng đích
+    "hsl_da_lum_tran": 25,          # HSL: Luminance Cam tối đa ± bấy nhiêu điểm so với preset
+    "curve_da_sang": False,         # curve_da: kéo cả L về đích (chuỗi một lượt bật riêng)
     "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
     "curve_da_trang_max": 0.003,    # vung trung tinh trong dai da lech ab toi da (= trang_tran_cg)
     "curve_da_trang_dien_tich": 0.005,  # vung trung tinh bi cham >= ti le khung nay moi xet
@@ -5220,6 +5230,14 @@ COT_MAU = ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat",
 #   so goc. Xem hsl_da_theo_trang_thai(). ]]
 DAI_HSL_DA = ("Red", "Orange", "Yellow")
 COT_HSL = tuple(f"{k}Adjustment{d}" for d in DAI_HSL_DA for k in ("Hue", "Saturation"))
+#[[ 14/10: LUMINANCE CAM — chuỗi một lượt nâng / hạ sáng RIÊNG da về độ sáng của màu
+#   đích. User 14/10: "Với mỗi 1 màu đích đều chia theo R G B ... đưa màu của da mặt ảnh về
+#   đúng với màu đó dù can thiệp qua bước nào" — đích là cả SÁNG lẫn MÀU. Đo trên ảnh
+#   dựng thật (Z 8 / Z5_2 / A7M4): Orange Luminance +30 -> da +0.04 L (RGB +4–6%), khung
+#   không cháy thêm; Exposure +0.7 -> da +0.12 L nhưng khung cháy thêm 9–16%.
+#   Tool chưa từng ghi ô này trước 14/10 -> số catalog chính là số preset; chuỗi lưu vào
+#   mốc ngay lần ghi đầu (moc_them_cot) để lần chạy sau tính từ số preset, không cộng dồn. ]]
+COT_HSL_L = ("LuminanceAdjustmentOrange",)
 
 
 #[[ 13/10: curve DIEM — ten curve + bon curve (tong, R, G, B). Luu vao moc nhu COT_HSL
@@ -9304,6 +9322,26 @@ def load_baseline(folder: Path) -> dict[str, dict]:
     return _read_tsv(baseline_path(folder))
 
 
+def moc_them_cot(folder: Path, them: dict[str, dict]) -> int:
+    """Thêm số vào cột mốc còn TRỐNG của ảnh ĐÃ có mốc ({khoá khoa_duong_dan: {cột: số}}).
+    Không bao giờ đè số mốc có sẵn, không tạo mốc cho ảnh chưa có. -> số ảnh được thêm.
+    Dùng cho cột tool bắt đầu ghi sau khi mốc đã chốt (COT_HSL_L, 14/10)."""
+    cu = load_baseline(folder)
+    n = 0
+    for p, cot in (them or {}).items():
+        rec = cu.get(khoa_duong_dan(p))
+        if not isinstance(rec, dict):
+            continue
+        doi = {k: str(v) for k, v in cot.items()
+               if v is not None and str(rec.get(k) if rec.get(k) is not None else "").strip() == ""}
+        if doi:
+            cu[khoa_duong_dan(p)] = dict(rec, **doi)
+            n += 1
+    if n:
+        save_baseline(folder, cu, gop=False)
+    return n
+
+
 def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
                   thay: set | None = None) -> Path:
     """Ghi mốc preset gốc. Không có sidecar để cắm marker atn: thì phải lưu ra đây,
@@ -9347,7 +9385,7 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
                         rec = dict(rec, **bu)
                     #  Cot mau (8/10) moc cu de trong: attach_catalog_settings da
                     #  quyet so goc (bu_cot_mau) va dat vao ban ghi moi -> lay theo
-                    bu = {k: m[k] for k in (*COT_MAU, *COT_HSL, *COT_CURVE)
+                    bu = {k: m[k] for k in (*COT_MAU, *COT_HSL, *COT_CURVE, *COT_HSL_L)
                           if str(rec.get(k) if rec.get(k) is not None else "").strip() == ""
                           and str(m.get(k) if m.get(k) is not None else "").strip() != ""}
                     if bu:
@@ -9361,7 +9399,7 @@ def save_baseline(folder: Path, base: dict[str, dict], gop: bool = True,
     cols = ["Exposure2012", "Highlights2012", "Shadows2012",
             "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
             "WhiteBalance", "Contrast2012", "Whites2012", "Blacks2012",
-            *COT_MAU, *COT_HSL, *COT_CURVE]
+            *COT_MAU, *COT_HSL, *COT_CURVE, *COT_HSL_L]
     # Cot path ghi ban Lightroom neu co, khong thi ghi khoa normcase. Ghi de
     # bang khoa normcase se lam mat cach viet hoa/thuong that va lan chay sau
     # gui job voi duong dan Lightroom khong nhan ra.
@@ -10453,7 +10491,9 @@ LR_JOB_FIELDS = ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature",
                  #   ghi khi TRA curve ve moc (anh dang mang curve tool ghi, xem
                  #   trang_thai_curve); luot 2 ghi o job rieng "@curve". Plugin cu
                  #   tonumber() o nay ra nil -> bo qua, khong hong gi. ]]
-                 *COT_CURVE]
+                 *COT_CURVE,
+                 #  14/10: Luminance Cam (chuỗi một lượt — sáng da về đích); CUỐI danh sách
+                 *COT_HSL_L]
 
 # File job vừa ghi gần nhất — giao diện theo dõi nó tới khi plugin đổi đuôi .done
 LAST_JOB: Path | None = None
@@ -11057,6 +11097,9 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
               else [str(r["curve_reset"].get(k) or "") for k in COT_CURVE]
               if r.get("curve_reset") and co_cot_curve(r["curve_reset"])
               else [""] * len(COT_CURVE)),
+            #  14/10: Luminance Cam của chuỗi một lượt — ô trống = không đụng tới
+            *([str(int(round(float(dict(r["hsl_l_moi"]).get(k, 0))))) for k in COT_HSL_L]
+              if r.get("hsl_l_ghi") and r.get("hsl_l_moi") else [""] * len(COT_HSL_L)),
         ])
     if not rows:
         return None

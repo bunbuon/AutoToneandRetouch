@@ -82,13 +82,16 @@ def main() -> int:
                          "khung": cl.srgb_sang_mien(px, mien), "trung_ti_le": 0.2,
                          "nguon": "cache", "st": dict(cu)}
 
-    def anh(i, canh, t0, may="SIM", **kw):
+    def anh(i, canh, t0, may="SIM", lum=None, sang=1.0, **kw):
         p = f"G:/Buoi/DSC{i:04d}.ARW"
         scene, loai = sim.canh(100 + i)
+        scene = scene * sang
         #  vùng "trắng" của cảnh: xám sáng (L ~0.7–0.9 sau dựng)
         scene[loai == 1] = np.random.default_rng(i).uniform(0.30, 0.55, (int((loai == 1).sum()), 1)) * [1, 1, 1]
         canh_cua[p] = (scene, loai)
         cu = cu_cua(i)
+        if lum is not None:
+            cu["LuminanceAdjustmentOrange"] = str(lum)
         r = {"path": p, "lr_path": p, "ok": True, "scene": canh, "dt_obj": t0, "model": may,
              "scene_sig": [0.5] * 16, "meter_boxes": [[10, 10, 50, 60]], "preview_wh": (600, 400),
              "rating": 0, "ngoai_troi": False, "ev100": 7.0, "crs": dict(cu), "atn": {},
@@ -156,8 +159,24 @@ def main() -> int:
         if t and t0_:
             trang_hon += int(math.hypot(t[0] - T_DICH[0], t[1] - T_DICH[1])
                              <= math.hypot(t0_[0] - T_DICH[0], t0_[1] - T_DICH[1]) + 1e-4)
-    ktra("dự đoán == Lightroom giả dựng với thông số job: da ≤ 1° / 4%",
-         max(lech_h) <= 1.0 and max(lech_q) <= 0.04, f"hue max {max(lech_h):.2f}° · q max {max(lech_q) * 100:.1f}%")
+    #  14/10: ngưỡng q 4% -> 6%: Tone giờ còn kéo sáng da về đích (Exposure đổi nhiều hơn)
+    ktra("dự đoán == Lightroom giả dựng với thông số job: da ≤ 1° / 6%",
+         max(lech_h) <= 1.0 and max(lech_q) <= 0.06, f"hue max {max(lech_h):.2f}° · q max {max(lech_q) * 100:.1f}%")
+    #  một mức MỖI CẢNH (giữ đều trong cảnh): xét trung vị cảnh, không từng tấm
+    theo_c: dict = {}
+    for r in do_dc:
+        theo_c.setdefault(r["scene"], []).append(r["mau_da_bao"]["L"])
+    tv = {c: (float(np.median([x["truoc"] for x in v])), float(np.median([x["tone"] for x in v])),
+              v[0]["dich"]) for c, v in theo_c.items()}
+    ktra("Tone kéo sáng da về L đích theo CẢNH (cảnh sáng hơn đích -> hạ EV)",
+         kq["mot_luot"]["sang"].get("canh", 0) >= 1
+         and all(abs(t - d) <= abs(a - d) + 1e-3 and abs(t - d) <= 0.02 for a, t, d in tv.values()),
+         f"{kq['mot_luot']['sang']} · (trước, sau Tone, đích) {tv}")
+    ktra("Tone đã đưa sáng vào vùng ổn -> HSL không kéo Luminance (bước sau không chỉnh)",
+         kq["mot_luot"]["lum"]["canh"] == 0, str(kq["mot_luot"]["lum"]))
+    ktra("báo cáo có R G B % (trước / cuối / đích)", all(len(do_dc[0]["mau_da_bao"]["rgb"][k] or []) == 3
+                                                          for k in ("truoc", "cuoi", "dich")),
+         str(do_dc[0]["mau_da_bao"]["rgb"]))
     ktra("…vùng trắng ≤ 0.002", lech_t and max(lech_t) <= 0.002, f"{max(lech_t) if lech_t else None}")
     ktra("da về gần đích hơn chỉ Tone (mọi ảnh)", gan_hon == len(do_dc), f"{gan_hon}/{len(do_dc)}")
     ktra("vùng trắng gần đích trắng hơn trước WB", trang_hon == len(do_dc), f"{trang_hon}/{len(do_dc)}")
@@ -221,6 +240,59 @@ def main() -> int:
     ktra("lần hai: WB lệch ≤ 30 K", doi_k <= 30, f"{doi_k} K")
     gr = [abs(((r.get("gr_mid") or (0, 0))[1]) - ((lan1[r["path"]][2] or (0, 0))[1])) for r in moi]
     ktra("lần hai: Color Grading lệch ≤ 2 sat", max(gr) <= 2, str(gr))
+
+    print("9. sáng da theo đích: Tone bị chặn -> Luminance Cam; mốc; chạy lại không cộng dồn")
+    buoi9 = tam / "Buoi9"
+    buoi9.mkdir()
+    #  cảnh TỐI (da L thấp hơn đích sáng), Tone chỉ được +0.1 EV
+    ds9 = [anh(40 + i, 5, t0 + timedelta(hours=6, seconds=2 * i), lum=10, sang=0.55) for i in range(3)]
+    for r in ds9:
+        r["crs"].pop("LuminanceAdjustmentOrange", None)          # mốc chốt trước 14/10: chưa có ô này
+    at.save_baseline(buoi9, {at.khoa_duong_dan(r["path"]): dict(r["crs"], __lrpath=r["path"]) for r in ds9})
+    cfg9 = dict(CFG, mot_luot_ev_sang_tran=0.1, grade=False)
+    kq9 = ml.chuoi(ds9, cfg9, folder=buoi9)
+    lum = [(r.get("hsl_l_moi") or {}).get("LuminanceAdjustmentOrange") for r in ds9]
+    ktra("Tone kẹp +0.1 EV", abs(kq9["mot_luot"]["sang"].get("e", 0) - 0.1) < 1e-6, str(kq9["mot_luot"]["sang"]))
+    ktra("…phần sáng còn thiếu -> Luminance Cam (một mức cả cảnh, trong trần ±25, cộng vào số preset 10)",
+         all(r.get("hsl_l_ghi") for r in ds9) and len(set(lum)) == 1 and 10 < lum[0] <= 35,
+         f"{lum} · {kq9['mot_luot']['lum']}")
+    Ls = [r["mau_da_bao"]["L"] for r in ds9]
+    ktra("L dự đoán cuối gần đích hơn L sau Tone", all(abs(x["cuoi"] - x["dich"]) < abs(x["tone"] - x["dich"]) for x in Ls),
+         str([(x["tone"], x["cuoi"], x["dich"]) for x in Ls]))
+    lech_L = []
+    for r in ds9:
+        s = ml.thong_so_job(r, ml.cu_cua(r))
+        sc, lo = canh_cua[r["path"]]
+        lech_L.append(abs(m.thong_ke_da(sim.dung(sc, s)[lo == 0])[0] - r["du_doan_lr"]["L"]))
+    ktra("L dự đoán == Lightroom giả dựng với thông số job (≤ 0.02)", max(lech_L) <= 0.02, f"{max(lech_L):.4f}")
+    moc = at.load_baseline(buoi9)
+    ktra("mốc: lưu số Luminance gốc (10) cho ảnh vừa ghi lần đầu",
+         all(moc[at.khoa_duong_dan(r["path"])].get("LuminanceAdjustmentOrange") == "10" for r in ds9)
+         and all(r["crs"].get("LuminanceAdjustmentOrange") == "10" for r in ds9))
+    job9 = at.write_lr_job(ds9, "Buoi9", job_dir=tam / "jobs9")
+    dong = job9.read_text(encoding="utf-8").splitlines()
+    ic = dong[0].split("\t").index("LuminanceAdjustmentOrange")
+    ktra("job mang cột LuminanceAdjustmentOrange", all(d.split("\t")[ic] == str(int(lum[0])) for d in dong[1:]),
+         str([d.split("\t")[ic] for d in dong[1:]]))
+    #  lần hai: Lightroom đang mang số tool vừa ghi -> tính lại từ preset, không cộng dồn
+    for r in ds9:
+        s = ml.thong_so_job(r, ml.cu_cua(r))
+        cu2 = {k: (f"{v:.14g}" if isinstance(v, float) else str(v)) for k, v in s.items()}
+        r["crs_hien"] = cu2
+        do_truoc(r, cu2)
+        tinh_lai(r, cfg9)
+    ml.chuoi(ds9, cfg9, folder=buoi9)
+    lum2 = [(r.get("hsl_l_moi") or {}).get("LuminanceAdjustmentOrange",
+                                             ml._f(r["crs_hien"].get("LuminanceAdjustmentOrange"))) for r in ds9]
+    ktra("lần hai: Luminance như lần một (tính từ mốc 10, không cộng dồn)",
+         all(abs(a - b) <= 2 for a, b in zip(lum2, lum)), f"{lum} -> {lum2}")
+    #  moc_them_cot: không đè số mốc có sẵn, không tạo mốc mới
+    n = at.moc_them_cot(buoi9, {ds9[0]["path"]: {"LuminanceAdjustmentOrange": 99},
+                                "G:/Buoi/KHONG_CO.ARW": {"LuminanceAdjustmentOrange": 5}})
+    moc = at.load_baseline(buoi9)
+    ktra("moc_them_cot: không đè số có sẵn, không tạo mốc cho ảnh chưa có", n == 0
+         and moc[at.khoa_duong_dan(ds9[0]["path"])].get("LuminanceAdjustmentOrange") == "10"
+         and at.khoa_duong_dan("G:/Buoi/KHONG_CO.ARW") not in moc)
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

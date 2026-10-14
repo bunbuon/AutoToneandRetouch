@@ -370,10 +370,33 @@ def muc9():
     ktra("curve tổng = curve mốc (không nén cháy)", tong == cl.doc_o(MOC["ToneCurvePV2012"]))
 
 
+def muc10():
+    """10. curve_da_sang (14/10): da TỐI hơn đích -> kéo cả L; tắt -> giữ L"""
+    r = anh("S1")
+    a = canh(da_rgb=(209, 169, 170))                    # cùng màu đích, tối hơn
+    cfg0 = cfg_()
+    d = do_lai(a, r, cfg0, "m10")
+    g0 = cd.giai_da(d, r, cfg0)
+    ktra("tắt: màu trong vùng ổn -> không đổi (giữ L như 13/10)", not any(g0["delta"]),
+         f"{g0.get('ly_do')} L {g0.get('L0', 0):.3f} -> đích {g0.get('L_t', 0):.3f}")
+    cfg1 = cfg_(curve_da_sang=True)
+    g1 = cd.giai_da(d, r, cfg1)
+    ktra("bật: Δ dương cả ba kênh, L da lên gần đích hơn", all(v > 0 for v in g1["delta"])
+         and abs(g1["L1"] - g1["L_t"]) < abs(g1["L0"] - g1["L_t"]) - 0.005,
+         f"Δ {[round(v, 3) for v in g1['delta']]} · L {g1['L0']:.3f} -> {g1['L1']:.3f} (đích {g1['L_t']:.3f})")
+    ktra("bật: màu vẫn trong vùng ổn", abs(cd._goc(g1["h1"] - g1["h_t"])) <= 3.0
+         and abs(g1["q1"] / g1["q_t"] - 1) <= 0.10, f"{g1['h1']:.1f}° {g1['q1']:.4f}")
+    #  ảnh giả có đổ bóng nên L da đo < L màu đích; nới vùng ổn L để "đúng đích cả sáng"
+    cfg2 = cfg_(curve_da_sang=True, da_on_L=0.30)
+    g2 = cd.giai_da(do_lai(canh(), r, cfg2, "m10b"), r, cfg2)
+    ktra("bật + màu đúng đích + L trong vùng ổn -> không đổi", not any(g2["delta"]) and g2["ly_do"] == "da-on",
+         f"{g2.get('ly_do')} L {g2.get('L0', 0):.3f}/{g2.get('L_t', 0):.3f}")
+
+
 def main():
     cai_gia()
     a1 = r = None
-    for m in (muc1, muc2, muc3, muc4, muc5, muc6, muc7, muc8, muc9):
+    for m in (muc1, muc2, muc3, muc4, muc5, muc6, muc7, muc8, muc9, muc10):
         print(m.__doc__.splitlines()[0])
         try:
             if m is muc4:

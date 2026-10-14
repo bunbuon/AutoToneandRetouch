@@ -212,8 +212,11 @@ def muc9():
     """9. thứ tự cột job"""
     f = at.LR_JOB_FIELDS
     ktra("cột đầu không đổi", f[:5] == ["Exposure2012", "Highlights2012", "Shadows2012", "Temperature", "Tint"])
-    ktra("COT_CURVE ở cuối", f[-len(at.COT_CURVE):] == list(at.COT_CURVE))
-    ktra("COT_HSL ngay trước curve", f[-len(at.COT_CURVE) - len(at.COT_HSL):-len(at.COT_CURVE)] == list(at.COT_HSL))
+    n_l = len(at.COT_HSL_L)
+    ktra("COT_HSL_L (Luminance Cam, 14/10) ở cuối", f[-n_l:] == list(at.COT_HSL_L))
+    ktra("COT_CURVE ngay trước", f[-n_l - len(at.COT_CURVE):-n_l] == list(at.COT_CURVE))
+    ktra("COT_HSL ngay trước curve",
+         f[-n_l - len(at.COT_CURVE) - len(at.COT_HSL):-n_l - len(at.COT_CURVE)] == list(at.COT_HSL))
 
 
 def main():
