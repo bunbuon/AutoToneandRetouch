@@ -238,6 +238,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     for r in items:
         for k in _XOA:
             r.pop(k, None)
+        r["mot_luot"] = True                  # lượt 2 sau khi áp: chỉ soát (xu_ly_anh_ui)
     #  ---- chuẩn bị: mô hình, thông số "cu", điểm ảnh, đích
     mm: dict = {}
     for r in items:
@@ -555,3 +556,147 @@ def gop(cu: dict | None, moi: dict) -> dict:
         out["hsl"][k] = (cu.get("hsl") or {}).get(k, 0) + (moi.get("hsl") or {}).get(k, 0)
     out["mot_luot"] = moi.get("mot_luot")
     return out
+
+
+# ------------------------------------------------------------------ soát sau khi áp
+#[[ 14/10 (user chọn "Báo + tự chạy lượt 2 cho ảnh lệch"): áp xong, lấy preview Lightroom
+#   THẬT của một ảnh mỗi loạt (+ ảnh lẻ, ảnh ngoại suy), đo da, so với r["du_doan_lr"].
+#   Lệch dự đoán > LECH_H / LECH_Q VÀ da còn ngoài vùng ổn của đích -> cả loạt (cảnh lệch
+#   ≥ TI_LE_CANH: cả cảnh; trung vị buổi > LECH_BUOI: mọi ảnh) chạy curve lượt 2 — ghép
+#   lên curve VỪA ÁP (không phải curve mốc: mốc không còn là thứ Lightroom đang dựng). ]]
+LECH_H, LECH_Q, TI_LE_CANH, LECH_BUOI = 1.5, 0.05, 0.30, 2.0
+
+
+def chon_soat(ds: list, cfg: dict, toi_da_le: int = 40) -> list:
+    """Ảnh soát: một ảnh mỗi loạt (ưu tiên ngoại suy, rồi đổi nhiều nhất) + ảnh lẻ
+    (≤ toi_da_le, rải đều) + mọi ảnh ngoại suy."""
+    co = [r for r in ds if r.get("du_doan_lr")]
+    if not co:
+        return []
+    loats = at.chia_loat(co, cfg)
+    trong_loat = {id(r) for g in loats for r in g}
+
+    def doi(r):
+        d = (r.get("du_doan_lr") or {})
+        return (bool(d.get("ngoai_pham_vi")), abs(_f(r.get("delta_ev"))) +
+                abs(_f(r.get("new_temp")) - _f(r.get("old_temp"))) / 400.0)
+    out = [max(g, key=doi) for g in loats]
+    le = [r for r in co if id(r) not in trong_loat]
+    buoc = max(1, math.ceil(len(le) / max(1, toi_da_le)))
+    out += le[::buoc]
+    da = {id(r) for r in out}
+    out += [r for r in co if (r.get("du_doan_lr") or {}).get("ngoai_pham_vi") and id(r) not in da]
+    return out
+
+
+def lech_soat(r: dict, do: dict, cfg: dict) -> dict | None:
+    """Số đo thật (curve_da.do_anh trên preview sau khi áp) so với dự đoán."""
+    import curve_da
+    d = r.get("du_doan_lr") or {}
+    if not do or not do.get("ok") or not d:
+        return None
+    P = do.get("da_mn") if d.get("kieu") == "mn" and do.get("da_mn") is not None else do.get("da_cu")
+    if P is None or len(P) < 50:
+        return None
+    lab = curve_da.thong_ke(P, do.get("mien") or "melissa")
+    h, q = curve_da.hue_q(lab)
+    kieu = "mn" if d.get("kieu") == "mn" else "cu"
+    rgb, _ng = curve_da.dich_cua(r, cfg, kieu)
+    lt = at.mau_dich_lab(rgb)
+    h_t, q_t = curve_da.hue_q(lt)
+    on_h = float(cfg.get("da_on_hue") or 3.0)
+    on_c = float(cfg.get("da_on_chroma") or 0.10)
+    dh = abs(at._goc_lech(h - float(d["h"])))                         # noqa: SLF001
+    dq = abs(q / max(float(d["q"]), 1e-9) - 1.0)
+    ngoai_on = abs(at._goc_lech(h_t - h)) > on_h or abs(q / max(q_t, 1e-9) - 1.0) > on_c  # noqa: SLF001
+    return {"h": round(h, 2), "q": round(q, 4), "dh": round(dh, 2), "dq": round(dq, 4),
+            "ngoai_on": bool(ngoai_on), "lech": bool((dh > LECH_H or dq > LECH_Q) and ngoai_on)}
+
+
+def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
+    """ds: ảnh chuỗi một lượt vừa áp; do_mau {id(r): do_anh} của ảnh soát. Gắn r["soat_lr"];
+    ảnh cần lượt 2 có r["curve_ghi"] (curve ghép lên curve vừa áp). -> tóm tắt."""
+    import curve_da
+    kq = {"n": 0, "lech": 0, "hue": None, "q": None, "sua": 0, "anh_sua": [], "ca_buoi": False}
+    for r in ds:
+        r.pop("soat_lr", None)
+    theo = {id(r): r for r in ds}
+    ket = {}
+    for k, do in do_mau.items():
+        r = theo.get(k)
+        if r is None:
+            continue
+        l = lech_soat(r, do, cfg)
+        if l is not None:
+            r["soat_lr"] = l
+            ket[k] = l
+    if not ket:
+        return kq
+    kq["n"] = len(ket)
+    kq["lech"] = sum(1 for v in ket.values() if v["lech"])
+    kq["hue"] = round(float(np.median([v["dh"] for v in ket.values()])), 2)
+    kq["q"] = round(float(np.median([v["dq"] for v in ket.values()])), 4)
+    #  ảnh cần lượt 2
+    can: set = set()
+    if kq["hue"] > LECH_BUOI:
+        kq["ca_buoi"] = True
+        can = {id(r) for r in ds}
+    else:
+        loats = at.chia_loat(ds, cfg)
+        loat_cua = {id(r): i for i, g in enumerate(loats) for r in g}
+        for k, v in ket.items():
+            if not v["lech"]:
+                continue
+            i = loat_cua.get(k)
+            can |= {id(r) for r in loats[i]} if i is not None else {k}
+        theo_canh: dict = {}
+        for k, v in ket.items():
+            theo_canh.setdefault(theo[k].get("scene"), []).append(v["lech"])
+        for canh, ls in theo_canh.items():
+            if len(ls) >= 2 and sum(ls) / len(ls) >= TI_LE_CANH:
+                can |= {id(r) for r in ds if r.get("scene") == canh}
+    if not (cfg.get("curve_da") or cfg.get("curve_chay")):
+        kq["anh_sua"] = [theo[k] for k in can]
+        return kq
+    #  curve lượt 2: ghép lên curve VỪA ÁP; ảnh đo được trong nhóm cần sửa giải trên số đo
+    #  của nó, cùng loạt thì ket_thuc gom một curve; tấm không đo trong loạt theo loạt
+    ds_sua = [theo[k] for k in can if k in theo]
+    hop_le = {id(r) for r in curve_da.chon_anh(ds_sua, cfg)}
+    da_do = [r for r in ds_sua if id(r) in do_mau and id(r) in hop_le]
+    cu_moc = {}
+    for r in ds_sua:
+        cu_moc[id(r)] = r.get("curve_moc")
+        cv = r.get("curve_ghi_mot_luot")
+        if cv:
+            r["curve_moc"] = {k: cv.get(k, "") for k in at.COT_CURVE}
+    try:
+        if da_do:
+            curve_da.ket_thuc(da_do, {id(r): do_mau[id(r)] for r in da_do}, cfg)
+        for loat in at.chia_loat(ds_sua, cfg):
+            mau = next((r for r in loat if r.get("curve_ghi")), None)
+            for r in loat:
+                if (mau is not None and not r.get("curve_ghi") and id(r) in hop_le
+                        and r.get("curve_moc") == mau.get("curve_moc")):
+                    r["curve_ghi"] = dict(mau["curve_ghi"])
+    finally:
+        for r in ds_sua:
+            r["curve_moc"] = cu_moc[id(r)]
+    kq["anh_sua"] = [r for r in ds_sua if r.get("curve_ghi")]
+    kq["sua"] = len(kq["anh_sua"])
+    return kq
+
+
+def ghi_lich_su(kq: dict, buoi: str) -> None:
+    """mo_hinh_lr/lich_su.jsonl — lệch dự đoán qua các buổi (mô hình trôi thì thấy)."""
+    import json
+    from datetime import datetime
+    import mo_hinh_lr as mh
+    try:
+        d = mh.thu_muc()
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / "lich_su.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"luc": datetime.now().isoformat(timespec="seconds"), "buoi": buoi,
+                                 **{k: kq.get(k) for k in ("n", "lech", "hue", "q", "sua", "ca_buoi")}},
+                                ensure_ascii=False) + "\n")
+    except OSError:
+        pass

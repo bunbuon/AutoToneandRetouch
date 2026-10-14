@@ -2030,6 +2030,9 @@ TU_DIEN.update({
         'Lightroom has not refreshed its previews after applying — the grid keeps the tool previews.',
     'Lưới đã hiện preview Lightroom ({} ảnh).': 'The grid now shows Lightroom previews ({} photos).',
     'Preview Lightroom (sau khi áp)': 'Lightroom preview (after applying)',
+    #  14/10: chuỗi màu da một lượt — đo da trên preview Lightroom trước khi áp
+    'đo da trên preview Lightroom…': 'measuring skin on Lightroom previews…',
+    'Đo da trên preview Lightroom…': 'Measuring skin on Lightroom previews…',
     ('  Mẹo: bật Auto Sync trong Develop (công tắc cạnh nút Sync) để Lightroom Denoise cả danh '
      'sách trong một tác vụ, không phải chọn từng ảnh.'):
         ('  Tip: turn on Auto Sync in Develop (the switch next to the Sync button) so Lightroom '

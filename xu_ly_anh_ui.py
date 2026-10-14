@@ -79,7 +79,8 @@ def _moc(xl: dict, ten: str) -> None:
 
 #: khâu -> (mốc đầu, mốc cuối) — 14/10: user "xử lý 1000 ảnh … tốn 15 phút": biết từng
 #: khâu bao lâu thì mới biết sửa chỗ nào (ghi trang_thai "xu_ly" + dòng Thời gian)
-KHAU_XL = (("do", "t0", "phan_tich"), ("tinh", "phan_tich", "gui"), ("ap", "gui", "ap"),
+KHAU_XL = (("do", "t0", "phan_tich"), ("truoc", "phan_tich", "truoc_xong"),
+           ("tinh", "phan_tich", "gui"), ("ap", "gui", "ap"),
            ("l2_lr", "l2_gui", "l2_lr_xong"), ("l2_do", "l2_gui", "l2_do_xong"),
            ("l2_giai", "l2_do_xong", "l2_giai_xong"), ("l2_ap", "l2_giai_xong", "l2_ap"),
            ("hoan_thien", "ap", "l2_ap"), ("denoise", "denoise_gui", "denoise_xong"),
@@ -103,7 +104,8 @@ def cau_thoi_gian(kh: dict) -> str:
     def mm(g):
         g = int(round(g))
         return f"{g // 60}:{g % 60:02d}"
-    cau = [f"{chu} {mm(kh[k])}" for k, chu in (("do", "đo ảnh"), ("ap", "Lightroom áp"),
+    cau = [f"{chu} {mm(kh[k])}" for k, chu in (("do", "đo ảnh"), ("truoc", "đo da trên preview"),
+                                              ("ap", "Lightroom áp"),
                                               ("hoan_thien", "hoàn thiện màu da"),
                                               ("denoise", "Denoise")) if k in kh]
     return " · ".join(cau)
@@ -397,6 +399,8 @@ class XuLyAnhMixin:
         pha = xl.get("pha")
         if pha == "do":
             self.do_cancel()
+        elif pha == "truoc":
+            xl["truoc_huy"] = True
         elif pha == "ap":
             if getattr(self, "_job_dang_theo", None) is not None and \
                     at.job_state(self._job_dang_theo) == "cho":
@@ -470,10 +474,84 @@ class XuLyAnhMixin:
                  + (f" · {gd.so_vn(len(self._do_hong))} ảnh không đo được"
                     if getattr(self, "_do_hong", None) else ""))
         _moc(xl, "phan_tich")
+        if self._xl_bat_truoc(items, cfg):
+            return True
         xl["pha"] = "ap"
         hop.buoc("ap", "dang", "đang gửi…")
         self.after(60, lambda: self.do_apply(hoi=False, tu_dong=True))
         return True
+
+    # ------------------------------------------------------------ chuỗi một lượt (14/10)
+    def _xl_bat_truoc(self, items, cfg) -> bool:
+        """Chuỗi màu da MỘT LƯỢT (mau_mot_luot): bật + nguồn catalog + mẫu màu da + có mô
+        hình Lightroom ĐẠT cho máy của buổi -> đo da trên preview Lightroom (cache / plugin)
+        TRƯỚC khi áp, rồi tính lại kế hoạch. False = đi thẳng sang Áp như cũ."""
+        xl = self._xl
+        try:
+            import mau_mot_luot as ml
+        except ImportError:
+            return False
+        if not ml.bat(cfg) or self.source_value() != "catalog" \
+                or not (cfg.get("mau_da_dich") or {}).get("trong"):
+            return False
+        ml.quen_mo_hinh()
+        mat = [r for r in items if r.get("meter_boxes") and not r.get("bw")]
+        may = {}
+        for r in mat:
+            may.setdefault(ml.khoa_cua(r), r)
+        co = [k for k, r in may.items() if ml.mo_hinh_cho(r) is not None]
+        if not co:
+            xl["truoc_kq"] = {"bo": "chua-hoc", "may": sorted({str(r.get("model") or "?")
+                                                              for r in mat})}
+            return False
+        xl.update(pha="truoc", truoc_xong=False, truoc_huy=False, truoc_td=(0, len(mat), ""))
+        hop = xl["hop"]
+        hop.buoc("do", "dang", "đo da trên preview Lightroom…")
+        hop.tien_do(0, max(1, len(mat)), "Đo da trên preview Lightroom…")
+        root = self.folder()
+
+        def chay():
+            import do_truoc
+            try:
+                xl["truoc_kq"] = do_truoc.chay(
+                    root, items, cfg, huy=lambda: bool(xl.get("truoc_huy") or self.cancel_flag),
+                    bao=lambda x, t, c: xl.__setitem__("truoc_td", (x, t, c)))
+            except Exception as ex:                          # noqa: BLE001
+                xl["truoc_kq"] = {"bo": "loi", "ly_do": str(ex)}
+            xl["truoc_xong"] = True
+        threading.Thread(target=chay, daemon=True).start()
+        self.after(400, self._xl_soi_truoc)
+        return True
+
+    def _xl_soi_truoc(self):
+        xl = getattr(self, "_xl", None)
+        if not xl or xl.get("xong") or xl.get("pha") != "truoc":
+            return
+        hop = xl["hop"]
+        if not xl.get("truoc_xong"):
+            x, t, c = xl.get("truoc_td") or (0, 1, "")
+            hop.tien_do(x, max(1, t), (c or "Đo da trên preview Lightroom…")[:1].upper()
+                        + (c or "Đo da trên preview Lightroom…")[1:])
+            self.after(400, self._xl_soi_truoc)
+            return
+        _moc(xl, "truoc_xong")
+        if xl.get("truoc_huy") or self.cancel_flag:
+            hop.buoc("do", "loi", "đã dừng")
+            self._xl_ket_thuc("dung", "Đã dừng — chưa áp gì vào Lightroom.")
+            return
+        kq = xl.get("truoc_kq") or {}
+        #  kế hoạch tính lại với số đo trước -> cảnh đủ số đo đi chuỗi một lượt
+        self.refresh_plan()
+        n_ml = sum(1 for r in self.items or [] if r.get("mot_luot"))
+        xl["n_mot_luot"] = n_ml
+        chu = f"{gd.so_vn(len(self.items or []))} ảnh"
+        if kq.get("do"):
+            chu += (f" · đo da trên preview {gd.so_vn(kq['do'])} ảnh"
+                    + (f" ({gd.so_vn(kq.get('cache', 0))} từ cache Lightroom)" if kq.get("cache") else ""))
+        hop.buoc("do", "xong", chu)
+        xl["pha"] = "ap"
+        hop.buoc("ap", "dang", "đang gửi…")
+        self.after(60, lambda: self.do_apply(hoi=False, tu_dong=True))
 
     def _xl_ap_loi(self, ly_do: str):
         """do_apply(tu_dong) dừng trước khi gửi."""
@@ -529,7 +607,7 @@ class XuLyAnhMixin:
             ket = ("xong" if not bad else "loi",
                    f"Lightroom đã áp {gd.so_vn(xl.get('so_gui', 0))} ảnh"
                    + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else " · kiểm chứng đủ"))
-            if xl.get("curve"):
+            if xl.get("curve") or xl.get("n_mot_luot"):
                 xl["ap_ket"] = ket                 # chốt khi lượt 2 (ngầm) xong — _xl_chot_ap
                 hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
             else:
@@ -545,7 +623,7 @@ class XuLyAnhMixin:
         import curve_da
         xl = self._xl
         hop = xl.get("hop")
-        if not xl.get("curve"):
+        if not xl.get("curve") and not xl.get("n_mot_luot"):
             self._xl_denoise()
             return
         if curve_da.KHA_NANG not in at.plugin_kha_nang():
@@ -554,8 +632,20 @@ class XuLyAnhMixin:
             return
         cfg = self.read_cfg()
         bo = xl.get("chua_nhan_ds") or set()
-        ds = [r for r in curve_da.chon_anh(xl.get("items_ghi") or [], cfg)
-              if at.khoa_duong_dan(r.get("lr_path") or r["path"]) not in bo]
+        ghi = [r for r in xl.get("items_ghi") or []
+               if at.khoa_duong_dan(r.get("lr_path") or r["path"]) not in bo]
+        #[[ 14/10 chuỗi MỘT LƯỢT: curve đã đi cùng job chính -> không dựng lại cả buổi;
+        #   chỉ SOÁT (mau_mot_luot.chon_soat: một ảnh mỗi loạt + ảnh lẻ + ảnh ngoại suy),
+        #   lệch dự đoán thì lượt 2 cho đúng loạt / cảnh đó (mau_mot_luot.soat). ]]
+        ml_ds = [r for r in ghi if r.get("mot_luot") and r.get("du_doan_lr")]
+        mau = []
+        if ml_ds:
+            import mau_mot_luot as ml
+            mau = ml.chon_soat(ml_ds, cfg)
+        ds = [r for r in curve_da.chon_anh([r for r in ghi if not r.get("mot_luot")], cfg)] \
+            if xl.get("curve") else []
+        ds += [r for r in mau if r not in ds]
+        xl["ml_ds"], xl["ml_mau"] = ml_ds, {id(r) for r in mau}
         if not ds:
             xl["curve_kq"] = {"bo": "khong-anh"}
             self._xl_denoise()
@@ -688,8 +778,17 @@ class XuLyAnhMixin:
             _moc(xl, "l2_do_xong")
             if not xl.get("curve_huy"):
                 do_map = {k: v for k, v in xl["curve_do"].items()}
-                xl["curve_tt"] = curve_da.ket_thuc(ds, do_map, cfg)
-                xl["curve_job"] = curve_da.ghi_job(ds, xl["curve_ten"])
+                mau_ids = xl.get("ml_mau") or set()
+                ds_cu = [r for r in ds if id(r) not in mau_ids]
+                xl["curve_tt"] = curve_da.ket_thuc(ds_cu, {id(r): do_map[id(r)] for r in ds_cu
+                                                           if id(r) in do_map}, cfg)
+                ghi_ds = list(ds_cu)
+                if xl.get("ml_ds"):
+                    import mau_mot_luot as ml
+                    xl["ml_soat"] = ml.soat(xl["ml_ds"], {k: do_map[k] for k in mau_ids
+                                                         if k in do_map}, cfg)
+                    ghi_ds += [r for r in xl["ml_soat"]["anh_sua"] if r not in ghi_ds]
+                xl["curve_job"] = curve_da.ghi_job(ghi_ds, xl["curve_ten"])
                 _moc(xl, "l2_giai_xong")
                 if curve_da.giu_anh(cfg):                       # chạy cổng: giữ để so
                     curve_da.luu_ket_qua(xl["curve_dest"], ds, do_map, curve_da.bang_anh(),
@@ -994,6 +1093,36 @@ class XuLyAnhMixin:
             return
         self.after(1500, self._xem_lr_soi)
 
+    def _xl_cau_mot_luot(self, xl) -> str:
+        """Dòng tổng kết chuỗi một lượt (+ ghi lịch sử lệch dự đoán)."""
+        tk = xl.get("truoc_kq") or {}
+        if tk.get("bo") == "chua-hoc":
+            return ("· Màu da một lượt: chưa học màu Lightroom cho máy "
+                    f"{', '.join(tk.get('may') or [])} — chạy HOC_MAU_LR.bat; lần này dùng đường cũ.")
+        n = int(xl.get("n_mot_luot") or 0)
+        if not n:
+            return ""
+        sa = xl.get("ml_soat") or {}
+        cau = f"· Màu da một lượt: {gd.so_vn(n)} ảnh"
+        if sa.get("n"):
+            cau += (f" · soát {gd.so_vn(sa['n'])} ảnh, lệch dự đoán trung vị {sa['hue']:.1f}° / "
+                    f"{sa['q'] * 100:.0f}%")
+            if sa.get("sua"):
+                cau += f" · {gd.so_vn(sa['sua'])} ảnh hoàn thiện thêm (lượt 2)"
+            elif sa.get("lech"):
+                cau += f" · {gd.so_vn(sa['lech'])} ảnh lệch (bật Curve da để tự hoàn thiện)"
+            if sa.get("ca_buoi"):
+                cau += " · ⚠ lệch nhiều cả buổi — nên học màu Lightroom lại (HOC_MAU_LR.bat)"
+            if not xl.get("ml_lich_su"):
+                xl["ml_lich_su"] = True
+                try:
+                    import mau_mot_luot as ml
+                    import trang_thai as tt
+                    ml.ghi_lich_su(sa, tt.ten_buoi(self.folder()))
+                except Exception:                            # noqa: BLE001
+                    pass
+        return cau + "."
+
     # ------------------------------------------------------------ kết thúc
     def _xl_ghi_thoi_gian(self, xl, kieu: str, kh: dict) -> None:
         """Thời gian từng khâu -> trang_thai (khâu "xu_ly") — so buổi này với buổi trước."""
@@ -1045,6 +1174,9 @@ class XuLyAnhMixin:
             cv = xl.get("curve_kq")
             if cv is not None and self._xl_tong_ket_curve(cv):
                 dong.append(self._xl_tong_ket_curve(cv))
+            cau_ml = self._xl_cau_mot_luot(xl)
+            if cau_ml:
+                dong.append(cau_ml)
             kq = xl.get("denoise_kq")
             if kq is not None and kq.get("ly_do") != "lightroom-chua-ho-tro":
                 dong.append(f"· Denoise: bật {kq.get('bat', 0)} ảnh ISO ≥ "

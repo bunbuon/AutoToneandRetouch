@@ -6854,6 +6854,7 @@ def chinh_mau_da(items: list, cfg: dict, folder=None) -> dict:
     for r in items:
         r.pop("curve_ghi_mot_luot", None)
         r.pop("du_doan_lr", None)
+        r.pop("mot_luot", None)
     #  13/10: da chon MAU mau da -> chuoi mot dich (xem chuoi_mau_da_mau)
     if cfg.get("mau_da_chuoi", True) and (cfg.get("mau_da_dich") or {}).get("trong"):
         #  14/10: cảnh có số đo trước + mô hình Lightroom đạt -> chuỗi MỘT LƯỢT

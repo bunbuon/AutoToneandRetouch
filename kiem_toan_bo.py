@@ -69,7 +69,7 @@ NHOM = [
     ]),
     ("hoc_mau", "Học màu Lightroom + chuỗi một lượt (mới 14/10, chưa bật)", [
         "test_mo_hinh_lr.py", "test_doc_cache_lr.py", "test_do_truoc.py",
-        "test_mau_mot_luot.py",
+        "test_mau_mot_luot.py", "test_mot_luot_ui.py",
     ]),
     ("lr", "Lightroom: plugin · job · catalog · preset · bản xuất", [
         "kiem_plugin_lua51.py", "kiem_xem_preset_lua.py", "kiem_retouch_khi_xuat_lua.py",
