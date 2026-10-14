@@ -3584,7 +3584,13 @@ DEFAULTS = {
     "mot_luot_sang_dich": True,
     "da_on_L": 0.02,                # OkLab L: vùng ổn độ sáng da (~2.5% RGB)
     #  14/10 chạy thật 2709: trần 0.6 EV / +25 -> da dừng ở L 0.840 (đích 0.864), 56% trong ±0.03
-    "mot_luot_ev_sang_tran": 0.8,   # Tone: đổi tối đa bấy nhiêu EV so với decide() để da về sáng đích
+    "mot_luot_ev_sang_tran": 0.8,   # Tone: HẠ tối đa bấy nhiêu EV so với decide() khi da sáng hơn đích
+    #[[ 14/10 tối — user xem 2709: "toàn bộ bức ảnh của cả bộ ảnh đang dư sáng nhiều ít nhất 0.5ev"
+    #   (bước Tone cộng +0.8 EV cả ảnh để da chạm đích; sau chặn cháy còn +0.61 trung vị).
+    #   Tone KHÔNG tăng sáng nữa (mặc định 0): độ sáng tổng thể theo decide() như trước; da
+    #   tối hơn đích thì Luminance Cam + Curve vùng da nâng RIÊNG da. ]]
+    "mot_luot_ev_sang_len": 0.0,    # Tone: tăng tối đa bấy nhiêu EV (0 = không tăng)
+    "curve_da_tran_sang": 0.045,    # curve_da_sang: |Δ| mỗi kênh khi kéo cả L (màu: curve_da_tran)
     "hsl_da_lum_tran": 35,          # HSL: Luminance Cam tối đa ± bấy nhiêu điểm so với preset
     #[[ 14/10 chạy thật 2709 bản (20, 35) / 0.9: da vào vùng ổn KHÔNG hơn (15, 20) mà dự đoán
     #   lệch p90 6° / 29% (HSL lớn ra ngoài khoảng mô hình học ±30 quanh ảnh) — DSC09319 cô dâu

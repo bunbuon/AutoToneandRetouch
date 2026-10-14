@@ -522,6 +522,9 @@ def giai_da(do: dict, r: dict, cfg: dict, tran_tren: float = 0.96) -> dict:
         return out
     B = do.get("da_mn") if do.get("da_mn") is not None else P
     chan, tran = _f(cfg, "curve_da_chan"), _f(cfg, "curve_da_tran")
+    if abs(L_dich - float(lab0[0])) > 1e-9 and cfg.get("curve_da_tran_sang"):
+        #  14/10 tối: Tone không còn tăng sáng cả ảnh -> curve vùng da kéo L nhiều hơn một chút
+        tran = max(tran, _f(cfg, "curve_da_tran_sang"))
     dai, ws = [], []
     for i in range(3):
         a, b = float(np.percentile(B[:, i], 10)) - 0.02, float(np.percentile(B[:, i], 90)) + 0.02
@@ -805,16 +808,21 @@ def ket_thuc(items: list, do_map: dict, cfg: dict) -> dict:
 # ------------------------------------------------------------------- job + cầu nối
 
 def ghi_job(items: list, name: str, job_dir: Path | None = None) -> Path | None:
-    """Job lượt 2: chỉ cột curve, chỉ ảnh có đổi. Tên apply_<giờ>_<buổi>@curve.tsv."""
-    rows = [[r.get("lr_path") or r["path"], *[str(r["curve_ghi"].get(k) or "")
-                                             for k in at.COT_CURVE]]
-            for r in items if r.get("curve_ghi")]
+    """Job lượt 2: cột curve (+ cột HSL Cam khi lượt 2 của chuỗi một lượt sửa HSL theo số đo
+    thật — r["hsl_l2"], 14/10), chỉ ảnh có đổi. Tên apply_<giờ>_<buổi>@curve.tsv."""
+    thu = (*at.COT_HSL, *at.COT_HSL_L)
+    hsl_k = [k for k in thu if any(k in (r.get("hsl_l2") or {}) for r in items)]
+    rows = [[r.get("lr_path") or r["path"],
+             *[str((r.get("curve_ghi") or {}).get(k) or "") for k in at.COT_CURVE],
+             *[str(int(round(float(r["hsl_l2"][k])))) if k in (r.get("hsl_l2") or {}) else ""
+               for k in hsl_k]]
+            for r in items if r.get("curve_ghi") or r.get("hsl_l2")]
     if not rows:
         return None
     d = Path(job_dir or at.LR_JOB_DIR)
     d.mkdir(parents=True, exist_ok=True)
     dest = d / f"apply_{datetime.now():%Y%m%d_%H%M%S}_{at.ten_job(name)}{at.HAU_TO_CURVE}.tsv"
-    lines = ["path\t" + "\t".join(at.COT_CURVE)] + ["\t".join(c) for c in rows]
+    lines = ["path\t" + "\t".join([*at.COT_CURVE, *hsl_k])] + ["\t".join(c) for c in rows]
     tmp = dest.with_suffix(".part")
     tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.replace(tmp, dest)

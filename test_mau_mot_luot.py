@@ -263,7 +263,9 @@ def main() -> int:
     for r in ds9 + [le9]:
         r["crs"].pop("LuminanceAdjustmentOrange", None)          # mốc chốt trước 14/10: chưa có ô này
     at.save_baseline(buoi9, {at.khoa_duong_dan(r["path"]): dict(r["crs"], __lrpath=r["path"]) for r in ds9 + [le9]})
-    cfg9 = dict(CFG, mot_luot_ev_sang_tran=0.1, grade=False)
+    #  14/10 tối: mặc định Tone KHÔNG tăng sáng cả ảnh (user: "dư sáng ít nhất 0.5ev") —
+    #  mục này bật lại tăng tối đa +0.1 để canh đường kẹp; mặc định có bài riêng ở mục 10
+    cfg9 = dict(CFG, mot_luot_ev_sang_tran=0.1, mot_luot_ev_sang_len=0.1, grade=False)
     kq9 = ml.chuoi(ds9 + [le9], cfg9, folder=buoi9)
     ktra("ảnh LẺ cũng được nâng sáng (Tone) + Luminance của riêng nó",
          "sang-dich" in str(le9.get("notes")) and le9.get("hsl_l_ghi"), str(le9.get("notes")))
@@ -310,6 +312,57 @@ def main() -> int:
     ktra("moc_them_cot: không đè số có sẵn, không tạo mốc cho ảnh chưa có", n == 0
          and moc[at.khoa_duong_dan(ds9[0]["path"])].get("LuminanceAdjustmentOrange") == "10"
          and at.khoa_duong_dan("G:/Buoi/KHONG_CO.ARW") not in moc)
+
+    print("10. mặc định: Tone không tăng sáng cả ảnh; lượt 2 sửa HSL theo số đo THẬT")
+    ds10 = [anh(60 + i, 7, t0 + timedelta(hours=9, seconds=2 * i), lum=10, sang=0.55) for i in range(3)]
+    cfg10 = dict(CFG, grade=False)
+    ev0 = [r["new_exposure"] for r in ds10]
+    kq10 = ml.chuoi(ds10, cfg10)
+    ktra("da tối hơn đích: Exposure KHÔNG tăng (mặc định mot_luot_ev_sang_len = 0)",
+         all(r["new_exposure"] <= e + 1e-6 for r, e in zip(ds10, ev0)) and not kq10["mot_luot"]["sang"].get("tang"),
+         f"{ev0} -> {[r['new_exposure'] for r in ds10]} · {kq10['mot_luot']['sang']}")
+    ktra("…phần sáng da để Luminance Cam", all(r.get("hsl_l_ghi") for r in ds10),
+         str([(r.get('hsl_l_moi') or {}).get('LuminanceAdjustmentOrange') for r in ds10]))
+    #  "Lightroom thật" khác dự đoán: da cảnh thật ĐỎ + đậm hơn cảnh mô hình đã thấy — cảnh sáng
+    #  thường (lượt 1 chưa chạm trần HSL, còn chỗ cho lượt 2)
+    ds10 = [anh(70 + i, 8, t0 + timedelta(hours=10, seconds=2 * i), lum=10) for i in range(3)]
+    ml.chuoi(ds10, cfg10)
+    lt10 = at.mau_dich_lab(CFG["mau_da_dich"]["trong"])
+    h_t10, q_t10 = math.degrees(math.atan2(lt10[2], lt10[1])), math.hypot(lt10[1], lt10[2]) / lt10[0]
+
+    def do_that(r, lech):
+        sc, lo = canh_cua[r["path"]]
+        sc = sc.copy()
+        sc[lo == 0] = sc[lo == 0] * np.asarray(lech)
+        s_ = ml.thong_so_job(r, ml.cu_cua(r))
+        if r.get("hsl_l2"):
+            s_ = dict(s_, **r["hsl_l2"])
+        px = sim.dung(sc, s_)
+        return {"ok": True, "mien": "melissa", "mat_na": "parse",
+                "da_mn": cl.srgb_sang_mien(px[lo == 0], "melissa"),
+                "da_cu": cl.srgb_sang_mien(px[lo == 0], "melissa")}, m.thong_ke_da(px[lo == 0])
+    LECH = (1.06, 0.98, 0.93)
+    do_mau = {id(ds10[1]): do_that(ds10[1], LECH)[0]}
+    _L1, h1, q1 = do_that(ds10[1], LECH)[1]
+    kqs = ml.soat(ds10, do_mau, cfg10)
+    co = [r for r in ds10 if r.get("hsl_l2")]
+    ktra("lượt 2: cả loạt (3 ảnh, 1 tấm soát) nhận HSL mới theo số đo thật, một mức",
+         len(co) == 3 and len({tuple(sorted(r["hsl_l2"].items())) for r in co}) == 1, str([r.get("hsl_l2") for r in ds10]))
+    _L2, h2, q2 = do_that(ds10[1], LECH)[1]
+    xa1 = abs(at._goc_lech(h1 - h_t10)) / 3.0 + abs(math.log(q1 / q_t10)) / math.log(1.1)
+    xa2 = abs(at._goc_lech(h2 - h_t10)) / 3.0 + abs(math.log(q2 / q_t10)) / math.log(1.1)
+    #  cảnh giả rất đậm: Sat chạm trần −20 của chuỗi -> chỉ đòi GẦN hơn, đúng chiều, trong trần
+    th10, ts10 = cfg10.get("mot_luot_hsl_tran") or (15, 20)
+    ktra("lượt 2: da thật sau HSL mới GẦN đích hơn (hue / độ đậm), Sat giảm, trong trần",
+         xa2 < xa1 - 0.3 and all(-ts10 <= (r["hsl_l2"].get("SaturationAdjustmentOrange", -1)) < 0 for r in co),
+         f"trước {h1:.1f}°/{q1 / q_t10:.2f}× · sau {h2:.1f}°/{q2 / q_t10:.2f}× · đích {h_t10:.1f}°")
+    job10 = __import__("curve_da").ghi_job(ds10, "Buoi10", tam / "jobs10")
+    cot10 = job10.read_text(encoding="utf-8").splitlines()[0].split("\t") if job10 else []
+    dong10 = job10.read_text(encoding="utf-8").splitlines()[1:] if job10 else []
+    ktra("job lượt 2 mang cột HSL Cam (curve để trống)", job10 is not None and cot10[:6] == ["path", *at.COT_CURVE]
+         and any(k in cot10 for k in ("HueAdjustmentOrange", "SaturationAdjustmentOrange", "LuminanceAdjustmentOrange"))
+         and all(not any(d.split("\t")[1:6]) for d in dong10), str(cot10))
+    ktra("tóm tắt soát: số ảnh sửa HSL", kqs.get("hsl") == 3 and kqs.get("sua") == 3, str({k: kqs.get(k) for k in ("hsl", "sua", "n")}))
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

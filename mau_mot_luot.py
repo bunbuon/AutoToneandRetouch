@@ -360,6 +360,9 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
     #       vượt hl_hard_pct, kéo Highlights) -> phần sáng còn thiếu để HSL Luminance + Curve. ]]"""
     tol = float(cfg.get("da_on_L") or 0.02)
     tran = float(cfg.get("mot_luot_ev_sang_tran") or 0.6)
+    #  14/10 tối: không tăng sáng cả ảnh (user: "dư sáng ít nhất 0.5ev") — chỉ hạ khi da sáng
+    #  hơn đích; phần sáng còn thiếu để Luminance Cam / Curve vùng da
+    len_e = float(cfg.get("mot_luot_ev_sang_len", 0.0) or 0.0)
     xuong = float(cfg["max_ev"])
     len_ = float(cfg.get("max_ev_up") or cfg["max_ev"])
     tk = {"canh": 0, "tang": 0, "giam": 0, "e": []}
@@ -385,7 +388,10 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
             if abs(d0) <= tol:
                 es.append(0.0)
                 continue
-            lo, hi = -tran, tran
+            if d0 < 0 and len_e <= 0:
+                es.append(0.0)               # da tối hơn đích: không tăng sáng cả ảnh
+                continue
+            lo, hi = -tran, max(0.0, len_e)
             f_lo, f_hi = f(lo), f(hi)
             if f_hi <= 0:
                 es.append(hi)
@@ -1044,6 +1050,15 @@ def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
         kq["can"] = len(can)
         return kq
     cfg = dict(cfg, curve_da=True, curve_da_sang=bool(cfg.get("mot_luot_sang_dich", True)))
+    #  14/10 tối: HSL Cam theo số đo THẬT cho mọi loạt còn ngoài vùng ổn (phan_hoi_hsl); loạt
+    #  đã sửa HSL thì lượt 2 không chồng thêm curve (curve tính trên số đo TRƯỚC khi đổi HSL)
+    hsl2 = phan_hoi_hsl(ds, do_mau, ket, cfg) if cfg.get("mot_luot_l2_hsl", True) else {}
+    for r in ds:
+        r.pop("hsl_l2", None)
+        if id(r) in hsl2:
+            r["hsl_l2"] = hsl2[id(r)]
+    kq["hsl"] = len(hsl2)
+    can = {k for k in can if k not in hsl2}
     #  curve lượt 2: ghép lên curve VỪA ÁP; ảnh đo được trong nhóm cần sửa giải trên số đo
     #  của nó, cùng loạt thì ket_thuc gom một curve; tấm không đo trong loạt theo loạt
     ds_sua = [theo[k] for k in can if k in theo]
@@ -1067,9 +1082,101 @@ def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
     finally:
         for r in ds_sua:
             r["curve_moc"] = cu_moc[id(r)]
-    kq["anh_sua"] = [r for r in ds_sua if r.get("curve_ghi")]
+    kq["anh_sua"] = [r for r in ds_sua if r.get("curve_ghi")] + [r for r in ds if r.get("hsl_l2")]
     kq["sua"] = len(kq["anh_sua"])
     return kq
+
+
+def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict) -> dict:
+    """Lượt 2: HSL Cam (Hue / Sat / Luminance) theo số đo THẬT sau khi áp (14/10 tối).
+
+    #[[ User 14/10 ("oke hãy thử xem sao"): lượt 2 sửa HSL từ số đo thật chứ không chỉ curve
+    #   (curve trần 0.03 không kéo nổi độ đậm). Chạy thật 2709: dự đoán một lượt lệch thật
+    #   ~1° / 5% trung vị nhưng p90 3.5° / 20% — da chỉ ~25% vào vùng ổn cả màu lẫn sáng.
+    #   Ở đây số đo là da THẬT của ảnh soát (một ảnh mỗi loạt) ở đúng trạng thái vừa áp; mô hình
+    #   chỉ cho độ nhạy CỤC BỘ (bước ±10 quanh trạng thái đó — không ngoại suy xa):
+    #     - chỉ thành phần NGOÀI vùng ổn (hue ±da_on_hue, độ đậm ±da_on_chroma, L ±da_on_L);
+    #     - giải 3×3 (Hue, Sat, Lum Cam -> hue, ln độ đậm, L) có trọng số theo vùng ổn, kéo
+    #       mot_luot_phan phần lệch; loạt một mức (trung vị các tấm soát của loạt);
+    #     - tổng so với số preset vẫn trong trần chuỗi (mot_luot_hsl_tran, hsl_da_lum_tran). ]]
+    -> {id(r): {khoá HSL: số mới}} cho mọi ảnh của loạt cần sửa."""
+    import curve_da
+    on_h = float(cfg.get("da_on_hue") or 3.0)
+    on_c = float(cfg.get("da_on_chroma") or 0.10)
+    tol_L = float(cfg.get("da_on_L") or 0.02)
+    tran_h, tran_s = (float(v) for v in (cfg.get("mot_luot_hsl_tran") or (15, 20)))
+    tran_L = float(cfg.get("hsl_da_lum_tran") or 35)
+    phan = float(cfg.get("mot_luot_phan") or 0.8)
+    sang = bool(cfg.get("mot_luot_sang_dich", True))
+    KH, KS, KL = "HueAdjustmentOrange", "SaturationAdjustmentOrange", at.COT_HSL_L[0]
+    W = np.diag([1.0 / on_h, 1.0 / math.log(1.0 + on_c), 1.0 / tol_L])
+    out: dict = {}
+    for g in at.nhom_loat(list(ds), cfg):
+        ds_d = []
+        for r in g:
+            l = ket.get(id(r))
+            do = do_mau.get(id(r))
+            m = mo_hinh_cho(r)
+            if not l or not l.get("ngoai_on") or not do or not hasattr(m, "ap"):
+                continue
+            kieu = "mn" if ((r.get("du_doan_lr") or {}).get("kieu") == "mn" and do.get("da_mn") is not None) else "cu"
+            P = do.get("da_mn") if kieu == "mn" else do.get("da_cu")
+            if P is None or len(P) < 50:
+                continue
+            px = _srgb(_bot(P, SO_DIEM["da"]), do.get("mien") or "melissa")
+            cu_r = cu_cua(r)
+            s1 = thong_so_job(r, cu_r)
+            if s1.get(KL) in (None, ""):
+                lg = _lum_goc(r, cu_r)
+                if lg is None:
+                    continue
+                s1[KL] = lg
+            L0, h0, q0 = _da(px)
+            rgb, _ng = curve_da.dich_cua(r, cfg, kieu)
+            lt = at.mau_dich_lab(rgb)
+            L_t = float(lt[0])
+            h_t = math.degrees(math.atan2(lt[2], lt[1]))
+            q_t = float(math.hypot(lt[1], lt[2])) / max(L_t, 1e-6)
+            dh = at._goc_lech(h_t - h0)                                  # noqa: SLF001
+            rh = dh if abs(dh) > on_h else 0.0
+            rq = math.log(q_t / max(q0, 1e-9)) if abs(q0 / max(q_t, 1e-9) - 1.0) > on_c else 0.0
+            rL = (L_t - L0) if (sang and abs(L_t - L0) > tol_L) else 0.0
+            if not (rh or rq or rL):
+                continue
+            J = np.zeros((3, 3))
+            for j, k in enumerate((KH, KS, KL)):
+                L2, h2, q2 = _da(m.ap(px, s1, dict(s1, **{k: _f(s1.get(k)) + 10.0})))
+                J[:, j] = (at._goc_lech(h2 - h0) / 10.0, math.log(max(q2, 1e-9) / max(q0, 1e-9)) / 10.0,  # noqa: SLF001
+                           (L2 - L0) / 10.0)
+            if not sang:
+                J[:, 2] = 0.0
+            try:
+                D = np.linalg.lstsq(W @ J, W @ np.array([rh, rq, rL]), rcond=None)[0] * phan
+            except np.linalg.LinAlgError:
+                continue
+            ds_d.append(D)
+        if not ds_d:
+            continue
+        D = np.median(np.asarray(ds_d), axis=0)
+        for r in g:
+            if r.get("bw"):
+                continue
+            cu_r = cu_cua(r)
+            s1 = thong_so_job(r, cu_r)
+            goc = at._hsl_goc(r)                                             # noqa: SLF001
+            lg = _lum_goc(r, cu_r)
+            moi = {}
+            for k, d_, tran, g0 in ((KH, D[0], tran_h, goc.get(KH)), (KS, D[1], tran_s, goc.get(KS)),
+                                    (KL, D[2], tran_L, lg)):
+                if g0 is None or abs(d_) < 0.5:
+                    continue
+                cur = _f(s1.get(k), g0)
+                v = float(np.clip(round(cur + d_), max(-100.0, g0 - tran), min(100.0, g0 + tran)))
+                if abs(v - cur) >= 1.0:
+                    moi[k] = v
+            if moi:
+                out[id(r)] = moi
+    return out
 
 
 def ghi_lich_su(kq: dict, buoi: str) -> None:
