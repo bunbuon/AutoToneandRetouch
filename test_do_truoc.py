@@ -163,8 +163,8 @@ def main() -> int:
     ktra("A1, A2 từ cache; A3 (preview cũ) qua plugin", r["A1"].get("lr_truoc", {}).get("nguon") == "cache"
          and r["A2"].get("lr_truoc", {}).get("nguon") == "cache"
          and r["A3"].get("lr_truoc", {}).get("nguon") == "plugin" and kq["do"] == 3 and kq["plugin"] == 1, str(kq))
-    ktra("plugin chỉ được xin ảnh thiếu (1 ảnh), chỉ preview, cạnh 1024",
-         len(nk) == 1 and nk[0]["n"] == 1 and nk[0]["chi_preview"] == "1" and nk[0]["canh"] == "1024", str(nk))
+    ktra("plugin chỉ được xin ảnh thiếu (1 ảnh), chỉ preview, cạnh 1600 (mặt đủ lớn cho phân vùng)",
+         len(nk) == 1 and nk[0]["n"] == 1 and nk[0]["chi_preview"] == "1" and nk[0]["canh"] == "1600", str(nk))
     st = r["A1"]["lr_truoc"].get("st") or {}
     ktra("'st' = thông số catalog lúc dựng (Exposure 0.1, K 5001, crop đồng nhất)",
          st.get("Exposure2012") == "0.1" and st.get("Temperature") == "5001" and st.get("CropRight") == "1", str(st))

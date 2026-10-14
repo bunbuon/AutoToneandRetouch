@@ -136,9 +136,10 @@ def anh_buoi(con: sqlite3.Connection, folder, gom_con: bool = False) -> dict:
     return out
 
 
-def preview_moi(catalog, anh: dict, canh: int = 1024) -> dict:
+def preview_moi(catalog, anh: dict, canh: int = 1024, uu_tien: int | None = None) -> dict:
     """{khoá: {"tep", "canh", "xoay"}} cho ảnh có preview CÒN MỚI (digest khớp) ở mức ≥
-    `canh` (mức nhỏ nhất đạt). Ảnh không có -> không có trong kết quả."""
+    `canh` (mức nhỏ nhất đạt; có `uu_tien` thì ưu tiên mức nhỏ nhất ≥ uu_tien). Ảnh không
+    có -> không có trong kết quả."""
     con = mo_preview_db(catalog)
     if con is None:
         return {}
@@ -163,6 +164,8 @@ def preview_moi(catalog, anh: dict, canh: int = 1024) -> dict:
         except OSError:
             continue
         lon = [m for m in muc if m >= canh]
+        if uu_tien:
+            lon = [m for m in lon if m >= uu_tien] or lon
         if lon:
             out[k] = {"tep": str(thu / f"{u}-{d}_{lon[0]}"), "canh": lon[0], "xoay": x or a.get("xoay")}
     return out

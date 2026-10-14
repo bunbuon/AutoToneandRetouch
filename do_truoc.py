@@ -32,6 +32,9 @@ TEN_BANG = "do_truoc_anh.tsv"
 TEN_CO_DUNG = "request_do_truoc_dung.txt"
 KHA_NANG = "truoc1"
 CANH = 1024
+#: 14/10: preview 1024 làm mặt người trong ảnh toàn thân còn ~46 px (< 48 px mô hình phân
+#: vùng cần) -> mặt nạ dự phòng; cache có mức ≥ 1600 thì dùng (do_anh thu về 1600)
+UU_TIEN = 1600
 #: điểm ảnh giữ lại mỗi tập (da / trung tính / khung) — kết quả cả buổi nằm trong RAM tới
 #: lúc tính kế hoạch: 1.000 ảnh × 3 tập × 6000 điểm float32 ~ 200 MB
 TOI_DA = 6000
@@ -138,7 +141,7 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
                 anh = dc.anh_buoi(con, folder, gom_con=True)
             finally:
                 con.close()
-    pv = dc.preview_moi(catalog, {k: anh[k] for k in theo if k in anh}, CANH) if anh else {}
+    pv = dc.preview_moi(catalog, {k: anh[k] for k in theo if k in anh}, CANH, UU_TIEN) if anh else {}
     cfg_do = dict(cfg, _toi_da=TOI_DA)
     #  máy rảnh (Lightroom chưa phải dựng gì) -> nhiều tiến trình hơn lượt 2
     n = max(1, min(8, (os.cpu_count() or 4) // 3))
@@ -164,7 +167,8 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
     td: dict = {}
     if thieu and KHA_NANG in at.plugin_kha_nang(job_dir) and not huy():
         ma = datetime.now().strftime("%Y%m%d_%H%M%S") + "t"
-        yeu_cau(folder, [r.get("lr_path") or r["path"] for r in thieu], ma, job_dir=job_dir)
+        yeu_cau(folder, [r.get("lr_path") or r["path"] for r in thieu], ma, canh=UU_TIEN,
+                job_dir=job_dir)
         t_gui = time.monotonic()
         da = set()
         while not huy():

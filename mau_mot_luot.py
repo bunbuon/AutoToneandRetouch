@@ -198,10 +198,98 @@ def _trang(px) -> tuple[float, float] | None:
     if px is None or not len(px):
         return None
     lab = mh.lab_cua(px)
-    m = (lab[:, 0] >= 0.62) & (lab[:, 0] <= 0.96) & (np.hypot(lab[:, 1], lab[:, 2]) < 0.025)
+    #  điểm sau dự đoán chạm trần (≥ 250) lệch màu — không xét WB (14/10)
+    m = ((lab[:, 0] >= 0.62) & (lab[:, 0] <= 0.96) & (np.hypot(lab[:, 1], lab[:, 2]) < 0.025)
+         & (np.asarray(px).max(axis=1) * 255 < 250))
     if m.sum() < 50:
         return None
     return float(np.median(lab[m, 1])), float(np.median(lab[m, 2]))
+
+
+# ------------------------------------------------------------------ chặn cháy (Lightroom)
+def _phan_chay(px) -> float:
+    """% điểm khung dự đoán chạm ≥ 250 (kênh lớn nhất) — cùng ngưỡng vùng cháy của curve_da."""
+    if px is None or not len(px):
+        return 0.0
+    return float((np.asarray(px).max(axis=1) * 255 >= 250).mean() * 100.0)
+
+
+def chay_lr(items: list, mm: dict, cfg: dict, du) -> dict:
+    """Exposure / Highlights theo độ CHÁY dự đoán trên ẢNH LIGHTROOM (14/10).
+
+    #[[ User 14/10 (DSC09395, ngoài trời sáng): "Như ảnh này vẫn đang cháy sáng". Các phanh
+    #   cháy của decide() đo trên JPEG NHÚNG của máy — Lightroom dựng khác: tấm đó JPEG nhúng
+    #   mặt p95 248 nhưng Lightroom 233, khung cháy 37% mà Highlights vẫn ở số preset −29,
+    #   tool còn +0.21 EV. Ở đây cùng các luật / ngưỡng của decide(), nhưng số đo là khung
+    #   Lightroom dự đoán (mô hình học trên RAW thật):
+    #     - khung đã cháy nặng ở Exposure preset (≥ hl_heavy_clip_pct) -> không tăng sáng;
+    #     - phần cháy MỚI do tool tăng sáng không vượt hl_hard_pct (hạ từng 0.05 EV);
+    #     - Highlights: hl_gain điểm / % cháy vượt hl_trigger_pct, trần hl_max (lấy mức
+    #       mạnh hơn giữa decide() và đây);
+    #     - cùng loạt chụp một mức (trung vị) — như dong_bo_loat. ]]"""
+    hard = float(cfg.get("hl_hard_pct") or 8.0)
+    nang = float(cfg.get("hl_heavy_clip_pct") or 20.0)
+    trig, gain = float(cfg.get("hl_trigger_pct") or 0.3), float(cfg.get("hl_gain") or 14.0)
+    hl_tran = float(cfg.get("hl_max") or 45)
+    tk = {"ha_ev": 0, "keo_hl": 0}
+    moi: dict = {}
+    for r in items:
+        if id(r) not in mm or r.get("bw"):
+            continue
+        m = mm[id(r)]
+        if m["mau"].get("khung") is None:
+            continue
+        s = thong_so_tone(r, m["cu"])
+        s0 = dict(s, Exposure2012=_f(r.get("old_exposure"), _f(s.get("Exposure2012"))),
+                  Highlights2012=_f(r.get("old_highlights"), _f(s.get("Highlights2012"))))
+        c0 = _phan_chay(du(r, s0, "khung"))
+        delta = _f(r.get("delta_ev"))
+        if delta > 0:
+            if c0 >= nang:
+                delta = 0.0
+            else:
+                while delta > 0:
+                    c = _phan_chay(du(r, dict(s, Exposure2012=_f(r.get("old_exposure")) + delta), "khung"))
+                    if c - c0 <= hard:
+                        break
+                    delta = round(max(0.0, delta - 0.05), 4)
+        c1 = _phan_chay(du(r, dict(s, Exposure2012=_f(r.get("old_exposure")) + delta), "khung"))
+        hl = -int(round(min(hl_tran, gain * max(0.0, c1 - trig))))
+        moi[id(r)] = (delta, min(int(r.get("hl_adj") or 0), hl), c0, c1)
+    #  cùng loạt -> một mức (trung vị các tấm đo được), tấm không đo theo loạt
+    for loat in at.chia_loat([r for r in items if not r.get("bw")], cfg):
+        co = [moi[id(r)] for r in loat if id(r) in moi]
+        if not co:
+            continue
+        d_l = float(np.median([x[0] for x in co]))
+        h_l = int(round(float(np.median([x[1] for x in co]))))
+        for r in loat:
+            c = moi.get(id(r), (None, None, None, None))
+            moi[id(r)] = (d_l, h_l, c[2], c[3])
+    for r in items:
+        x = moi.get(id(r))
+        if x is None or r.get("new_exposure") is None:
+            continue
+        delta, hl = x[0], x[1]
+        doi = False
+        if delta < _f(r.get("delta_ev")) - 1e-6:
+            r["delta_ev"] = delta
+            tk["ha_ev"] += 1
+            doi = True
+            if "ha-vi-chay-lr" not in str(r.get("notes", "")):
+                r["notes"] = (str(r.get("notes", "")) + ";ha-vi-chay-lr").strip(";")
+        if hl < int(r.get("hl_adj") or 0):
+            r["hl_adj"] = hl
+            tk["keo_hl"] += 1
+            doi = True
+        if doi:
+            at.compute_values(r, cfg, r["crs"], r["atn"])
+        if id(r) in mm:
+            mm[id(r)]["chay"] = {"truoc": round(x[2], 1) if x[2] is not None else None,
+                                 "tone": round(x[3], 1) if x[3] is not None else None,
+                                 "hl": int(r.get("new_highlights") or 0),
+                                 "ev": round(_f(r.get("new_exposure")), 2)}
+    return tk
 
 
 # ------------------------------------------------------------------ chuỗi
@@ -234,7 +322,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
           "hsl": {"bat": hsl_bat, "mau": True, "dai": "Orange", "hue": 0, "sat": 0, "n": 0,
                   "canh_chinh": 0, "canh_on": 0, "canh_chan": 0},
           "grade_bat": bool(cfg.get("grade")), "grade_n": 0,
-          "mot_luot": {"anh": 0, "canh": 0, "curve": 0, "ngoai_pham_vi": 0}}
+          "mot_luot": {"anh": 0, "canh": 0, "curve": 0, "ngoai_pham_vi": 0, "chay": {}}}
     for r in items:
         for k in _XOA:
             r.pop(k, None)
@@ -261,7 +349,9 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
         px = m["mau"].get(tap)
         return None if px is None else m["mh"].ap(px, m["cu"], s)
 
-    #  ---- 1. TONE
+    #  ---- 1. TONE — chặn cháy TRÊN ẢNH LIGHTROOM (chay_lr), rồi đo da ở Tone cuối
+    if cfg.get("highlights", True) and cfg.get("mot_luot_chay", True):
+        kq["mot_luot"]["chay"] = chay_lr(items, mm, cfg, du)
     for r in items:
         if id(r) not in mm:
             continue
@@ -360,7 +450,8 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
             r["da_lech1"] = round(at._goc_lech(m["mau"]["h_t"] - h), 1)     # noqa: SLF001
 
     #  ---- 3. CURVE — da dự đoán sau HSL, miền curve đã hiệu chỉnh của mô hình
-    if cfg.get("curve_da") or cfg.get("curve_chay"):
+    nen_chay = bool(cfg.get("curve_chay") or cfg.get("mot_luot_nen_chay", True))
+    if cfg.get("curve_da") or nen_chay:
         do_map, ds_cv = {}, []
         for r in curve_da.chon_anh(items, cfg):
             if id(r) not in mm:
@@ -387,7 +478,8 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
             ds_cv.append(r)
         if ds_cv:
             m0 = mm[id(ds_cv[0])]["mh"]
-            cfg_cv = dict(cfg, curve_mien=m0.curve["mien"], curve_kieu_tong=m0.curve["kieu"])
+            cfg_cv = dict(cfg, curve_mien=m0.curve["mien"], curve_kieu_tong=m0.curve["kieu"],
+                          curve_chay=nen_chay)
             tt = curve_da.ket_thuc(ds_cv, do_map, cfg_cv)
             kq["mot_luot"]["curve"] = int(tt.get("doi", 0))
             for r in ds_cv:
@@ -529,6 +621,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
             "trang_lech": m.get("trang_lech"), "hsl": m["hsl"],
             "sau_hsl": (round(m["h1"], 1), round(m["q1"], 4)),
             "sau_curve": (round(m["h_cv"], 1), round(m["q_cv"], 4)),
+            "chay": m.get("chay"),
             "cg": (int(r.get("gr_hue") or 0), int(r.get("gr_sat") or 0)) if r.get("gr_ghi") else None,
             "sau_cg": (round(h, 1), round(q, 4))}
         bao.append(r["mau_da_bao"])

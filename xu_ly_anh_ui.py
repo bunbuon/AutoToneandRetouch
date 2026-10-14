@@ -658,7 +658,9 @@ class XuLyAnhMixin:
             self._xl_denoise()
             return
         root = self.folder()
-        ma = datetime.now().strftime("%Y%m%d_%H%M%S")
+        #  14/10: có mili-giây — lượt vừa Dừng và lượt mới trong CÙNG một giây từng dùng chung
+        #  thư mục ảnh dựng, luồng của lượt cũ dọn mất ảnh của lượt mới
+        ma = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         dest = curve_da.thu_muc_dung(root, ma)
         try:
             #  14/10 (user: "Tại sao k chỉ load lại Preview của Lightroom rồi can thiệp"):
