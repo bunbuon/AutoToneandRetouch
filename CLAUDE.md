@@ -88,7 +88,7 @@ python3 test_curve_job.py      # curve qua mốc / bản xuất / job — chạy
 python3 kiem_curve_lua.py      # plugin: ô curve, so curve, xuất curve, job @curve, dựng lượt 2 (lupa; 13/10)
 python3 test_cr3.py            # Canon CR3: EXIF CMT1/CMT2, ảnh nhúng, xoay, gom loạt (13/10; AUTOTONE_CR3=<file thật>)
 python3 test_dinh_dang_raw.py  # 8 đuôi CR2 CR3 CRW NEF NRW ARW SRF SR2: CRW (CIFF), ISO Nikon MakerNote, file hỏng (13/10; AUTOTONE_RAW_MAU=<thư mục>)
-python3 test_da_sang_tron.py   # đo vùng da sáng chuyển dần CHỈ Canon; Sony / Nikon y hệt + SỐ CHUẨN code cũ (14/10)
+python3 test_da_sang_tron.py   # đo vùng da sáng THEO MÁY: Canon không đo vùng sáng, chuyển dần (bảng tay); Sony / Nikon y hệt + SỐ CHUẨN (14/10)
 python3 kiem_ban_xuat.py       # app đọc lại bản xuất (cần tkinter)
 python3 kiem_xuat_lr.py        # khâu 5 — bắt đường dẫn Export
 python3 kiem_tim_tool.py       # tìm tool retouch
@@ -125,7 +125,7 @@ python3 dong_goi.py --khong-retouch --khong-khoa   # đóng .app trên Mac
 python3 chan_doan.py "/thu/muc/anh"        # chẩn đoán khâu Phân tích
 python3 chan_doan.py --anh "ANH.ARW"       # số đo thô một tấm, để so hai máy
 python3 chan_doan.py --plugin              # thư mục plugin phải Add
-python3 kiem_raw_that.py "/thu/muc/anh"    # RAW THẬT trên máy user: EXIF từng file, đo, plan, cặp lệch sáng, tờ ảnh nhỏ (KIEM_RAW_THAT.bat)
+python3 kiem_raw_that.py "/thu/muc/anh"    # RAW THẬT trên máy user: EXIF từng file, đo, plan, cặp lệch sáng, so cách đo da sáng, PHANH DA, tờ ảnh nhỏ + so sánh (KIEM_RAW_THAT.bat)
 python3 dong_goi.py --bao-mat              # đóng gói BẢN MÃ HOÁ LÕI (xem dưới)
 ```
 
@@ -1043,7 +1043,10 @@ Kiểm: `test_cr3.py` (CR3 giả đúng cấu trúc hộp; thử ngược 14 đ�
 Nikon; thử ngược 22 đột biến) — 36/36 đỏ (`cr3/dot_bien_dd.py` trong scratchpad). Bộ 32 file
 thật: `AUTOTONE_RAW_MAU=<thư mục> python3 test_dinh_dang_raw.py`.
 
-## Đo vùng da sáng CHUYỂN DẦN — CHỈ Canon (14/10) — `hl_da_tron_theo_may` {"CANON": 15}, BẬT
+## Đo vùng da sáng THEO MÁY (14/10) — Canon KHÔNG đo vùng da sáng (`hl_da_ti_le_theo_may` {"CANON": 0}), BẬT; chuyển dần TRƯỢT, TẮT
+
+(Mục này viết theo thứ tự đã làm: chuyển dần trước, trượt; rồi tắt hẳn cho Canon — kết
+quả và luật hiện hành ở phần "KẾT QUẢ v4" cuối mục.)
 
 User (bộ CR3 Canon EOS R `G:\TestThacCao\test`, 42 ảnh, nắng trưa 11:41–12:00, da trắng):
 sau khi CR3 đọc đúng, vẫn "cùng khung cảnh mà bức sáng bức tối". `KIEM_RAW_THAT.bat`
@@ -1078,6 +1081,35 @@ sinh bước mới, hai đầu y hệt, ca đốm sáng). Thử ngược 9/9 (`c
 **Tiêu chí đặt TRƯỚC khi user chạy lại `KIEM_RAW_THAT.bat` trên TestThacCao** (cột A mục 4b):
 cặp liền nhau cùng thông số lệch > 0.30 EV = 0. Không đạt → tắt (bảng `{}`), ghi lại, không
 nới. Chưa có buổi Canon nào có đáp án tay → cần user xem tận mắt sau khi đẩy vào Lightroom.
+
+**KẾT QUẢ v4 (14/10 07:26, 42 CR3): chuyển dần TRƯỢT.** Số cặp lệch > 0.30: chuyển dần **2** ·
+công tắc cũ 4 · tắt mặt sáng nhất 2 · tắt hẳn đo vùng da sáng **0**. Còn lệch: NHFT1461 +0.08 |
+1462 −0.30 (0.38) và 1459 −0.27 | 1460 +0.08 (0.36); số đo mặt vẫn hai mức (−0.77 / −1.1) —
+hai cách đo cách nhau ~0.5 EV trên mặt dính nắng, mà mặt chỉ quay một chút là phần nắng
+3% ↔ 27%: trộn dần không cứu được. → `hl_da_tron_theo_may` = {} (giữ mã, như `af_gan_mat`);
+đừng bật lại khi không có bằng chứng mới.
+
+**Luật hiện hành — `hl_da_ti_le_theo_may` {"CANON": 0}** (user chọn 14/10 "bật ngay", biết rõ
+giá phải trả): ghi đè `hl_da_ti_le` theo máy, 0 = máy đó đo dải p30–p90 như da thường.
+`so_theo_may(tags, bang, mac_dinh)` — MỘT chỗ khớp tên máy (`tron_theo_may` gọi nó); tham số
+cuối `hl_da_ti_le_may` của measure + tuple cuối của `cau_hinh_do` (đổi bảng = đo lại).
+`face_debug[].da_sang` vẫn ghi cho Canon (truy lỗi) dù không dùng.
+- **Giá phải trả**: mặt Canon dính nắng thì p95 da lấy trong dải 30–90 (~p89 của da thay vì
+  ~p98) → phanh chống cháy da YẾU hơn. `kiem_raw_that` v5 có mục "PHANH DA" (ảnh A0 phanh /
+  p95 ≥ 232 mà A thôi phanh hoặc sáng hơn > 0.10) + tờ so sánh mô phỏng A0 | A
+  (`kiem_raw_so_sanh.jpg`, `mo_phong_anh` — gần đúng, không phải Lightroom render).
+- **Số 0 cặp là TRONG MẪU** (chọn sau khi đã thấy số), user CHƯA có bộ Canon thứ hai. Tiêu chí
+  đặt trước: buổi Canon mới đầu tiên chạy `KIEM_RAW_THAT.bat`, cột A phải 0 cặp; user nhìn
+  "PHANH DA" + tờ so sánh không thấy da cháy mà bản cũ giữ được. Trượt → bảng `{}`, không nới.
+- Sony / Nikon: 27 RAW thật y hệt commit 8f50502 (so toàn bộ dict; Canon mẫu cũng y hệt vì
+  không file nào có mặt dính nắng ≥ 30% — bộ mẫu không chạm ca này). `test_da_sang_tron.py`:
+  Sony / Nikon / không EXIF y hệt + SỐ CHUẨN; Canon == đo với `hl_da_ti_le` 0 (trừ da_sang),
+  khác cách cũ ĐÚNG ở các mức công tắc cũ bật; bảng ghi đè đúng số (Canon 40 == ngưỡng 40);
+  chuyển dần vẫn canh với bảng truyền tay. Thử ngược 16/16 (`cr3/dot_bien_ds2.py` scratchpad)
+  — "dùng nhầm `hl_da_ti_le` chung ở q_sw / công tắc" chỉ bị mục "Canon 40" bắt (với Canon 0
+  hai đột biến đó tương đương). Lần đầu LỌT 1: "chuyển dần cho mọi máy khi bảng có số" — bảng
+  mặc định {} nên đột biến tương đương; thêm mục Sony / Nikon đo VỚI bảng {"CANON": 15} vẫn y
+  hệt (bật lại bảng sau này mà dính Sony thì bài đỏ).
 
 ## Curve da mặt + nén vùng cháy, đo trên ảnh Lightroom DỰNG (13/10) — `curve_da` / `curve_chay`, TẮT
 

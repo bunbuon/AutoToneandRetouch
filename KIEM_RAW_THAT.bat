@@ -7,7 +7,8 @@ rem    2. do bang chinh analyze() cua app: anh xem truoc dung/nam, co thay mat
 rem    3. plan() voi ban xuat catalog cua DUNG thu muc (neu co): Exposure tung tam
 rem    4. cap anh lien nhau cung may + cung thong so ma Exposure lech > 0.30 EV
 rem    5. to anh nho: khung DO = mat dem do sang, khung xam = mat bi bo
-rem    4b. thu tat tung co che (mat sang nhat / do theo vung da sang) + to anh can mat
+rem    4b. so cac cach do vung da sang (A / A0 / A1 / B) + to anh can mat
+rem        + danh sach PHANH DA + to so sanh mo phong A0 | A (14/10)
 rem
 rem  KHONG ghi gi vao thu muc anh, KHONG dung Lightroom, khong ghi job.
 rem  Can ma nguon moi (nhanh claude/pensive-fermat-1dcrys, tu 13/10 toi).
@@ -25,14 +26,16 @@ set "OPENCV_LOG_LEVEL=ERROR"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 
-python kiem_raw_that.py "%BUOI%" --ra "%~dp0ket_qua_kiem_raw.txt" --luoi "%~dp0kiem_raw_luoi.jpg" --mat "%~dp0kiem_raw_mat.jpg"
+python kiem_raw_that.py "%BUOI%" --ra "%~dp0ket_qua_kiem_raw.txt" --luoi "%~dp0kiem_raw_luoi.jpg" --mat "%~dp0kiem_raw_mat.jpg" --so-sanh "%~dp0kiem_raw_so_sanh.jpg"
 
 echo.
 echo Xong. Gui lai cac file canh file .bat nay:
 echo    ket_qua_kiem_raw.txt
 echo    kiem_raw_luoi.jpg
 echo    kiem_raw_mat.jpg (neu co)
+echo    kiem_raw_so_sanh.jpg (neu co)
 if exist "%~dp0kiem_raw_luoi.jpg" start "" "%~dp0kiem_raw_luoi.jpg"
 if exist "%~dp0kiem_raw_mat.jpg" start "" "%~dp0kiem_raw_mat.jpg"
+if exist "%~dp0kiem_raw_so_sanh.jpg" start "" "%~dp0kiem_raw_so_sanh.jpg"
 if exist "%~dp0ket_qua_kiem_raw.txt" start "" notepad "%~dp0ket_qua_kiem_raw.txt"
 pause

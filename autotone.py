@@ -1506,17 +1506,23 @@ def la_bw_catalog(crs: dict) -> bool:
     return v in ("true", "1")
 
 
-def tron_theo_may(tags: dict, bang) -> float:
-    """Độ rộng dải chuyển dần của "đo theo vùng da sáng" cho máy của ảnh này (0 = công
-    tắc cứng cũ). bang: số (mọi máy) hoặc các cặp (chuỗi, độ rộng) — chuỗi nằm trong
-    "HÃNG TÊN MÁY" viết hoa thì khớp. Xem DEFAULTS["hl_da_tron_theo_may"]."""
+def so_theo_may(tags: dict, bang, mac_dinh: float = 0.0) -> float:
+    """Số của máy chụp ảnh này trong một bảng theo máy. bang: số (mọi máy) hoặc các cặp
+    (chuỗi, số) — chuỗi nằm trong "HÃNG TÊN MÁY" viết hoa thì khớp; không cặp nào khớp
+    thì mac_dinh. Một chỗ khớp tên máy cho mọi bảng "theo máy" của measure()."""
     if isinstance(bang, (int, float)):
         return float(bang)
     may = f"{tags.get('make') or ''} {tags.get('model') or ''}".upper()
     for k, v in (bang.items() if isinstance(bang, dict) else bang or ()):
         if k and str(k).upper() in may:
             return float(v)
-    return 0.0
+    return float(mac_dinh)
+
+
+def tron_theo_may(tags: dict, bang) -> float:
+    """Độ rộng dải chuyển dần của "đo theo vùng da sáng" cho máy của ảnh này (0 = công
+    tắc cứng cũ). Xem DEFAULTS["hl_da_tron_theo_may"] (14/10: TRƯỢT tiêu chí, bảng {})."""
+    return so_theo_may(tags, bang, 0.0)
 
 
 def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
@@ -1542,7 +1548,8 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             mat_ao_diem: float = 0.6,
             mf_giua_sigma: float = 0.0,
             canh_p365: bool = False,
-            hl_da_tron=()) -> dict:
+            hl_da_tron=(),
+            hl_da_ti_le_may=()) -> dict:
     """Đọc RAW -> preview -> thống kê. Chạy trong worker process."""
     out = {"path": str(path), "ok": False, "error": ""}
     try:
@@ -1760,6 +1767,9 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             #]]
             face_stats = []
             tron_da = tron_theo_may(tags, hl_da_tron)
+            #  % da sáng để chuyển sang đo riêng vùng sáng, THEO MÁY (0 = máy này không
+            #  đo theo vùng da sáng) — xem DEFAULTS["hl_da_ti_le_theo_may"]
+            ti_le = so_theo_may(tags, hl_da_ti_le_may, hl_da_ti_le)
             for x, y, bw, bh, s, _eyes in faces:
                 cx, cy = x + bw / 2, y + bh / 2
 
@@ -1855,11 +1865,15 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 sel_b = None
                 da_sang_pct = None
                 tron_w = None                # (trọng số vùng sáng, tập điểm sáng) khi trộn
-                if hl_da_ti_le > 0:
+                if hl_da_ti_le > 0 or ti_le > 0:
                     mx_use = (pc[keep_sk] if keep_sk is not None else pc).max(axis=1)
                     sang = mx_use >= (hl_da_muc / 255.0)
                     da_sang_pct = float(sang.mean()) * 100.0
-                    if tron_da > 0:
+                    if ti_le <= 0:
+                        #  máy này KHÔNG đo theo vùng da sáng (bảng theo máy) — chỉ ghi
+                        #  da_sang để truy lỗi, đo dải 30-90 như da thường
+                        pass
+                    elif tron_da > 0:
                         #[[ 14/10 — CHUYỂN DẦN thay cho bật / tắt ở đúng hl_da_ti_le.
                         #
                         #   User (bộ CR3 Canon EOS R G:\TestThacCao\test, nắng trưa, da
@@ -1879,7 +1893,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                         #   điểm đem tính màu da + p95 lấy theo cùng tỉ lệ từ hai tập.
                         #   CHỈ máy khớp hl_da_tron_theo_may (mặc định Canon) — Sony /
                         #   Nikon giữ công tắc cứng cũ TỪNG SỐ. ]]
-                        q_sw = float(np.quantile(mx_use, 1.0 - hl_da_ti_le / 100.0))
+                        q_sw = float(np.quantile(mx_use, 1.0 - ti_le / 100.0))
                         w_s = min(1.0, max(0.0, (q_sw * 255.0 - (hl_da_muc - tron_da))
                                            / (2.0 * tron_da)))
                         #  "phần da sáng" để trộn = điểm ≥ min(hl_da_muc, phân vị đó): dưới
@@ -1891,7 +1905,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                             sel_b = sb
                         elif sb.sum() >= 9 and w_s > 0.0:
                             tron_w = (w_s, sb)
-                    elif da_sang_pct >= hl_da_ti_le and sang.sum() >= 9:
+                    elif da_sang_pct >= ti_le and sang.sum() >= 9:
                         sel_b = sang
                 if sel_b is None:
                     lo, hi = np.quantile(pv_use, 0.30), np.quantile(pv_use, 0.90)
@@ -1971,7 +1985,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                     "ev": ev_o,
                     # dien tich mat so voi ca khung, tinh theo %
                     "area_pct": 100.0 * (bw * bh) / float(max(fw_ * fh_, 1)),
-                    # % da co kenh lon nhat >= hl_da_muc (None khi hl_da_ti_le = 0)
+                    # % da co kenh lon nhat >= hl_da_muc (None khi hl_da_ti_le = 0 o moi may)
                     "da_sang": None if da_sang_pct is None else round(da_sang_pct, 1),
                 })
 
@@ -2943,8 +2957,25 @@ DEFAULTS = {
     #   tac cu tung so: user "sua ma thay doi nhung gi da dat duoc o Sony va Nikon thi
     #   khong duoc" — test_da_sang_tron.py canh Sony / Nikon y het. {} = tat moi may.
     #   Tieu chi dat TRUOC khi user chay lai kiem_raw_that tren bo Canon: cap lien
-    #   nhau cung thong so lech > 0.30 EV = 0. ]]
-    "hl_da_tron_theo_may": {"CANON": 15.0},
+    #   nhau cung thong so lech > 0.30 EV = 0.
+    #   KET QUA (kiem_raw_that v4, 14/10 07:26, 42 CR3): TRUOT — con 2 cap lech
+    #   (NHFT1461 +0.08 | 1462 -0.30; 1459 -0.27 | 1460 +0.08), cong tac cu 4, tat han
+    #   do vung da sang 0. Hai cach do cach nhau ~0.5 EV tren mat dinh nang, mat quay
+    #   mot chut la phan nang 3% <-> 27%: tron dan khong cuu duoc. Khong noi -> {} (TAT).
+    #   Giu ma; dung bat lai khi khong co bang chung moi. ]]
+    "hl_da_tron_theo_may": {},
+    #[[ 14/10 — THEO MAY: {"chuoi trong ten hang + ten may": hl_da_ti_le cua may do}.
+    #   Ghi de hl_da_ti_le; 0 = may do KHONG do theo vung da sang (do dai 30-90 nhu da
+    #   thuong). Canon: bo G:\TestThacCao\test (EOS R, nang trua) — do vung da sang lam
+    #   cung hai nguoi, cung 1/500 f/4 ISO 250 nhay -0.34 / +0.15 xen ke (4 cap lech
+    #   > 0.30); tat han: 0 cap (kiem_raw_that v4, phuong an C). User chon bat ngay
+    #   (14/10). SO 0 CAP LA TRONG MAU (chon C sau khi thay so) — chua co bo Canon thu
+    #   hai; buoi Canon moi dau tien chay KIEM_RAW_THAT.bat, phai 0 cap, khong thi {}.
+    #   Gia phai tra: mat Canon dinh nang thi p95 da lay trong dai 30-90 (~p89 cua da
+    #   thay vi ~p98) -> phanh chong chay da YEU hon; kiem_raw_that muc "phanh da"
+    #   liet ke anh bi doi. Sony / Nikon khong co trong bang -> giu cong tac cu TUNG SO
+    #   (test_da_sang_tron.py). ]]
+    "hl_da_ti_le_theo_may": {"CANON": 0.0},
     #[[ Tran chay sang MOI SINH RA tren vung chu the (mat + than), tinh %.
     #
     #   Bo sung cho hl_hard_pct (nhin ca khung) va skin_hard_p95 (nhin rieng
@@ -9819,7 +9850,9 @@ def cau_hinh_do(cfg: dict) -> tuple:
             bool(cfg.get("canh_p365", True)),
             #  bang theo may -> tuple cap (hashable: khoa ket qua do luu)
             tuple(sorted((str(k).upper(), float(v)) for k, v in
-                         dict(cfg.get("hl_da_tron_theo_may") or {}).items())))
+                         dict(cfg.get("hl_da_tron_theo_may") or {}).items())),
+            tuple(sorted((str(k).upper(), float(v)) for k, v in
+                         dict(cfg.get("hl_da_ti_le_theo_may") or {}).items())))
 
 
 #[[ KET QUA PHAN TICH LUU THEO BUOI (8/10).

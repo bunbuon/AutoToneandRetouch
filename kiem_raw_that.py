@@ -15,6 +15,10 @@ VÌ SAO CÓ
       4. các cặp ảnh LIỀN NHAU cùng máy + cùng khẩu / tốc / ISO mà ΔEV lệch > 0.30 — đúng
          bệnh user tả — kèm số để xem vì sao chúng không vào cùng một loạt;
       5. tờ ảnh nhỏ (anh_nho, như lưới của app) để soát chiều xoay bằng mắt.
+    14/10: mục 4b so các cách đo vùng da sáng (A hiện hành / A0 công tắc cũ / A1 chuyển dần
+    đã trượt / B tắt mặt sáng nhất), liệt kê ảnh mà PHANH DA chống cháy thôi chạm khi Canon
+    không đo riêng vùng da sáng, và tờ so sánh mô phỏng A0 | A (mo_phong_anh — hàm thật của
+    lưới app, gần đúng, không phải Lightroom render).
 
     Không ghi gì vào thư mục ảnh, không đụng Lightroom, không ghi job.
 
@@ -35,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 LECH_EV = 0.30          # cặp liền nhau lệch hơn mức này thì liệt kê (ngưỡng "dời" của các cổng)
-PHIEN = "v4 14/10 (4b: A = Canon chuyển dần, A0 = công tắc cũ)"   # in ở đầu báo cáo: biết bản nào đã chạy
+PHIEN = "v5 14/10 (4b: A = Canon không đo vùng da sáng, A0 = công tắc cũ, A1 = chuyển dần đã trượt)"   # in ở đầu báo cáo: biết bản nào đã chạy
 
 
 def _so(v):
@@ -71,6 +75,12 @@ def doc_cfg(folder: Path) -> tuple[dict, str]:
             nguon = f"lần đẩy {ld.get('khi', '?')} (bản {ld.get('phien_ban', '?')})"
     except Exception as ex:                                  # noqa: BLE001
         nguon += f" — không đọc được lần đẩy: {ex}"
+    #  hai bảng theo máy không có ô giao diện — app LUÔN dùng DEFAULTS; cấu hình lần đẩy của
+    #  bản trước có thể mang bảng cũ
+    for k in ("hl_da_tron_theo_may", "hl_da_ti_le_theo_may"):
+        if cfg.get(k) != at.DEFAULTS.get(k):
+            nguon += f" · {k} lấy theo DEFAULTS (như app)"
+            cfg[k] = at.DEFAULTS.get(k)
     cfg.update(source="catalog", bo_qua_nguoi_sua=False)
     return cfg, nguon
 
@@ -125,6 +135,50 @@ def to_mat(ds: list, dest: Path, so_a: dict, so_c: dict, toi_da: int = 40) -> in
     dest.parent.mkdir(parents=True, exist_ok=True)
     to.save(dest, quality=88)
     return len(ds)
+
+
+def to_so_sanh(ds: list, cfg: dict, cu: dict, moi: dict, dest: Path, toi_da: int = 24) -> int:
+    """Tờ so sánh MÔ PHỎNG: mỗi ảnh hai ô — trái A0 (công tắc cũ), phải A (hiện hành) — đúng
+    cách lưới app mô phỏng thông số lên ảnh nhúng (mo_phong_anh.tham_so_anh + ap). cu / moi:
+    {đường dẫn: kết quả plan}. Nhãn: ΔEV, p95 da (mức 0-255), cờ phanh da."""
+    import autotone as at
+    import mo_phong_anh as mp
+    from PIL import Image, ImageDraw
+    o, cot = 230, 3                       # mỗi ảnh 2 ô; 3 ảnh một hàng
+    ds = ds[:toi_da]
+    hang = (len(ds) + cot - 1) // cot
+    to = Image.new("RGB", (cot * (2 * o + 16), max(1, hang) * (o + 52)), (24, 24, 26))
+    d = ImageDraw.Draw(to)
+    f1, f2 = _phong(12), _phong(11)
+    for i, q in enumerate(ds):
+        x, y = (i % cot) * (2 * o + 16), (i // cot) * (o + 52)
+        try:
+            im = at.anh_nho(q, o - 8)
+        except Exception:                                    # noqa: BLE001
+            im = None
+        for j, (nhan, r) in enumerate((("A0", cu.get(q) or {}), ("A", moi.get(q) or {}))):
+            x0 = x + j * o
+            if im is not None:
+                try:
+                    ra = mp.ap(im, mp.tham_so_anh(r, cfg))
+                except Exception:                            # noqa: BLE001
+                    ra = im
+                to.paste(ra, (x0 + (o - ra.size[0]) // 2, y + (o - ra.size[1]) // 2))
+            p95 = r.get("face_p95")
+            phanh = "phanh da" if "ha-vi-da" in str(r.get("notes") or "") else ""
+            d.text((x0 + 6, y + o + 17), f"{nhan} Exp {_f(r.get('delta_ev'))} · p95 "
+                   f"{'-' if p95 is None else f'{255 * float(p95):.0f}'} {phanh}",
+                   fill=(242, 181, 74) if j else (166, 163, 157), font=f2)
+        d.text((x + 6, y + o + 2), Path(q).name[:30], fill=(237, 235, 231), font=f1)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    to.save(dest, quality=88)
+    return len(ds)
+
+
+def _p95(r) -> str:
+    """p95 da của một kết quả, mức 0-255."""
+    v = (r or {}).get("face_p95")
+    return "-" if v is None else f"{255 * float(v):.0f}"
 
 
 def khung_do(r: dict) -> str:
@@ -206,6 +260,7 @@ def main() -> int:
     ap.add_argument("--ra", default="")
     ap.add_argument("--luoi", default="")
     ap.add_argument("--mat", default="", help="tờ ảnh cận mặt của các cảnh có cặp lệch")
+    ap.add_argument("--so-sanh", default="", help="tờ so sánh mô phỏng A0 | A")
     ap.add_argument("--jobs", type=int, default=0)
     a = ap.parse_args()
 
@@ -295,42 +350,70 @@ def main() -> int:
           f" · mặt {_f(x.get('metered_face_ev'))}/{_f(y.get('metered_face_ev'))}"
           f" · khung đo {khung_do(x)} / {khung_do(y)}")
 
-    # ---------------------------------------------------------------- 4b. thử tắt từng cơ chế
-    #  Chỉ CHẨN ĐOÁN: đo lại / tính lại bằng chính analyze() + plan() với một khoá cfg đổi.
-    #  Biến thể nào làm hết cặp lệch thì cơ chế đó là thủ phạm trên bộ ảnh này.
-    p("\n4b. THỬ TẮT TỪNG CƠ CHẾ (đo lại / tính lại bằng hàm thật — chỉ để chẩn đoán)")
-    p(f"   A hiện tại (đo vùng da sáng chuyển dần theo máy: {cfg.get('hl_da_tron_theo_may')})"
-      " · A0 công tắc cũ trước 14/10 (hl_da_tron_theo_may = {})"
-      " · B tắt 'mặt nét sáng nhất' (mat_sang_nhat) · C tắt hẳn 'đo theo vùng da sáng'"
-      f" (hl_da_ti_le {cfg.get('hl_da_ti_le')} -> 0) · D tắt cả hai")
-    do_c, _ = at.analyze(pairs, dict(cfg, hl_da_ti_le=0.0), jobs)
-    do_a0, _ = at.analyze(pairs, dict(cfg, hl_da_tron_theo_may={}), jobs)
+    # ---------------------------------------------------------------- 4b. so các cách đo
+    #  Chỉ CHẨN ĐOÁN: đo lại / tính lại bằng chính analyze() + plan() với vài khoá cfg đổi.
+    p("\n4b. SO CÁC CÁCH ĐO VÙNG DA SÁNG (đo lại / tính lại bằng hàm thật — chỉ để chẩn đoán)")
+    bang_a = {"hl_da_tron_theo_may": at.DEFAULTS.get("hl_da_tron_theo_may", {}),
+              "hl_da_ti_le_theo_may": at.DEFAULTS.get("hl_da_ti_le_theo_may", {})}
+    bang_a0 = {"hl_da_tron_theo_may": {}, "hl_da_ti_le_theo_may": {}}
+    bang_a1 = {"hl_da_tron_theo_may": {"CANON": 15.0}, "hl_da_ti_le_theo_may": {}}
+    p(f"   A hiện hành (theo máy: % da sáng {bang_a['hl_da_ti_le_theo_may']}, chuyển dần "
+      f"{bang_a['hl_da_tron_theo_may']}) · A0 công tắc cũ trước 14/10 (≥ {cfg.get('hl_da_ti_le')}% da "
+      "sáng thì đo riêng vùng sáng, mọi máy) · A1 chuyển dần Canon 15 (TRƯỢT v4) · B = A + tắt "
+      "'mặt nét sáng nhất'")
+    do_a0, _ = at.analyze(pairs, dict(cfg, **bang_a0), jobs)
+    do_a1, _ = at.analyze(pairs, dict(cfg, **bang_a1), jobs)
     bien: dict = {"A": items}
-    for ten, goc, them in (("A0", do_a0, {"hl_da_tron_theo_may": {}}),
-                           ("B", goc_do, {"mat_sang_nhat": False}),
-                           ("C", do_c, {"hl_da_ti_le": 0.0}),
-                           ("D", do_c, {"hl_da_ti_le": 0.0, "mat_sang_nhat": False})):
+    for ten, goc, them in (("A0", do_a0, bang_a0), ("A1", do_a1, bang_a1),
+                           ("B", goc_do, {"mat_sang_nhat": False})):
         ds_b = copy.deepcopy(goc)
         at.plan(ds_b, dict(cfg, **them), folder=folder, export=export, ban_xuat=bx)
         bien[ten] = ds_b
-    dv = {k: {r["path"]: r.get("delta_ev") for r in v} for k, v in bien.items()}
-    mat_c = {r["path"]: r.get("metered_face_ev") for r in do_c}
-    mat_a = {r["path"]: r.get("metered_face_ev") for r in goc_do}      # số đo của measure, trước plan
-    mat_a0 = {r["path"]: r.get("metered_face_ev") for r in do_a0}
-    p("   số cặp lệch > %.2f:  " % LECH_EV + " · ".join(f"{k} {len(cap_lech(v))}" for k, v in bien.items()))
+    theo = {k: {r["path"]: r for r in v} for k, v in bien.items()}
+    dv = {k: {q: r.get("delta_ev") for q, r in v.items()} for k, v in theo.items()}
+    mat = {k: {r["path"]: r.get("metered_face_ev") for r in v}          # số đo measure, trước plan
+           for k, v in (("A", goc_do), ("A0", do_a0), ("A1", do_a1))}
+    p("   số cặp lệch > %.2f:  " % LECH_EV + " · ".join(f"{k} {len(cap_lech(v))}" for k, v in bien.items())
+      + "   (tiêu chí đặt trước cho A: 0)")
     nghi = {r["path"] for v in (items, bien["A0"]) for _, x, y in cap_lech(v) for r in (x, y)}
     canh = {r.get("scene") for r in items if r["path"] in nghi}
     xem = [r for r in sorted(items, key=lambda r: r["dt_obj"]) if r.get("scene") in canh][:60]
     if xem:
-        p("   tên | ΔEV A | A0 | B | C | D | mặt đo A | A0 | C (không đo vùng da sáng) | mặt sau plan A | cảnh")
+        p("   tên | ΔEV A | A0 | A1 | B | mặt đo A | A0 | A1 | p95 da A | A0 | % da sáng | cảnh")
         for r in xem:
             q = r["path"]
-            p(f"   {Path(q).name} | {_f(dv['A'].get(q))} | {_f(dv['A0'].get(q))} | {_f(dv['B'].get(q))} | "
-              f"{_f(dv['C'].get(q))} | {_f(dv['D'].get(q))} | {_f(mat_a.get(q))} | {_f(mat_a0.get(q))} | "
-              f"{_f(mat_c.get(q))} | {_f(r.get('metered_face_ev'))} | {r.get('scene')}")
+            sang = ((r.get("face_debug") or [{}])[0] or {}).get("da_sang")
+            p(f"   {Path(q).name} | {_f(dv['A'].get(q))} | {_f(dv['A0'].get(q))} | {_f(dv['A1'].get(q))} | "
+              f"{_f(dv['B'].get(q))} | {_f(mat['A'].get(q))} | {_f(mat['A0'].get(q))} | {_f(mat['A1'].get(q))} | "
+              f"{_p95(theo['A'].get(q))} | {_p95(theo['A0'].get(q))} | {'-' if sang is None else f'{sang:.0f}%'} | "
+              f"{r.get('scene')}")
     if a.mat and xem:
-        n = to_mat(xem, Path(a.mat), mat_a0, mat_a)
-        p(f"   tờ ảnh cận mặt ({n} tấm, hồng = điểm ≥ 220/255): {a.mat}")
+        n = to_mat(xem, Path(a.mat), mat["A"], mat["A0"])
+        p(f"   tờ ảnh cận mặt ({n} tấm, hồng = điểm ≥ 220/255; nhãn mặt A / A0): {a.mat}")
+
+    #  PHANH DA: giá phải trả khi không đo riêng vùng da sáng — p95 da lấy trong dải 30-90 thay
+    #  vì vùng sáng, phanh chống cháy da có thể thôi chạm. Liệt kê để NHÌN, không tự kết luận.
+    phanh = []
+    for q, r0 in theo["A0"].items():
+        r1 = theo["A"].get(q) or {}
+        co0, co1 = "ha-vi-da" in str(r0.get("notes") or ""), "ha-vi-da" in str(r1.get("notes") or "")
+        d0, d1 = r0.get("delta_ev"), r1.get("delta_ev")
+        sang_hon = d0 is not None and d1 is not None and float(d1) - float(d0) > 0.10
+        if (co0 and not co1) or (sang_hon and (r0.get("face_p95") or 0) * 255 >= float(cfg.get("skin_hard_p95") or 232)):
+            phanh.append((q, r0, r1))
+    p(f"\n   PHANH DA (A0 phanh / da p95 ≥ {cfg.get('skin_hard_p95')} mà A thôi phanh hoặc sáng hơn > 0.10): {len(phanh)}")
+    for q, r0, r1 in sorted(phanh, key=lambda t: Path(t[0]).name)[:40]:
+        p(f"   {Path(q).name}  ΔEV A0 {_f(r0.get('delta_ev'))} → A {_f(r1.get('delta_ev'))} · p95 da "
+          f"{_p95(r0)} → {_p95(r1)} · phanh {'có' if 'ha-vi-da' in str(r0.get('notes') or '') else 'không'}"
+          f" → {'có' if 'ha-vi-da' in str(r1.get('notes') or '') else 'không'}")
+    if a.so_sanh:
+        ds_ss = [r["path"] for r in xem] + [q for q, _, _ in phanh]
+        ds_ss = list(dict.fromkeys(q for q in ds_ss if dv["A"].get(q) != dv["A0"].get(q)))
+        if ds_ss:
+            n = to_so_sanh(ds_ss, cfg, theo["A0"], theo["A"], Path(a.so_sanh))
+            p(f"   tờ so sánh mô phỏng ({n} ảnh đổi Exposure, trái A0 · phải A): {a.so_sanh}")
+        else:
+            p("   tờ so sánh: không ảnh nào đổi Exposure giữa A0 và A")
 
     # ---------------------------------------------------------------- 5. từng ảnh
     p("\n5. TỪNG ẢNH")

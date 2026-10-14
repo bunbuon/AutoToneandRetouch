@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Đo vùng da sáng CHUYỂN DẦN — CHỈ Canon; Sony / Nikon giữ y hệt (14/10).
+"""Đo vùng da sáng THEO MÁY — Canon không đo vùng da sáng; Sony / Nikon giữ y hệt (14/10).
 
 CHUYỆN ĐANG CANH
     Bộ CR3 Canon EOS R (G:\\TestThacCao\\test, nắng trưa, da trắng): cùng hai người, cùng
-    1/500 f/4 ISO 250 mà Exposure −0.33 / +0.15 xen kẽ. kiem_raw_that mục 4b: số đo mặt
-    chỉ có hai mức (−0.66 khi ≥ 30% da sáng quá 220/255 → đo riêng vùng sáng; −1.1..−1.2
-    khi dưới) — tắt quy tắc thì cặp lệch > 0.30 từ 4 về 0. Sửa: Canon trộn dần hai cách
-    đo trong dải ±hl_da_tron_theo_may["CANON"] mức sRGB quanh công tắc cũ.
+    1/500 f/4 ISO 250 mà Exposure −0.33 / +0.15 xen kẽ. Gốc: công tắc hl_da_ti_le 30% —
+    ≥ 30% da quá 220/255 thì đo RIÊNG vùng sáng; đổi chế độ là đổi cả tập điểm đo (số đo
+    mặt, p95 da, màu da cùng nhảy). kiem_raw_that v4 (14/10 07:26), số cặp liền nhau cùng
+    thông số lệch > 0.30: công tắc cũ 4 · CHUYỂN DẦN (hl_da_tron_theo_may Canon 15) 2 ·
+    tắt hẳn đo vùng sáng 0. Tiêu chí đặt trước cho chuyển dần là 0 → TRƯỢT, bảng {}.
+    User chọn: Canon tắt hẳn (hl_da_ti_le_theo_may {"CANON": 0}).
 
     User: "Hãy đặt ra các case theo loại máy. Nếu sửa mà làm thay đổi hết những gì đã
     đạt được ở Sony và Nikon thì không được." → mỗi hãng một ca; Sony / Nikon / ảnh không
@@ -19,17 +21,20 @@ CHUYỆN ĐANG CANH
     (detect_faces giả trả đúng ô mặt — YuNet không nhận mặt vẽ).
 
 Mục kiểm
-    1. tron_theo_may: Canon khớp, Sony / Nikon / không EXIF không khớp; DEFAULTS chỉ có
-       Canon; bảng nằm trong cau_hinh_do (đổi bảng = đo lại, không nạp kết quả cũ)
-    2. Sony, Nikon, không EXIF: mặc định == công tắc cũ, TỪNG SỐ, mọi mức sáng; Sony khớp
-       SỐ CHUẨN đo bằng code trước khi sửa (commit 8f50502)
+    1. Bảng: chuyển dần TẮT ({}), Canon 0 trong hl_da_ti_le_theo_may, Sony / Nikon không
+       có; so_theo_may khớp đúng hãng; cả hai bảng nằm trong cau_hinh_do (đổi bảng = đo
+       lại, không nạp kết quả cũ)
+    2. Sony, Nikon, không EXIF: mặc định == công tắc cũ, TỪNG SỐ, mọi mức sáng (cả khi bảng
+       chuyển dần có Canon — bảng chỉ chạm đúng hãng của nó); Sony khớp
+       SỐ CHUẨN đo bằng code trước 14/10 (commit 8f50502)
     3. Canon, cách cũ: có cú nhảy ở chỗ da sáng vượt 30% (≥ 3 lần bước thường) — chứng
        tỏ ca này chạm đúng bệnh
-    4. Canon, mặc định: bước ở đúng chỗ đó ≤ một nửa cú nhảy cũ và ≤ 2 lần bước thường;
-       không sinh bước nhảy mới ở chỗ khác; số đo mặt không giảm khi ảnh sáng lên
-    5. Canon ngoài dải chuyển (hai đầu): y hệt cách cũ
-    6. Canon, mặt có đốm bóng sáng (vài % da vượt 220 trước phần còn lại): bản sửa không
-       sinh bước nhảy khi vào dải chuyển
+    4. Canon mặc định == đo với hl_da_ti_le 0 (toàn bộ kết quả, trừ da_sang chỉ để truy
+       lỗi — vẫn phải ghi); không bước nào lớn hơn bước thường lớn nhất của cách cũ; số
+       đo mặt không giảm khi ảnh sáng lên
+       4b. bảng ghi đè đúng số: Canon 40 == hl_da_ti_le 40 (cả công tắc lẫn chuyển dần)
+    5. Chuyển dần (mã còn giữ, bảng truyền TAY {"CANON": 15}): bước ở chỗ đó ≤ ½ cú nhảy
+       cũ, không sinh bước mới, hai đầu y hệt cách cũ, ca đốm sáng không sinh bước mới
 
 Chạy:  python test_da_sang_tron.py
 """
@@ -96,12 +101,25 @@ def mat_gia(im, score=0.5):
     return [(MAT[0] * k, MAT[1] * k, MAT[2] * k, MAT[3] * k, 0.95, None)]
 
 
-def do(p: Path, bang) -> dict:
+#  các cách đo đem so — mỗi cách là phần ghi đè lên DEFAULTS
+CU = {"hl_da_tron_theo_may": {}, "hl_da_ti_le_theo_may": {}}            # công tắc cứng cũ
+TRON = {"hl_da_tron_theo_may": {"CANON": 15.0}, "hl_da_ti_le_theo_may": {}}  # chuyển dần
+TAT = {"hl_da_ti_le": 0.0, "hl_da_tron_theo_may": {}, "hl_da_ti_le_theo_may": {}}
+
+
+def do(p: Path, ghi_de=None) -> dict:
     cfg = dict(at.DEFAULTS, canh_p365=False)
-    if bang is not None:
-        cfg["hl_da_tron_theo_may"] = bang
+    cfg.update(ghi_de or {})
     r = at.measure(p, *at.cau_hinh_do(cfg))
     r.pop("path", None)
+    return r
+
+
+def bo_da_sang(r: dict) -> dict:
+    """Bản sao bỏ face_debug[].da_sang (chỉ để truy lỗi, không đi vào phép đo)."""
+    r = dict(r)
+    if r.get("face_debug"):
+        r["face_debug"] = [{k: v for k, v in f.items() if k != "da_sang"} for f in r["face_debug"]]
     return r
 
 
@@ -117,12 +135,13 @@ def bang_nhau(a, b) -> bool:
     return a == b
 
 
-def quet(ten: str, kieu: str = "nua_nang", gain=None) -> list:
-    """[(gain, kết quả mặc định, kết quả công tắc cũ)] cho một hãng."""
+def quet(ten: str, kieu: str = "nua_nang", gain=None, cach=("moi", "cu")) -> list:
+    """[(gain, {cách: kết quả})] cho một hãng. moi = DEFAULTS, cu / tron / tat xem trên."""
+    bang = {"moi": None, "cu": CU, "tron": TRON, "tat": TAT}
     ra = []
     for g in gain or GAIN:
         p = anh(g, MAY[ten], TAM / f"{ten}_{kieu}_{g:+.3f}.jpg", kieu)
-        ra.append((g, do(p, None), do(p, {})))
+        ra.append((g, {c: do(p, bang[c]) for c in cach}))
     return ra
 
 
@@ -146,80 +165,136 @@ CHUAN_SONY = [
 
 def muc1():
     """1. bảng theo máy"""
-    b = at.cau_hinh_do(dict(at.DEFAULTS))[-1]
-    ktra("DEFAULTS chỉ Canon (Sony / Nikon không có trong bảng)",
-         set(at.DEFAULTS["hl_da_tron_theo_may"]) == {"CANON"}, str(at.DEFAULTS["hl_da_tron_theo_may"]))
-    ktra("cau_hinh_do mang bảng (đổi bảng = khoá đo khác)",
-         b == (("CANON", 15.0),) and at.cau_hinh_do(dict(at.DEFAULTS, hl_da_tron_theo_may={}))[-1] == (),
-         str(b))
-    ca = {("Canon", "Canon EOS R"): 15.0, ("Canon", "Canon PowerShot S40"): 15.0,
-          ("SONY", "ILCE-7M4"): 0.0, ("NIKON CORPORATION", "NIKON Z 6_2"): 0.0,
-          (None, None): 0.0, ("FUJIFILM", "X-T5"): 0.0}
-    sai = {k: at.tron_theo_may({"make": k[0], "model": k[1]}, b) for k in ca
-           if at.tron_theo_may({"make": k[0], "model": k[1]}, b) != ca[k]}
-    ktra("tron_theo_may: Canon 15, Sony / Nikon / Fuji / không EXIF 0", not sai, str(sai))
+    d = at.DEFAULTS
+    ktra("chuyển dần TẮT ({}): trượt tiêu chí kiem_raw_that v4", d["hl_da_tron_theo_may"] == {},
+         str(d["hl_da_tron_theo_may"]))
+    ktra("hl_da_ti_le_theo_may chỉ Canon = 0 (Sony / Nikon không có trong bảng)",
+         d["hl_da_ti_le_theo_may"] == {"CANON": 0.0}, str(d["hl_da_ti_le_theo_may"]))
+    ch = at.cau_hinh_do(dict(d))
+    ktra("cau_hinh_do mang cả hai bảng (đổi bảng = khoá đo khác)",
+         ch[-1] == (("CANON", 0.0),) and ch[-2] == ()
+         and at.cau_hinh_do(dict(d, hl_da_ti_le_theo_may={}))[-1] == ()
+         and at.cau_hinh_do(dict(d, hl_da_tron_theo_may={"canon": 15}))[-2] == (("CANON", 15.0),),
+         str(ch[-2:]))
+    ca = {("Canon", "Canon EOS R"): 0.0, ("Canon", "Canon PowerShot S40"): 0.0,
+          ("SONY", "ILCE-7M4"): 30.0, ("NIKON CORPORATION", "NIKON Z 6_2"): 30.0,
+          (None, None): 30.0, ("FUJIFILM", "X-T5"): 30.0}
+    sai = {k: at.so_theo_may({"make": k[0], "model": k[1]}, ch[-1], d["hl_da_ti_le"]) for k in ca
+           if at.so_theo_may({"make": k[0], "model": k[1]}, ch[-1], d["hl_da_ti_le"]) != ca[k]}
+    ktra("so_theo_may: Canon 0, Sony / Nikon / Fuji / không EXIF giữ 30", not sai, str(sai))
+    sai = {k: at.tron_theo_may({"make": k[0], "model": k[1]}, (("CANON", 15.0),)) for k in ca
+           if at.tron_theo_may({"make": k[0], "model": k[1]}, (("CANON", 15.0),)) != (15.0 if k[0] == "Canon" else 0.0)}
+    ktra("tron_theo_may (bảng tay): Canon 15, máy khác 0", not sai, str(sai))
 
 
 def muc2(kq):
     """2. Sony, Nikon, không EXIF: y hệt cách cũ"""
     for ten in ("sony", "nikon", "khong_exif"):
-        lech = [g for g, moi, cu in kq[ten] if not bang_nhau(moi, cu)]
+        lech = [g for g, r in kq[ten] if not bang_nhau(r["moi"], r["cu"])]
         ktra(f"{ten}: mặc định == công tắc cũ, toàn bộ kết quả measure, {len(GAIN)} mức sáng",
              not lech, f"lệch ở {lech}")
+        lech = [g for g, r in kq[ten] if not bang_nhau(r["tron"], r["cu"])]
+        ktra(f"{ten}: bảng chuyển dần {{'CANON': 15}} không chạm máy này (y hệt công tắc cũ)",
+             not lech, f"lệch ở {lech}")
     lech = []
-    for (g, moi, _cu), (g0, ev0, p0, rgb0) in zip(kq["sony"], CHUAN_SONY):
+    for (g, r), (g0, ev0, p0, rgb0) in zip(kq["sony"], CHUAN_SONY):
+        moi = r["moi"]
         if (abs(g - g0) > 1e-9 or abs(moi["metered_face_ev"] - ev0) > 2e-4 or abs(moi["face_p95"] - p0) > 2e-4
                 or max(abs(a - b) for a, b in zip(moi["face_rgb"], rgb0)) > 2e-5):
             lech.append((g, round(moi["metered_face_ev"], 5), ev0))
     ktra("sony: khớp SỐ CHUẨN đo bằng code trước 14/10 (mặt EV, p95, màu da), mọi mức sáng",
          not lech, str(lech[:3]))
-    co_mat = sum(1 for g, moi, cu in kq["sony"] if moi.get("metered_face_ev") is not None)
+    co_mat = sum(1 for g, r in kq["sony"] if r["moi"].get("metered_face_ev") is not None)
     ktra("ca Sony thật sự đo mặt (không phải đạt vì không thấy mặt)", co_mat == len(GAIN), str(co_mat))
 
 
-def _buoc(kq_hang, i_kq):
-    ev = [r[i_kq].get("metered_face_ev") for r in kq_hang]
+def _buoc(kq_hang, cach):
+    ev = [r[cach].get("metered_face_ev") for g, r in kq_hang]
     return [b - a for a, b in zip(ev, ev[1:])]
 
 
-def muc3_4_5(kq):
-    """3–5. Canon"""
+def _cho_nhay(kq_hang):
+    sang = [(r["cu"].get("face_debug") or [{}])[0].get("da_sang") or 0.0 for g, r in kq_hang]
+    return next((k for k in range(1, len(sang)) if sang[k - 1] < at.DEFAULTS["hl_da_ti_le"] <= sang[k]), None), sang
+
+
+def muc3_4(kq):
+    """3–4. Canon theo mặc định"""
     ca = kq["canon"]
-    sang = [(r[2].get("face_debug") or [{}])[0].get("da_sang") or 0.0 for r in ca]
-    i = next((k for k in range(1, len(sang)) if sang[k - 1] < at.DEFAULTS["hl_da_ti_le"] <= sang[k]), None)
+    i, sang = _cho_nhay(ca)
     if i is None:
         ktra("ca Canon có chỗ da sáng vượt 30%", False, str(sang))
         return
-    b_cu, b_moi = _buoc(ca, 2), _buoc(ca, 1)
+    b_cu, b_moi = _buoc(ca, "cu"), _buoc(ca, "moi")
     thuong = statistics.median(abs(x) for x in b_cu)
     ktra("3. cách cũ nhảy ≥ 3 lần bước thường ở chỗ da sáng vượt 30%",
          b_cu[i - 1] >= 3 * thuong, f"nhảy {b_cu[i - 1]:+.3f}, bước thường {thuong:.3f}, tại {GAIN[i]:+.3f} EV")
-    ktra("4. Canon mặc định: bước ở đó ≤ ½ cú nhảy cũ và ≤ 2 lần bước thường",
-         b_moi[i - 1] <= 0.5 * b_cu[i - 1] and b_moi[i - 1] <= 2 * thuong,
-         f"{b_moi[i - 1]:+.3f} (cũ {b_cu[i - 1]:+.3f})")
+    lech = [g for g, r in ca if not bang_nhau(bo_da_sang(r["moi"]), bo_da_sang(r["tat"]))]
+    ktra("4. Canon mặc định == đo với hl_da_ti_le 0, toàn bộ kết quả (trừ da_sang)", not lech,
+         f"lệch ở {lech}")
+    ghi = [((r["moi"].get("face_debug") or [{}])[0].get("da_sang")) for g, r in ca]
+    ktra("4. Canon mặc định vẫn ghi da_sang (truy lỗi) và khớp số của cách cũ",
+         all(x is not None for x in ghi) and ghi == sang, str(ghi[:4]))
     thuong_max = max(abs(x) for k, x in enumerate(b_cu) if k != i - 1)
-    ktra("4. Canon mặc định: không sinh bước nhảy mới ở chỗ khác (≤ bước thường lớn nhất của cách cũ)",
+    ktra("4. Canon mặc định: không bước nào lớn hơn bước thường lớn nhất của cách cũ (+0.01)",
          max(abs(x) for x in b_moi) <= thuong_max + 0.01,
          f"lớn nhất {max(abs(x) for x in b_moi):.3f}, cũ (trừ cú nhảy) {thuong_max:.3f}")
     ktra("4. Canon mặc định: số đo mặt không giảm khi ảnh sáng lên",
          all(x >= -0.005 for x in b_moi), str([round(x, 3) for x in b_moi]))
-    dau, cuoi = bang_nhau(ca[0][1], ca[0][2]), bang_nhau(ca[-1][1], ca[-1][2])
-    ktra("5. Canon hai đầu (ngoài dải chuyển): y hệt cách cũ", dau and cuoi,
+    khac = [g for g, r in ca if not bang_nhau(r["moi"], r["cu"])]
+    bat = [g for (g, r), x in zip(ca, sang) if x >= at.DEFAULTS["hl_da_ti_le"]]
+    ktra("4. Canon khác cách cũ ĐÚNG ở các mức công tắc cũ bật (da sáng ≥ 30%), dưới đó y hệt",
+         khac == bat and len(bat) > 0, f"khác {len(khac)} mức, công tắc bật {len(bat)} mức")
+
+
+def muc4b():
+    """4b. Bảng ghi đè ĐÚNG số (không chỉ 0): Canon 40 == hl_da_ti_le 40 cho mọi máy"""
+    #  mịn quanh chỗ da sáng đi qua 30–40% (−0.17 EV: 35% — công tắc 30 bật, 40 chưa)
+    g4 = [-0.25, -0.19, -0.18, -0.175, -0.17, -0.165, -0.16, -0.15, 0.0, 0.1]
+    for ten, them in (("công tắc", {}), ("chuyển dần", {"hl_da_tron_theo_may": {"CANON": 15.0}})):
+        lech, bat = [], 0
+        for g in g4:
+            pth = anh(g, MAY["canon"], TAM / f"canon_40_{g:+.3f}.jpg")
+            r1 = do(pth, dict({"hl_da_tron_theo_may": {}, "hl_da_ti_le_theo_may": {"canon": 40.0}}, **them))
+            r2 = do(pth, dict({"hl_da_ti_le": 40.0, "hl_da_tron_theo_may": {}, "hl_da_ti_le_theo_may": {}}, **them))
+            r3 = do(pth, CU)
+            if not bang_nhau(r1, r2):
+                lech.append(g)
+            bat += not bang_nhau(r1, r3)
+        ktra(f"4b. {ten}: Canon 40 trong bảng == hl_da_ti_le 40, {len(g4)} mức sáng (và khác ngưỡng 30 ở {bat} mức)",
+             not lech and bat > 0, f"lệch ở {lech}")
+
+
+def muc5(kq):
+    """5. Chuyển dần (bảng truyền tay — mã còn giữ)"""
+    ca = kq["canon"]
+    i, sang = _cho_nhay(ca)
+    if i is None:
+        return
+    b_cu, b_tron = _buoc(ca, "cu"), _buoc(ca, "tron")
+    thuong = statistics.median(abs(x) for x in b_cu)
+    ktra("5. chuyển dần: bước ở đó ≤ ½ cú nhảy cũ và ≤ 2 lần bước thường",
+         b_tron[i - 1] <= 0.5 * b_cu[i - 1] and b_tron[i - 1] <= 2 * thuong,
+         f"{b_tron[i - 1]:+.3f} (cũ {b_cu[i - 1]:+.3f})")
+    thuong_max = max(abs(x) for k, x in enumerate(b_cu) if k != i - 1)
+    ktra("5. chuyển dần: không sinh bước nhảy mới ở chỗ khác",
+         max(abs(x) for x in b_tron) <= thuong_max + 0.01,
+         f"lớn nhất {max(abs(x) for x in b_tron):.3f}, cũ (trừ cú nhảy) {thuong_max:.3f}")
+    ktra("5. chuyển dần: số đo mặt không giảm khi ảnh sáng lên",
+         all(x >= -0.005 for x in b_tron), str([round(x, 3) for x in b_tron]))
+    dau, cuoi = bang_nhau(ca[0][1]["tron"], ca[0][1]["cu"]), bang_nhau(ca[-1][1]["tron"], ca[-1][1]["cu"])
+    ktra("5. chuyển dần, hai đầu (ngoài dải chuyển): y hệt cách cũ", dau and cuoi,
          f"đầu {GAIN[0]:+.3f} {dau} · cuối {GAIN[-1]:+.3f} {cuoi}")
-    giua = sum(1 for g, moi, cu in ca if not bang_nhau(moi, cu))
-    ktra("Canon: bản sửa thật sự có tác dụng trong dải chuyển", giua > 0, f"{giua} mức sáng khác")
-
-
-def muc6():
-    """6. Canon, mặt có đốm bóng sáng"""
+    giua = sum(1 for g, r in ca if not bang_nhau(r["tron"], r["cu"]))
+    ktra("5. chuyển dần thật sự có tác dụng trong dải chuyển", giua > 0, f"{giua} mức sáng khác")
     g6 = [round(0.025 * k, 3) for k in range(-16, 13)]          # −0.40 .. +0.30: qua hết dải chuyển
-    ca = quet("canon", "dom_sang", g6)
-    b_cu, b_moi = _buoc(ca, 2), _buoc(ca, 1)
-    ktra("6. đốm sáng: bản sửa không sinh bước lớn hơn bước lớn nhất của cách cũ (+0.01)",
-         max(abs(x) for x in b_moi) <= max(abs(x) for x in b_cu) + 0.01,
-         f"lớn nhất {max(abs(x) for x in b_moi):.3f} tại {g6[1 + b_moi.index(max(b_moi))]:+.3f}, "
-         f"cũ lớn nhất {max(abs(x) for x in b_cu):.3f}")
-    ktra("6. đốm sáng: hai đầu y hệt cách cũ", bang_nhau(ca[0][1], ca[0][2]) and bang_nhau(ca[-1][1], ca[-1][2]))
+    ds = quet("canon", "dom_sang", g6, cach=("cu", "tron"))
+    b_cu, b_tron = _buoc(ds, "cu"), _buoc(ds, "tron")
+    ktra("5. đốm sáng: chuyển dần không sinh bước lớn hơn bước lớn nhất của cách cũ (+0.01)",
+         max(abs(x) for x in b_tron) <= max(abs(x) for x in b_cu) + 0.01,
+         f"lớn nhất {max(abs(x) for x in b_tron):.3f}, cũ lớn nhất {max(abs(x) for x in b_cu):.3f}")
+    ktra("5. đốm sáng: hai đầu y hệt cách cũ",
+         bang_nhau(ds[0][1]["tron"], ds[0][1]["cu"]) and bang_nhau(ds[-1][1]["tron"], ds[-1][1]["cu"]))
 
 
 def main():
@@ -228,13 +303,16 @@ def main():
     try:
         print(muc1.__doc__)
         muc1()
-        kq = {ten: quet(ten) for ten in MAY}
+        kq = {ten: quet(ten, cach=("moi", "cu", "tron")) for ten in ("sony", "nikon", "khong_exif")}
+        kq["canon"] = quet("canon", cach=("moi", "cu", "tron", "tat"))
         print(muc2.__doc__)
         muc2(kq)
-        print(muc3_4_5.__doc__)
-        muc3_4_5(kq)
-        print(muc6.__doc__)
-        muc6()
+        print(muc3_4.__doc__)
+        muc3_4(kq)
+        print(muc4b.__doc__)
+        muc4b()
+        print(muc5.__doc__)
+        muc5(kq)
     except Exception as ex:                                      # noqa: BLE001
         import traceback
         traceback.print_exc()
