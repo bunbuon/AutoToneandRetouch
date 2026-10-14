@@ -232,6 +232,19 @@ ktra("Duyệt nhanh không bị đụng (duyet_tiendo.txt nguyên, không duyet_
      and not (jobs / "duyet_anh.tsv").exists())
 ktra("ảnh dựng nằm trong thư mục lượt 2, không trong _duyet",
      (dest / "A1.jpg").exists() and not (anh_dir / "_duyet").exists())
+#  14/10: preview TRƯỚC khi áp (do_truoc, CFG_TRUOC) — ảnh giả không trả preview:
+#  CHỈ preview, không Export bù; báo lỗi đúng mã lượt vào file tiến độ riêng
+import do_truoc as dtm  # noqa: E402
+dtm.yeu_cau(anh_dir, [it["path"] for it in items], "t1", job_dir=jobs)
+truoc_cap = {p.name for p in dest.rglob("*.jpg")}
+Dc.runRequestTruoc()
+td_t = dtm.tien_do(jobs)
+ktra("preview trước khi áp: plugin nhận request_do_truoc.txt, tiến độ riêng mang mã t1",
+     td_t.get("ma") == "t1" and not (jobs / dtm.TEN_YEU_CAU).exists(), str(td_t))
+ktra("…không có preview -> 'loi', KHÔNG xuất bù (chỉ preview)",
+     td_t.get("trang_thai") == "loi" and "preview" in td_t.get("thong_bao", "")
+     and {p.name for p in dest.rglob("*.jpg")} == truoc_cap, str(td_t))
+ktra("…không giẫm lên tiến độ lượt 2 (do_curve_tiendo.txt vẫn mã m1)", cdm.tien_do(jobs).get("ma") == "m1")
 src_init = (GOC / "Init.lua").read_text(encoding="utf-8")
 import re  # noqa: E402
 ktra("Init.lua gọi Duyet.runRequestCurve trong vòng lặp (không bị chặn)",

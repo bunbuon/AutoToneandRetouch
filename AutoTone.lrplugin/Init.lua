@@ -224,6 +224,11 @@ LrTasks.startAsyncTask(function()
                 local _, errXm = Core.try("autoXemLr", Duyet.runRequestXem)
                 if errXm then Core.log("LOI yeu cau xem preview: " .. tostring(errXm)) end
             end
+            --  14/10: preview TRƯỚC khi áp cho chuỗi màu da một lượt (chỉ đọc)
+            if type(Duyet.runRequestTruoc) == "function" then
+                local _, errTr = Core.try("autoDoTruoc", Duyet.runRequestTruoc)
+                if errTr then Core.log("LOI yeu cau preview truoc: " .. tostring(errTr)) end
+            end
             local _, errM = Core.try("autoDanhDau", Duyet.runDanhDau)
             if errM then Core.log("LOI yeu cau danh dau: " .. tostring(errM)) end
         end

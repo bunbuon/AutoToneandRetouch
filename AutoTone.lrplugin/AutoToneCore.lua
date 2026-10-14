@@ -911,7 +911,7 @@ end
      để người dùng ngồi chờ yêu cầu xuất. ]]
 local nhipCuoi = 0
 local vongNhip = nil
-M.KHA_NANG = "curve1,sao1,xem1,hocmau1"
+M.KHA_NANG = "curve1,sao1,xem1,hocmau1,truoc1"
 
 --[[ 8/10: applyJob cũng gọi (vong = nil, kèm `buoc`) giữa các lô. Trước đây
      đang áp thì không có nhịp: app không phân biệt được "đang áp 1813 ảnh" với

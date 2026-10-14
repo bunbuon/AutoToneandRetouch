@@ -114,6 +114,12 @@ M.CFG_CURVE = { yeuCau = "request_do_curve.txt", tienDo = "do_curve_tiendo.txt",
 M.CFG_XEM = { yeuCau = "request_xem_lr.txt", tienDo = "xem_lr_tiendo.txt",
               bang = "xem_lr_anh.tsv", coDung = "request_xem_lr_dung.txt",
               ten = "xem_lr", kiem = "xem_lr_kiem.tsv" }
+--[[ 14/10 (chuỗi màu da MỘT LƯỢT — do_truoc.py): preview của trạng thái HIỆN TẠI, TRƯỚC
+     khi áp, cho những ảnh app không đọc được thẳng từ cache Lightroom (chưa từng xem /
+     preview cũ / chỉ có mức nhỏ). CHỈ preview, không Export bù. ]]
+M.CFG_TRUOC = { yeuCau = "request_do_truoc.txt", tienDo = "do_truoc_tiendo.txt",
+                bang = "do_truoc_anh.tsv", coDung = "request_do_truoc_dung.txt",
+                ten = "do_truoc" }
 M.NHOM_PREVIEW = 8
 M.CHO_PREVIEW = 30          -- giây tối đa chờ một nhóm preview
 
@@ -705,6 +711,11 @@ end
 --[[ 14/10: preview Lightroom cho lưới của tool sau khi áp (M.CFG_XEM). ]]
 function M.runRequestXem()
     return M.chayYeuCau(M.CFG_XEM)
+end
+
+--[[ 14/10: preview trạng thái hiện tại TRƯỚC khi áp (M.CFG_TRUOC — do_truoc.py). ]]
+function M.runRequestTruoc()
+    return M.chayYeuCau(M.CFG_TRUOC)
 end
 
 -- ------------------------------------------------------- đánh dấu ảnh cần sửa

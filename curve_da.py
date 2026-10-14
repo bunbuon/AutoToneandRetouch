@@ -183,16 +183,19 @@ def do_anh(r: dict | None, anh, cfg: dict, xoay: str | None = None) -> dict:
                          interpolation=cv2.INTER_AREA)
     H, W = img.shape[:2]
     arr = img.astype(np.float32) / 255.0
+    #  14/10: đo TRƯỚC khi áp (do_truoc) giữ ít điểm hơn — cả buổi nằm trong RAM
+    toi_da = int(cfg.get("_toi_da") or TOI_DA_DIEM)
+    toi_da_k = int(cfg.get("_toi_da") or TOI_DA_KHUNG)
     #  mặt nạ da cần cho CẢ hai việc: curve da (đo da) và nén cháy (knee trên mức da)
     m = mn.mat_na(img, r)
     out = {"ok": True, "wh": (W, H), "mien": mien, "mat_na": m["kieu"], "n_da": m["n"],
            "mat": m["mat"], "crop": m["crop"], "do_lai": m.get("do_lai"), "ly_do": m["ly_do"]}
     if m["n"]:
-        out["da_mn"] = cl.srgb_sang_mien(_mau(arr[m["da"]], TOI_DA_DIEM), mien)
+        out["da_mn"] = cl.srgb_sang_mien(_mau(arr[m["da"]], toi_da), mien)
     cu = [at.chon_da_hop(arr, b) for b in m["mat"]]
     cu = [c for c in cu if c is not None and len(c)]
     if cu:
-        out["da_cu"] = cl.tuyen_tinh_sang_mien(_mau(np.vstack(cu), TOI_DA_DIEM), mien)
+        out["da_cu"] = cl.tuyen_tinh_sang_mien(_mau(np.vstack(cu), toi_da), mien)
     #  vùng trung tính: lưới thưa (~240k điểm), bỏ da và ô mặt nới rộng
     buoc = max(1, int(math.sqrt(H * W / 240_000)))
     sub = arr[::buoc, ::buoc]
@@ -208,18 +211,18 @@ def do_anh(r: dict | None, anh, cfg: dict, xoay: str | None = None) -> dict:
           & ~at.skin_mask(px) & ~trong_mat.reshape(-1))
     out["trung_ti_le"] = float(tt.mean())
     if tt.any():
-        out["trung"] = cl.srgb_sang_mien(_mau(px[tt], TOI_DA_DIEM, 1), mien)
+        out["trung"] = cl.srgb_sang_mien(_mau(px[tt], toi_da, 1), mien)
     #  vùng cháy: kênh lớn nhất ≥ 250, mở 5×5 bỏ đốm bóng / phản quang
     chay = (img.max(axis=2) >= NGUONG_CHAY).astype(np.uint8)
     mo = cv2.morphologyEx(chay, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     out["chay_pct"] = round(100.0 * float(mo.mean()), 3)
     out["chay_tho_pct"] = round(100.0 * float(chay.mean()), 3)
-    out["khung"] = cl.srgb_sang_mien(_mau(px, TOI_DA_KHUNG, 2), mien)
+    out["khung"] = cl.srgb_sang_mien(_mau(px, toi_da_k, 2), mien)
     #  da sáng tới đâu (cho knee nén cháy): đo trên mặt nạ CHƯA bỏ điểm bóng — da cháy
     #  hẳn thì mặt nạ đã lọc rỗng mà vẫn phải biết là da đang ở đỉnh
     tho = m.get("da_tho")
     if tho is not None and int(tho.sum()) >= 50:
-        ref = cl.srgb_sang_mien(_mau(arr[tho], TOI_DA_DIEM, 3), mien)
+        ref = cl.srgb_sang_mien(_mau(arr[tho], toi_da, 3), mien)
     else:
         ref = out.get("da_mn") if out.get("da_mn") is not None else out.get("da_cu")
     out["p95_da"] = float(np.percentile(ref.max(axis=1), 95)) if ref is not None else None
@@ -323,7 +326,8 @@ class BoDo:
     yếu / không mở được tiến trình con / tiến trình con chết) -> đo ngay trong luồng gọi."""
 
     def __init__(self, cfg: dict, n: int | None = None):
-        self.cfg = {"curve_mien": cfg.get("curve_mien") or at.DEFAULTS["curve_mien"]}
+        self.cfg = {"curve_mien": cfg.get("curve_mien") or at.DEFAULTS["curve_mien"],
+                    "_toi_da": cfg.get("_toi_da")}
         n, luong = so_tho() if n is None else (int(n), 1)
         self.ex = None
         if n > 1:
