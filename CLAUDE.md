@@ -1111,6 +1111,18 @@ cuối `hl_da_ti_le_may` của measure + tuple cuối của `cau_hinh_do` (đổ
   mặc định {} nên đột biến tương đương; thêm mục Sony / Nikon đo VỚI bảng {"CANON": 15} vẫn y
   hệt (bật lại bảng sau này mà dính Sony thì bài đỏ).
 
+**KẾT QUẢ v5 (14/10 08:26, cùng 42 CR3) — giữ `{"CANON": 0}`.**
+- Tiêu chí 1 ĐẠT: cặp lệch > 0.30: **A 0** · A0 4 · A1 2 · B 0; mục 4 (bản hiện hành) 0 cặp.
+  ΔEV cả bộ −0.11..+0.32; cảnh 4 (NHFT1457–1462) −0.11..+0.15; cảnh 1 (1/500) 0.00..+0.15.
+  Vẫn là số TRONG MẪU.
+- Tiêu chí 2 CÒN MỞ: chưa có bộ Canon thứ hai — buổi Canon mới đầu tiên chạy lại
+  `KIEM_RAW_THAT.bat`, cột A phải 0 cặp, không thì bảng `{}`.
+- Tiêu chí 3 ĐẠT: PHANH DA liệt kê 9 ảnh (1433–1437, 1457–1459, 1462) A sáng hơn A0 ~0.3 EV
+  (A0 −0.33..−0.35 → A −0.11..+0.03), p95 da 240–247 → 230–241. Ở cả 9 ảnh phanh của A0
+  KHÔNG chạm — A0 tối hơn vì chính phép đo mặt (đo riêng phần nắng), không phải vì phanh;
+  1433/1434 ở A phanh có chạm (+0.19 → +0.03). User xem `kiem_raw_so_sanh.jpg` (trái A0 ·
+  phải A): "Ổn, giữ bản mới" — không thấy da cháy ở bản mới.
+
 ## Curve da mặt + nén vùng cháy, đo trên ảnh Lightroom DỰNG (13/10) — `curve_da` / `curve_chay`, TẮT
 
 User 13/10: "cân chỉnh màu da so với màu đích trên TỪNG PIXEL da… tách mask da mặt… sau
