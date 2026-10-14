@@ -214,9 +214,11 @@ def main() -> int:
          all(t in sh for t in ("self.thanh_cc", "self.ben_phai", "gd.ThanhBuoc(",
                                "self.thanh_tt", "self.lbl_han", "self.cot_canh")),
          "hạn dùng LUÔN hiện ở thanh dưới")
-    ktra("thanh 5 bước: Nguồn · Lọc · Cân sáng · Retouch · Xử lý & xuất",
-         all(f'("{b}",' in src for b in ("nguon", "loc", "can_sang", "retouch", "xu_ly")),
-         "bản thiết kế 12/10")
+    #  14/10 (user): "Bỏ luôn nguồn ảnh và lọc ảnh ... ở phần Cân Ảnh đã thấy đủ hết rồi"
+    bb = src[src.index("BUOC = ["):src.index("BUOC_CUA_KHAU")]
+    ktra("thanh 3 bước: Cân sáng · Retouch · Xử lý & xuất (không còn Nguồn · Lọc)",
+         all(f'("{b}",' in bb for b in ("can_sang", "retouch", "xu_ly"))
+         and '("nguon",' not in bb and '("loc",' not in bb, "user 14/10")
     #[[ Dem MOI cho truyen command=self.do_apply trong ca lop App (nut ttk, nut
     #   ve tay, muc menu...). Doi nut thi de nham thanh "them nut moi, quen go
     #   nut cu" — dung cai benh hai nut mot viec, _set_busy phai nho khoa ca

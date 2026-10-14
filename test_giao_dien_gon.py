@@ -221,8 +221,8 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          "bỏ hẳn theo yêu cầu tối 3/10")
     #[[ 12/10 (giao dien moi): thanh 5 buoc thay cot mo-dun; nut viec cua Can
     #   sang (Phan tich · Ap vao Lightroom) xuong thanh duoi. ]]
-    ktra("thanh 5 bước: Nguồn ảnh · Lọc ảnh · Cân sáng · Retouch · Xử lý & xuất",
-         list(app.thanh_buoc.the) == ["nguon", "loc", "can_sang", "retouch", "xu_ly"]
+    ktra("thanh 3 bước (14/10 bỏ Nguồn ảnh · Lọc ảnh): Cân sáng · Retouch · Xử lý & xuất",
+         list(app.thanh_buoc.the) == ["can_sang", "retouch", "xu_ly"]
          and app.thanh_buoc.dang == "can_sang" and app.thanh_buoc.winfo_ismapped(),
          " · ".join(app.thanh_buoc.the))
     cc = app.thanh_cc

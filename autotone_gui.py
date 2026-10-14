@@ -75,9 +75,11 @@ KHAU = [("tong_quan", "Tổng quan"),
 #   thanh buoc thay cho cot mo-dun ben phai. (ma buoc, ten, bieu tuong). Buoc
 #   1–2 khong phai mot trang: Nguon anh mo menu buoi, Loc anh mo nhom "Loc anh"
 #   cua Thiet lap. Buoc 3–5 la ba trang phan_tich / retouch / xu_ly. ]]
-BUOC = [("nguon", "Nguồn ảnh", "nguon_anh"),
-        ("loc", "Lọc ảnh", "loc_anh"),
-        ("can_sang", "Cân sáng", "can_sang"),
+#[[ 14/10 (user): "Bỏ luôn nguồn ảnh và lọc ảnh. thiết kế lại giao diện vì ở phần Cân
+#   Ảnh đã có thể thấy đủ hết rồi" — chọn buổi = cột Thư mục / Import… / nút buổi trên
+#   thanh trên; Lọc ảnh = nhóm trong Thiết lập. Còn BA bước, thẻ Cân sáng mang luôn số
+#   ảnh của buổi. ]]
+BUOC = [("can_sang", "Cân sáng", "can_sang"),
         ("retouch", "Retouch", "retouch"),
         ("xu_ly", "Xử lý & xuất", "xuat_anh")]
 BUOC_CUA_KHAU = {"phan_tich": "can_sang", "retouch": "retouch", "xu_ly": "xu_ly"}
@@ -947,22 +949,17 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         n = len(self.pairs or [])
         dem = self._dem_nhan()
         co_kq = bool(self.items)
-        nguon = (("xong", f"{gd.so_vn(n)} ảnh · đã quét") if n
-                 else ("cho", "Chưa chọn buổi"))
-        loc = (("xong", f"{gd.so_vn(dem['loai'])} loại · {gd.so_vn(dem['giu'])} giữ")
-               if co_kq else ("cho", "Chờ phân tích"))
         ap = getattr(self, "_da_ap_lr", False)
         if co_kq:
             can = ("xong" if ap else "cho",
-                   "Đã áp vào Lightroom" if ap else
-                   f"Đang duyệt {gd.so_vn(dem['giu'])} ảnh giữ")
+                   f"{gd.so_vn(n)} ảnh · đã áp vào Lightroom" if ap else
+                   f"{gd.so_vn(n)} ảnh · {gd.so_vn(dem['giu'])} giữ · "
+                   f"{gd.so_vn(dem['loai'])} loại")
         else:
-            can = ("cho", "Chưa phân tích" if n else "Chờ chọn buổi")
+            can = ("cho", f"{gd.so_vn(n)} ảnh · chưa phân tích" if n else "Chọn buổi chụp")
         rt = self._tt_retouch_buoc()
         xl = self._tt_xu_ly_buoc()
         for t in (tb, self.thanh_buoc_gon):
-            t.dat("nguon", *nguon)
-            t.dat("loc", *loc)
             t.dat("can_sang", *can)
             t.dat("retouch", *rt)
             t.dat("xu_ly", *xl)
