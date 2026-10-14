@@ -12,6 +12,9 @@ khung mặt). Trong lúc học: đừng sửa ảnh trong Lightroom, đừng b�
 xin plugin dừng — ảnh được trả lại trước khi thoát.
 
 Chạy:   python hoc_mau_lr.py <thư mục buổi> [--n 20] [--canh 1024] [--jobs <thư mục jobs>]
+                [--may "Z 8"]      chỉ máy có tên chứa chữ này (mặc định: máy đông ảnh nhất)
+                [--tat_ca [--lai]] lần lượt MỌI máy / profile của buổi (≥ 6 ảnh); máy đã có
+                                   mô hình ĐẠT thì bỏ qua, --lai để học lại
         python hoc_mau_lr.py --phan_tich <khoá>      (học lại từ mẫu đã lưu, không cần Lightroom)
 Kết quả: <dữ liệu>/mo_hinh_lr/<khoá>.json + ket_qua_kiem/hoc_mau_<giờ>.txt
 """
@@ -95,13 +98,18 @@ def thong_so_hien_tai(folder: Path, jobs: Path, cho: float = 90.0) -> dict:
     return out
 
 
-def chon_anh_hoc(items: list, cur: dict, n: int = 20) -> tuple[list, str]:
-    """Ảnh học: có mặt, không 1★, RAW, CÙNG máy / profile / PV (nhóm đông nhất), không chỉnh
-    cục bộ, WB đọc được; rải đều theo thời gian và nhiệt màu. -> ([{"path","cur","r"}], khoá)."""
+TOI_THIEU = 6                    # ảnh dùng được tối thiểu của một máy / profile
+
+
+def _ung_vien(items: list, cur: dict, may: str | None = None) -> list:
+    """[(r, thông số, khoá máy__profile__PV)] — ảnh RAW có mặt, không 1★, không chỉnh cục bộ,
+    WB đọc được; may: chỉ máy có tên chứa chữ này (không phân biệt hoa thường)."""
     import autotone as at
     import mo_hinh_lr as mh
     ung = []
     for r in items:
+        if may and may.strip().lower() not in str(r.get("model") or "").lower():
+            continue
         k = at.khoa_duong_dan(r.get("lr_path") or r["path"])
         c = cur.get(k)
         if (not c or not r.get("meter_boxes") or int(r.get("rating") or 0) == 1 or r.get("bw")
@@ -110,10 +118,27 @@ def chon_anh_hoc(items: list, cur: dict, n: int = 20) -> tuple[list, str]:
             continue
         ung.append((r, c, mh.khoa_cua(str(r.get("model") or ""), str(c.get("CameraProfile") or ""),
                                       str(c.get("ProcessVersion") or ""))))
+    return ung
+
+
+def cac_khoa(items: list, cur: dict) -> list:
+    """[(khoá máy__profile__PV, số ảnh dùng được)] — đông nhất trước."""
+    return Counter(x[2] for x in _ung_vien(items, cur)).most_common()
+
+
+def chon_anh_hoc(items: list, cur: dict, n: int = 20, khoa: str | None = None,
+                 may: str | None = None) -> tuple[list, str]:
+    """Ảnh học: có mặt, không 1★, RAW, CÙNG máy / profile / PV (khoa, mặc định nhóm đông
+    nhất), không chỉnh cục bộ, WB đọc được; rải đều theo thời gian và nhiệt màu.
+    -> ([{"path","cur","r"}], khoá)."""
+    import mo_hinh_lr as mh
+    ung = _ung_vien(items, cur, may)
     if not ung:
         return [], ""
-    khoa = Counter(x[2] for x in ung).most_common(1)[0][0]
+    khoa = khoa or Counter(x[2] for x in ung).most_common(1)[0][0]
     ung = sorted((x for x in ung if x[2] == khoa), key=lambda x: str(x[0].get("dt") or x[0]["path"]))
+    if not ung:
+        return [], khoa
     #  rải đều: chia thời gian thành n đoạn, mỗi đoạn lấy ảnh có K xa trung vị nhất (đa dạng WB)
     import numpy as np
     K = np.array([mh.wb_cua(x[1])[0] for x in ung])
@@ -198,6 +223,9 @@ def main() -> int:
     ap.add_argument("--jobs", default=None)
     ap.add_argument("--phan_tich", default=None, help="khoá mô hình: học lại từ mẫu đã lưu")
     ap.add_argument("--cho_toi_da", type=float, default=3600.0, help="giây chờ tối đa")
+    ap.add_argument("--may", default=None, help="chỉ máy có tên chứa chữ này (vd \"Z 8\", 7M4)")
+    ap.add_argument("--tat_ca", action="store_true", help="lần lượt mọi máy / profile của buổi")
+    ap.add_argument("--lai", action="store_true", help="--tat_ca: học lại cả máy đã có mô hình ĐẠT")
     a = ap.parse_args()
     import autotone as at
     import mo_hinh_lr as mh
@@ -239,8 +267,42 @@ def main() -> int:
         return 2
     noi("Đọc thông số hiện tại (catalog + bản xuất của plugin)…")
     cur = thong_so_hien_tai(folder, jobs)
-    ds, khoa = chon_anh_hoc(items, cur, a.n)
-    if len(ds) < 6:
+    if not a.tat_ca:
+        ds, khoa = chon_anh_hoc(items, cur, a.n, may=a.may)
+        ma_ra = hoc_mot(folder, jobs, ds, khoa, a)
+        f = luu_bao_cao(khoa or "loi")
+        print(f"Đã lưu báo cáo: {f}\nGửi file báo cáo cho Claude.")
+        return ma_ra
+    #  --tat_ca: từng máy / profile (đông ảnh trước); máy đã có mô hình ĐẠT thì bỏ qua
+    ds_khoa = [(k, n) for k, n in cac_khoa(items, cur) if n >= TOI_THIEU]
+    noi("Máy / profile của buổi: " + (", ".join(f"{k} ({n} ảnh)" for k, n in ds_khoa) or "không có"))
+    ma_ra, ket = 0, []
+    for k, n in ds_khoa:
+        cu = mh.nap(k)
+        if cu is not None and cu.dat and not a.lai:
+            noi(f"\n— {k}: đã có mô hình ĐẠT ({cu.thong_tin.get('ngay')}) — bỏ qua (--lai để học lại)")
+            ket.append((k, "đã có"))
+            continue
+        noi(f"\n=== {k} ({n} ảnh dùng được) ===")
+        ds, _k = chon_anh_hoc(items, cur, a.n, khoa=k)
+        m_ra = hoc_mot(folder, jobs, ds, k, a)
+        ket.append((k, {0: "ĐẠT", 1: "CHƯA ĐẠT / không chạy hết"}.get(m_ra, "lỗi")))
+        ma_ra = max(ma_ra, m_ra)
+        if m_ra >= 2:
+            noi("[!] Dừng — Lightroom / plugin không trả lời.")
+            break
+    noi("\nTỔNG KẾT: " + "; ".join(f"{k}: {v}" for k, v in ket))
+    f = luu_bao_cao("tat_ca_" + folder.name)
+    print(f"Đã lưu báo cáo: {f}\nGửi file báo cáo cho Claude.")
+    return ma_ra
+
+
+def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a) -> int:
+    """Một máy / profile: gửi biến thể cho plugin, chờ dựng xong, học + kiểm định, lưu.
+    -> 0 ĐẠT · 1 chưa đạt / không chạy hết · 2 Lightroom không nhận."""
+    import autotone as at
+    import mo_hinh_lr as mh
+    if len(ds) < TOI_THIEU:
         noi(f"[!] Chỉ có {len(ds)} ảnh dùng được (cần ảnh RAW có mặt, không 1★, không chỉnh cục bộ).")
         return 2
     noi(f"Chọn {len(ds)} ảnh · khoá mô hình: {khoa}")
@@ -304,19 +366,16 @@ def main() -> int:
         noi(f"[!] {td.get('lech')} ảnh trả lại chưa khớp hẳn thông số gốc — xem plugin.log, kiểm ảnh đó.")
     if td.get("trang_thai") != "xong":
         noi("[!] Lượt học không chạy hết — chưa học.")
-        luu_bao_cao(khoa or "loi")
         return 1
     noi("Học mô hình + kiểm định để-lại-một-ảnh…")
     m, mau = hoc(ds, bien, mh.bang_anh(jobs), khoa, preview)
     if m is None:
         noi("[!] Quá ít ảnh đo được da (cần ≥ 4).")
-        luu_bao_cao(khoa)
         return 1
     mh.luu(m, mau)
     bao_cao_mo_hinh(m)
     shutil.rmtree(dest, ignore_errors=True)                  # mẫu đã lưu (.npz) đủ để học lại
-    f = luu_bao_cao(khoa)
-    noi(f"\nĐã lưu mô hình: {mh.thu_muc() / (khoa + '.json')}\nĐã lưu báo cáo: {f}\nGửi file báo cáo cho Claude.")
+    noi(f"\nĐã lưu mô hình: {mh.thu_muc() / (khoa + '.json')}")
     return 0 if m.dat else 1
 
 

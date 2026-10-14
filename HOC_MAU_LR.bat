@@ -41,7 +41,8 @@ del "%~dp0ket_qua_kiem\python.txt" >nul 2>&1
 set "BUOI=%~1"
 if "%BUOI%"=="" set /p "BUOI=  Thu muc buoi chup (vd G:\2709): "
 if "%BUOI%"=="" goto :eof
-"%PY%" "%~dp0hoc_mau_lr.py" "%BUOI%"
+rem  moi may / profile cua buoi (may da co mo hinh DAT thi bo qua)
+"%PY%" "%~dp0hoc_mau_lr.py" "%BUOI%" --tat_ca
 echo.
 for /f "delims=" %%f in ('dir /b /o-d "%~dp0ket_qua_kiem\hoc_mau_*.txt" 2^>nul') do (
   start "" notepad "%~dp0ket_qua_kiem\%%f"

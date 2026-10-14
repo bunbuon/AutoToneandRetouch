@@ -158,6 +158,44 @@ def main() -> int:
     sys.argv = ["hoc_mau_lr.py", "--phan_tich", khoa]
     H.DONG.clear()
     ktra("--phan_tich: học lại không cần Lightroom, vẫn ĐẠT", H.main() == 0 and mh.nap(khoa).dat)
+
+    print("4. chọn máy: --may / --tat_ca")
+    k_khac = mh.khoa_cua("MAY_KHAC", "Adobe Standard", "15.4")
+    ktra("cac_khoa: đủ máy của buổi, đông ảnh trước",
+         [k for k, _n in H.cac_khoa(items, cat)] == [khoa, k_khac], str(H.cac_khoa(items, cat)))
+    ds_k, k2 = H.chon_anh_hoc(items, cat, 20, may="khac")
+    ktra("--may khac: chỉ ảnh máy MAY_KHAC", k2 == k_khac and len(ds_k) == 1, f"{k2} {len(ds_k)}")
+    ds_k, k2 = H.chon_anh_hoc(items, cat, 20, khoa=khoa)
+    ktra("khoa= cho trước: đúng nhóm đó", k2 == khoa and len(ds_k) == N + 1, f"{k2} {len(ds_k)}")
+    dung, nk = threading.Event(), []
+    th = threading.Thread(target=plugin, args=(dung, nk), daemon=True)
+    th.start()
+    nhip = "vong=1\nkha_nang=curve1,xem1,hocmau1,truoc1\n"
+    (jobs / at.NHIP_PLUGIN).write_text(nhip, encoding="utf-8")          # nhịp mới (lượt học trên lâu)
+    sys.argv = ["hoc_mau_lr.py", str(buoi), "--jobs", str(jobs), "--tat_ca"]
+    H.DONG.clear()
+    try:
+        ma = H.main()
+    finally:
+        dung.set()
+        th.join(5)
+    bc = "\n".join(H.DONG)
+    ktra("--tat_ca: máy đã có mô hình ĐẠT -> bỏ qua, không gửi Lightroom; máy < 6 ảnh không học",
+         ma == 0 and not nk and "bỏ qua" in bc and k_khac not in bc.split("TỔNG KẾT")[-1], bc[-300:])
+    dung, nk = threading.Event(), []
+    th = threading.Thread(target=plugin, args=(dung, nk), daemon=True)
+    th.start()
+    (jobs / at.NHIP_PLUGIN).write_text(nhip, encoding="utf-8")
+    sys.argv = ["hoc_mau_lr.py", str(buoi), "--jobs", str(jobs), "--tat_ca", "--lai", "--n", str(N)]
+    H.DONG.clear()
+    try:
+        ma = H.main()
+    finally:
+        dung.set()
+        th.join(5)
+    bc = "\n".join(H.DONG)
+    ktra("--tat_ca --lai: học lại máy đó, ĐẠT, có tổng kết", ma == 0 and len(nk) == 1
+         and "TỔNG KẾT" in bc and f"{khoa}: ĐẠT" in bc, bc[-300:])
     for f in (GOC / "ket_qua_kiem").glob("hoc_mau_*.txt"):
         if f.stat().st_mtime > time.time() - 600:
             f.unlink()
