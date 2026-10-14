@@ -3659,7 +3659,7 @@ class LocSao(tk.Frame):
     PHEP = ("ge", "eq", "le")
     KY = {"ge": "≥", "eq": "=", "le": "≤"}
 
-    def __init__(self, cha, command=None, nen: str | None = None):
+    def __init__(self, cha, command=None, nen: str | None = None, co_chua: bool = True):
         self._nen = nen or nen_cua(cha)
         super().__init__(cha, background=self._nen)
         self._lenh = command
@@ -3679,13 +3679,16 @@ class LocSao(tk.Frame):
         self.c.bind("<Motion>", self._re_chuot, add="+")
         self.c.bind("<Leave>", lambda _e: self._dat_re(None), add="+")
         self.c.bind("<ButtonRelease-1>", self._bam, add="+")
-        self.chip_chua = _Chip(self, "chua", "Chưa có sao", None, self._nen)
-        self.chip_chua.pack(side="left", padx=(6, 0))
+        #  co_chua=False (14/10, màn Cân sáng): không có chip "Chưa có sao"
+        self.chip_chua = _Chip(self, "chua", "Chưa có sao", None, self._nen) if co_chua else None
+        if self.chip_chua is not None:
+            self.chip_chua.pack(side="left", padx=(6, 0))
         self.c.goi_y = GoiY(self.c, "Lọc theo số sao trong Lightroom — bấm ≥ / = / ≤ để "
                                     "đổi cách so, bấm lại đúng số sao để bỏ lọc. "
                                     "Chấm sao: bấm sao dưới ảnh, hoặc phím 0–5.")
         self.ve()
-        self.chip_chua.ve()
+        if self.chip_chua is not None:
+            self.chip_chua.ve()
 
     # ---- _Chip "Chưa có sao" gọi hai hàm này
     def dang(self) -> str:
@@ -3721,7 +3724,8 @@ class LocSao(tk.Frame):
         self.k = max(0, min(5, int(k)))
         self.chua = bool(chua)
         self.ve()
-        self.chip_chua.ve()
+        if self.chip_chua is not None:
+            self.chip_chua.ve()
 
     def dat_so(self, n) -> None:
         so = so_vn(n) if (n is not None and self.loc() is not None) else ""
@@ -3731,7 +3735,8 @@ class LocSao(tk.Frame):
 
     def _doi(self):
         self.ve()
-        self.chip_chua.ve()
+        if self.chip_chua is not None:
+            self.chip_chua.ve()
         if self._lenh:
             self._lenh()
 
@@ -3754,7 +3759,7 @@ class LocSao(tk.Frame):
                 "w_sao": w_sao, "x_so": x_so, "w": w}
 
     def rong_can(self) -> int:
-        return self._hinh()["w"] + 6 + self.chip_chua.rong_can()
+        return self._hinh()["w"] + (6 + self.chip_chua.rong_can() if self.chip_chua else 0)
 
     def _vung(self, x):
         h = self._hinh()

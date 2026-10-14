@@ -7,7 +7,8 @@ preview cũng thêm tính năng rate ảnh 1-5 sao như Lr. Và filter preview t
 Giao diện THẬT (App), catalog Lightroom GIẢ (SQLite, có rating + bản sao ảo), "plugin"
 giả: nhịp khai kha_nang, Lightroom "nhận" = đổi rating trong catalog giả.
   1. Số sao ĐANG có trong Lightroom (catalog) hiện trên ô; bản sao ảo không đè ảnh gốc.
-  2. Lọc ≥ / = / ≤ k sao, "Chưa có sao", bấm lại đúng k = bỏ lọc; số đếm.
+  2. Lọc ≥ / = / ≤ k sao, bấm lại đúng k = bỏ lọc; số đếm. Không còn chip "Loại 1★" /
+     "Chưa có sao" (user 14/10 — chỉ để phần rate sao); "Tất cả" bỏ cả lọc sao.
   3. Phím 0–5 chấm cho các tấm ĐANG CHỌN (Ctrl + bấm), hiện ngay, gửi request_sao.txt.
   4. Bấm sao thứ k dưới ô = k sao; bấm lại đúng số đó = bỏ sao; không đổi tấm đang chọn.
   5. Lightroom nhận xong -> số sao lấy lại từ catalog, thôi đè.
@@ -161,14 +162,16 @@ def main() -> int:
              and ten_o() == ["SK_0", "SK_1", "SK_2", "SK_4", "SK_5"], str(ten_o()))
         bam_sao(3)
         ktra("bấm lại đúng ★3 -> bỏ lọc, đủ 6 ảnh", ls.loc() is None and len(app.luoi.ds) == 6)
-        ls.chip_chua.event_generate("<ButtonRelease-1>")
-        ls._chon("chua") if ls.loc() is None else None        # event_generate cần cửa sổ hiện
-        vong()
-        ktra("'Chưa có sao' -> chỉ ảnh 0 sao", ten_o() == ["SK_0", "SK_4"], str(ten_o()))
-        ls._chon("chua")
-        vong()
+        ktra("không còn chip 'Loại 1★' / 'Chưa có sao' — chỉ Tất cả · Giữ + ô sao",
+             list(app.chip_loc.chip) == ["tat_ca", "giu"] and ls.chip_chua is None,
+             str(list(app.chip_loc.chip)))
         ls.phep = "ge"
-        ktra("bấm lại 'Chưa có sao' -> bỏ lọc", ls.loc() is None and len(app.luoi.ds) == 6)
+        bam_sao(4)
+        app.v_loc.set("tat_ca")
+        app._doi_chip_loc()
+        vong()
+        ktra("bấm 'Tất cả' khi đang lọc ★4 -> bỏ cả lọc sao, đủ 6 ảnh",
+             ls.loc() is None and len(app.luoi.ds) == 6, str(ten_o()))
         # ---------------------------------------------------------------- 3. phím 0–5
         p0, p1 = str(buoi / "SK_0.ARW"), str(buoi / "SK_1.ARW")
         app.luoi.chon(p0)

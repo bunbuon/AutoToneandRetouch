@@ -932,9 +932,6 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         elif ma == "loc":
             self._chon_khau("phan_tich")
             self._mo_thiet_lap(True, nhom="loc")
-            if self.items:
-                self.v_loc.set("loai")
-                self._cap_nhat_luoi()
         elif ma == "can_sang":
             self._chon_khau("phan_tich")
         elif ma == "retouch":
@@ -3304,15 +3301,17 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         hang = tk.Frame(dc, background=m["toi"])
         hang.pack(fill="x")
         self.v_loc = tk.StringVar(value="tat_ca")
+        #[[ 14/10 (user): "Bỏ luôn phần Loại 1 sao và Chưa có sao. Chỉ cần để phần Rate
+        #   sao là đc. Chọn thì tự filter theo" — ảnh 1★ lọc bằng ô sao (= ★). "Tất cả"
+        #   bỏ cả lọc sao. ]]
         self.chip_loc = gd.ChipLoc(hang, self.v_loc,
                                    [("tat_ca", "Tất cả", None),
-                                    ("giu", "Giữ", m["xanh"]),
-                                    ("loai", "Loại 1★", m["do"])],
-                                   command=self._doi_loc,
+                                    ("giu", "Giữ", m["xanh"])],
+                                   command=self._doi_chip_loc,
                                    nen=m["toi"])
         self.chip_loc.pack(side="left")
-        #  14/10: lọc theo số sao trong Lightroom (≥ / = / ≤ k sao, Chưa có sao)
-        self.loc_sao = gd.LocSao(hang, command=self._doi_loc, nen=m["toi"])
+        #  14/10: lọc theo số sao trong Lightroom (≥ / = / ≤ k sao)
+        self.loc_sao = gd.LocSao(hang, command=self._doi_loc, nen=m["toi"], co_chua=False)
         self.loc_sao.pack(side="left", padx=(4, 0))
         self.v_xem = tk.StringVar(value="luoi")
         self.v_kieu_xem = tk.StringVar(value="luoi")
@@ -4421,6 +4420,13 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         """Bấm một cảnh: lọc lưới theo cảnh đó; bấm lại cảnh đang lọc hoặc
         “Tất cả cảnh” (s = None) = bỏ lọc."""
         self._canh_chon = None if (s is None or self._canh_chon == s) else s
+        self._doi_loc()
+
+    def _doi_chip_loc(self):
+        """Bấm chip: "Tất cả" = xem lại cả buổi -> bỏ luôn lọc sao."""
+        ls = getattr(self, "loc_sao", None)
+        if ls is not None and self.v_loc.get() == "tat_ca" and ls.loc() is not None:
+            ls.dat_loc()
         self._doi_loc()
 
     def _doi_loc(self):
