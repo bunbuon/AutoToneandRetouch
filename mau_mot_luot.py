@@ -187,6 +187,17 @@ def _srgb(P, mien):
     return cl.mien_sang_srgb(np.asarray(P, dtype=np.float64), mien) if P is not None and len(P) else None
 
 
+#: điểm ảnh tối đa mỗi loại khi DỰ ĐOÁN (14/10: chuỗi 1.054 ảnh mất ~5 phút tính với đủ
+#: 4.000 / 4.000 / 8.000 điểm; thống kê da / vùng trắng / % cháy không đổi đáng kể khi bớt)
+SO_DIEM = {"da": 900, "trung": 1500, "khung": 3000}
+
+
+def _bot(P, n: int):
+    if P is None or len(P) <= n:
+        return P
+    return np.asarray(P)[np.linspace(0, len(P) - 1, n).round().astype(int)]
+
+
 def mau_cua(r: dict, cfg: dict) -> dict | None:
     """Điểm ảnh sRGB của ảnh đo trước: da (đúng kiểu đo với đích), trung tính, khung."""
     import curve_da
@@ -201,7 +212,8 @@ def mau_cua(r: dict, cfg: dict) -> dict | None:
         return None
     rgb, ngoai = curve_da.dich_cua(r, cfg, kieu)
     lt = at.mau_dich_lab(rgb)
-    return {"da": _srgb(P, mien), "trung": _srgb(d.get("trung"), mien), "khung": _srgb(d.get("khung"), mien),
+    return {"da": _srgb(_bot(P, SO_DIEM["da"]), mien), "trung": _srgb(_bot(d.get("trung"), SO_DIEM["trung"]), mien),
+            "khung": _srgb(_bot(d.get("khung"), SO_DIEM["khung"]), mien),
             "kieu": kieu, "mien": mien, "ngoai": ngoai,
             "h_t": math.degrees(math.atan2(lt[2], lt[1])),
             "q_t": float(math.hypot(lt[1], lt[2])) / max(float(lt[0]), 1e-6),
@@ -277,11 +289,19 @@ def chay_lr(items: list, mm: dict, cfg: dict, du) -> dict:
             if c0 >= nang:
                 delta = 0.0
             else:
-                while delta > 0:
-                    c = _phan_chay(du(r, dict(s, Exposure2012=_f(r.get("old_exposure")) + delta), "khung"))
-                    if c - c0 <= hard:
-                        break
-                    delta = round(max(0.0, delta - 0.05), 4)
+                def chay_them(d_, r=r, s=s, c0=c0):
+                    return _phan_chay(du(r, dict(s, Exposure2012=_f(r.get("old_exposure")) + d_), "khung")) - c0
+                if chay_them(delta) > hard:
+                    #  chia đôi [0, delta] tìm mức tăng lớn nhất còn trong hl_hard_pct (6 lần dự đoán
+                    #  thay vì tới 20 lần bước 0.05 — chuỗi 1.054 ảnh tính chậm 14/10)
+                    lo, hi = 0.0, delta
+                    for _ in range(6):
+                        mid = (lo + hi) / 2.0
+                        if chay_them(mid) > hard:
+                            hi = mid
+                        else:
+                            lo = mid
+                    delta = round(lo, 2)
         c1 = _phan_chay(du(r, dict(s, Exposure2012=_f(r.get("old_exposure")) + delta), "khung"))
         hl = -int(round(min(hl_tran, gain * max(0.0, c1 - trig))))
         moi[id(r)] = (delta, min(int(r.get("hl_adj") or 0), hl), c0, c1)
@@ -347,7 +367,9 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
             theo.setdefault(r.get("scene"), []).append(r)
     for _canh, ds in theo.items():
         es, lech = [], []
-        for r in ds:
+        #  mức của CẢNH là trung vị: 12 ảnh rải đều đủ (cảnh 300 ảnh tính 300 lần thì chậm)
+        mau = [ds[int(i)] for i in np.linspace(0, len(ds) - 1, min(len(ds), 12)).round()]
+        for r in mau:
             m = mm[id(r)]
             s = thong_so_tone(r, m["cu"])
             Lt = float(m["mau"]["L_t"])
@@ -368,7 +390,7 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
             if f_lo >= 0:
                 es.append(lo)
                 continue
-            for _ in range(10):
+            for _ in range(7):
                 mid = (lo + hi) / 2.0
                 if f(mid) < 0:
                     lo = mid
@@ -422,7 +444,11 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     on_c = float(cfg.get("da_on_chroma") or 0.10)
     phan = float(cfg.get("hsl_da_cuoi_phan") or 0.8)
     tran_h, tran_s = (float(v) for v in (cfg.get("hsl_da_cuoi_tran") or (15, 20)))
-    hsl_bat = bool(cfg.get("hsl_da_cuoi") or cfg.get("hsl_da_ky_yeu"))
+    #[[ 14/10: chuỗi một lượt chạy ĐỦ năm bước (user: "đưa màu của da mặt ảnh về đúng với màu
+    #   đó dù can thiệp qua bước nào") — ô HSL da / Color Grading của giao diện cũ chỉ bật /
+    #   tắt đường cũ. Buổi 2709 chạy với hai ô đó tắt: da dự đoán cuối lệch hue −3.4°. ]]
+    hsl_bat = bool(cfg.get("hsl_da_cuoi") or cfg.get("hsl_da_ky_yeu") or cfg.get("mot_luot_hsl", True))
+    grade_bat = bool(cfg.get("grade") or cfg.get("mot_luot_cg", True))
     md = dict(cfg.get("mau_da_dich") or {})
     co_trang = bool((md.get("trang") or {}).get("trong"))
     wb_bat = bool(cfg.get("source") == "catalog" and cfg.get("wb") != "off"
@@ -437,7 +463,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
           "wb_canh_giu": 0, "wb_canh_chua_do": 0, "wb_k": 0.0, "wb_tint": 0.0, "trang_lech": None,
           "hsl": {"bat": hsl_bat, "mau": True, "dai": "Orange", "hue": 0, "sat": 0, "n": 0,
                   "canh_chinh": 0, "canh_on": 0, "canh_chan": 0},
-          "grade_bat": bool(cfg.get("grade")), "grade_n": 0,
+          "grade_bat": grade_bat, "grade_n": 0,
           "mot_luot": {"anh": 0, "canh": 0, "curve": 0, "ngoai_pham_vi": 0, "chay": {},
                        "sang": {}, "lum": {"canh": 0, "muc": 0}, "L_dich": 0.0, "L0": 0.0,
                        "L1": 0.0, "L2": 0.0}}
@@ -490,38 +516,58 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
         m["L_tone"] = m["L"]
         r["da_lech0"] = (round(m["dh0"], 1), round(math.exp(m["lr0"]), 3))
 
-    #  ---- 2a. HSL Luminance Cam — độ sáng da còn thiếu sau Tone (một mức mỗi cảnh)
-    lum_canh: dict = {}
+    #  ---- 2a. HSL Luminance Cam — độ sáng da còn thiếu sau Tone, một mức mỗi LOẠT chụp
+    #[[ 14/10: theo LOẠT, không theo cảnh — DSC09395 (da đã sáng hơn đích sau Tone) nằm trong
+    #   cảnh mà các loạt khác tối hơn: mức cảnh +25 làm nó sáng quá. Loạt = cùng khoảnh khắc,
+    #   cùng ánh sáng; loạt không đo được da theo trung vị các loạt của cảnh. ]]
+    lum_cua: dict = {}                       # id(r) -> mức
     if sang_bat:
-        for canh, ds in theo_canh.items():
-            dung = [r for r in ds if id(r) in mm and mm[id(r)]["s"].get("LuminanceAdjustmentOrange") is not None]
+        k_canh: dict = {}
+        theo_loat = at.chia_loat([r for r in items if not r.get("bw")], cfg)
+        for loat in theo_loat:
+            dung = [r for r in loat if id(r) in mm and mm[id(r)]["s"].get("LuminanceAdjustmentOrange") is not None]
             if not dung:
                 continue
             res = float(np.median([mm[id(r)]["mau"]["L_t"] - mm[id(r)]["L"] for r in dung]))
             if abs(res) <= tol_L:
+                for r in loat:
+                    lum_cua[id(r)] = 0
                 continue
-            kl = []
-            for r in dung:
-                m = mm[id(r)]
-                s = m["s"]
-                L_ = _da(du(r, dict(s, LuminanceAdjustmentOrange=_f(s.get("LuminanceAdjustmentOrange")) + 10)))[0]
-                kl.append((L_ - m["L"]) / 10.0)
-            k_l = float(np.median(kl))
+            canh = dung[0].get("scene")
+            if canh not in k_canh:
+                kl = []
+                for r in [x for x in theo_canh.get(canh, []) if id(x) in mm][:8]:
+                    m = mm[id(r)]
+                    s = m["s"]
+                    L_ = _da(du(r, dict(s, LuminanceAdjustmentOrange=_f(s.get("LuminanceAdjustmentOrange")) + 10)))[0]
+                    kl.append((L_ - m["L"]) / 10.0)
+                k_canh[canh] = float(np.median(kl)) if kl else 0.0
+            k_l = k_canh[canh]
             if not k_l > 0.0003:
                 continue
             li = int(round(float(np.clip(res / k_l, -tran_L, tran_L))))
-            if li:
-                lum_canh[canh] = li
-        kq["mot_luot"]["lum"] = {"canh": len(lum_canh),
-                                 "muc": int(np.median(list(lum_canh.values()))) if lum_canh else 0}
+            for r in loat:
+                lum_cua[id(r)] = li
+        #  loạt không đo được: trung vị các loạt đã có mức trong cùng cảnh
+        for canh, ds in theo_canh.items():
+            co = [lum_cua[id(r)] for r in ds if id(r) in lum_cua]
+            if not co:
+                continue
+            tv = int(round(float(np.median(co))))
+            for r in ds:
+                lum_cua.setdefault(id(r), tv)
+        muc = [v for v in lum_cua.values() if v]
+        kq["mot_luot"]["lum"] = {"anh": len(muc), "canh": len({r.get("scene") for r in items
+                                                               if lum_cua.get(id(r))}),
+                                 "muc": int(np.median(muc)) if muc else 0}
         for r in items:
-            if r.get("bw") or (id(r) not in mm and r.get("scene") not in lum_canh):
+            if r.get("bw") or id(r) not in lum_cua:
                 continue
             cu_r = mm[id(r)]["cu"] if id(r) in mm else cu_cua(r)
             goc = _lum_goc(r, cu_r)
             if goc is None:
                 continue
-            li = lum_canh.get(r.get("scene"), 0)
+            li = lum_cua.get(id(r), 0)
             moi_l = float(np.clip(goc + li, -100, 100))
             dang = _f(cu_r.get(at.COT_HSL_L[0]), goc)
             if abs(moi_l - dang) >= 0.5:
@@ -765,7 +811,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     tran_cg = min(sat_max / 100.0 * at.GRADE_OKLAB_100, float(cfg.get("trang_tran_cg") or 0.003))
     for r in items:
         r["gr_hue"] = r["gr_sat"] = 0
-        if not cfg.get("grade") or id(r) not in mm:
+        if not grade_bat or id(r) not in mm:
             continue
         m = mm[id(r)]
         d = at._goc_lech(m["mau"]["h_t"] - m["h_wb"])                     # noqa: SLF001
@@ -777,7 +823,8 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
             continue
         huong = math.radians(m["h_wb"]) + math.copysign(math.pi / 2.0, d)
         r["_gr_v"] = sat / 100.0 * at.GRADE_OKLAB_100 * np.array([math.cos(huong), math.sin(huong)])
-    kq["grade_n"] = at._grade_hoan_tat(items, cfg, tran_cg)                # noqa: SLF001
+    kq["grade_n"] = at._grade_hoan_tat(items, dict(cfg, grade=True) if grade_bat else cfg,  # noqa: SLF001
+                                       tran_cg)
 
     #  ---- dự đoán cuối + báo cáo
     bao = []
@@ -961,9 +1008,14 @@ def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
         for canh, ls in theo_canh.items():
             if len(ls) >= 2 and sum(ls) / len(ls) >= TI_LE_CANH:
                 can |= {id(r) for r in ds if r.get("scene") == canh}
-    if not (cfg.get("curve_da") or cfg.get("curve_chay")):
-        kq["anh_sua"] = [theo[k] for k in can]
+    #  14/10: chuỗi một lượt luôn có bước Curve (kéo cả L — đích R G B): lượt 2 cho ảnh lệch
+    #  chạy cả khi ô "Curve da" tắt; tắt hẳn (mot_luot_curve_da False) thì chỉ BÁO, không đánh
+    #  dấu ảnh nào là "đã qua lượt 2" (14/10: 888 ảnh bị đánh dấu dù không ghi gì)
+    if not (cfg.get("curve_da") or cfg.get("curve_chay") or cfg.get("mot_luot_curve_da", True)):
+        kq["anh_sua"] = []
+        kq["can"] = len(can)
         return kq
+    cfg = dict(cfg, curve_da=True, curve_da_sang=bool(cfg.get("mot_luot_sang_dich", True)))
     #  curve lượt 2: ghép lên curve VỪA ÁP; ảnh đo được trong nhóm cần sửa giải trên số đo
     #  của nó, cùng loạt thì ket_thuc gom một curve; tấm không đo trong loạt theo loạt
     ds_sua = [theo[k] for k in can if k in theo]

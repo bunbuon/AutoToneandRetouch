@@ -172,8 +172,16 @@ def main() -> int:
          kq["mot_luot"]["sang"].get("canh", 0) >= 1
          and all(abs(t - d) <= abs(a - d) + 1e-3 and abs(t - d) <= 0.02 for a, t, d in tv.values()),
          f"{kq['mot_luot']['sang']} · (trước, sau Tone, đích) {tv}")
-    ktra("Tone đã đưa sáng vào vùng ổn -> HSL không kéo Luminance (bước sau không chỉnh)",
-         kq["mot_luot"]["lum"]["canh"] == 0, str(kq["mot_luot"]["lum"]))
+    #  Luminance theo LOẠT (14/10): loạt đã trong vùng ổn sau Tone -> không kéo; loạt còn tối /
+    #  sáng -> kéo đúng chiều (bước sau chỉ chỉnh phần còn thiếu)
+    sai_l = []
+    for loat in at.chia_loat([r for r in do_dc], CFG):
+        tv = float(np.median([r["mau_da_bao"]["L"]["tone"] - r["mau_da_bao"]["L"]["dich"] for r in loat]))
+        lum = {int(r["mau_da_bao"]["L"]["lum"]) for r in loat}
+        if len(lum) != 1 or (abs(tv) <= 0.02 and lum != {0}) or (tv < -0.02 and not min(lum) > 0)                 or (tv > 0.02 and not max(lum) < 0):
+            sai_l.append((round(tv, 3), sorted(lum)))
+    ktra("Luminance Cam theo loạt: trong vùng ổn -> 0, tối hơn -> dương, sáng hơn -> âm (một mức mỗi loạt)",
+         not sai_l, f"{sai_l} · {kq['mot_luot']['lum']}")
     ktra("báo cáo có R G B % (trước / cuối / đích)", all(len(do_dc[0]["mau_da_bao"]["rgb"][k] or []) == 3
                                                           for k in ("truoc", "cuoi", "dich")),
          str(do_dc[0]["mau_da_bao"]["rgb"]))

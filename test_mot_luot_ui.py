@@ -94,8 +94,10 @@ def main() -> int:
         doc_cfg = app.read_cfg
 
         def cfg_(**kw):
+            #  bài này canh LUỒNG; kéo sáng về L đích (14/10) có bài riêng (test_mau_mot_luot) —
+            #  ảnh giả không cùng độ sáng với màu đích nên tắt ở đây
             return dict(doc_cfg(), mau_da_dich={"ten": "m", "trong": DICH}, curve_da=True,
-                        curve_chay=False, **kw)
+                        curve_chay=False, mot_luot_sang_dich=False, **kw)
         app.read_cfg = lambda: cfg_(mau_mot_luot=True)
 
         def mo_luot(items, pha="do"):
@@ -193,10 +195,12 @@ def main() -> int:
             p = tam / f"{Path(r['path']).stem}_do.png"
             Image.fromarray(anh_cua[Path(r["path"]).stem]).save(p)
             do = cd.do_anh(r, p, cfg4)
-            h, q = cd.hue_q(cd.thong_ke(do["da_cu"], do["mien"]))
+            lab_ = cd.thong_ke(do["da_cu"], do["mien"])
+            h, q = cd.hue_q(lab_)
             if r in L1:
                 h, q = cd.hue_q(at.mau_dich_lab(DICH))
-            r["du_doan_lr"] = {"h": h, "q": q, "L": 0.7, "kieu": "cu", "trung_ab": None,
+            #  14/10: soát xét cả L — dự đoán L đúng bằng số đo (ảnh giả không lệch sáng)
+            r["du_doan_lr"] = {"h": h, "q": q, "L": float(lab_[0]), "kieu": "cu", "trung_ab": None,
                                "khoa": "k", "ngoai_pham_vi": []}
         items = ml_ds + [CU]
         hop = mo_luot(items, pha="ap")

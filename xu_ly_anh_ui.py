@@ -1120,7 +1120,8 @@ class XuLyAnhMixin:
             if sa.get("sua"):
                 cau += f" · {gd.so_vn(sa['sua'])} ảnh hoàn thiện thêm (lượt 2)"
             elif sa.get("lech"):
-                cau += f" · {gd.so_vn(sa['lech'])} ảnh lệch (bật Curve da để tự hoàn thiện)"
+                cau += (f" · {gd.so_vn(sa['lech'])} ảnh lệch (bật Curve da để tự hoàn thiện)"
+                        if sa.get("can") else f" · {gd.so_vn(sa['lech'])} ảnh lệch (Curve không chỉnh thêm được)")
             if sa.get("ca_buoi"):
                 cau += " · ⚠ lệch nhiều cả buổi — nên học màu Lightroom lại (HOC_MAU_LR.bat)"
             if not xl.get("ml_lich_su"):
