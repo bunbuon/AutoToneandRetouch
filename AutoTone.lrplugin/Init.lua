@@ -114,6 +114,16 @@ elseif type(DanhSach.runTheoDoi) ~= "function" then
     DanhSach = nil
 end
 
+--[[ SaoCore (14/10): app chấm sao 0–5 (jobs/request_sao.txt) -> rating trong
+     Lightroom. Nạp riêng, cùng lý do các module trên. ]]
+local okSao, Sao = pcall(require, "SaoCore")
+if not okSao then
+    rawLog("khong nap duoc SaoCore -> " .. tostring(Sao))
+    Sao = nil
+elseif type(Sao.runRequest) ~= "function" then
+    Sao = nil
+end
+
 --[[ DenoiseCore (13/10): bật Denoise của Lightroom cho ảnh ISO cao — yêu cầu
      RIÊNG app gửi sau khi job áp xong. Nạp riêng, cùng lý do các module trên. ]]
 local okDN, Denoise = pcall(require, "DenoiseCore")
@@ -235,6 +245,13 @@ LrTasks.startAsyncTask(function()
         --[[ 13/10: Denoise ảnh ISO cao (jobs/request_denoise.txt). ĐỔI việc ảnh
              (thay module / vùng chọn của người dùng) nên chỉ chạy khi autoApply
              bật — tắt tự áp là người dùng không muốn plugin đụng vào ảnh. ]]
+        --[[ 14/10: chấm sao từ app (jobs/request_sao.txt). Người dùng BẤM chấm từng
+             lần, không phải việc tự động -> chạy bất kể autoApply. Đặt TRƯỚC
+             Denoise: Denoise một lượt dài, sao thì người dùng đang nhìn chờ. ]]
+        if Sao then
+            local _, errS = Core.try("autoSao", Sao.runRequest)
+            if errS then Core.log("LOI cham sao: " .. tostring(errS)) end
+        end
         if Denoise and prefs.autoApply then
             local _, errDN = Core.try("autoDenoise", Denoise.runRequest)
             if errDN then Core.log("LOI denoise: " .. tostring(errDN)) end
@@ -251,6 +268,11 @@ LrTasks.startAsyncTask(function()
                 da = da + 0.2
                 if XemPreset and LrFileUtils.exists(LrPathUtils.child(Core.jobDir(),
                         XemPreset.YEU_CAU)) then
+                    break
+                end
+                --  14/10: app vừa chấm sao -> làm ngay, đừng để người dùng chờ 2 giây
+                if Sao and LrFileUtils.exists(LrPathUtils.child(Core.jobDir(),
+                        Sao.YEU_CAU)) then
                     break
                 end
             end

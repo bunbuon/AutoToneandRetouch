@@ -559,6 +559,49 @@ src_init = (GOC / "Init.lua").read_text(encoding="utf-8")
 ktra("Init.lua goi DanhSach.runTheoDoi + Denoise.runRequest (Denoise chi khi autoApply)",
      "DanhSach.runTheoDoi" in src_init and "Denoise and prefs.autoApply" in src_init)
 
+# ---- 9. SaoCore (14/10): app chấm sao -> rating trong Lightroom
+L.execute('''
+SAO = { ghi = {}, tu_choi_0 = false, lan = 0, ten = nil }
+local function anh(p) return { p = p, setRawMetadata = function(self, k, v)
+    if k == "rating" and v == 0 and SAO.tu_choi_0 then error("rating 0 khong hop le") end
+    if k == "rating" then SAO.ghi[self.p] = (v == nil) and "nil" or v end end } end
+SAO.ds = { ["G:/S/A1.ARW"] = anh("A1"), ["G:/S/A2.ARW"] = anh("A2") }
+local cat2 = { findPhotoByPath = function(self, p) return SAO.ds[p] end,
+               withWriteAccessDo = function(self, ten, f, opt)
+                   SAO.lan = SAO.lan + 1; SAO.ten = ten; f() end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat2 end
+''')
+SC = L.eval('require("SaoCore")')
+ma_s, ds_s = SC.phanTich("#ma=s1\n4\tG:/S/A1.ARW\n0\tG:/S/A2.ARW\n9\tG:/S/X.ARW\nrac\n")
+ktra("SaoCore.phanTich: ma + (sao, đường dẫn), bỏ số ngoài 0–5 / dòng rác",
+     ma_s == "s1" and len(ds_s) == 2 and ds_s[1].sao == 4 and ds_s[1].p == "G:/S/A1.ARW"
+     and ds_s[2].sao == 0)
+at_.yeu_cau_sao({"G:/S/A1.ARW": 3}, job_dir=jobs)
+at_.yeu_cau_sao({"G:/S/A2.ARW": 5, "G:/S/A3.ARW": 2}, job_dir=jobs)   # gộp, A3 không có
+ktra("yeu_cau_sao: hai lần bấm trước khi Lightroom nhận -> GỘP một file",
+     at_._doc_yc_sao(jobs / at_.TEN_YC_SAO) == {"G:/S/A1.ARW": 3, "G:/S/A2.ARW": 5,
+                                                "G:/S/A3.ARW": 2})
+SC.runRequest()
+GS = L.globals().SAO
+kq_s = at_._doc_kv(jobs / at_.TEN_KQ_SAO)
+ktra("SaoCore: đặt rating đúng từng ảnh, MỘT giao dịch ghi, ảnh không có trong catalog đếm riêng",
+     GS.ghi["A1"] == 3 and GS.ghi["A2"] == 5 and GS.lan == 1 and kq_s.get("xong") == "2"
+     and kq_s.get("khong_thay") == "1" and not at_.dang_cho_sao(job_dir=jobs), str(kq_s))
+L.execute('SAO.tu_choi_0 = true; SAO.lan = 0')
+at_.yeu_cau_sao({"G:/S/A1.ARW": 0}, job_dir=jobs)
+SC.runRequest()
+kq_s = at_._doc_kv(jobs / at_.TEN_KQ_SAO)
+ktra("SaoCore: Lightroom không nhận rating 0 -> thử lại bằng nil (bỏ sao), không báo lỗi",
+     GS.ghi["A1"] == "nil" and GS.lan == 2 and kq_s.get("xong") == "1"
+     and kq_s.get("loi") == "0", f"{GS.ghi['A1']} · {kq_s}")
+ktra("Init.lua: gọi Sao.runRequest (bất kể autoApply) + thức ngay khi có request_sao.txt",
+     "Sao.runRequest" in src_init and "Sao.YEU_CAU" in src_init
+     and src_init.index("Sao.runRequest") < src_init.index("Denoise and prefs.autoApply"))
+ktra("Nhịp plugin khai khả năng sao1 (app biết plugin mới)",
+     "sao1" in (GOC / "AutoToneCore.lua").read_text(encoding="utf-8").split("M.KHA_NANG =")[1]
+     .splitlines()[0])
+
 shutil.rmtree(tam, ignore_errors=True)
 print("TAT CA DAT" if not LOI else f"{len(LOI)} LOI")
 sys.exit(1 if LOI else 0)

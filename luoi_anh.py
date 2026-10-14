@@ -235,6 +235,11 @@ class LuoiAnh(tk.Frame):
     Sync mức sang các tấm đã chọn. khi_doi_chon(ds_chon) — tập đã chọn vừa đổi.
     Ô có "rieng" mang CHẤM VÀNG góc trái trên (ảnh có mức riêng) — như dấu
     "đã chỉnh" của Lightroom / Evoto.
+
+    khi_sao(ds_path, n) (14/10, "rate ảnh 1-5 sao như Lr"): CHẤM SAO trên lưới —
+    hàng 5 sao ở dòng tên dưới ô (bấm sao thứ k = k sao; bấm lại đúng số đang có =
+    bỏ sao), phím 0–5 chấm cho các tấm ĐANG CHỌN. Ảnh chưa có sao chỉ hiện hàng sao
+    mờ khi rê chuột / đang chọn. Không truyền khi_sao thì lưới như cũ (viên "N★").
     """
 
     tu_cuon = True          # Cuon nhường lăn chuột cho lưới
@@ -248,7 +253,7 @@ class LuoiAnh(tk.Frame):
 
     def __init__(self, cha, khi_chon=None, khi_mo=None, nen: str | None = None,
                  khi_trong=None, dai: bool = False, chon_nhieu: bool = False,
-                 khi_doi_chon=None, khi_bam=None):
+                 khi_doi_chon=None, khi_bam=None, khi_sao=None):
         self._nen = nen or gd.MAU["toi"]
         super().__init__(cha, background=self._nen)
         self._khi_chon = khi_chon
@@ -258,6 +263,9 @@ class LuoiAnh(tk.Frame):
         self._khi_mo = khi_mo
         self._chon_nhieu = bool(chon_nhieu)
         self._khi_doi_chon = khi_doi_chon
+        self._khi_sao = khi_sao
+        self._o_re: int | None = None        # ô đang rê chuột (hàng sao mờ hiện ra)
+        self._hop_sao: dict = {}             # chỉ số ô -> (x0, y0, rộng 1 sao, cao)
         self.ds: list = []
         self._vi_tri: dict = {}            # path -> chỉ số
         self.dang_chon: str | None = None
@@ -368,6 +376,12 @@ class LuoiAnh(tk.Frame):
                                ("<Up>", (0, -1)), ("<Down>", (0, 1))):
             c.bind(phim, lambda _e, d=(dx, dy): self._di_phim(*d))
         c.bind("<Return>", lambda _e: self._mo_dang_chon())
+        if khi_sao is not None:
+            for n in range(6):
+                c.bind(str(n), lambda _e, n=n: self._sao_phim(n))
+                c.bind(f"<KP_{n}>", lambda _e, n=n: self._sao_phim(n))
+            c.bind("<Motion>", self._re_chuot, add="+")
+            c.bind("<Leave>", lambda _e: self._dat_re(None), add="+")
         self.bind("<Destroy>", self._huy, add="+")
         self.dat_trong("Chưa chọn buổi chụp.\nChọn thư mục ảnh RAW để bắt đầu.")
 
@@ -392,10 +406,12 @@ class LuoiAnh(tk.Frame):
         self.ds = list(ds)
         self._vi_tri = {o["path"]: i for i, o in enumerate(self.ds)}
         moi = [o["path"] for o in self.ds]
-        if not giu_cuon or cu != moi:
-            if set(cu) != set(moi):
-                self.canvas.yview_moveto(0)
-                self.canvas.xview_moveto(0)
+        #[[ 14/10: giu_cuon=True mà tập ảnh đổi (Lightroom xoá ảnh, chấm sao khi đang
+        #   lọc sao) -> GIỮ chỗ đang cuộn (kẹp lại ở _sap_xep), không nhảy về đầu lưới.
+        #   Đổi bộ lọc / buổi gọi giu_cuon=False -> về đầu như trước. ]]
+        if not giu_cuon and set(cu) != set(moi):
+            self.canvas.yview_moveto(0)
+            self.canvas.xview_moveto(0)
         if self.dang_chon not in self._vi_tri:
             self.dang_chon = None
         cu_chon = set(self.da_chon)
@@ -634,6 +650,10 @@ class LuoiAnh(tk.Frame):
         nhieu = len(self.da_chon) > 1
         bo_g = self._bo_goc_o(ow)
         lh_n = f_nhan.metrics("linespace")
+        self._hop_sao = {}
+        cham_sao = self._khi_sao is not None and not self.ngang
+        f_sao = gd._phong(self, gd.phong(9, "so")) if cham_sao else None
+        w_sao = (f_sao.measure("★") + 2) if cham_sao else 0
         for i in range(i0, i1):
             o = self.ds[i]
             x, y = self._o_xy(i)
@@ -703,7 +723,9 @@ class LuoiAnh(tk.Frame):
             #  số sao trong Lightroom: 2–5 sao viên hổ phách; 1 sao chỉ khi ô
             #  không mang nhãn Loại (lưới Retouch)
             sao = int(o.get("sao") or (1 if o.get("sao1") else 0) or 0)
-            if sao >= 2 or (sao == 1 and o.get("nhan") != "loai"):
+            if cham_sao:
+                pass                    # hàng sao ở dòng tên (dưới), không cần viên
+            elif sao >= 2 or (sao == 1 and o.get("nhan") != "loai"):
                 self._vien(c, x + le, y + ah - le, f"{sao}★", "sw",
                            m["do_nen"] if sao == 1 else m["nhan_nen"],
                            m["do"] if sao == 1 else m["nhan"], f_so, alpha=230)
@@ -719,7 +741,23 @@ class LuoiAnh(tk.Frame):
             if self.ngang:
                 continue
             ten = o.get("ten", "")
-            c.create_text(x + 2, y + ah + 6, text=self._cat(ten, f_ten, ow - 4),
+            rong_ten = ow - 4
+            if cham_sao:
+                #[[ 14/10: HANG 5 SAO cuoi dong ten, nhu Lightroom — sao da cham mau ho
+                #   phach, sao trong mo; anh chua co sao chi hien hang mo khi re chuot /
+                #   dang chon (do roi mat). Cho cham trong ma ten dai thi ten nhuong. ]]
+                hien = sao > 0 or chon or phu or i == self._o_re
+                x0s = x + ow - 2 - 5 * w_sao
+                hs = f_sao.metrics("linespace")
+                self._hop_sao[i] = (x0s, y + ah + 4, w_sao, hs + 4)
+                if hien:
+                    rong_ten = max(0, x0s - x - 8)
+                    for k in range(1, 6):
+                        c.create_text(x0s + (k - 0.5) * w_sao, y + ah + 6, text="★",
+                                      anchor="n", font=f_sao, tags=("o", "sao"),
+                                      fill=(m["nhan"] if k <= sao else
+                                            (m["mo2"] if i == self._o_re else m["mo3"])))
+            c.create_text(x + 2, y + ah + 6, text=self._cat(ten, f_ten, rong_ten),
                           anchor="nw",
                           fill=(m["chu"] if chon else (m["mo3"] if bo else m["mo"])),
                           font=f_ten, tags=("o",))
@@ -906,11 +944,61 @@ class LuoiAnh(tk.Frame):
         i = hang * self._cot + cot
         return i if i < len(self.ds) else None
 
+    def _sao_tai(self, x, y):
+        """(chỉ số ô, k sao) nếu (x, y) — toạ độ cửa sổ — nằm trên hàng sao của một ô."""
+        if self._khi_sao is None or self.ngang or not self._hop_sao:
+            return None
+        cx, cy = self.canvas.canvasx(x), self.canvas.canvasy(y)
+        for i, (x0, y0, w, h) in self._hop_sao.items():
+            if y0 <= cy <= y0 + h and x0 <= cx < x0 + 5 * w:
+                return i, min(5, int((cx - x0) // w) + 1)
+        return None
+
+    def _re_chuot(self, e):
+        i = self._o_tai(e.x, e.y)
+        if i is None:
+            #  dòng tên nằm DƯỚI ô ảnh: _o_tai vẫn tính (cao ô gồm dòng tên)
+            st = self._sao_tai(e.x, e.y)
+            i = st[0] if st else None
+        self._dat_re(i)
+
+    def _dat_re(self, i):
+        if i != self._o_re:
+            self._o_re = i
+            self._ve()
+
+    def _sao_phim(self, n: int):
+        """Phím 0–5: chấm n sao cho mọi tấm đang chọn (như Lightroom)."""
+        ds = self.ds_chon() or ([self.dang_chon] if self.dang_chon else [])
+        if ds and self._khi_sao is not None:
+            self._khi_sao(ds, int(n))
+        return "break"
+
+    def dat_sao(self, ds_path, n: int) -> None:
+        """Đổi số sao hiển thị của các ô (vẽ lại ngay, chưa chờ Lightroom)."""
+        doi = False
+        for p in ds_path:
+            i = self._vi_tri.get(p)
+            if i is not None and self.ds[i].get("sao") != n:
+                self.ds[i]["sao"] = n
+                doi = True
+        if doi:
+            self._ve()
+
     def _bam(self, e, kieu: str = ""):
         """Bấm một ô. kieu "them" (Ctrl + bấm): thêm / bớt tấm đó khỏi nhóm
         đang chọn; "day" (Shift + bấm): chọn dãy từ tấm đang xem tới tấm bấm.
         Hai kiểu đó KHÔNG đổi tấm đang xem — chỉ bấm thường mới đổi."""
         self.canvas.focus_set()
+        st = self._sao_tai(e.x, e.y) if not kieu else None
+        if st is not None:
+            #  bấm hàng sao: chấm ĐÚNG tấm đó (bấm lại đúng số đang có = bỏ sao),
+            #  không đổi tấm đang chọn — như bấm sao dưới ảnh trong Lightroom
+            i, k = st
+            o = self.ds[i]
+            cu = int(o.get("sao") or 0)
+            self._khi_sao([o["path"]], 0 if cu == k else k)
+            return "break"
         i = self._o_tai(e.x, e.y)
         if i is None:
             return
@@ -952,6 +1040,8 @@ class LuoiAnh(tk.Frame):
             self._khi_bam(p)
 
     def _bam_dup(self, e):
+        if self._sao_tai(e.x, e.y) is not None:
+            return "break"              # bấm nhanh hai lần lên hàng sao: không mở ảnh
         i = self._o_tai(e.x, e.y)
         if i is not None and self._khi_mo is not None:
             self._khi_mo(self.ds[i]["path"])

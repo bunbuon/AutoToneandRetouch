@@ -3644,3 +3644,170 @@ class ThanhTienDo(tk.Canvas):
             a = anh_bo_goc(self, rw, h, h // 2, MAU["nhan"], MAU["noi2"])
             self._anh.append(a)
             self.create_image(0, 0, anchor="nw", image=a)
+
+
+class LocSao(tk.Frame):
+    """Lọc lưới theo SỐ SAO như thanh lọc Lightroom (14/10, user: "filter preview theo
+    mức rate"):  [≥ ★★★☆☆]  [Chưa có sao]
+
+    Bấm dấu so sánh: ≥ → = → ≤. Bấm sao thứ k: lọc theo k sao; bấm lại đúng k: bỏ
+    lọc. "Chưa có sao": chỉ ảnh 0 sao (bấm lại: bỏ). command() khi đổi.
+        loc() -> None | (phép, k)  phép "ge" / "eq" / "le" / "chua"
+        khop(sao) -> bool          dat_so(n) -> nhớ số ảnh khớp (không vẽ — chip "Tất cả"
+                                   đã đếm sau khi lọc)"""
+
+    PHEP = ("ge", "eq", "le")
+    KY = {"ge": "≥", "eq": "=", "le": "≤"}
+
+    def __init__(self, cha, command=None, nen: str | None = None):
+        self._nen = nen or nen_cua(cha)
+        super().__init__(cha, background=self._nen)
+        self._lenh = command
+        self.phep, self.k, self.chua = "ge", 0, False
+        self._so = ""
+        self._re = None                      # "phep" | 1..5 | None
+        self._f = _phong(self, phong(9, "vua"))
+        self._fs = _phong(self, phong(10, "so"))
+        self._fn = _phong(self, phong(9, "so"))
+        lh = self._f.metrics("linespace")
+        self._cao = lh + 2 * max(5, round(lh * 0.42))
+        self._anh = None
+        self.c = tk.Canvas(self, height=self._cao, width=10, highlightthickness=0,
+                           borderwidth=0, background=self._nen, cursor="hand2")
+        self.c.tu_cuon = False
+        self.c.pack(side="left")
+        self.c.bind("<Motion>", self._re_chuot, add="+")
+        self.c.bind("<Leave>", lambda _e: self._dat_re(None), add="+")
+        self.c.bind("<ButtonRelease-1>", self._bam, add="+")
+        self.chip_chua = _Chip(self, "chua", "Chưa có sao", None, self._nen)
+        self.chip_chua.pack(side="left", padx=(6, 0))
+        self.c.goi_y = GoiY(self.c, "Lọc theo số sao trong Lightroom — bấm ≥ / = / ≤ để "
+                                    "đổi cách so, bấm lại đúng số sao để bỏ lọc. "
+                                    "Chấm sao: bấm sao dưới ảnh, hoặc phím 0–5.")
+        self.ve()
+        self.chip_chua.ve()
+
+    # ---- _Chip "Chưa có sao" gọi hai hàm này
+    def dang(self) -> str:
+        return "chua" if self.chua else ""
+
+    def _chon(self, _ma):
+        self.chua = not self.chua
+        self._doi()
+
+    # ---- trạng thái
+    def loc(self):
+        if self.chua:
+            return ("chua", 0)
+        return (self.phep, self.k) if self.k > 0 else None
+
+    def khop(self, sao) -> bool:
+        try:
+            sao = int(sao or 0)
+        except (TypeError, ValueError):
+            sao = 0
+        if self.chua:
+            return sao <= 0
+        if self.k <= 0:
+            return True
+        if self.phep == "eq":
+            return sao == self.k
+        if self.phep == "le":
+            return sao <= self.k
+        return sao >= self.k
+
+    def dat_loc(self, phep: str = "ge", k: int = 0, chua: bool = False) -> None:
+        self.phep = phep if phep in self.PHEP else "ge"
+        self.k = max(0, min(5, int(k)))
+        self.chua = bool(chua)
+        self.ve()
+        self.chip_chua.ve()
+
+    def dat_so(self, n) -> None:
+        so = so_vn(n) if (n is not None and self.loc() is not None) else ""
+        if so != self._so:
+            self._so = so
+            self.ve()
+
+    def _doi(self):
+        self.ve()
+        self.chip_chua.ve()
+        if self._lenh:
+            self._lenh()
+
+    # ---- hình học: [đệm][Sao][đệm nhỏ][≥][đệm][★ x5][số][đệm]
+    def _hinh(self):
+        lh = self._f.metrics("linespace")
+        dem = round(lh * 0.8)
+        x = dem
+        #  không ghi chữ "Sao" trong ô: năm ngôi sao đã nói là lọc sao (rê chuột có chú
+        #  thích) — hàng đầu trang 1366 px tiếng Anh không còn chỗ cho chữ "Rating"
+        x_phep = x - round(lh * 0.2)
+        w_phep = max(self._fs.measure(k) for k in self.KY.values()) + round(lh * 0.5)
+        x_sao = x_phep + w_phep + round(lh * 0.2)
+        w_sao = self._fs.measure("★") + 3
+        #  số ảnh khớp KHÔNG vẽ ở đây: chip "Tất cả" bên trái đã đếm sau khi lọc sao
+        #  (vẽ thêm thì hàng đầu trang chật, 1366 px đè nút Preset LR)
+        x_so = x_sao + 5 * w_sao
+        w = x_so + dem
+        return {"x": x, "x_phep": x_phep, "w_phep": w_phep, "x_sao": x_sao,
+                "w_sao": w_sao, "x_so": x_so, "w": w}
+
+    def rong_can(self) -> int:
+        return self._hinh()["w"] + 6 + self.chip_chua.rong_can()
+
+    def _vung(self, x):
+        h = self._hinh()
+        if h["x_phep"] - 4 <= x < h["x_phep"] + h["w_phep"]:
+            return "phep"
+        if h["x_sao"] <= x < h["x_sao"] + 5 * h["w_sao"]:
+            return min(5, int((x - h["x_sao"]) // h["w_sao"]) + 1)
+        return None
+
+    def _re_chuot(self, e):
+        self._dat_re(self._vung(e.x))
+
+    def _dat_re(self, v):
+        if v != self._re:
+            self._re = v
+            self.ve()
+
+    def _bam(self, e):
+        v = self._vung(e.x)
+        if v == "phep":
+            i = self.PHEP.index(self.phep)
+            self.phep = self.PHEP[(i + 1) % len(self.PHEP)]
+            if self.k <= 0 and not self.chua:
+                self.ve()               # chưa lọc: chỉ đổi dấu, chưa có gì để lọc lại
+                return
+        elif isinstance(v, int):
+            self.chua = False
+            self.k = 0 if self.k == v else v
+        else:
+            return
+        self._doi()
+
+    def ve(self):
+        h = self._hinh()
+        w, cao = h["w"], self._cao
+        dang = self.k > 0 and not self.chua
+        if dang:
+            nen, chu, phu, sao_co, sao_khong = "#e7e6e2", "#17181a", "#55524d", "#b7791f", "#b9b5ad"
+            vien = None
+        else:
+            nen = MAU["noi2"] if self._re is not None else MAU["noi"]
+            chu, phu, sao_co, sao_khong = MAU["chu"], MAU["mo"], MAU["nhan"], MAU["mo3"]
+            vien = MAU["vien"]
+        c = self.c
+        c.delete("all")
+        tk.Canvas.configure(c, width=w)
+        self._anh = anh_bo_goc(c, w, cao, cao // 2, nen, self._nen, vien)
+        c.create_image(0, 0, anchor="nw", image=self._anh)
+        mau_phep = (MAU["nhan"] if self._re == "phep" and not dang else
+                    ("#17181a" if self._re == "phep" else phu))
+        c.create_text(h["x_phep"] + h["w_phep"] / 2, cao / 2, text=self.KY[self.phep],
+                      font=self._fs, fill=mau_phep)
+        xem = self._re if isinstance(self._re, int) else (self.k if dang else 0)
+        for i in range(1, 6):
+            c.create_text(h["x_sao"] + (i - 0.5) * h["w_sao"], cao / 2 + 0.5, text="★",
+                          font=self._fs, fill=sao_co if i <= xem else sao_khong)

@@ -3311,6 +3311,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                                    command=self._doi_loc,
                                    nen=m["toi"])
         self.chip_loc.pack(side="left")
+        #  14/10: lọc theo số sao trong Lightroom (≥ / = / ≤ k sao, Chưa có sao)
+        self.loc_sao = gd.LocSao(hang, command=self._doi_loc, nen=m["toi"])
+        self.loc_sao.pack(side="left", padx=(4, 0))
         self.v_xem = tk.StringVar(value="luoi")
         self.v_kieu_xem = tk.StringVar(value="luoi")
         self.chon_xem = gd.NhomNutIcon(hang, self.v_kieu_xem,
@@ -3413,9 +3416,12 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         o.grid(row=0, column=0, sticky="nsew")
         o.rowconfigure(0, weight=1)
         o.columnconfigure(0, weight=1)
+        #  14/10: chấm sao (hàng sao dưới ô, phím 0–5) + chọn nhiều (Ctrl / Shift) để
+        #  chấm cả nhóm — như Lightroom
         self.luoi = luoi_anh.LuoiAnh(o, khi_chon=self._chon_tu_luoi,
                                      khi_mo=self._mo_mot_ct,
-                                     khi_trong=self.pick_folder)
+                                     khi_trong=self.pick_folder,
+                                     chon_nhieu=True, khi_sao=self._cham_sao)
         self.luoi.grid(row=0, column=0, sticky="nsew")
         try:
             co = int(float(thanh_luoi.doc_kv("co_o", 0) or 0))
@@ -3435,6 +3441,10 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self.o_mot_ct.grid_remove()
         self.xem_ct = khung_anh.KhungAnh(self.o_mot_ct, khi_phim=self._buoc_ct,
                                          khi_dup=self._ve_luoi_ct)
+        for _n in range(6):                  # 14/10: phím 0–5 chấm sao tấm đang xem
+            for _phim in (str(_n), f"<KP_{_n}>"):
+                self.xem_ct.canvas.bind(_phim, lambda _e, n=_n: (
+                    self._cham_sao([getattr(self, "_anh_ct", None)], n), "break")[1])
         #  thanh dưới xếp TRƯỚC ảnh (pack side=bottom): ảnh giãn hết chỗ còn lại
         #  mà không bao giờ đè mất thanh khi cửa sổ thấp
         thanh = tk.Frame(self.o_mot_ct, background=m["toi"])
@@ -3535,7 +3545,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
             vt = f"{i + 1}/{len(self.luoi.ds)}  ·  " if i is not None else ""
         except Exception:                                    # noqa: BLE001
             vt = ""
-        self.lbl_mot_ct.configure(text=f"{vt}{Path(path).name}" + (f"  ·  {mo_ta}" if mo_ta else ""))
+        sao = self._sao_cua()(path)
+        self.lbl_mot_ct.configure(text=f"{vt}{Path(path).name}" + (f"  ·  {'★' * sao}" if sao else "")
+                                  + (f"  ·  {mo_ta}" if mo_ta else ""))
 
     def _buoc_ct(self, d: int):
         """←/→ trên ảnh lớn: tấm trước / sau theo thứ tự lưới (đang lọc)."""
@@ -3619,7 +3631,16 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         return ds, uu
 
     def _sao_cua(self):
-        """Hàm path -> số sao: sao tool gắn khi lọc + sao trong bản xuất Lightroom."""
+        """Hàm path -> số sao. 14/10: nguồn catalog đọc được catalog -> số sao ĐANG có
+        trong Lightroom (catalog_lr); không thì sao tool gắn khi lọc + sao trong bản
+        xuất. Sao vừa chấm trong app (chờ Lightroom nhận) đè lên."""
+        cho = {k: v[0] for k, v in (getattr(self, "_sao_cho", None) or {}).items()}
+        lr = getattr(self, "_sao_lr", None) if self.source_value() == "catalog" else None
+        if lr is not None:
+            def sao_lr(p):
+                k = at.khoa_duong_dan(p)
+                return int(cho.get(k, lr.get(k, 0)) or 0)
+            return sao_lr
         d = {}
         for k, row in dict(getattr(self, "export", None) or {}).items():
             try:
@@ -3635,12 +3656,61 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                 except (TypeError, ValueError):
                     pass
 
+        d.update(cho)
+
         def sao(p):
             try:
                 return int(d.get(at.khoa_duong_dan(p)) or 0)
             except Exception:                                # noqa: BLE001
                 return 0
         return sao
+
+    def _cham_sao(self, paths, n: int):
+        """14/10 (user: "rate ảnh 1-5 sao như Lr"): chấm n sao (0 = bỏ) cho các ảnh —
+        hiện ngay trên lưới, gửi plugin đặt rating trong Lightroom (SaoCore.lua)."""
+        paths = [str(p) for p in paths if p]
+        if not paths:
+            return
+        if self.source_value() != "catalog":
+            self.status("Chấm sao chỉ có khi nguồn là catalog Lightroom (Thiết lập → Nguồn "
+                        "thông số).", gd.MAU["canh"])
+            return
+        if at.KHA_NANG_SAO not in at.plugin_kha_nang():
+            self.status("Plugin trong Lightroom là bản cũ — chưa chấm sao được. Cài lại "
+                        "AutoTone bản đầy đủ rồi khởi động lại Lightroom.", gd.MAU["canh"])
+            return
+        n = max(0, min(5, int(n)))
+        try:
+            at.yeu_cau_sao({p: n for p in paths})
+        except OSError as ex:
+            self.status(f"Không gửi được lệnh chấm sao: {ex}", gd.MAU["do"])
+            return
+        if not hasattr(self, "_sao_cho"):
+            self._sao_cho = {}
+        luc = time.monotonic()
+        for p in paths:
+            self._sao_cho[at.khoa_duong_dan(p)] = (n, luc)
+        loc = getattr(self, "loc_sao", None)
+        if loc is not None and loc.loc() is not None:
+            self._cap_nhat_luoi(giu_cuon=True)          # đang lọc sao: ảnh có thể ra / vào
+        else:
+            self.luoi.dat_sao(paths, n)
+        if getattr(self, "_che_do_ct", "luoi") == "mot" and self._anh_ct in paths:
+            self._nap_mot_ct(self._anh_ct)
+        if n:
+            self.status(f"Đã gửi Lightroom: {gd.so_vn(len(paths))} ảnh → {'★' * n}.",
+                        gd.MAU["mo"])
+        else:
+            self.status(f"Đã gửi Lightroom: bỏ sao {gd.so_vn(len(paths))} ảnh.", gd.MAU["mo"])
+        if getattr(self, "_hen_sao", None) is None:
+            self._hen_sao = self.after(10000, self._soi_sao)
+
+    def _soi_sao(self):
+        """10 giây sau lần chấm: Lightroom chưa nhận thì nói ra (Lightroom tắt / treo)."""
+        self._hen_sao = None
+        if at.dang_cho_sao():
+            self.status("Lightroom chưa nhận lệnh chấm sao — Lightroom có đang mở không? "
+                        "Sao sẽ được đặt khi Lightroom chạy lại.", gd.MAU["canh"])
 
     def _doi_xem(self):
         """[Lưới ảnh | Bảng số] — cùng một danh sách, hai cách nhìn."""
@@ -3710,6 +3780,11 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #[[ 12/10 (giao dien moi): CHIP LOC Giu / Loai 1★ / Can xem + CANH dang
         #   chon o cot trai — so dem tren CA buoi. Chua phan tich thi chua co
         #   nhan: chi "Tat ca" co so, loc khong tac dung. ]]
+        loc_sao = getattr(self, "loc_sao", None)
+        if loc_sao is not None:
+            if loc_sao.loc() is not None:
+                ds = [o for o in ds if loc_sao.khop(o.get("sao"))]
+            loc_sao.dat_so(len(ds))
         chip = getattr(self, "chip_loc", None)
         if chip is not None:
             if self.items:
@@ -3745,7 +3820,10 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         except Exception:                                    # noqa: BLE001
             traceback.print_exc()
         if not ds:
-            if self.items:
+            if loc_sao is not None and loc_sao.loc() is not None:
+                luoi.dat_trong("Không có ảnh nào khớp bộ lọc sao.\nBấm lại đúng số sao "
+                               "đang chọn để bỏ lọc.", co_nut=False)
+            elif self.items:
                 luoi.dat_trong("Không có ảnh nào khớp bộ lọc.\nBấm “Tất cả” hoặc "
                                "“Tất cả cảnh” để xem lại cả buổi.", co_nut=False)
             elif self.folder() is None:
@@ -3914,13 +3992,16 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         """Đọc lại danh sách ảnh của buổi trong catalog. -> True nếu vừa đổi."""
         root = self.folder()
         moi = None
+        sao = None
         if root and self.source_value() == "catalog":
             #  13/10: catalog đọc thẳng trước (không cần plugin chạy), plugin sau
+            #  14/10: cùng lượt đọc số sao ĐANG có trong Lightroom
             try:
                 import catalog_lr
-                moi = catalog_lr.anh_trong_thu_muc(root, self.v_recursive.get())
+                sao = catalog_lr.sao_trong_thu_muc(root, self.v_recursive.get())
+                moi = None if sao is None else set(sao)
             except Exception:                                # noqa: BLE001
-                moi = None
+                moi = sao = None
             if moi is None:
                 try:
                     kq = at.doc_ds_lr(root)
@@ -3929,7 +4010,16 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                     moi = None
         cu = getattr(self, "_ds_lr", None)
         self._ds_lr = moi
-        return cu != moi
+        cu_sao = getattr(self, "_sao_lr", None)
+        self._sao_lr = sao
+        #  sao vừa chấm: catalog đã có đúng số đó -> thôi đè; 60 giây vẫn chưa -> tin catalog
+        cho = getattr(self, "_sao_cho", None)
+        if cho:
+            luc = time.monotonic()
+            for k, (n, t) in list(cho.items()):
+                if (sao is not None and int(sao.get(k, 0)) == n) or luc - t > 60:
+                    del cho[k]
+        return cu != moi or cu_sao != sao
 
     def _r_cua(self, path):
         """Kết quả đo của một ảnh theo đường dẫn (None nếu chưa phân tích)."""

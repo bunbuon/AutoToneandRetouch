@@ -10637,6 +10637,53 @@ def yeu_cau_denoise(paths: list, ma: str, job_dir: Path | None = None) -> Path:
     return dest
 
 
+#[[ CHAM SAO TU APP (14/10) — user: "Ben ngoai preview cung them tinh nang rate anh 1-5
+#   sao nhu Lr". App ghi jobs/request_sao.txt ("<so sao>\t<duong dan>" moi dong), plugin
+#   (SaoCore.lua) dat rating trong Lightroom; app doc lai so sao THAT tu catalog
+#   (catalog_lr.sao_trong_thu_muc). Plugin cu khong co SaoCore -> nhip khong khai "sao1". ]]
+TEN_YC_SAO = "request_sao.txt"
+TEN_KQ_SAO = "ketqua_sao.txt"
+KHA_NANG_SAO = "sao1"
+
+
+def _doc_yc_sao(f: Path) -> dict:
+    ra = {}
+    try:
+        for dong in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not dong or dong.startswith("#") or "\t" not in dong:
+                continue
+            n, _, p = dong.partition("\t")
+            try:
+                ra[p] = max(0, min(5, int(n)))
+            except ValueError:
+                pass
+    except OSError:
+        pass
+    return ra
+
+
+def yeu_cau_sao(bang: dict, job_dir: Path | None = None) -> Path:
+    """Nhờ plugin đặt số sao {đường dẫn: 0–5} trong Lightroom. Yêu cầu trước CHƯA được
+    nhận thì GỘP vào (bấm phím liên tiếp) — cùng ảnh thì lần bấm sau thắng."""
+    d = Path(job_dir or LR_JOB_DIR)
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / TEN_YC_SAO
+    gop = _doc_yc_sao(dest) if dest.is_file() else {}
+    for p, n in bang.items():
+        gop[str(p)] = max(0, min(5, int(n)))
+    tmp = d / (TEN_YC_SAO + ".part")
+    ma = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    tmp.write_text(f"#ma={ma}\n" + "".join(f"{n}\t{p}\n" for p, n in gop.items()),
+                   encoding="utf-8")
+    os.replace(tmp, dest)
+    return dest
+
+
+def dang_cho_sao(job_dir: Path | None = None) -> bool:
+    """Còn yêu cầu chấm sao Lightroom chưa nhận."""
+    return (Path(job_dir or LR_JOB_DIR) / TEN_YC_SAO).is_file()
+
+
 def dung_denoise(ma: str, job_dir: Path | None = None) -> Path:
     """Xin plugin DỪNG lượt Denoise `ma` ngay sau ảnh đang làm. Plugin xoá file khi
     đã dừng; lượt khác mã thì plugin bỏ qua (và xoá) — không dừng nhầm lượt sau."""

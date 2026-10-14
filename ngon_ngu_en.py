@@ -1974,4 +1974,33 @@ TU_DIEN.update({
     'không thấy da trên ảnh dựng': 'no skin found on the render',
     '  — không nén': '  — not compressed',
     ' (da quá sáng)': ' (skin too bright)',
+    #  14/10: chấm sao / lọc sao như Lightroom + dừng Denoise
+    'Sao': 'Rating',
+    'Chưa có sao': 'Unrated',
+    ('Lọc theo số sao trong Lightroom — bấm ≥ / = / ≤ để đổi cách so, bấm lại đúng số sao '
+     'để bỏ lọc. Chấm sao: bấm sao dưới ảnh, hoặc phím 0–5.'):
+        ('Filter by Lightroom star rating — click ≥ / = / ≤ to change the comparison, click '
+         'the same star again to clear. To rate: click the stars under a photo, or press 0–5.'),
+    'Chấm sao chỉ có khi nguồn là catalog Lightroom (Thiết lập → Nguồn thông số).':
+        'Rating is only available when the source is the Lightroom catalog (Settings → Source).',
+    ('Plugin trong Lightroom là bản cũ — chưa chấm sao được. Cài lại AutoTone bản đầy đủ '
+     'rồi khởi động lại Lightroom.'):
+        ('The Lightroom plugin is outdated — cannot set ratings yet. Reinstall AutoTone '
+         '(full installer), then restart Lightroom.'),
+    'Không gửi được lệnh chấm sao: {}': 'Could not send the rating request: {}',
+    'Đã gửi Lightroom: {} ảnh → {}.': 'Sent to Lightroom: {} photos → {}.',
+    'Đã gửi Lightroom: bỏ sao {} ảnh.': 'Sent to Lightroom: cleared the rating of {} photos.',
+    ('Lightroom chưa nhận lệnh chấm sao — Lightroom có đang mở không? Sao sẽ được đặt khi '
+     'Lightroom chạy lại.'):
+        ('Lightroom has not picked up the rating request — is Lightroom open? Ratings will '
+         'be set when Lightroom runs again.'),
+    'Không có ảnh nào khớp bộ lọc sao.\nBấm lại đúng số sao đang chọn để bỏ lọc.':
+        'No photos match the rating filter.\nClick the selected star again to clear the filter.',
+    ('Đã dừng Denoise — Lightroom không bật thêm ảnh nào ({}/{} ảnh đã bật trước khi dừng; '
+     'Lightroom vẫn xử lý nốt các ảnh đó ở nền).'):
+        ('Denoise stopped — Lightroom will not enable any more photos ({}/{} photos were enabled '
+         'before stopping; Lightroom still finishes those in the background).'),
+    'đã dừng — {}/{} ảnh': 'stopped — {}/{} photos',
+    'Không gửi được lệnh dừng Denoise: {}': 'Could not send the Denoise stop request: {}',
+    'Đã huỷ Denoise — Lightroom chưa nhận yêu cầu.': 'Denoise cancelled — Lightroom had not picked up the request.',
 })

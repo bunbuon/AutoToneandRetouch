@@ -1433,6 +1433,28 @@ User gửi PDF 4 trang (Cân sáng · Retouch · Xử lý & xuất · Bộ icon)
   / DanhSachCore chỉ có khi cài bản đầy đủ + khởi động lại Lightroom. Từ nay user muốn build Mac
   CHỈ arm (`loai_mac=apple-silicon`); Intel chỉ khi user yêu cầu (latest.json khi đó thiếu khối
   mac-x86_64 — máy Intel giữ bản cũ).
+- 14/10 (user: "cần test trước hết các tính năng. Chưa cần đóng gói vội ... tạo file .bat để
+  test toàn bộ tính năng"): **KIEM_TOAN_BO.bat** + `kiem_toan_bo.py` — 83 bài theo nhóm tính năng,
+  mỗi bài một AUTOTONE_DATA tạm, AUTOTONE_CATALOG_LR=0, lupa tự cài vào `.lupa_kiem`; ra
+  `ket_qua_kiem/<giờ>/tong_ket.txt` + .zip. Bài hỏng vì lý do đã biết khai trong `DA_BIET` (mẫu chữ
+  dòng lỗi) — chỉ khi MỌI dòng lỗi khớp mới tính "đã biết". Thêm bài mới: thêm vào `NHOM`.
+  Menu thử tay (mục 3 tuỳ chọn chép plugin mã nguồn vào Modules, trỏ jobs về repo — bản cài mở
+  lên chép lại plugin của nó). `DANH_SACH_THU_TAY.txt` = những gì phải nhìn bằng mắt.
+  Chưa đóng gói khi user chưa báo (build v87 14/10 sáng chỉ nằm trong dist/, không phát hành).
+- 14/10 **Dừng Denoise**: app ghi `jobs/dung_denoise.txt` (ma=<lượt>), DenoiseCore xét trước MỖI
+  ảnh -> dừng, trả vùng chọn + module; file của lượt khác bị xoá (không dừng nhầm), gửi lượt mới
+  cũng xoá. Ảnh đã bật trước khi dừng Lightroom vẫn xử lý nền (SDK không huỷ được).
+- 14/10 **Chấm sao / lọc sao như Lightroom**: số sao ĐANG có đọc thẳng catalog
+  (`catalog_lr.sao_trong_thu_muc`: Adobe_images.rating, bản sao ảo không đè; thiếu cột -> sao 0,
+  vẫn giữ danh sách ảnh) cùng nhịp 3 giây với danh sách ảnh (`_doc_ds_lr` -> `_sao_lr`). Chấm:
+  hàng 5 sao dưới ô (`LuoiAnh(khi_sao=)`, bấm lại đúng số = bỏ sao), phím 0–5 cho các tấm đang
+  chọn (lưới Cân sáng nay `chon_nhieu=True`), phím 0–5 ở ảnh lớn -> `at.yeu_cau_sao` (gộp khi
+  Lightroom chưa nhận) -> `SaoCore.lua` (một withWriteAccessDo; rating 0 bị từ chối thì thử nil).
+  Sao vừa chấm đè hiển thị (`_sao_cho`) tới khi catalog có đúng số đó / 60 giây. Plugin cũ (nhịp
+  không khai `sao1`) / nguồn .xmp -> không gửi, nói lý do. Lọc: `gd.LocSao` (≥ / = / ≤ k sao,
+  "Chưa có sao") lọc TRƯỚC khi đếm chip. `LuoiAnh.dat_ds(giu_cuon=True)` nay giữ chỗ cuộn cả khi
+  tập ảnh đổi. Kiểm: test_cham_sao.py (thử ngược 4/4), kiem_plugin_lua51 mục 9. CHƯA thử trên
+  Lightroom thật (setRawMetadata rating 0).
 
 
 ## WB theo As Shot (3/10 chiều) — bước 2 của quy trình preset bỏ trống WB, BẬT

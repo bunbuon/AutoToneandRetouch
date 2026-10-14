@@ -24,6 +24,17 @@ A. CÂN SÁNG — GIAO DIỆN (v82–v86)
          (Cần plugin mới. CHƯA từng thử trên Lightroom thật — mục quan trọng.)
   [ ] 10. Hộp nhập key (máy chưa có key) luôn nằm TRÊN app, không dùng được app khi
           chưa nhập; tắt hộp = tắt app.
+  [ ] 10b. Denoise đang chạy (Lightroom đã nhận) -> bấm Dừng: Lightroom KHÔNG bật thêm
+          ảnh nào, hộp báo "Đã dừng Denoise (x/y ảnh)", Lightroom về module cũ.
+
+A2. CHẤM SAO / LỌC SAO NHƯ LIGHTROOM (14/10 — cần plugin mới, chọn C ở mục 3)
+  [ ] 10c. Lưới hiện số sao ĐANG có trong Lightroom (★ vàng dưới ô); chấm sao trong
+          Lightroom -> lưới đổi theo trong ~3 giây.
+  [ ] 10d. Bấm sao thứ k dưới ô -> ảnh đó k sao trong Lightroom; bấm lại đúng số đó -> bỏ sao.
+  [ ] 10e. Chọn ảnh (Ctrl / Shift + bấm để chọn nhiều) rồi bấm phím 0–5 -> cả nhóm đổi sao.
+          Ở ảnh lớn: phím 0–5 chấm tấm đang xem.
+  [ ] 10f. Ô lọc sao trên đầu lưới: bấm ★3 = ảnh ≥ 3 sao; bấm dấu ≥ để đổi = / ≤; bấm
+          lại ★3 = bỏ lọc; "Chưa có sao" = ảnh chưa chấm. Chip "Tất cả" đếm theo bộ lọc.
 
 B. ĐỌC RAW MỚI (cloud 13/10)
   [ ] 11. Thư mục CR3 Canon: ảnh dọc đứng đúng chiều trong lưới; tốc / khẩu / ISO hiện.

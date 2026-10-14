@@ -47,7 +47,7 @@ _CUM_TU: dict = {}             # cụm đã cắt khoảng trắng -> tiếng An
 #  chữ tiếng Việt KHÔNG DẤU trên giao diện (bộ lọc chỉ nhận ra tiếng Việt qua dấu)
 _KHONG_DAU = {"Chung": "All", "Nam": "Male", "Nhanh": "Fast", "Da": "Skin", "DA": "SKIN",
               "Sau": "After", "Ra": "Output", "Vao": "Input", "Xem to": "View large",
-              "HSL da": "Skin HSL", "Mo": "Open", "Dung": "Stop"}
+              "HSL da": "Skin HSL", "Mo": "Open", "Dung": "Stop", "Sao": "Rating"}
 _CUM_THEM = {"nhịp cuối": "last heartbeat", "ngày trước": "days ago", "giờ trước": "hours ago",
              "phút trước": "minutes ago", "giây trước": "seconds ago", "ảnh": "photos",
              "cảnh": "scenes", "buổi": "session", "ngày": "days", "giờ": "hours", "phút": "min",
