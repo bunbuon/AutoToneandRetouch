@@ -2953,6 +2953,42 @@ class _Chip(tk.Canvas):
                              fill=so)
 
 
+class ChipBat(tk.Frame):
+    """MỘT chip BẬT / TẮT gắn vào một BooleanVar (14/10: "Mask da" trên đầu lưới) —
+    cùng hình chip lọc; bật thì nền sáng như chip đang chọn."""
+
+    def __init__(self, cha, variable: tk.BooleanVar, chu: str, cham=None, command=None,
+                 nen: str | None = None):
+        self._nen = nen or nen_cua(cha)
+        super().__init__(cha, background=self._nen)
+        self._bien, self._lenh = variable, command
+        self.chip = _Chip(self, "bat", chu, cham, self._nen)
+        self.chip.pack(side="left")
+        self._vet = variable.trace_add("write", lambda *_a: self.chip.ve())
+        self.bind("<Destroy>", self._huy, add="+")
+        self.chip.ve()
+
+    def _huy(self, _e=None):
+        try:
+            self._bien.trace_remove("write", self._vet)
+        except (tk.TclError, ValueError):
+            pass
+
+    def dang(self) -> str:
+        try:
+            return "bat" if self._bien.get() else ""
+        except tk.TclError:
+            return ""
+
+    def _chon(self, _ma):
+        self._bien.set(not self._bien.get())
+        if self._lenh:
+            self._lenh()
+
+    def rong_can(self) -> int:
+        return self.chip.rong_can() + 8
+
+
 class ChipLoc(tk.Frame):
     """Hàng chip lọc (Tất cả · Giữ · Loại 1★ · Cần xem) gắn vào một StringVar.
 

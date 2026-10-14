@@ -196,11 +196,12 @@ def do_anh(r: dict | None, anh, cfg: dict, xoay: str | None = None) -> dict:
     cu = [c for c in cu if c is not None and len(c)]
     if cu:
         out["da_cu"] = cl.tuyen_tinh_sang_mien(_mau(np.vstack(cu), toi_da), mien)
-    #  vùng trung tính: lưới thưa (~240k điểm), bỏ da và ô mặt nới rộng
+    #  vùng trung tính: lưới thưa (~240k điểm), bỏ da, ô MỌI mặt nới rộng (14/10: không
+    #  chỉ mặt chủ thể — mn.moi_mat) và điểm cháy (kênh chạm trần lệch màu, không xét WB được)
     buoc = max(1, int(math.sqrt(H * W / 240_000)))
     sub = arr[::buoc, ::buoc]
     trong_mat = np.zeros(sub.shape[:2], bool)
-    for x, y, w, h in m["mat"]:
+    for x, y, w, h in mn.moi_mat(r, W, H, m["mat"]):
         x0, y0 = int(max(0, (x - 0.3 * w) / buoc)), int(max(0, (y - 0.3 * h) / buoc))
         x1, y1 = int((x + 1.3 * w) / buoc) + 1, int((y + 1.3 * h) / buoc) + 1
         trong_mat[y0:y1, x0:x1] = True
@@ -208,7 +209,7 @@ def do_anh(r: dict | None, anh, cfg: dict, xoay: str | None = None) -> dict:
     lab = _lab_px(at.srgb_to_linear(px))
     lo, hi, cmax = BO_TRUNG_TINH
     tt = ((lab[:, 0] >= lo) & (lab[:, 0] <= hi) & (np.hypot(lab[:, 1], lab[:, 2]) < cmax)
-          & ~at.skin_mask(px) & ~trong_mat.reshape(-1))
+          & ~at.skin_mask(px) & ~trong_mat.reshape(-1) & (px.max(axis=1) * 255 < NGUONG_CHAY))
     out["trung_ti_le"] = float(tt.mean())
     if tt.any():
         out["trung"] = cl.srgb_sang_mien(_mau(px[tt], toi_da, 1), mien)

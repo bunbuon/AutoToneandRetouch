@@ -3310,6 +3310,11 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #  14/10: lọc theo số sao trong Lightroom (≥ / = / ≤ k sao)
         self.loc_sao = gd.LocSao(hang, command=self._doi_loc, nen=m["toi"], co_chua=False)
         self.loc_sao.pack(side="left", padx=(4, 0))
+        #  14/10 (user: "show cái lớp mask của da đang dùng để tool xử lý … cho từng ảnh")
+        self.v_mask = tk.BooleanVar(value=False)
+        self.chip_mask = gd.ChipBat(hang, self.v_mask, "Mask da", cham="#3cdc5a",
+                                    command=self._doi_mask, nen=m["toi"])
+        self.chip_mask.pack(side="left", padx=(8, 0))
         self.v_xem = tk.StringVar(value="luoi")
         self.v_kieu_xem = tk.StringVar(value="luoi")
         self.chon_xem = gd.NhomNutIcon(hang, self.v_kieu_xem,
@@ -3523,6 +3528,17 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
             bd = (lambda im, _mp=mp: mo_phong_anh.ap(im, _mp))
             if truoc is None and src is not None:
                 truoc = src
+        mask_cau = ""
+        self._mask_ct_cho = None
+        if getattr(self, "v_mask", None) is not None and self.v_mask.get() and src is not None:
+            import mask_xem
+            kq_m = self._bo_mask().lay(src, self._r_cua(path))
+            mask_cau = mask_xem.tom_tat(kq_m)
+            if kq_m is None:
+                self._mask_ct_cho = str(src)            # tính xong -> nạp lại (_soi_mask)
+            else:
+                bd0 = bd
+                bd = (lambda im, _b=bd0, _k=kq_m: mask_xem.phu(_b(im) if _b else im, _k))
         if src is None:
             self.xem_ct.dat_trong(f"Không đọc được ảnh\n{Path(path).name}")
         else:
@@ -3545,7 +3561,8 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
             vt = ""
         sao = self._sao_cua()(path)
         self.lbl_mot_ct.configure(text=f"{vt}{Path(path).name}" + (f"  ·  {'★' * sao}" if sao else "")
-                                  + (f"  ·  {mo_ta}" if mo_ta else ""))
+                                  + (f"  ·  {mo_ta}" if mo_ta else "")
+                                  + (f"  ·  Mask: {mask_cau}" if mask_cau else ""))
 
     def _buoc_ct(self, d: int):
         """←/→ trên ảnh lớn: tấm trước / sau theo thứ tự lưới (đang lọc)."""
@@ -4019,6 +4036,65 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                 if (sao is not None and int(sao.get(k, 0)) == n) or luc - t > 60:
                     del cho[k]
         return cu != moi or cu_sao != sao
+
+    # ------------------------------------------------------------ mask da (14/10)
+    def _bo_mask(self):
+        bo = getattr(self, "_bo_mask_", None)
+        if bo is None:
+            import collections
+            import mask_xem
+            self._mask_moi = collections.deque()
+            bo = self._bo_mask_ = mask_xem.BoMask(khi_xong=self._mask_moi.append)
+        return bo
+
+    def _nguon_luoi(self, path):
+        """File ảnh lưới đang vẽ cho một tấm (preview Lightroom nếu có, không thì RAW)."""
+        try:
+            import xem_lr
+            return xem_lr.anh(path) or path
+        except Exception:                                    # noqa: BLE001
+            return path
+
+    def _phu_mask_luoi(self, path, anh):
+        import mask_xem
+        kq = self._bo_mask().lay(self._nguon_luoi(path), self._r_cua(path))
+        return mask_xem.phu(anh, kq, vien=True) if kq is not None else None
+
+    def _doi_mask(self):
+        """Bật / tắt lớp MASK DA trên lưới + ảnh lớn."""
+        import mask_xem
+        bat = bool(self.v_mask.get())
+        luoi = getattr(self, "luoi", None)
+        if luoi is not None:
+            luoi.lop_phu = self._phu_mask_luoi if bat else None
+            luoi.lop_phu_ver += 1
+            luoi._ve()
+        if not bat:
+            self._bo_mask().bo_hang()
+        if getattr(self, "_che_do_ct", "luoi") == "mot" and getattr(self, "_anh_ct", None):
+            self._nap_mot_ct(self._anh_ct, giu_khung=True)
+        self.status(("Mask da: " + mask_xem.CHU_GIAI) if bat else "Đã tắt lớp mask da.", gd.MAU["mo"])
+        if bat:
+            self.after(300, self._soi_mask)
+
+    def _soi_mask(self):
+        """Mask vừa tính xong (luồng nền) -> vẽ lại lưới / ảnh lớn ở luồng Tk."""
+        if not self.v_mask.get():
+            return
+        moi = []
+        q = getattr(self, "_mask_moi", None)
+        while q:
+            moi.append(q.popleft())
+        if moi:
+            luoi = getattr(self, "luoi", None)
+            if luoi is not None:
+                luoi.lop_phu_ver += 1
+                luoi._ve()
+            ct = getattr(self, "_anh_ct", None)
+            if ct and getattr(self, "_che_do_ct", "luoi") == "mot" and \
+                    getattr(self, "_mask_ct_cho", None) in {str(x) for x in moi}:
+                self._nap_mot_ct(ct, giu_khung=True)
+        self.after(300, self._soi_mask)
 
     def _r_cua(self, path):
         """Kết quả đo của một ảnh theo đường dẫn (None nếu chưa phân tích)."""

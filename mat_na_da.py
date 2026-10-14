@@ -237,6 +237,24 @@ def khong_cat(r: dict | None, W: int, H: int) -> bool:
     return abs((W / max(H, 1)) / (pw / ph) - 1.0) <= 0.02
 
 
+def moi_mat(r: dict | None, W: int, H: int, them: list | None = None) -> list:
+    """Khung (x, y, w, h) của MỌI mặt lần phân tích dò được (r["all_boxes"], không chỉ
+    mặt chủ thể) quy sang ảnh W×H — cùng tỉ lệ khung với ảnh nhúng mới quy được; cộng
+    `them` (khung trên chính ảnh này).
+
+    #[[ 14/10 (soi lớp mask da trên ảnh nhóm SAY08076 / DSC09395): vùng TRẮNG xét WB chỉ
+    #   bỏ mặt CHỦ THỂ -> mặt sáng của người khác (da cháy gần như mất màu) bị tính là
+    #   "trắng trung tính", kéo lệch phép xét WB. ]]"""
+    out = [tuple(float(v) for v in b[:4]) for b in (them or [])]
+    r = r or {}
+    pw, ph = r.get("preview_wh") or (0, 0)
+    if pw and ph and W and H and abs((W / max(H, 1)) / (pw / ph) - 1.0) <= 0.02:
+        sx, sy = W / pw, H / ph
+        for b in r.get("all_boxes") or r.get("meter_boxes") or []:
+            out.append((float(b[0]) * sx, float(b[1]) * sy, float(b[2]) * sx, float(b[3]) * sy))
+    return out
+
+
 def khung_san(r: dict, W: int, H: int) -> list:
     """Khung mặt tool đã đo (meter_boxes, toạ độ ảnh nhúng) quy THẲNG sang ảnh dựng —
     không dò lại (chỉ dùng khi khong_cat). Không có mốc mắt / miệng."""

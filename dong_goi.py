@@ -95,7 +95,7 @@ LOAI_TRU = [
     "test_do_song_song.py", "kiem_preview_lr.py", "test_kiem_preview_lr.py",
     "kiem_hoc_mau_lua.py", "test_mo_hinh_lr.py", "mo_phong_lr.py", "test_doc_cache_lr.py", "test_do_truoc.py",
     "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py",
-    "test_kiem_mot_luot.py", "hoc_mau_lr.py", "kiem_mot_luot.py",
+    "test_kiem_mot_luot.py", "hoc_mau_lr.py", "kiem_mot_luot.py", "test_mask_xem.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe
@@ -176,7 +176,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #  14/10: mô hình màu Lightroom học trên RAW thật (chuỗi một lượt — import trong hàm)
         "mo_hinh_lr",
         #  14/10: đọc thẳng cache preview + thông số của Lightroom (import trong hàm)
-        "doc_cache_lr", "do_truoc", "mau_mot_luot"]
+        "doc_cache_lr", "do_truoc", "mau_mot_luot",
+        #  14/10: lớp mask da trên preview (nút "Mask da" — import trong hàm)
+        "mask_xem"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).

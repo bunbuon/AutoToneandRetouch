@@ -243,6 +243,11 @@ class LuoiAnh(tk.Frame):
     """
 
     tu_cuon = True          # Cuon nhường lăn chuột cho lưới
+    #[[ 14/10 (user: "show cái lớp mask của da … trên preview của app luôn cho từng ảnh"):
+    #   lop_phu(path, ảnh PIL) -> ảnh PIL đã phủ (hoặc None = chưa có, vẽ ảnh thường).
+    #   Đổi lop_phu_ver là mọi ô vẽ lại (mask vừa tính xong / bật tắt). ]]
+    lop_phu = None
+    lop_phu_ver = 0
     #  12/10 (giao diện mới): nền ô, và nhãn trái trên theo o["nhan"]
     #  (chữ, nền, màu chữ, biểu tượng) — Giữ xanh · Loại 1★ đỏ cam · Cần xem hổ phách
     NEN_O = "#202226"
@@ -819,7 +824,8 @@ class LuoiAnh(tk.Frame):
         mp (13/10): thông số mô phỏng (ev, wb) của mo_phong_anh — ảnh nhỏ hiện
         theo Exposure / WB SẼ ÁP, kéo Bù sáng / K / Tint là ảnh đổi theo. Nằm
         trong khoá: đổi thông số = PhotoImage mới, ảnh gốc (_anh_pil) giữ nguyên."""
-        key = (path, w, h, mo, phu, mp)
+        #  mp CUỐI khoá (bài kiểm / chỗ khác đọc k[-1]); dấu lớp phủ (mask da) đứng trước
+        key = (path, w, h, mo, phu, self.lop_phu_ver if self.lop_phu else None, mp)
         a = self._anh_tk.get(key)
         if a is not None:
             self._anh_tk.move_to_end(key)
@@ -833,6 +839,13 @@ class LuoiAnh(tk.Frame):
             try:
                 import mo_phong_anh
                 anh = mo_phong_anh.ap(anh, mp)
+            except Exception:                                # noqa: BLE001
+                pass
+        if self.lop_phu is not None:
+            try:
+                phu_ = self.lop_phu(path, anh)
+                if phu_ is not None:
+                    anh = phu_
             except Exception:                                # noqa: BLE001
                 pass
         if mo:
