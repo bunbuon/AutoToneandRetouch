@@ -3586,8 +3586,11 @@ DEFAULTS = {
     #  14/10 chạy thật 2709: trần 0.6 EV / +25 -> da dừng ở L 0.840 (đích 0.864), 56% trong ±0.03
     "mot_luot_ev_sang_tran": 0.8,   # Tone: đổi tối đa bấy nhiêu EV so với decide() để da về sáng đích
     "hsl_da_lum_tran": 35,          # HSL: Luminance Cam tối đa ± bấy nhiêu điểm so với preset
-    "mot_luot_hsl_tran": (20, 35),  # HSL Hue / Sat Cam tối đa ± (chuỗi một lượt — xem mau_mot_luot)
-    "mot_luot_phan": 0.9,           # phần lệch HSL kéo về mỗi lượt (đường cũ 0.8)
+    #[[ 14/10 chạy thật 2709 bản (20, 35) / 0.9: da vào vùng ổn KHÔNG hơn (15, 20) mà dự đoán
+    #   lệch p90 6° / 29% (HSL lớn ra ngoài khoảng mô hình học ±30 quanh ảnh) — DSC09319 cô dâu
+    #   dưới đèn rạp ngả tím (Hue +20 / Sat +35). Giữ trần đường cũ. ]]
+    "mot_luot_hsl_tran": (15, 20),  # HSL Hue / Sat Cam tối đa ± (chuỗi một lượt — xem mau_mot_luot)
+    "mot_luot_phan": 0.8,           # phần lệch HSL kéo về mỗi lượt
     "mot_luot_do_moi_loat": 2,      # đo da trên preview tối đa bấy nhiêu ảnh mỗi loạt (0 = mọi ảnh)
     "curve_da_sang": False,         # curve_da: kéo cả L về đích (chuỗi một lượt bật riêng)
     "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
