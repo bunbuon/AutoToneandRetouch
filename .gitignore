@@ -96,3 +96,7 @@ ket_qua_kiem_raw.txt
 kiem_raw_luoi.jpg
 kiem_raw_mat.jpg
 kiem_raw_so_sanh.jpg
+
+#  14/10: ket qua KIEM_TOAN_BO.bat (kiem_toan_bo.py) + lupa cai rieng de kiem plugin
+ket_qua_kiem/
+.lupa_kiem/

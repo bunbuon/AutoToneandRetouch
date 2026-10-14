@@ -1,0 +1,49 @@
+DANH SÁCH THỬ TAY — những gì bài kiểm tự động KHÔNG thay được (14/10)
+=====================================================================
+Mở bằng KIEM_TOAN_BO.bat, mục 3 (app chạy từ mã nguồn, bản mới nhất). Muốn thử
+cùng Lightroom thì chọn C để chép plugin mới vào Lightroom, rồi KHỞI ĐỘNG LẠI
+Lightroom. Trong lúc thử đừng mở bản đã cài (Tone&Retouch) — nó chép lại plugin cũ.
+Ghi lại mục nào HỎNG (số mục + ảnh chụp màn hình) rồi gửi cho Claude.
+
+A. CÂN SÁNG — GIAO DIỆN (v82–v86)
+  [ ] 1. Mở app: bảng bên phải mặc định là "Thiết lập cân sáng".
+  [ ] 2. Đầu bảng Thiết lập có EN | VI. Đổi sang EN -> hỏi khởi động lại -> chữ
+         tiếng Anh, nút không bị cắt chữ. Đổi lại VI được.
+  [ ] 3. Cột THƯ MỤC bên trái: hiện ổ đĩa + thư mục như Lightroom (đọc thẳng catalog),
+         số ảnh từng thư mục; bấm thư mục -> mở buổi đó; nút ‹ thu gọn / mở lại.
+  [ ] 4. Dưới cột Thư mục có Import… và Export…; thanh dưới KHÔNG còn "Xuất ảnh…".
+  [ ] 5. Cột CẢNH ẩn khi chưa phân tích, hiện ra sau khi phân tích xong.
+  [ ] 6. Trong Lightroom xoá (Remove) vài ảnh của buổi -> lưới Preview bớt đúng các
+         ảnh đó trong vài giây; thêm lại -> ảnh hiện lại ("chưa phân tích").
+  [ ] 7. Nút "Xử lý ảnh": tự phân tích -> tự áp vào Lightroom; hộp tiến trình rõ từng
+         bước; xong có popup tổng kết. Bấm lần hai: ảnh đã đo KHÔNG đo lại.
+         Menu ⋯ -> "Phân tích lại cả buổi" đo lại toàn bộ.
+  [ ] 8. Kéo Bù sáng / Temp / Tint -> ảnh xem trước trong lưới và ảnh lớn đổi theo.
+  [ ] 9. Denoise (nhóm "Ghìm & bảo vệ"): mặc định TẮT, ô ISO (2000) chỉ chỉnh được khi
+         bật. Bật + Xử lý ảnh -> Lightroom bật Denoise cho ảnh ISO >= ngưỡng.
+         (Cần plugin mới. CHƯA từng thử trên Lightroom thật — mục quan trọng.)
+  [ ] 10. Hộp nhập key (máy chưa có key) luôn nằm TRÊN app, không dùng được app khi
+          chưa nhập; tắt hộp = tắt app.
+
+B. ĐỌC RAW MỚI (cloud 13/10)
+  [ ] 11. Thư mục CR3 Canon: ảnh dọc đứng đúng chiều trong lưới; tốc / khẩu / ISO hiện.
+  [ ] 12. Đuôi .CRW (Canon cũ), .NRW (Nikon) được nhận trong thư mục.
+  [ ] 13. Canon EOS R (G:\TestThacCao\test): ảnh cùng cảnh, cùng thông số không còn
+          "bức sáng bức tối". Đo bằng KIEM_TOAN_BO mục 4 (KIEM_RAW_THAT).
+
+C. CURVE DA + NÉN VÙNG CHÁY (mặc định TẮT — chỉ thử khi muốn bật)
+  [ ] 14. KIEM_TOAN_BO mục 5 (KIEM_CURVE_LR): làm theo hướng dẫn, gửi lại
+          curve_lr_hieu_chinh.json.
+  [ ] 15. Mục 6 (KIEM_CONG_CURVE): "mo" -> Xử lý ảnh một buổi -> chạy lại với tên buổi
+          -> xem so_sanh_curve.pdf (trước / sau).
+
+D. CREDIT + MỘT KEY MỘT MÁY (chưa thử được)
+  Máy chủ key đang chạy CHƯA có phần credit / phiên -> app chạy như cũ (một key một
+  máy, không trừ credit). Thử mục 7 (THU_CREDIT_2_MAY) SAU KHI cập nhật máy chủ.
+  Lưu ý: bản đang chạy trên máy chủ có trang /quan-tri chưa commit — phải gộp với
+  nhánh credit trước khi deploy, không thì mất trang quản trị.
+
+E. RETOUCH & XUẤT
+  [ ] 16. Export… -> xuất + retouch 1 ảnh: ghi thời gian từ lúc bấm tới lúc có ảnh.
+  [ ] 17. Export nhiều ảnh: ảnh retouch ra đủ, không lệch màu ở ảnh cỡ lẻ (rộng 3000 px…).
+  [ ] 18. Trang Retouch: kéo thanh -> ảnh lớn đổi; "Vào mặt" nhảy tới mặt.
