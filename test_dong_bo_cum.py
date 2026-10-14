@@ -16,6 +16,7 @@ Mục kiểm
        0.5 × lệch; ảnh nhóm đổi mặt đo (mặt tối 2.4 EV, khung không đổi) KHÔNG bù; nhóm mặt
        giống nhau cùng một quyết định; gọi lại không cộng dồn; số cân trên Lightroom
        (bu_cum_lr) được dùng thay; đo trước thêm các tấm lệch (do_truoc.mau_loat)
+    6. đổi zoom (tiêu cự lệch > 15%, DSC_9800 24 mm / DSC_9791 43 mm) -> khác cụm
 
 Chạy:  python test_dong_bo_cum.py
 """
@@ -201,6 +202,13 @@ def main() -> int:
     at.dong_bo_cum(ds8, dict(cfg, cum_bu_anh_sang=False))
     ktra("tắt cum_bu_anh_sang -> cả cụm cùng Exposure (như bản 8)", len({r["new_exposure"] for r in ds8}) == 1,
          str([r["new_exposure"] for r in ds8]))
+
+    print("6. tiêu cự")
+    z = [anh("DSC_9791", 0, focal=43.0), anh("DSC_9792", 2, focal=24.0), anh("DSC_9793", 4, focal=26.0),
+         anh("DSC_9794", 6), anh("DSC_9795", 8, focal=24.0)]
+    ten6 = [[Path(r["path"]).stem for r in g] for g in at.nhom_cum(z, cfg)]
+    ktra("43 mm -> 24 mm tách cụm; 24 -> 26 mm (≤ 15%) và tấm thiếu tiêu cự vẫn chung",
+         ["DSC_9791"] in ten6 and ["DSC_9792", "DSC_9793", "DSC_9794", "DSC_9795"] in ten6, str(ten6))
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

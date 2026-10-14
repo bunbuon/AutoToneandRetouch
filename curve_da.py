@@ -423,7 +423,19 @@ def dich_cua(r: dict, cfg: dict, kieu: str) -> tuple:
     if kieu == "mn":
         k = "ngoai_mn" if ngoai else "trong_mn"
         rgb = md.get(k) or md.get("trong_mn") or rgb
-    return list(rgb), ngoai
+    bu = float(cfg.get("da_dich_L_bu", at.DEFAULTS.get("da_dich_L_bu", 0.0)) or 0.0)
+    return (ha_L_dich(rgb, bu) if bu else list(rgb)), ngoai
+
+
+def ha_L_dich(rgb, bu: float) -> list:
+    """Màu đích sRGB 0–255 với độ sáng OkLab L + bu, GIỮ hue và độ đậm (q = C / L) —
+    da_dich_L_bu (15/10: user muốn da tối hơn mẫu ~0.07 L, màu thì giữ)."""
+    import mo_hinh_lr as mh
+    lab = at.mau_dich_lab(rgb)
+    L0 = max(float(lab[0]), 1e-6)
+    L = max(L0 + float(bu), 0.05)
+    moi = np.array([[L, lab[1] * L / L0, lab[2] * L / L0]])
+    return [float(v) for v in np.clip(mh.srgb_tu_lab(moi)[0], 0.0, 1.0) * 255.0]
 
 
 def _ap_g(P, delta, ws):

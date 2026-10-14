@@ -105,7 +105,8 @@ def main() -> int:
         return r
 
     #  đích: da hồng hơn / ít vàng hơn da dựng; vùng trắng trung tính
-    CFG = dict(at.DEFAULTS, source="catalog", hsl_da_cuoi=True, grade=True, curve_da=True,
+    #  da_dich_L_bu 0: các kịch bản dưới dựng quanh đúng số mẫu (mức hạ theo gu: test_curve_da)
+    CFG = dict(at.DEFAULTS, source="catalog", hsl_da_cuoi=True, grade=True, curve_da=True, da_dich_L_bu=0.0,
                curve_chay=False, mau_mot_luot=True, wb="skin",
                mau_da_dich={"ten": "mau", "trong": [226, 182, 170], "trong_mn": [226, 182, 170],
                             "trang": {"trong": [0.006, 0.008]}})

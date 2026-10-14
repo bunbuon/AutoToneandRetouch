@@ -175,7 +175,9 @@ def anh(ten="A", dt=None, ev=7.0, **kw):
 
 
 def cfg_(**kw):
-    c = dict(at.DEFAULTS, curve_da=True, curve_chay=False)
+    #  bài này kiểm CƠ CHẾ với đích đúng số mẫu — mức hạ sáng đích theo gu (da_dich_L_bu,
+    #  15/10) kiểm riêng ở muc11
+    c = dict(at.DEFAULTS, curve_da=True, curve_chay=False, da_dich_L_bu=0.0)
     c.update(kw)
     return c
 
@@ -393,10 +395,27 @@ def muc10():
          f"{g2.get('ly_do')} L {g2.get('L0', 0):.3f}/{g2.get('L_t', 0):.3f}")
 
 
+def muc11():
+    """11. da_dich_L_bu (15/10): đích tối đi đúng mức, GIỮ hue + độ đậm; mặc định −0.09"""
+    r = anh("L1")
+    cfg = cfg_(da_dich_L_bu=at.DEFAULTS["da_dich_L_bu"])
+    rgb0, _n = cd.dich_cua(r, cfg_(), "cu")
+    rgb1, _n = cd.dich_cua(r, cfg, "cu")
+    l0, l1 = at.mau_dich_lab(rgb0), at.mau_dich_lab(rgb1)
+    (h0, q0), (h1, q1) = cd.hue_q(l0), cd.hue_q(l1)
+    ktra("mặc định −0.09 (user sửa tay 2709: da ~0.77 vs mẫu 0.864)", at.DEFAULTS["da_dich_L_bu"] == -0.09)
+    ktra("L đích giảm đúng 0.09, hue + độ đậm giữ nguyên",
+         abs((l1[0] - l0[0]) + 0.09) < 0.002 and abs(h1 - h0) < 0.2 and abs(q1 / q0 - 1) < 0.01,
+         f"L {l0[0]:.3f} -> {l1[0]:.3f} · hue {h0:.1f} -> {h1:.1f} · q {q0:.4f} -> {q1:.4f}")
+    d = do_lai(canh(), r, cfg, "m11")
+    g = cd.giai_da(d, r, cfg_(curve_da_sang=True, da_dich_L_bu=-0.09))
+    ktra("giai_da dùng đích đã hạ (L_t)", abs(g.get("L_t", 0) - l1[0]) < 0.002, f"{g.get('L_t')} vs {l1[0]:.3f}")
+
+
 def main():
     cai_gia()
     a1 = r = None
-    for m in (muc1, muc2, muc3, muc4, muc5, muc6, muc7, muc8, muc9, muc10):
+    for m in (muc1, muc2, muc3, muc4, muc5, muc6, muc7, muc8, muc9, muc10, muc11):
         print(m.__doc__.splitlines()[0])
         try:
             if m is muc4:

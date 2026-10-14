@@ -121,6 +121,8 @@ T_FNUMBER          = 0x829D
 T_EXPBIAS          = 0x9204
 #  Flash (EXIF 0x9209): bit 0 = đèn ĐÃ NỔ. 0x10 / 0x18 = có đèn nhưng tắt/không nổ.
 T_FLASH            = 0x9209
+#  Tiêu cự (EXIF 0x920A, mm) — đổi zoom là đổi khung: tách cụm cùng khung (15/10)
+T_FOCAL            = 0x920A
 #  Tên ống kính (EXIF 0xA434 LensModel) — bộ lọc máy / ống kính trước Phân tích (12/10)
 T_LENS_MODEL       = 0xA434
 #  DNG RawDataUniqueID (0xC65D, 16 byte): mã của DỮ LIỆU RAW, không đổi khi Lightroom
@@ -294,7 +296,7 @@ def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
             tags["raw_uid"] = bytes(v).hex()
     for tag, key in ((T_ISO, "iso"), (T_EXPTIME, "exposure_time"),
                      (T_FNUMBER, "fnumber"), (T_EXPBIAS, "exposure_bias"),
-                     (T_ORIENTATION, "orientation"), (T_FLASH, "flash")):
+                     (T_ORIENTATION, "orientation"), (T_FLASH, "flash"), (T_FOCAL, "focal")):
         if tag in ent and key not in tags:
             v = get(tag)
             if v:
@@ -2471,6 +2473,7 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
             #]]
             exposure_time=_rat(tags.get("exposure_time")),
             fnumber=_rat(tags.get("fnumber")),
+            focal=_rat(tags.get("focal")),
             ev_sang=ev_anh_sang(tags),
             model=tags.get("model", ""),
             lens=ten_lens(tags.get("lens")),
@@ -3605,6 +3608,15 @@ DEFAULTS = {
     "cum_gio_s": 30.0,              # tấm sau cách tấm trước tối đa (giây)
     "cum_bo_cuc": 0.20,             # chữ ký bố cục lệch tấm trước tối đa (loạt: 0.10)
     "cum_khung_ev": 1.0,            # ánh sáng cảnh (khung đo − h_may) lệch tấm đầu tối đa
+    "cum_tieu_cu_ti": 1.15,         # tiêu cự hai tấm liền nhau lệch quá 15% (đổi zoom) -> khác khung
+    #[[ 15/10: ĐỘ SÁNG da đích = L của mẫu + da_dich_L_bu (giữ hue và độ đậm). User sửa tay
+    #   trên 2709 sau bản 9: DSC09296 Exposure −0.2 -> −0.61 (da L 0.866 -> 0.808, khung
+    #   cháy 31% -> 8%), DSC09338 Luminance Cam 53 -> 34 + Exposure −0.19 (da 0.828 ->
+    #   0.770); mẫu "Lễ Vu Quy" L 0.864 — và "dư sáng ít nhất 0.5 EV" ở bản 5 (da ~0.855).
+    #   Sáng 15/10 user hạ tiếp DSC09296 / 09297 xuống −0.88 (da ~0.77); các lần sửa tay
+    #   khác từ 18:01 14/10: Exposure trung vị −0.5 EV -> da user chọn ~0.77 -> −0.09
+    #   (curve_da.dich_cua). ]]
+    "da_dich_L_bu": -0.09,
     "cum_bu_anh_sang": True,        # tấm có ánh sáng THẬT lệch (flash hụt…) -> bù Exposure riêng, xem _bu_anh_sang_cum
     "cum_bu_nguong": 0.15,          # mặt lệch trung vị cụm dưới mức này = nhiễu đo, không bù
     "cum_bu_khung_ti": 0.25,        # ... chỉ khi khung lệch cùng chiều ≥ 0.25× mặt (không: đổi mặt đo / biểu cảm)
@@ -5278,14 +5290,21 @@ HAU_TO_CURVE = "@curve"
 
 
 def anh_da_curve(folder: Path, job_dir: Path | None = None) -> dict:
-    """{khoá ảnh: (dòng job @curve MỚI NHẤT có ảnh đó, mtime)} — curve tool đã ghi vào
-    Lightroom ở lượt 2. Chỉ đọc job ĐÃ ÁP (.done)."""
+    """{khoá ảnh: (dòng job MỚI NHẤT có curve của ảnh đó, mtime)} — curve tool đã ghi vào
+    Lightroom: lượt 2 (@curve) VÀ job chính (chuỗi một lượt ghi curve cùng job chính —
+    curve_ghi_mot_luot; trả curve về mốc cũng đi job chính). Chỉ đọc job ĐÃ ÁP (.done).
+
+    #[[ 15/10: chỉ đọc @curve thì curve chuỗi một lượt ghi ở job chính bị coi là NGƯỜI
+    #   DÙNG SỬA (trang_thai_curve "nguoi_sua") -> chạy lại bằng đường cũ không bao giờ trả
+    #   về mốc: 2709 sau bản 10 còn ~80 ảnh mang curve một lượt (DSC_9800 điểm trắng 241). ]]"""
     d = Path(job_dir or LR_JOB_DIR)
     if not folder or not d.is_dir():
         return {}
     ten = ten_job(Path(folder).name)
     out = {}
-    for jp in sorted(d.glob(f"apply_*_{ten}{HAU_TO_CURVE}.done")):
+    fs = sorted([*d.glob(f"apply_*_{ten}{HAU_TO_CURVE}.done"), *d.glob(f"apply_*_{ten}.done")],
+                key=lambda p: p.name)
+    for jp in fs:
         try:
             mt = jp.stat().st_mtime
             with io.open(jp, encoding="utf-8-sig", newline="") as fh:
@@ -8352,6 +8371,8 @@ def nhom_cum(items: list, cfg: dict) -> list:
     #     - bố cục (scene_sig) lệch tấm trước ≤ cum_bo_cuc VÀ lệch tấm đầu cụm ≤ 1.5× (không
     #       trôi dần sang bố cục khác);
     #     - cùng trạng thái flash (EXIF bit 0);
+    #     - cùng tiêu cự (lệch ≤ cum_tieu_cu_ti; 15/10: DSC_9791 43 mm chung cụm DSC_9800
+    #       24 mm — khung khác, người khác, bù sáng cụm kéo 9791 sáng thêm 0.8 EV);
     #     - ánh sáng cảnh (khung đo − h_may) lệch tấm đầu ≤ cum_khung_ev — đổi ISO / tốc thì
     #       khung đo đổi theo nhưng ánh sáng cảnh không đổi. ]]"""
     gio = float(cfg.get("cum_gio_s", 30.0))
@@ -8375,6 +8396,12 @@ def nhom_cum(items: list, cfg: dict) -> list:
         except (TypeError, ValueError):
             return None
 
+    tc_ti = float(cfg.get("cum_tieu_cu_ti", 1.15))
+
+    def cung_tc(a, b):
+        fa, fb = _so(a.get("focal")), _so(b.get("focal"))
+        return not fa or not fb or max(fa, fb) <= tc_ti * min(fa, fb)
+
     theo: dict = {}
     for r in sorted(items, key=lambda r: r["dt_obj"]):
         theo.setdefault(khoa_thiet_bi(r), []).append(r)
@@ -8388,7 +8415,7 @@ def nhom_cum(items: list, cfg: dict) -> list:
                 sa, sr = anh_sang(a), anh_sang(r)
                 if ((r["dt_obj"] - p["dt_obj"]).total_seconds() <= gio
                         and lp is not None and lp <= bo_cuc and (la is None or la <= 1.5 * bo_cuc)
-                        and no(r) == no(p)
+                        and no(r) == no(p) and cung_tc(r, p)
                         and (sa is None or sr is None or abs(sr - sa) <= khung_tol)):
                     cur.append(r)
                     continue
@@ -9800,16 +9827,21 @@ def last_applied(folder: Path, job_dir: Path | None = None) -> dict:
           if "khoiphuc" not in p.name.lower()]
     if not fs:
         return {}
+    #[[ 15/10: lần ghi gần nhất của TỪNG ẢNH, đọc mọi job cũ -> mới (tên job có mốc thời
+    #   gian nên sorted = theo giờ). Trước chỉ đọc job MỚI NHẤT: lượt 23:43 bỏ qua 2 ảnh user
+    #   vừa sửa tay (DSC09296 Exposure −0.61, DSC09338 Luminance Cam 34) nên job đó KHÔNG
+    #   có dòng của chúng -> lượt 00:30 không còn gì để so, coi là ảnh thường và ghi đè. ]]
     out = {}
-    try:
-        with io.open(fs[-1], encoding="utf-8-sig", newline="") as fh:
-            for row in csv.DictReader(fh, delimiter="\t"):
-                try:
-                    out[_stem_any(row["path"])] = float(row["Exposure2012"])
-                except (TypeError, ValueError, KeyError):
-                    continue
-    except OSError:
-        return {}
+    for f in fs:
+        try:
+            with io.open(f, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    try:
+                        out[_stem_any(row["path"])] = float(row["Exposure2012"])
+                    except (TypeError, ValueError, KeyError):
+                        continue
+        except OSError:
+            continue
     return out
 
 
@@ -9922,31 +9954,176 @@ def buoi_dat_lai(items: list, export: dict, folder: Path,
     return "dat-lai" if max(bo.values()) * 5 >= len(lech) * 4 else ""
 
 
-def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
-                       dung_sai: float = 0.005) -> int:
-    """Đánh dấu ảnh có giá trị trong catalog khác cái tool đã ghi lần trước.
+#: ô job KHÔNG so khi nhận ảnh sửa tay (không phải thanh develop, hoặc là chữ)
+_SUA_TAY_BO = {"path", "Rating", "PerspectiveUpright", "ConvertToGrayscale", "ToneCurveName2012"}
 
-    Trả về số ảnh bị đánh dấu. Không sửa gì khác — quyết định bỏ qua nằm ở plan().
-    """
-    da_ghi = last_applied(folder)
-    if not da_ghi or not export:
+
+def lan_ghi_cuoi(folder: Path, job_dir: Path | None = None) -> dict:
+    return _lich_su_ghi(folder, job_dir)[0]
+
+
+def _lich_su_ghi(folder: Path, job_dir: Path | None = None) -> tuple[dict, dict]:
+    """{tên ảnh: {ô: giá trị}} — tool ghi gì cho ảnh ở LẦN ÁP CHÍNH GẦN NHẤT có ảnh đó (+ các
+    job @curve lượt 2 sau nó: curve / HSL / Luminance Cam); bỏ job khôi phục (xem
+    last_applied). Ô trống trong job = tool không đụng -> không tính.
+
+    #[[ Không gộp ô của các lần áp CŨ HƠN lần áp chính gần nhất: giữa chừng user có thể đặt
+    #   lại buổi (Synchronize Settings 18:01 14/10, 2709) — curve xanh dương tool ghi trước
+    #   lần đặt lại (0,0,75,72,…) còn nằm trong job cũ, so ra "khác" và SUB_6728 / 6729 bị
+    #   nhận nhầm là sửa tay. ]]"""
+    d = Path(job_dir or LR_JOB_DIR)
+    if not d.is_dir():
+        return {}, {}
+    ten = ten_job(Path(folder).name)
+    fs = sorted([*d.glob(f"apply_*_{ten}.done"), *d.glob(f"apply_*_{ten}@curve.done"),
+                 *d.glob(f"apply_*_{ten}-khoiphuc.done")], key=lambda p: p.name)
+    out: dict = {}
+    #  15/10: số job KHÔI PHỤC (khoi_phuc.py — trả ảnh user sửa tay bị đè) sau lần áp chính
+    #  gần nhất của ảnh: còn nguyên trong catalog = trạng thái của USER (SUB_6464 Luminance Cam
+    #  44 — job lượt trước không ghi ô đó nên so lan_ghi_cuoi không thấy)
+    kp: dict = {}
+    for f in fs:
+        if "khoiphuc" in f.name.lower():
+            try:
+                with io.open(f, encoding="utf-8-sig", newline="") as fh:
+                    for row in csv.DictReader(fh, delimiter="\t"):
+                        if row.get("path"):
+                            kp.setdefault(_stem_any(row["path"]), {}).update(
+                                {k: v for k, v in row.items() if k and k not in _SUA_TAY_BO and v not in (None, "")})
+            except OSError:
+                pass
+            continue
+        chinh = "@curve" not in f.name
+        try:
+            with io.open(f, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    p = row.get("path")
+                    if not p:
+                        continue
+                    ten_a = _stem_any(p)
+                    if chinh:
+                        out[ten_a] = {}            # lần áp chính mới: mốc so bắt đầu lại
+                        kp.pop(ten_a, None)
+                    o = out.setdefault(ten_a, {})
+                    for k, v in row.items():
+                        if k and k not in _SUA_TAY_BO and v not in (None, ""):
+                            o[k] = v
+        except OSError:
+            continue
+    return out, kp
+
+
+def _o_khac(k: str, ghi, hien, dung_sai: float = 0.005) -> bool:
+    """Ô k: số Lightroom đang mang (hien) KHÁC số tool ghi lần cuối (ghi)? Không đọc được
+    -> False (không kết luận người dùng sửa)."""
+    if hien is None or str(hien).strip() == "":
+        return False
+    if k in COT_CURVE:
+        try:
+            a = [float(x) for x in re.split(r"[,;\s]+", str(ghi).strip()) if x]
+            b = [float(x) for x in re.split(r"[,;\s]+", str(hien).strip()) if x]
+        except ValueError:
+            return False
+        return len(a) != len(b) or any(abs(x - y) > 1.0 for x, y in zip(a, b))
+    try:
+        a, b = float(ghi), float(hien)
+    except (TypeError, ValueError):
+        return False
+    tol = dung_sai if k == "Exposure2012" else 30.0 if k == "Temperature" else 0.5
+    return abs(a - b) > tol
+
+
+def thong_so_catalog(folder: Path) -> dict | None:
+    """{khoá: dòng kiểu bản xuất} đọc THẲNG catalog Lightroom (doc_cache_lr) — đủ ô (kể cả
+    Luminance Cam, bản xuất plugin không có) và mới tới lúc đọc, kể cả khi bản xuất plugin
+    cũ hơn lần ghi. None khi không đọc được."""
+    try:
+        import doc_cache_lr as dc
+        con = dc.mo_catalog()
+        if con is None:
+            return None
+        try:
+            out = {k: dc.dong_xuat(dc.thong_so(a.get("text")))
+                   for k, a in dc.anh_buoi(con, Path(folder), gom_con=True).items() if a.get("text")}
+        finally:
+            con.close()
+        return out or None
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def tra_lum_ve_moc(items: list, folder) -> int:
+    """Ảnh KHÔNG đi chuỗi một lượt lần này mà tool từng ghi Luminance Cam (COT_HSL_L — chỉ
+    chuỗi một lượt ghi) -> ghi lại số MỐC (preset). Trả về số ảnh.
+
+    #[[ 15/10: user chọn lại mẫu da "Mặc định" -> bản 10 chạy đường cũ; 1.027 / 1.074 ảnh
+    #   2709 còn Luminance Cam 53 (preset 18) của chuỗi một lượt — da + mảng kem / be / cam
+    #   sáng thêm, đúng ô user tự hạ tay (DSC09338 53 -> 34, SUB_6464 53 -> 44). Ảnh user sửa
+    #   tay đã bị loại trước (danh_dau_nguoi_sua) nên số đang khác mốc là của tool. ]]"""
+    if not folder:
+        return 0
+    ghi = lan_ghi_cuoi(Path(folder))
+    da: set = set()
+    d = Path(LR_JOB_DIR)
+    ten = ten_job(Path(folder).name)
+    for jp in [*d.glob(f"apply_*_{ten}.done"), *d.glob(f"apply_*_{ten}{HAU_TO_CURVE}.done")] if d.is_dir() else []:
+        try:
+            with io.open(jp, encoding="utf-8-sig", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    if row.get("path") and any(str(row.get(k) or "").strip() for k in COT_HSL_L):
+                        da.add(_stem_any(row["path"]))
+        except (OSError, csv.Error):
+            continue
+    n = 0
+    for r in items:
+        if r.get("mot_luot") or r.get("bw") or r.get("hsl_l_ghi"):
+            continue
+        ten_a = _stem_any(r.get("lr_path") or r["path"])
+        if ten_a not in da:
+            continue
+        moc = {k: (r.get("crs") or {}).get(k) for k in COT_HSL_L}
+        if any(str(v if v is not None else "").strip() == "" for v in moc.values()):
+            continue
+        w = ghi.get(ten_a) or {}
+        if all(k in w and abs(get_f(w, k, 0.0) - get_f(moc, k, 0.0)) < 0.5 for k in COT_HSL_L):
+            continue                       # lần ghi cuối đã là số mốc
+        r["hsl_l_moi"], r["hsl_l_ghi"] = {k: float(v) for k, v in moc.items()}, True
+        r["notes"] = ";".join(x for x in [str(r.get("notes", "")), "lum-ve-moc"] if x)
+        n += 1
+    return n
+
+
+def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
+                       dung_sai: float = 0.005, hien: dict | None = None) -> int:
+    """Đánh dấu ảnh mà số Lightroom đang mang KHÁC số tool ghi lần cuối ở BẤT KỲ ô nào
+    tool từng ghi. Trả về số ảnh bị đánh dấu — quyết định bỏ qua nằm ở plan().
+
+    #[[ 15/10 (2709): user sửa tay rồi lượt sau vẫn ghi đè — (1) chỉ so Exposure: SUB_6464
+    #   user hạ Luminance Cam 53 -> 44, DSC_9617 Contrast 5 -> 14 — không nhận ra; (2) chỉ
+    #   so job MỚI NHẤT: lượt 23:43 bỏ qua DSC09296 / DSC09338 nên job đó không có dòng của
+    #   chúng, lượt 00:30 ghi đè. Nay: mọi ô tool từng ghi (lan_ghi_cuoi — mọi job, cả lượt 2)
+    #   so với `hien` (đọc thẳng catalog, đủ ô) hoặc bản xuất. ]]"""
+    ghi, kp = _lich_su_ghi(folder)
+    if not ghi or not (export or hien):
         return 0
     n = 0
     for r in items:
         key = khoa_duong_dan(r["path"])     # cung khoa voi _read_tsv (xem ham do)
-        cur = export.get(key)
-        if not cur:
+        cur = (hien or {}).get(key) or (export or {}).get(key)
+        w = ghi.get(_stem_any(r["path"]))
+        if not cur or not w:
             continue
-        try:
-            gio = float(cur.get("Exposure2012"))
-            truoc = da_ghi.get(_stem_any(r["path"]))
-        except (TypeError, ValueError):
-            continue
-        if truoc is None:
-            continue
-        if abs(gio - truoc) > dung_sai:
+        o = [k for k, v in w.items() if _o_khac(k, v, cur.get(k), dung_sai)]
+        k_p = kp.get(_stem_any(r["path"]))
+        if not o and k_p and not any(_o_khac(k, v, cur.get(k), dung_sai) for k, v in k_p.items()):
+            o = ["khoi-phuc"]
+        if o:
             r["nguoi_sua"] = True
-            r["nguoi_sua_ev"] = gio
+            r["nguoi_sua_o"] = o
+            try:
+                r["nguoi_sua_ev"] = float(cur.get("Exposure2012"))
+            except (TypeError, ValueError):
+                pass
             n += 1
     return n
 
@@ -10503,7 +10680,12 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         CANH_BAO_PLUGIN = canh_bao_plugin_cu(export or {}, cfg)
         if CANH_BAO_PLUGIN:
             print("[!] " + CANH_BAO_PLUGIN, file=sys.stderr)
-        if cu:
+        #  15/10: số đọc THẲNG catalog (đủ ô, mới) — nhận ảnh sửa tay cả khi bản xuất cũ
+        hien = None
+        if (cfg.get("bo_qua_nguoi_sua", True) and not DAT_LAI_BUOI
+                and lan_ghi_cuoi(Path(folder or "."))):
+            hien = thong_so_catalog(Path(folder or "."))
+        if cu and hien is None:
             #[[ BAN XUAT CU HON LAN GHI -> KHONG duoc chay danh_dau_nguoi_sua.
             #   Gia dinh cua no da hong (xem ban_xuat_cu_hon_lan_ghi). Chay tiep
             #   thi no bo qua gan het buoi chup mot cach lang le. Tha khong loc
@@ -10523,7 +10705,7 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
             print(f"[i] Buoi da dat lai sau lan ghi truoc ({DAT_LAI_BUOI}) — tinh lai tu "
                   "trang thai catalog hien tai, khong loc anh sua tay.", file=sys.stderr)
         elif cfg.get("bo_qua_nguoi_sua", True):
-            n = danh_dau_nguoi_sua(items, export or {}, Path(folder or "."))
+            n = danh_dau_nguoi_sua(items, export or {}, Path(folder or "."), hien=hien)
             SO_ANH_NGUOI_SUA = n
             if n:
                 items[:] = [r for r in items if not r.get("nguoi_sua")]
@@ -10571,6 +10753,11 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
             r.pop("gr_ghi", None)
             r.pop("hsl_ghi", None)
         print(f"[!] Chinh mau da (HSL / Color Grading) loi, bo qua: {ex}", file=sys.stderr)
+    #  15/10: ô chỉ chuỗi một lượt ghi (Luminance Cam) — ảnh lần này đi đường cũ trả về mốc
+    try:
+        tra_lum_ve_moc(items, folder)
+    except Exception as ex:                                  # noqa: BLE001
+        print(f"[!] Tra Luminance Cam ve moc loi, bo qua: {ex}", file=sys.stderr)
     #  14/10: ảnh liên tiếp cùng khung -> cùng ánh sáng / màu (sau MỌI bước quyết định)
     try:
         dong_bo_cum(items, cfg)
