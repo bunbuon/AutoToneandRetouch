@@ -1229,7 +1229,7 @@ xám phẳng); (3) **mặc định TẮT**, bật sau khi xem PDF trước / sau
   (`_o_curve_giong`, lru_cache): 1.3 ms → 0.04 ms / ảnh — không nhớ thì buổi 1000 ảnh
   chậm thêm ~1.3 giây mỗi lần kéo thanh trượt.
 
-## Chuỗi màu da MỘT LƯỢT + học màu Lightroom + đọc thẳng cache preview (14/10) — `mau_mot_luot`, TẮT
+## Chuỗi màu da MỘT LƯỢT + học màu Lightroom + đọc thẳng cache preview (14/10) — `mau_mot_luot`, TẮT (thử: KIEM_TOAN_BO mục 12)
 
 User 14/10: "xử lý 1000 ảnh … tốn 15 phút … Quy trình chỉnh Tone -> Color Mixer HSL -> Tone
 Curve -> WB -> CG"; chọn "Một lượt, dự đoán đã học" + "Ảnh RAW thật của bạn" + "Báo + tự
@@ -1272,8 +1272,33 @@ previews.db == `Adobe_imageDevelopSettings.digest`; catalog có WAL → `immutab
 sRGB; `plan()` xoá `wb_bu` + decide tính lại temp_adj — bài kiểm gọi compute_values lại phải tự
 đặt lại temp_adj; hàm giả của bài kiểm chỉ có trong tiến trình chính → `T.cai_gia()` ép
 AUTOTONE_CURVE_THO=1; `chia_loat` cần fnumber / exposure_time / iso, loạt cách ≤ 60 s.
-**CHƯA chạy trên Lightroom thật** — bước tiếp: user chạy KIEM_PREVIEW_LR (mục 9), HOC_MAU_LR
-(mục 10), rồi mục 12 + 11 trên một buổi.
+**Chạy thật buổi 2709 (14/10 tối — 1.074 ảnh, Z 8 / Z5_2 / A7M4 / A7M5):**
+- HOC_MAU_LR `--tat_ca` (~5 phút / máy, trả lại khớp 100%). Ngưỡng 1° cũ không máy nào đạt
+  (tổ hợp 1.5–2.0°): HSL Cam mỗi ảnh khác nhau (Sat −13 … −45) mà Lightroom áp WB / EV TRƯỚC
+  HSL; gỡ HSL về 0 làm hỏng EV (ngoại suy) — bỏ. `DAT` = 2° / 8% / L 0.02 / ab 0.003 (vùng ổn
+  ±3° / ±10% + soát bắt tấm lệch); `loc_da` bỏ điểm "da" là lá cây. `--tiep <mã>` học tiếp
+  khi công cụ thoát giữa chừng (đọc trúng file tiến độ đang ghi KHÔNG phải "không nhận").
+- **Đích là R G B (cả SÁNG):** user 14/10 "đưa màu của da mặt ảnh về đúng với màu đó dù can
+  thiệp qua bước nào". Da 2709 L 0.746 (R G B % ~70/64/59) vs đích 0.864 (86/80/76). Chuỗi:
+  Tone `sang_dich` (Exposure một mức mỗi CẢNH ≤ +0.8 EV, chay_lr chặn cháy chạy SAU) → HSL
+  **Luminance Cam** (cột job + mốc mới `COT_HSL_L`, `moc_them_cot`) → Hue/Sat → Curve
+  `curve_da_sang` (kéo cả L) → WB → CG; mọi bước có vùng ổn (da_on_L 0.02).
+- **Quyết theo LOẠT** (`at.nhom_loat` — `chia_loat` bỏ ảnh lẻ!): trong loạt da lệch ~3% /
+  0.004 L, giữa các loạt ~27% / 0.044. Đo trước tối đa 2 ảnh mỗi loạt (`do_truoc.mau_loat`).
+- Chuỗi một lượt LUÔN chạy HSL + CG + Curve da (ô giao diện cũ chỉ cho đường cũ); lượt 2 ảnh
+  lệch không cần ô Curve da.
+- Thời gian: 15 phút đường cũ → **~6 phút** (đo trước 1:21, tính chuỗi ~1 phút — từng 5 phút
+  trước khi bớt điểm dự đoán, áp 0:19, soát + lượt 2 ~3 phút).
+- Kết quả thật (bản trần HSL (15, 20)): L −0.010 trung vị (77% trong ±0.03), R G B % 84.6 /
+  78.5 / 73.2; hue ±3° ~55%, độ đậm ±10% ~42–48% → "màu + sáng ổn" chỉ ~25%. Trần (20, 35) thử
+  rồi bỏ (dự đoán lệch p90 6° / 29%, DSC09319 ngả tím). Dự đoán vs thật ~1.1° / 4.6% / L 0.004.
+  Bước tiếp nếu cần sát hơn: lượt 2 sửa cả HSL theo số đo THẬT của ảnh soát (curve trần 0.03
+  không kéo nổi độ đậm).
+- Lái app thật không người bấm (scratchpad `chay_xu_ly_that.py`): stub `_td_khoi_dong /
+  _td_chan / _td_tru_cho_do` (đừng đụng phiên máy của user), gọi `start_analyze(chuoi=True,
+  loc="het", dung_kho=True)` — buổi nhiều máy mở LocMayLensDialog và CHỜ người bấm. Đo kết quả
+  sau khi plugin dựng xong preview lưới (heartbeat đứng ~7 phút lúc đó, mọi yêu cầu khác báo
+  "không nhận"). KHÔNG chụp màn hình để xem app.
 
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
