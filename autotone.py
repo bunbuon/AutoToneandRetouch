@@ -3614,6 +3614,11 @@ DEFAULTS = {
     #       cho la dang sua.
     #     wb_xet_lai_tran 300 K / 6 Tint: buoc xet lai la tinh chinh, khong thay vong WB. ]]
     "mau_da_chuoi": True,
+    #[[ 14/10 CHUOI MAU DA MOT LUOT (mau_mot_luot.py): do da tren preview Lightroom TRUOC
+    #   khi ap (do_truoc) + mo hinh Lightroom hoc tren RAW that (mo_hinh_lr, HOC_MAU_LR)
+    #   -> Tone -> HSL -> Curve -> WB -> CG, ap MOT lan. TAT cho toi khi user chay
+    #   KIEM_MOT_LUOT dat tren buoi that (AUTOTONE_MOT_LUOT=1 de thu). ]]
+    "mau_mot_luot": False,
     "trang_tran_cg": 0.003,
     "wb_xet_lai": True,
     "wb_xet_lai_nguong": 0.004,
@@ -6846,9 +6851,22 @@ def chinh_mau_da(items: list, cfg: dict, folder=None) -> dict:
     #   hon vi mot thay doi nho doi mau ca buc anh". ]]
     Trả về tóm tắt cho giao diện (cũng gán MAU_DA / HSL_DA)."""
     global HSL_DA, MAU_DA
+    for r in items:
+        r.pop("curve_ghi_mot_luot", None)
+        r.pop("du_doan_lr", None)
     #  13/10: da chon MAU mau da -> chuoi mot dich (xem chuoi_mau_da_mau)
     if cfg.get("mau_da_chuoi", True) and (cfg.get("mau_da_dich") or {}).get("trong"):
-        MAU_DA = chuoi_mau_da_mau(items, cfg, folder)
+        #  14/10: cảnh có số đo trước + mô hình Lightroom đạt -> chuỗi MỘT LƯỢT
+        moi, cu = [], items
+        try:
+            import mau_mot_luot as ml
+            if ml.bat(cfg):
+                moi, cu = ml.chon_duong(items, cfg)
+        except ImportError:
+            ml = None
+        MAU_DA = chuoi_mau_da_mau(cu, cfg, folder) if cu else {}
+        if moi:
+            MAU_DA = ml.gop(MAU_DA, ml.chuoi(moi, cfg, folder))
         HSL_DA = dict(MAU_DA.get("hsl") or {})
         return MAU_DA
     #[[ 9/10: CUOI + o "Tu chinh HSL mau da" -> quyet dinh tren da DO THAT o anh
@@ -11022,7 +11040,10 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             #[[ 13/10: anh dang mang curve luot 2 lan truoc -> tra ve curve MOC, de
             #   anh Lightroom dung sau luot nay khong mang curve cu (luot 2 do tren
             #   no). Tat o curve thi chinh dong nay tra anh ve curve preset. ]]
-            *([str(r["curve_reset"].get(k) or "") for k in COT_CURVE]
+            #  14/10: chuỗi một lượt -> curve da ghi CÙNG job (không lượt 2)
+            *([str(r["curve_ghi_mot_luot"].get(k) or "") for k in COT_CURVE]
+              if r.get("curve_ghi_mot_luot")
+              else [str(r["curve_reset"].get(k) or "") for k in COT_CURVE]
               if r.get("curve_reset") and co_cot_curve(r["curve_reset"])
               else [""] * len(COT_CURVE)),
         ])
