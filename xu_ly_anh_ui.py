@@ -791,6 +791,8 @@ class XuLyAnhMixin:
                 ds_cu = [r for r in ds if id(r) not in mau_ids]
                 xl["curve_tt"] = curve_da.ket_thuc(ds_cu, {id(r): do_map[id(r)] for r in ds_cu
                                                            if id(r) in do_map}, cfg)
+                #  14/10: ảnh liên tiếp cùng khung -> cùng curve lượt 2
+                at.dong_bo_cum_luot2(ds_cu, cfg, khoa=("curve_ghi",))
                 ghi_ds = list(ds_cu)
                 if xl.get("ml_ds"):
                     import mau_mot_luot as ml

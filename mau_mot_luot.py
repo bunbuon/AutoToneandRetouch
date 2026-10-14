@@ -418,7 +418,7 @@ def sang_dich(items: list, mm: dict, cfg: dict, du) -> dict:
     #  ảnh không đo được (không mặt…) cùng LOẠT với ảnh đã có mức -> theo loạt (như
     #  dong_bo_loat); ảnh không mặt đứng riêng giữ nguyên (giu_anh_khong_mat); ảnh LẺ đã đo
     #  là nhóm của chính nó (nhom_loat)
-    for loat in at.nhom_loat([r for r in items if not r.get("bw")], cfg):
+    for loat in at.nhom_cum([r for r in items if not r.get("bw")], cfg):
         co = [e_cua[id(r)] for r in loat if id(r) in e_cua]
         if not co:
             continue
@@ -536,7 +536,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     lum_cua: dict = {}                       # id(r) -> mức
     if sang_bat:
         k_canh: dict = {}
-        theo_loat = at.nhom_loat([r for r in items if not r.get("bw")], cfg)
+        theo_loat = at.nhom_cum([r for r in items if not r.get("bw")], cfg)
         for loat in theo_loat:
             dung = [r for r in loat if id(r) in mm and mm[id(r)]["s"].get("LuminanceAdjustmentOrange") is not None]
             if not dung:
@@ -627,7 +627,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
         return k_canh[canh]
     muc_loat: dict = {}                       # id(r) -> (ui, vi)
     us, vs = [], []
-    for ds in (at.nhom_loat([r for r in items if not r.get("bw")], cfg) if hsl_bat else []):
+    for ds in (at.nhom_cum([r for r in items if not r.get("bw")], cfg) if hsl_bat else []):
         dung = [r for r in ds if id(r) in mm]
         if not dung:
             continue
@@ -860,6 +860,9 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     kq["grade_n"] = at._grade_hoan_tat(items, dict(cfg, grade=True) if grade_bat else cfg,  # noqa: SLF001
                                        tran_cg)
 
+    #  ---- cụm cùng khung: cùng ánh sáng / màu (14/10) — TRƯỚC dự đoán cuối
+    kq["mot_luot"]["cum"] = at.dong_bo_cum(items, cfg)
+
     #  ---- dự đoán cuối + báo cáo
     bao = []
     for r in items:
@@ -1082,7 +1085,8 @@ def soat(ds: list, do_mau: dict, cfg: dict) -> dict:
     finally:
         for r in ds_sua:
             r["curve_moc"] = cu_moc[id(r)]
-    kq["anh_sua"] = [r for r in ds_sua if r.get("curve_ghi")] + [r for r in ds if r.get("hsl_l2")]
+    at.dong_bo_cum_luot2(ds, cfg)
+    kq["anh_sua"] = [r for r in ds if r.get("curve_ghi") or r.get("hsl_l2")]
     kq["sua"] = len(kq["anh_sua"])
     return kq
 
@@ -1111,7 +1115,7 @@ def phan_hoi_hsl(ds: list, do_mau: dict, ket: dict, cfg: dict) -> dict:
     KH, KS, KL = "HueAdjustmentOrange", "SaturationAdjustmentOrange", at.COT_HSL_L[0]
     W = np.diag([1.0 / on_h, 1.0 / math.log(1.0 + on_c), 1.0 / tol_L])
     out: dict = {}
-    for g in at.nhom_loat(list(ds), cfg):
+    for g in at.nhom_cum(list(ds), cfg):
         ds_d = []
         for r in g:
             l = ket.get(id(r))

@@ -3598,6 +3598,13 @@ DEFAULTS = {
     "mot_luot_hsl_tran": (15, 20),  # HSL Hue / Sat Cam tối đa ± (chuỗi một lượt — xem mau_mot_luot)
     "mot_luot_phan": 0.8,           # phần lệch HSL kéo về mỗi lượt
     "mot_luot_do_moi_loat": 2,      # đo da trên preview tối đa bấy nhiêu ảnh mỗi loạt (0 = mọi ảnh)
+    #[[ 14/10 — CỤM CÙNG KHUNG (nhom_cum / dong_bo_cum): ảnh liên tiếp cùng máy cùng bố cục ra
+    #   CÙNG ánh sáng / màu kể cả khi đổi ISO / tốc / khẩu. User: "các bức ảnh chụp liên tiếp cùng
+    #   khung hình này sao lại ra ánh sáng khác nhau. Phải giải quyết triệt để". ]]
+    "dong_bo_cum": True,
+    "cum_gio_s": 30.0,              # tấm sau cách tấm trước tối đa (giây)
+    "cum_bo_cuc": 0.20,             # chữ ký bố cục lệch tấm trước tối đa (loạt: 0.10)
+    "cum_khung_ev": 1.0,            # ánh sáng cảnh (khung đo − h_may) lệch tấm đầu tối đa
     "curve_da_sang": False,         # curve_da: kéo cả L về đích (chuỗi một lượt bật riêng)
     "curve_da_chan": 0.10,          # chan nua-cosin hai ben dai da
     "curve_da_trang_max": 0.003,    # vung trung tinh trong dai da lech ab toi da (= trang_tran_cg)
@@ -8315,6 +8322,198 @@ def chia_loat(items: list, cfg: dict) -> list:
     return ds_loat
 
 
+def h_may(r: dict) -> float | None:
+    """Phơi sáng MÁY ẢNH đã thu, EV: log2(ISO · t / N²). Cùng ánh sáng, ảnh có h_may lớn hơn
+    1 thì RAW sáng hơn 1 EV. Thiếu khẩu (lens cơ) -> bỏ phần khẩu (coi như không đổi)."""
+    f, t, iso = _so(r.get("fnumber")), _so(r.get("exposure_time")), _so(r.get("iso"))
+    if not t or not iso or t <= 0 or iso <= 0:
+        return None
+    return math.log2(iso * t / (f * f)) if f and f > 0 else math.log2(iso * t)
+
+
+def nhom_cum(items: list, cfg: dict) -> list:
+    """CỤM CÙNG KHUNG — ảnh chụp liên tiếp cùng máy, cùng bố cục, cùng ánh sáng, KỂ CẢ khi
+    người chụp đổi ISO / tốc / khẩu giữa các tấm. Trả về mọi nhóm (kể cả nhóm một ảnh).
+
+    #[[ User 14/10 (4 cặp ảnh 2709 sáng khác nhau): "các bức ảnh chụp liên tiếp cùng khung hình
+    #   này sao lại ra ánh sáng khác nhau. Phải giải quyết triệt để". chia_loat (loạt) đòi
+    #   khẩu / tốc / ISO GIỐNG HỆT, bố cục lệch ≤ 0.10, khung lệch ≤ 0.25 EV — cặp đổi ISO
+    #   1000 -> 640 (DSC_9797/9798), cặp thêm một người ở mép khung (Δ bố cục 0.15, DSC_9727/
+    #   9726), cặp khung đo lệch 0.6 EV vì nội dung (DSC_9768/9767) đều thành nhóm RIÊNG ->
+    #   mỗi nhóm WB / HSL / curve / Exposure riêng. Cụm:
+    #     - cùng thiết bị (khoa_thiet_bi), mỗi tấm cách tấm trước ≤ cum_gio_s giây;
+    #     - bố cục (scene_sig) lệch tấm trước ≤ cum_bo_cuc VÀ lệch tấm đầu cụm ≤ 1.5× (không
+    #       trôi dần sang bố cục khác);
+    #     - cùng trạng thái flash (EXIF bit 0);
+    #     - ánh sáng cảnh (khung đo − h_may) lệch tấm đầu ≤ cum_khung_ev — đổi ISO / tốc thì
+    #       khung đo đổi theo nhưng ánh sáng cảnh không đổi. ]]"""
+    gio = float(cfg.get("cum_gio_s", 30.0))
+    bo_cuc = float(cfg.get("cum_bo_cuc", 0.20))
+    khung_tol = float(cfg.get("cum_khung_ev", 1.0))
+
+    def sig(r):
+        v = r.get("scene_sig")
+        return np.asarray(v, dtype=np.float64) if v else None
+
+    def lech(a, b):
+        return float(np.abs(a - b).mean()) if a is not None and b is not None and a.shape == b.shape else None
+
+    def anh_sang(r):
+        k, h = _so(r.get("metered_subject_ev")), h_may(r)
+        return None if k is None or h is None else k - h
+
+    def no(r):
+        try:
+            return int(r.get("flash")) & 1
+        except (TypeError, ValueError):
+            return None
+
+    theo: dict = {}
+    for r in sorted(items, key=lambda r: r["dt_obj"]):
+        theo.setdefault(khoa_thiet_bi(r), []).append(r)
+    out = []
+    for ds in theo.values():
+        cur: list = []
+        for r in ds:
+            if cur:
+                p, a = cur[-1], cur[0]
+                lp, la = lech(sig(r), sig(p)), lech(sig(r), sig(a))
+                sa, sr = anh_sang(a), anh_sang(r)
+                if ((r["dt_obj"] - p["dt_obj"]).total_seconds() <= gio
+                        and lp is not None and lp <= bo_cuc and (la is None or la <= 1.5 * bo_cuc)
+                        and no(r) == no(p)
+                        and (sa is None or sr is None or abs(sr - sa) <= khung_tol)):
+                    cur.append(r)
+                    continue
+                out.append(cur)
+            cur = [r]
+        if cur:
+            out.append(cur)
+    return out
+
+
+def _gia_hien(r: dict, k: str):
+    """Số Lightroom ĐANG mang cho ô k (bản xuất / catalog lúc đo trước / mốc)."""
+    for nguon in ((r.get("lr_truoc") or {}).get("st") or {}, r.get("crs_hien") or {}, r.get("crs") or {}):
+        v = nguon.get(k)
+        if v is not None and str(v).strip() != "":
+            return v
+    return None
+
+
+def _hieu_luc_cum(r: dict) -> dict:
+    """Thông số màu / tông SAU khi áp job (ô job ghi, không ghi thì số Lightroom đang mang) —
+    để so / copy trong cụm cùng khung."""
+    out = {}
+    hsl = dict(r["hsl_moi"]) if r.get("hsl_ghi") and r.get("hsl_moi") else {}
+    for k in COT_HSL:
+        out[k] = round(float(hsl[k] if k in hsl else get_f({k: _gia_hien(r, k)}, k, 0.0)), 1)
+    lum = dict(r["hsl_l_moi"]) if r.get("hsl_l_ghi") and r.get("hsl_l_moi") else {}
+    for k in COT_HSL_L:
+        v = lum.get(k, _gia_hien(r, k))
+        out[k] = None if v is None else round(float(v), 1)
+    mid = r.get("gr_mid") if r.get("gr_ghi") else None
+    hi = r.get("gr_hi") if r.get("gr_ghi") else None
+    out["gr_mid"] = tuple(int(round(float(x))) for x in mid) if mid else tuple(
+        int(round(get_f({k: _gia_hien(r, k)}, k, 0.0))) for k in ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat"))
+    out["gr_hi"] = tuple(int(round(float(x))) for x in hi) if hi else tuple(
+        int(round(get_f({k: _gia_hien(r, k)}, k, 0.0))) for k in ("SplitToningHighlightHue",
+                                                                  "SplitToningHighlightSaturation"))
+    cv = r.get("curve_ghi_mot_luot") or (r.get("curve_reset") if co_cot_curve(r.get("curve_reset") or {}) else None)
+    out["curve"] = tuple(str((cv or {}).get(k) if cv else (_gia_hien(r, k) or "")) for k in COT_CURVE)
+    return out
+
+
+#: ô job cụm cùng khung dùng CHUNG nguyên giá trị của ảnh đại diện (tông + WB)
+_CUM_TONE = ("new_highlights", "new_shadows", "new_Contrast2012", "new_Whites2012", "new_Blacks2012",
+             "new_ParametricHighlights", "new_ParametricLights", "new_ParametricDarks",
+             "new_ParametricShadows")
+
+
+def dong_bo_cum(items: list, cfg: dict) -> int:
+    """Mọi ảnh trong CỤM CÙNG KHUNG (nhom_cum) ra CÙNG ánh sáng / màu. Trả về số ảnh đổi.
+
+    Ảnh đại diện = Exposure "theo ánh sáng cảnh" (new_exposure + h_may) gần trung vị cụm nhất
+    (hoà: nhiều mặt đo hơn). Ảnh khác: Exposure = của đại diện bù đúng phần chênh ISO / tốc /
+    khẩu (h_may); tông (Highlights / Shadows / Contrast / Whites / Blacks / parametric), WB,
+    HSL, Luminance Cam, Color Grading, curve = NGUYÊN số của đại diện (ghi ra job cả khi số
+    Lightroom đang mang khác — mốc từng ảnh có thể lệch nhau, DSC_9689/9687 cùng loạt mà Sat
+    −22 / −45). Xem nhom_cum."""
+    if not cfg.get("dong_bo_cum", True):
+        return 0
+    n = 0
+    ds = [r for r in items if not r.get("bw") and r.get("new_exposure") is not None]
+    for g in nhom_cum(ds, cfg):
+        hs = [h_may(r) for r in g]
+        if len(g) < 2 or any(h is None for h in hs):
+            continue
+        X = [float(r["new_exposure"]) + h for r, h in zip(g, hs)]
+        tv = float(np.median(X))
+        i_dd = min(range(len(g)), key=lambda i: (round(abs(X[i] - tv), 3),
+                                                 -len(g[i].get("meter_boxes") or [])))
+        dd = g[i_dd]
+        hl_dd = _hieu_luc_cum(dd)
+        for r, h in zip(g, hs):
+            if r is dd:
+                continue
+            doi = []
+            ev = round(X[i_dd] - h, 2)
+            if abs(ev - float(r["new_exposure"])) >= 0.005:
+                r["new_exposure"] = ev
+                r["delta_ev"] = round(ev - get_f({"e": r.get("old_exposure")}, "e", 0.0), 4)
+                doi.append("ev")
+            for k in _CUM_TONE:
+                if dd.get(k) is not None and r.get(k) != dd.get(k):
+                    r[k] = dd[k]
+                    doi.append("tone")
+            if dd.get("new_temp") and (r.get("new_temp"), r.get("new_tint")) != (dd.get("new_temp"), dd.get("new_tint")):
+                r["new_temp"], r["new_tint"] = dd["new_temp"], dd.get("new_tint")
+                #  ghi WB tường minh ở CẢ hai: đại diện "không đổi WB" thì Lightroom giữ WB đang
+                #  có của nó — có thể khác new_temp (WB tool ghi lần trước)
+                r["wb_ep_ghi"] = dd["wb_ep_ghi"] = True
+                doi.append("wb")
+            hl_r = _hieu_luc_cum(r)
+            if any(hl_r[k] != hl_dd[k] for k in COT_HSL):
+                r["hsl_moi"], r["hsl_ghi"] = {k: hl_dd[k] for k in COT_HSL}, True
+                doi.append("hsl")
+            if any(hl_dd[k] is not None and hl_r[k] != hl_dd[k] for k in COT_HSL_L):
+                r["hsl_l_moi"], r["hsl_l_ghi"] = {k: hl_dd[k] for k in COT_HSL_L if hl_dd[k] is not None}, True
+                doi.append("lum")
+            if (hl_r["gr_mid"], hl_r["gr_hi"]) != (hl_dd["gr_mid"], hl_dd["gr_hi"]):
+                r["gr_mid"], r["gr_hi"], r["gr_ghi"] = hl_dd["gr_mid"], hl_dd["gr_hi"], True
+                doi.append("cg")
+            if hl_r["curve"] != hl_dd["curve"] and any(hl_dd["curve"]):
+                r["curve_ghi_mot_luot"] = dict(zip(COT_CURVE, hl_dd["curve"]))
+                doi.append("curve")
+            if doi:
+                n += 1
+                nhan = "dong-bo-cum:" + "+".join(dict.fromkeys(doi))
+                r["notes"] = ";".join(x for x in [str(r.get("notes", "")), nhan] if x)
+    return n
+
+
+def dong_bo_cum_luot2(items: list, cfg: dict, khoa=("curve_ghi", "hsl_l2")) -> int:
+    """Lượt 2 (job @curve): ảnh trong cùng CỤM CÙNG KHUNG nhận cùng curve / HSL lượt 2 (của
+    tấm có số đo trong cụm) — lượt 2 tính theo loạt / ảnh soát, cụm có nhiều loạt thì phải
+    đồng bộ lại. Trả về số ảnh được thêm / đổi."""
+    if not cfg.get("dong_bo_cum", True):
+        return 0
+    n = 0
+    for g in nhom_cum([r for r in items if not r.get("bw")], cfg):
+        if len(g) < 2:
+            continue
+        for k in khoa:
+            co = [r for r in g if r.get(k)]
+            if not co:
+                continue
+            mau = co[len(co) // 2]
+            for r in g:
+                if r.get(k) != mau[k]:
+                    r[k] = dict(mau[k])
+                    n += 1
+    return n
+
+
 def nhom_loat(items: list, cfg: dict) -> list:
     """chia_loat + mỗi ảnh KHÔNG thuộc loạt nào thành một nhóm riêng. chia_loat chỉ trả loạt
     ≥ 2 ảnh; chuỗi một lượt (14/10) quyết Tone / Luminance / HSL theo loạt — ảnh lẻ phải có
@@ -10241,6 +10440,11 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
             r.pop("gr_ghi", None)
             r.pop("hsl_ghi", None)
         print(f"[!] Chinh mau da (HSL / Color Grading) loi, bo qua: {ex}", file=sys.stderr)
+    #  14/10: ảnh liên tiếp cùng khung -> cùng ánh sáng / màu (sau MỌI bước quyết định)
+    try:
+        dong_bo_cum(items, cfg)
+    except Exception as ex:                                  # noqa: BLE001
+        print(f"[!] Dong bo cum cung khung loi, bo qua: {ex}", file=sys.stderr)
 
 
 def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None = None,
