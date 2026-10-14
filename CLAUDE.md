@@ -1294,6 +1294,14 @@ AUTOTONE_CURVE_THO=1; `chia_loat` cần fnumber / exposure_time / iso, loạt c�
   rồi bỏ (dự đoán lệch p90 6° / 29%, DSC09319 ngả tím). Dự đoán vs thật ~1.1° / 4.6% / L 0.004.
   Bước tiếp nếu cần sát hơn: lượt 2 sửa cả HSL theo số đo THẬT của ảnh soát (curve trần 0.03
   không kéo nổi độ đậm).
+- **User xem bản 5 (14/10 tối): "toàn bộ bức ảnh ... dư sáng nhiều ít nhất 0.5ev"** (màu đích
+  thì ổn). Bản 6 (4912916): Tone KHÔNG tăng sáng cả ảnh (`mot_luot_ev_sang_len` 0, ΔEV so với
+  mốc +0.61 → −0.06), Luminance Cam + Curve vùng da (`curve_da_tran_sang` 0.045) nâng riêng da,
+  lượt 2 `phan_hoi_hsl` sửa Hue/Sat/Lum Cam theo da THẬT của ảnh soát (job @curve có cột HSL).
+  Đo thật: da R G B % 74.0/67.2/62.7 (đích 86/80/76), độ đậm ×1.21 — Luminance +35 + curve chỉ
+  bù ~0.05 L; nhìn bằng mắt cả ảnh cân hơn, váy / nền có chi tiết. Muốn da sáng tới đích mà
+  nền không sáng: cần mask da (AI "People" của Lightroom — SDK chưa chắc làm được) hoặc hạ L
+  của màu đích theo gu mới — chờ user chọn.
 - Lái app thật không người bấm (scratchpad `chay_xu_ly_that.py`): stub `_td_khoi_dong /
   _td_chan / _td_tru_cho_do` (đừng đụng phiên máy của user), gọi `start_analyze(chuoi=True,
   loc="het", dung_kho=True)` — buổi nhiều máy mở LocMayLensDialog và CHỜ người bấm. Đo kết quả
