@@ -134,6 +134,16 @@ elseif type(Denoise.runRequest) ~= "function" then
     Denoise = nil
 end
 
+--[[ HocMauCore (14/10): học màu Lightroom trên ảnh RAW thật — áp TẠM biến thể ->
+     dựng -> trả lại (như XemPresetCore). Nạp riêng, cùng lý do các module trên. ]]
+local okHM, HocMau = pcall(require, "HocMauCore")
+if not okHM then
+    rawLog("khong nap duoc HocMauCore -> " .. tostring(HocMau))
+    HocMau = nil
+elseif type(HocMau.runRequest) ~= "function" then
+    HocMau = nil
+end
+
 --[[ 2 giây (trước 5): mỗi vòng chỉ là vài lệnh kiểm file có tồn tại không. App
      nhờ xuất thì người dùng đang ngồi chờ — 5 giây là quá nửa thời gian chờ. ]]
 local POLL_SECONDS = 2
@@ -156,6 +166,11 @@ LrTasks.startAsyncTask(function()
     if XemPreset and type(XemPreset.khoiPhuc) == "function" then
         local _, errK = Core.try("xemPresetKhoiPhuc", XemPreset.khoiPhuc)
         if errK then Core.log("LOI khoi phuc xem preset: " .. tostring(errK)) end
+    end
+    --  14/10: cùng lý do — lượt học màu dở (ảnh đang mang biến thể TẠM)
+    if HocMau and type(HocMau.khoiPhuc) == "function" then
+        local _, errH = Core.try("hocMauKhoiPhuc", HocMau.khoiPhuc)
+        if errH then Core.log("LOI khoi phuc hoc mau: " .. tostring(errH)) end
     end
     Core.log("plugin da nap (vong #" .. tostring(myGen) ..
              "), tu dong ap = " .. tostring(prefs.autoApply))
@@ -257,6 +272,12 @@ LrTasks.startAsyncTask(function()
             local _, errS = Core.try("autoSao", Sao.runRequest)
             if errS then Core.log("LOI cham sao: " .. tostring(errS)) end
         end
+        --[[ 14/10: học màu Lightroom (jobs/request_hocmau.txt). Người dùng BẤM chạy
+             (HOC_MAU_LR) -> chạy bất kể autoApply; mỗi lượt ~20 giây rồi trả ảnh lại. ]]
+        if HocMau then
+            local _, errHM = Core.try("autoHocMau", HocMau.runRequest)
+            if errHM then Core.log("LOI hoc mau: " .. tostring(errHM)) end
+        end
         if Denoise and prefs.autoApply then
             local _, errDN = Core.try("autoDenoise", Denoise.runRequest)
             if errDN then Core.log("LOI denoise: " .. tostring(errDN)) end
@@ -264,7 +285,7 @@ LrTasks.startAsyncTask(function()
         --[[ 10/10: ngủ từng nhịp 0,2 s, thức NGAY khi app xin xem preset (người
              dùng vừa bấm chọn preset / mở ảnh — đang ngồi chờ màu đổi); đang dở
              một lượt xem preset thì gần như không nghỉ. ]]
-        if XemPreset and XemPreset.dang then
+        if (XemPreset and XemPreset.dang) or (HocMau and HocMau.dang) then
             LrTasks.sleep(0.1)
         else
             local da = 0

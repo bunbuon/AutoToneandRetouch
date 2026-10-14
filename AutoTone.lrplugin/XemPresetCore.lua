@@ -429,15 +429,19 @@ function M.traLai(catalog, lo, coWB)
     return lech, err
 end
 
---[[ Lightroom tắt / máy sập giữa lô: trả lại theo sổ. Gọi MỘT lần lúc nạp. ]]
-function M.khoiPhuc()
-    local s = docFile(f(M.SO_KP))
+--[[ Lightroom tắt / máy sập giữa lô: trả lại theo sổ. Gọi MỘT lần lúc nạp.
+     ten / nhan (14/10): sổ của module khác cùng định dạng [{path, goc}] — HocMauCore
+     (học màu Lightroom áp tạm biến thể lên ảnh RAW thật). ]]
+function M.khoiPhuc(ten, nhan)
+    local so = f(ten or M.SO_KP)
+    nhan = nhan or "xempreset"
+    local s = docFile(so)
     if not s or s == "" then return 0 end
     local ok, ds = pcall(jGiai, s)
     if not ok or type(ds) ~= "table" then
-        Core.log("xempreset: so khoi phuc hong -> giu lai de xem tay: " .. tostring(ds))
+        Core.log(nhan .. ": so khoi phuc hong -> giu lai de xem tay: " .. tostring(ds))
         Core.try("doiTenSo", function()
-            LrFileUtils.move(f(M.SO_KP), f(M.SO_KP) .. ".hong")
+            LrFileUtils.move(so, so .. ".hong")
             return true
         end)
         return 0
@@ -451,9 +455,12 @@ function M.khoiPhuc()
         end
     end
     local lech = M.traLai(catalog, lo, true)
-    xoaSo()
-    Core.log(string.format("xempreset: KHOI PHUC %d anh tu so (lan truoc dung giua lo), lech %d",
-                           #lo, lech or 0))
+    Core.try("xoaSoKP", function()
+        if LrFileUtils.exists(so) then LrFileUtils.delete(so) end
+        return true
+    end)
+    Core.log(string.format("%s: KHOI PHUC %d anh tu so (lan truoc dung giua lo), lech %d",
+                           nhan, #lo, lech or 0))
     return #lo
 end
 
@@ -497,6 +504,7 @@ local function jpgCua(dest, src, ra)
     end
     return nil
 end
+M.jpgCua = jpgCua
 
 -- --------------------------------------------------------------- lượt
 M.dang = nil
@@ -531,6 +539,7 @@ local function coCucBo(st)
     end
     return false
 end
+M.coCucBo = coCucBo
 
 local function coWBTrong(st)
     if type(st) ~= "table" then return true end      -- không đọc được: coi như có
