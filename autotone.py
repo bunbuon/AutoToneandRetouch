@@ -3740,8 +3740,12 @@ DEFAULTS = {
     #   tam do lot vao, va sua nay khong doi duoc gi ca.
     #
     #   0 = tat han viec phan loai. Xem ngoai_troi().
-    #]]
-    "iso_ngoai_troi": 400,
+    #
+    #   14/10 TAT (0) — user: "Hien dang dung lib de phan biet trong nha va ngoai
+    #   troi. nen bo khoa iso xac dinh truoc do di". Thieu tag de tinh EV100 thi
+    #   ngoai_troi() lay canh Places365 (gan_canh: canh_ngoai, gop +-30 phut) thay
+    #   cho ISO. Dat lai 400 la bat lai khoa cu (van con). ]]
+    "iso_ngoai_troi": 0,
     #[[ CHE DO ANH SANG CUA BUOI CHUP — do nguoi dung chon, khong doan.
     #
     #   "ngay"  : ca buoi la anh sang ngay (ke ca duoi nha bat / mai che)
@@ -5622,8 +5626,10 @@ def ngoai_troi(r: dict, cfg: dict) -> bool:
     Tên hàm giữ nguyên ngoai_troi() vì nó nằm trong REPORT_COLS, trong file
     trạng thái và trong dữ liệu gu đã học; đổi tên là làm hỏng dữ liệu cũ.
 
-    (Phần chú thích cũ về ngưỡng ISO giữ lại bên dưới — đường ISO vẫn là dự
-    phòng khi ảnh không đọc được đủ ba tag để tính EV100.)
+    THIẾU TAG ĐỂ TÍNH EV100 (14/10): dùng cảnh Places365 của ảnh (r["canh_ngoai"] —
+    gan_canh() chạy TRƯỚC, gộp ±30 phút) thay cho khoá ISO cũ (user: "đang dùng lib
+    để phân biệt trong nhà và ngoài trời. nên bỏ khoá iso"). Không có cảnh (gói thiếu
+    mô hình) thì đường ISO — mặc định TẮT (iso_ngoai_troi = 0) -> ánh đèn.
     """
     che_do = str(cfg.get("che_do_sang") or "tron").strip().lower()
     if che_do in ("ngay", "day", "ngoai", "ngoai_troi"):
@@ -5636,9 +5642,10 @@ def ngoai_troi(r: dict, cfg: dict) -> bool:
         ev = ev100(r)
         if ev is not None:
             return ev >= ng_ev
-        #[[ Thieu tag de tinh EV100 (anh cu, anh da qua phan mem khac) thi LUI
-        #   VE duong ISO chu khong tra ve False luon. Tra ve False la lang le
-        #   xep ca nhung anh do vao nhom trong nha. ]]
+        #[[ Thieu tag de tinh EV100 (anh cu, anh da qua phan mem khac): 14/10 lay
+        #   canh Places365 (gan_canh) truoc — khoa ISO da bo theo user. ]]
+    if r.get("canh_ngoai") is not None:
+        return bool(r["canh_ngoai"])
     return _ngoai_troi_theo_iso(r, cfg)
 
 

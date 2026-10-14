@@ -41,7 +41,9 @@ def anh_co_iso(p: Path, iso: int) -> None:
 
 def main() -> int:
     loi = []
-    cfg = dict(at.DEFAULTS)
+    #  14/10 mặc định TẮT khoá ISO ngoài trời (dùng cảnh Places365) — bài này kiểm
+    #  ĐỌC ISO từ JPEG nên bật lại ngưỡng 400 để có phép so
+    cfg = dict(at.DEFAULTS, iso_ngoai_troi=400)
 
     with tempfile.TemporaryDirectory() as t:
         d = Path(t)

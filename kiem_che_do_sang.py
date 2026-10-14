@@ -98,6 +98,18 @@ def main() -> int:
     ktra("ảnh không có ISO lẫn EV100 -> ánh đèn (đoán an toàn)",
          at.ngoai_troi({}, cfg) is False,
          "sai về phía đèn thì chỉ là giữ nguyên cách cũ")
+    #  14/10 (user): "đang dùng lib để phân biệt trong nhà và ngoài trời. nên bỏ khoá iso"
+    d0 = dict(at.DEFAULTS, che_do_sang="tron")
+    ktra("mặc định: KHÔNG còn khoá ISO (iso_ngoai_troi = 0)", at.DEFAULTS["iso_ngoai_troi"] == 0)
+    ktra("thiếu tag EV100 -> theo cảnh Places365 (ngoài / trong), không theo ISO",
+         at.ngoai_troi({"iso": 3200, "canh_ngoai": True}, d0) is True
+         and at.ngoai_troi({"iso": 200, "canh_ngoai": False}, d0) is False,
+         "ISO 3200 ngoài trời vẫn là ngày; ISO 200 trong nhà vẫn là đèn")
+    ktra("thiếu tag EV100, không có cảnh Places365 -> ánh đèn (ISO 200 không còn tính)",
+         at.ngoai_troi({"iso": 200}, d0) is False)
+    ktra("có EV100 thì EV100 quyết, không đổi",
+         at.ngoai_troi(dict(sang, canh_ngoai=False), d0) is True
+         and at.ngoai_troi(dict(toi, canh_ngoai=True), d0) is False)
 
     ktra("ev_ngoai_troi = 0 thì bỏ EV100, dùng ISO",
          at.ngoai_troi(anh(200, 1 / 160, 2.8),
