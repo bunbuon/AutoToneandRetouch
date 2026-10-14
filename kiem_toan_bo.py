@@ -67,6 +67,9 @@ NHOM = [
         "test_curve_lr.py", "test_mat_na_da.py", "test_curve_da.py", "test_curve_job.py",
         "test_curve_xu_ly.py", "kiem_curve_lua.py", "test_do_song_song.py",
     ]),
+    ("hoc_mau", "Học màu Lightroom + chuỗi một lượt (mới 14/10, chưa bật)", [
+        "test_mo_hinh_lr.py",
+    ]),
     ("lr", "Lightroom: plugin · job · catalog · preset · bản xuất", [
         "kiem_plugin_lua51.py", "kiem_xem_preset_lua.py", "kiem_retouch_khi_xuat_lua.py",
         "test_cho_lightroom.py", "test_plugin_modules.py", "test_preset_lr.py",

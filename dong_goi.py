@@ -93,7 +93,7 @@ LOAI_TRU = [
     "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",
     "test_ngon_ngu.py", "test_dua_ra_som.py", "kiem_toan_bo.py", "test_cham_sao.py", "test_xem_lr.py",
     "test_do_song_song.py", "kiem_preview_lr.py", "test_kiem_preview_lr.py",
-    "kiem_hoc_mau_lua.py",
+    "kiem_hoc_mau_lua.py", "test_mo_hinh_lr.py", "mo_phong_lr.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
     #   trong goi cai. dong_installer.py + installer_win.iss chi de dong Setup.exe
@@ -170,7 +170,9 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #  13/10: giao diện tiếng Anh (móc dịch + từ điển) — import ở autotone_gui.pyd
         "ngon_ngu", "ngon_ngu_en",
         #  14/10: lưới / ảnh lớn hiện preview Lightroom sau khi áp — import trong hàm
-        "xem_lr"]
+        "xem_lr",
+        #  14/10: mô hình màu Lightroom học trên RAW thật (chuỗi một lượt — import trong hàm)
+        "mo_hinh_lr"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).
