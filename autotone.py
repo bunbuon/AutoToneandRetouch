@@ -2114,7 +2114,17 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 #   chụp nhóm đứng cùng hàng thì ai cũng nét ngang nhau, lọc
                 #   bước này không loại ai — đúng ý.
                 #]]
-                bmax = max(fp[3] for fp in face_patches)
+                #[[ 14/10 — "NÉT NHẤT" CHỈ XÉT MẶT ĐÁNG TIN (điểm >= big_low_floor).
+                #   SUB_6659 (buổi 2709, Z5_2, không có AF): cô dâu 0.94 / mẹ 0.93
+                #   (mặt 58 px, điểm nét 0.29 / 0.31), mặt chú rể trong ẢNH IN trên
+                #   phông 0.86 (28 px, 0.42) và hai "mặt" 11–14 px điểm 0.58–0.60 (nét
+                #   0.55–0.58). Hai mặt vụn đặt mốc nét 0.58 -> mọi mặt dưới 0.33 bị
+                #   coi là ngoài vùng nét -> bỏ cô dâu + mẹ, đo sáng / màu da theo mặt
+                #   trong ảnh in (user thấy qua nút Mask da 14/10). Mặt nhỏ thì điểm nét
+                #   cao giả (ít điểm ảnh, toàn mép mắt / miệng) — chỉ mặt YuNet tin chắc
+                #   mới được đặt mốc vùng nét. Dưới hai mặt đáng tin: không lọc nét. ]]
+                tin_net = [fp for fp in face_patches if fp[5][4] >= big_low_floor]
+                bmax = max(fp[3] for fp in tin_net) if len(tin_net) >= 2 else 0.0
                 if bmax >= 0.45 and not lens_co:
                     #[[ Ngưỡng TUYỆT ĐỐI theo khoảng cách tới mặt nét nhất, chứ
                     #   không phải theo tỉ lệ.
