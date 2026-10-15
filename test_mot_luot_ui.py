@@ -147,6 +147,10 @@ def main() -> int:
              doc_cfg()["mau_mot_luot"] is True and thanh_luoi.doc_kv("mau_mot_luot") is True)
         app.v_mot_luot.set(False)
         ktra("…tắt -> nhớ False", doc_cfg()["mau_mot_luot"] is False and thanh_luoi.doc_kv("mau_mot_luot") is False)
+        #  16/10 (user chọn "Mặc định cũng là đích"): mẫu Mặc định = đích -> chuỗi màu da + một lượt chạy
+        md0 = doc_cfg().get("mau_da_dich") or {}
+        ktra("mẫu da 'Mặc định': read_cfg có đích mặc định (chuỗi màu da + một lượt chạy được)",
+             md0.get("mac_dinh") and md0.get("trong") and md0.get("ngoai"), str(md0))
         hop.destroy()
         #  15/10 (v91, lọc 1037): plan() bỏ HẾT ảnh (cả buổi bị coi là sửa tay) -> bảng không
         #  sập (min() của rỗng), hộp Xử lý ảnh báo rõ, không gửi Áp

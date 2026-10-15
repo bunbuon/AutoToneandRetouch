@@ -286,7 +286,11 @@ def main() -> int:
         app.v_bu_tint.set("-3")
         c = app.read_cfg()
         ktra("ô Bù K / Tint vào read_cfg", c["bu_k_ca_buoi"] == 150 and c["bu_tint_ca_buoi"] == -3)
-        ktra("màu da mặc định -> mau_da_dich None", c["mau_da_dich"] is None)
+        #  16/10 (user chọn "Mặc định cũng là đích"): mẫu Mặc định = đích mặc định (trừ Kỷ yếu)
+        ktra("màu da mặc định -> mau_da_dich = đích mặc định (mac_dinh)",
+             (c["mau_da_dich"] or {}).get("mac_dinh") is True
+             and c["mau_da_dich"]["trong"] == [int(round(float(x))) for x in at.dich_da_cuoi(dict(c, mau_da_dich=None))[0]],
+             str(c["mau_da_dich"]))
         app._ghi_mau_da({"Gu A": {"trong": md["trong"], "ngoai": md["ngoai"], "n_anh": 3}})
         app._dung_menu_mau_da()
         app.v_mau_da.set("Gu A")

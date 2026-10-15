@@ -5731,6 +5731,10 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                    bu_sang_ca_buoi=self._num(self.v_bu_sang, 0.0),
                    loai_buoi=dict(LOAI_BUOI).get(self.v_loai_buoi.get(), "cuoi"),
                    source=self.source_value())
+        #  16/10 (user chọn "Mặc định cũng là đích"): mẫu "Mặc định" = đích đang hiện -> chuỗi
+        #  màu da một đích + chế độ một lượt chạy như mẫu có tên (trừ Kỷ yếu) — at.dich_mac_dinh
+        if cfg.get("mau_da_dich") is None:
+            cfg["mau_da_dich"] = at.dich_mac_dinh(cfg)
         return cfg
 
     def _doi_loai_buoi(self):

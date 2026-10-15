@@ -2873,6 +2873,8 @@ DEFAULTS = {
     #   sua (mau_da_tu_anh). None = dich mac dinh. Thang moi dich khac (dich_da /
     #   dich_da_cuoi): WB, HSL kenh da va Color Grading cung nham vao no. ]]
     "mau_da_dich": None,
+    #  16/10: mẫu "Mặc định" cũng là ĐÍCH (dich_mac_dinh) — trừ Kỷ yếu (đường riêng đã chỉnh)
+    "mau_da_mac_dinh_dich": True,
     #[[ LOAI BUOI "KY YEU" (8/10) — hoc tu 564 anh nguoi dung tu sua (AnhKyTest)
     #   so voi CHINH anh Lightroom ve ban v41 (1088 preview 2048px, buoi raw 19.4):
     #     mat anh duyet sang hon LR: trong nha +0.24, ngoai troi +0.29 EV
@@ -6672,6 +6674,25 @@ def dich_da(cfg: dict) -> tuple:
         trong = cfg.get("skin_ref_rgb_hong") or cfg["skin_ref_rgb"]
         return trong, cfg.get("skin_ref_rgb_hong_ngoai") or trong
     return cfg["skin_ref_rgb"], cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
+
+
+def dich_mac_dinh(cfg: dict) -> dict | None:
+    """cfg["mau_da_dich"] cho mẫu "Mặc định" (16/10): đích CUỐI đang hiện theo thiết lập
+    (dich_da_cuoi — bật da trắng hồng thì đích trắng hồng), dạng một mẫu màu da để chuỗi
+    màu da một đích + chế độ một lượt chạy như mọi mẫu có tên. None: Kỷ yếu (WB theo vùng
+    trung tính, không đụng HSL — đường riêng đã chỉnh theo đáp án tay) hoặc tắt cờ.
+
+    #[[ User 16/10 (DERMAL LOGIA RAW, Sony A7 V, sự kiện trong nhà): "chưa thấy các bức ảnh
+    #   này về được gần với màu đích" — đo trên ảnh Lightroom dựng: da trung vị R G B
+    #   77/70/63 % vs đích 82/74/73 %, 14/205 ảnh lệch ≤ 3. Mẫu "Mặc định" trước đây = KHÔNG
+    #   đích: chuỗi màu da + một lượt không chạy, da chỉ qua WB + curve lượt 2 (bị chặn ám
+    #   vùng trắng — váy áo trắng). User chọn "Mặc định cũng là đích". Phát lại một lượt với
+    #   đích mặc định: hue 45.5° / đậm 0.124 -> 41.4° / 0.103 (đích 43.7° / 0.097). ]]"""
+    if not cfg.get("mau_da_mac_dinh_dich", True) or cfg.get("loai_buoi") == "ky_yeu":
+        return None
+    t, n = dich_da_cuoi(dict(cfg, mau_da_dich=None))
+    return {"ten": "Mặc định", "trong": [int(round(float(x))) for x in t],
+            "ngoai": [int(round(float(x))) for x in n], "mac_dinh": True}
 
 
 def dich_da_cuoi(cfg: dict) -> tuple:

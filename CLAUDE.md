@@ -1463,6 +1463,19 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## Mẫu "Mặc định" cũng là đích màu da (16/10) — `at.dich_mac_dinh`, `mau_da_mac_dinh_dich` BẬT
+
+User (DERMAL LOGIA RAW, A7 V, sự kiện trong nhà): "chưa thấy các bức ảnh này về được gần với màu đích".
+Đo trên ảnh Lightroom dựng (cache preview, `soi_dermal.py`): da trung vị R G B 77/70/63 % vs đích
+82/74/73 %, 14/205 ảnh lệch ≤ 3. Gốc: mẫu "Mặc định" = `mau_da_dich` None -> chuỗi màu da một đích VÀ
+chế độ một lượt không chạy (cả khi bật công tắc); da chỉ qua WB + curve lượt 2 (chặn ám vùng trắng —
+váy áo trắng -> curve xanh gần như không đổi). Lần chạy lại 00:55 (curve tắt) còn ghi curve về số
+preset. Dự đoán của chuỗi thường (từ JPEG máy) cũng sai buổi này: tưởng da nhạt hơn đích; chỉ đo
+thật (một lượt / lượt 2) mới thấy da vàng hơn. Phát lại một lượt + đích mặc định (`phat_lai_mot_luot.py`):
+hue 45.5°/đậm 0.124 -> 41.4°/0.103 (đích 43.7°/0.097). User chọn "Mặc định cũng là đích": `read_cfg`
+điền `mau_da_dich = at.dich_mac_dinh(cfg)` (đích cuối đang hiện, trắng hồng nếu bật) — TRỪ Kỷ yếu.
+Kiểm: `test_loc_may_mau_da`, `test_mot_luot_ui`. Thiết lập Curve / HSL / grade KHÔNG nhớ qua lần mở.
+
 ## User test v92 -> v93 (15/10 khuya): chữ ngắn cho khách · thon mặt trên RAW
 
 - Nhóm Thiết lập "Ghìm & bảo vệ" đổi tên "Tone Curve" (Anh/Việt).
