@@ -96,6 +96,10 @@ def main() -> int:
             req = json.loads(rq.read_text(encoding="utf-8"))
             rq.unlink()
             nk.append(req)
+            #  như HocMauCore thật: báo đang dựng NGAY khi nhận — máy bận (Lightroom đang xuất)
+            #  thì dựng giả quá 2 phút, công cụ tưởng "Lightroom không nhận" (15/10 13:20)
+            (jobs / "hocmau_tiendo.txt").write_text(
+                f"id={req['id']}\ntrang_thai=dang_chay\nxong=0\ntong=1\n", encoding="utf-8")
             dest = Path(req["dest"])
             bang = ["bien\tpath\tjpg"]
             for a in req["anh"]:
