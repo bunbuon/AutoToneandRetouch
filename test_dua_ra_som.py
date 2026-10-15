@@ -126,6 +126,38 @@ with tempfile.TemporaryDirectory() as td:
     ktra("…cuối lượt: dọn tấm còn lại, tổng = 3, không đếm trùng",
          n_cuoi == 3 and Path(anh[2]).read_bytes() == b"retouch 2", f"n={n_cuoi}")
 
+# ---- đưa ra sớm chờ engine chèn xong EXIF / ICC (duyệt v88): saytool ghi JPEG rồi MỞ LẠI chèn
+#  metadata của ảnh gốc — cuỗm giữa hai bước là giao ảnh mất ngày chụp + profile màu
+def jpeg(*doan) -> bytes:
+    out = b"\xff\xd8"
+    for m, du in doan:
+        out += bytes([0xFF, m]) + (len(du) + 2).to_bytes(2, "big") + du
+    return out + b"\xff\xda\x00\x02" + b"\x00" * 16 + b"\xff\xd9"
+
+
+EXIF = (0xE1, b"Exif\x00\x00" + b"\x00" * 20)
+ICC = (0xE2, b"ICC_PROFILE\x00" + b"\x00" * 20)
+with tempfile.TemporaryDirectory() as td:
+    td = Path(td)
+    vao, tam, ra = td / "vao", td / "ra_tam", td / "ra"
+    for d in (vao, tam, ra):
+        d.mkdir()
+    g = vao / "a.jpg"
+    g.write_bytes(jpeg(EXIF, ICC))
+    q = tam / "a.jpg"
+    q.write_bytes(jpeg((0xE0, b"JFIF\x00" + b"\x00" * 9)))          # vừa ghi, chưa có metadata
+    cu = time.time() - 5
+    os.utime(q, (cu, cu))
+    ktra("_meta_jpeg đọc đúng EXIF + ICC / không có", rt._meta_jpeg(g) == (True, True)
+         and rt._meta_jpeg(q) == (False, False))
+    n = rt.dua_ket_qua_ra([str(g)], vao, tam, ra, chi_on_dinh=True)
+    ktra("bản ra CHƯA có EXIF / ICC như ảnh gốc: chưa đưa ra sớm", n == 0 and q.is_file())
+    q.write_bytes(jpeg(EXIF, ICC))
+    os.utime(q, (cu, cu))
+    n = rt.dua_ket_qua_ra([str(g)], vao, tam, ra, chi_on_dinh=True)
+    ktra("…engine chèn xong metadata: đưa ra", n == 1 and (ra / "a.jpg").is_file())
+
+
 # ---- dọn thư mục tạm: MỐC XOÁ SAU CÙNG (15/10 — thư mục vào trong Google Drive: Drive cầm
 #  file + thả desktop.ini -> rmtree xoá mốc rồi kẹt -> lần sau tạo .autotone_retouch_tam_1, _2…)
 with tempfile.TemporaryDirectory() as td:
