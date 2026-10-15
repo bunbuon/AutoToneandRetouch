@@ -1407,6 +1407,26 @@ hiện 1-6 người đó thì ưu tiên đo sáng và cân bằng trên mặt c�
   40 s (12 tiến trình). Tờ ghép mặt kiểm bằng mắt: scratchpad `thu_chu_the.py`.
 Kiểm: `test_chu_the.py`.
 
+## Duyệt trước v88 (15/10) — 4 agent đọc diff 8e50b9f..HEAD, đã sửa
+
+- **Chặn build:** `(them or {}).items()` (them = THAM SỐ) trong `moc_them_cot` làm Cython 3.3
+  sập — bản mã hoá dừng ở autotone.py. Luôn bọc `dict(...)` (bẫy cũ, xem bộ nhớ Cython).
+- **dong_bo_cum:** ảnh `ngoai_xuat` làm đại diện -> HSL 0 / CG 0 chép sang ảnh thật (xoá
+  preset) -> loại khỏi cụm. Ô màu người dùng tự sửa mà tool không ghi (khác mốc, không có trong
+  `_lich_su_ghi` — plan gắn `_o_tool_ghi`) -> `_mau_sua_tay` giữ, ghi chú
+  `dong-bo-cum:giu-sua-tay-…`. Mốc khác nhau thật (DSC_9689/9687) vẫn đồng bộ.
+- **Lọc sửa tay:** bản xuất cũ hơn lần ghi mà đọc được catalog -> chỉ tin catalog.
+- **Đưa ra sớm:** tự-chạy-lại cộng `_som_luot`; tấm đã đưa ra gỡ khỏi nhom_i; chỉ đưa khi bản ra
+  có EXIF / ICC như gốc (saytool chèn metadata SAU khi ghi JPEG), ngưỡng 1.5 s.
+- **RetouchKhiXuat.dungLuot:** skipRender / đợi render rồi dọn; lọt thẳng thư mục xuất -> Thùng
+  rác; hộp hỏi lỗi -> xuất như thường.
+- **Sao vừa chấm:** catalog đọc immutable không thấy WAL (catalog 788 MB — KHÔNG chép kèm WAL mỗi
+  3 s trên luồng giao diện) -> giữ sao chờ tới khi catalog có số đó / .lrcat ghi sau lúc chấm.
+- Chưa sửa (thấp): `hsl_l_ghi/hsl_l_moi` không xoá giữa các lần plan (chỉ sau chuỗi một lượt);
+  phím 0–5 ở ảnh lớn Cân tone là chấm sao (chủ ý, như Lightroom) — 0/1 không còn phóng.
+- `test_hoc_mau_lr`: Lightroom giả phải báo `dang_chay` ngay khi nhận (máy bận -> báo oan
+  "không nhận"); `kiem_retouch_gui` thỉnh thoảng hỏng khi chạy cả bộ, chạy riêng đạt.
+
 ## Retouch: đưa kết quả ra SỚM + dọn thư mục tạm (15/10) — `retouch.py`, `retouch_may.py`
 
 User (Vtt, 775 ảnh, ghi đè lên ảnh gốc): "Retouching đang xử lý rất nhiều nhưng không thấy trả ra
