@@ -346,7 +346,192 @@ local function chuyenGoc(tam, dich)
     LrFileUtils.move(tam, dich)
 end
 
+-- --------------------------------------------------------------------- chốt Sync nhầm
+--[[ 15/10 — user: "khi tôi đã sửa files, sau đó bấm xuất bên ngoài Tool thì trong Lr lại bị
+     add lại các thông số cũ". Lịch sử catalog (thư mục Vtt): 11:01:33 một bước
+     "Synchronize Settings" của CHÍNH LIGHTROOM chép một bộ số (Exposure +0.2, WB 4929 / 19,
+     Highlights −44, curve) sang 831 / 832 ảnh trong 3 giây — xoá Exposure / WB riêng từng ảnh
+     tool đã áp và các lần user chỉnh tay — 26 giây trước lượt Export 834 ảnh. Tool / plugin
+     không tạo được bước tên đó (mọi lần ghi của tool mang tên "AutoTone…"); Ctrl+Shift+S
+     (Sync Settings) nằm sát Ctrl+Shift+E (Export).
+     Chốt: trước khi render, ảnh trong lượt xuất mà tool từng áp số RIÊNG (apply_*.done, lần
+     áp chính gần nhất) nay cùng mang MỘT bộ số khác hẳn (≥ DB_TOI_THIEU ảnh, ≥ DB_TI_LE lượt,
+     trước đó ≥ 3 mức Exposure khác nhau) -> hỏi; "Dừng xuất" (mặc định) -> không ảnh nào
+     được ghi ra thư mục xuất. Lỗi gì trong bước kiểm -> bỏ qua, xuất như thường. ]]
+M.DB_TOI_THIEU = 10
+M.DB_TI_LE = 0.3
+M.DB_COT = { "Exposure2012", "Temperature", "Tint", "Highlights2012" }
+
+local function chuanDuong(p) return string.lower((string.gsub(tostring(p or ""), "\\", "/"))) end
+
+local function tachTab(dong)
+    local o = {}
+    for v in string.gmatch(dong .. "\t", "([^\t]*)\t") do o[#o + 1] = v end
+    return o
+end
+
+--[[ {đường chuẩn: {cột: số}} — số tool ghi ở LẦN ÁP CHÍNH gần nhất có ảnh đó (apply_*.done,
+     bỏ @curve lượt 2 và job khôi phục). can = tập đường cần (nil = mọi ảnh). ]]
+function M.soToolGhi(can)
+    local ds = {}
+    for p in LrFileUtils.files(jobDir()) do
+        local ten = LrPathUtils.leafName(p) or ""
+        if string.match(ten, "^apply_.*%.done$") and not string.find(ten, "@curve", 1, true)
+                and not string.find(string.lower(ten), "khoiphuc", 1, true) then
+            ds[#ds + 1] = p
+        end
+    end
+    table.sort(ds)                       -- apply_<YYYYmmdd_HHMMSS>_… -> theo giờ
+    local out = {}
+    for _, p in ipairs(ds) do
+        local fh = io.open(p, "r")
+        if fh then
+            local dau = fh:read("*l")
+            if dau then
+                dau = string.gsub(string.gsub(dau, "^\239\187\191", ""), "\r$", "")
+                local cot = {}
+                for i, c in ipairs(tachTab(dau)) do cot[c] = i end
+                for dong in fh:lines() do
+                    local o = tachTab((string.gsub(dong, "\r$", "")))
+                    local k = chuanDuong(o[cot.path or 1])
+                    if k ~= "" and (can == nil or can[k]) then
+                        local rec = {}
+                        for _, c in ipairs(M.DB_COT) do
+                            local v = cot[c] and tonumber(o[cot[c]])
+                            if v then rec[c] = v end
+                        end
+                        out[k] = rec
+                    end
+                end
+            end
+            fh:close()
+        end
+    end
+    return out
+end
+
+--[[ nil = không có dấu hiệu; có -> {n, tong, s (thông số chung), so_cu}. ]]
+function M.kiemDongBo(dsRend)
+    local can, anh = {}, {}
+    for _, r in ipairs(dsRend or {}) do
+        local ok, path = LrTasks.pcall(function() return r.photo:getRawMetadata("path") end)
+        if ok and path then
+            local k = chuanDuong(path)
+            can[k] = true
+            anh[#anh + 1] = { photo = r.photo, k = k }
+        end
+    end
+    if #anh < M.DB_TOI_THIEU then return nil end
+    local ghi = M.soToolGhi(can)
+    local nhom, tong = {}, 0
+    for _, a in ipairs(anh) do
+        local w = ghi[a.k]
+        if w and w.Exposure2012 then
+            local ok, s = LrTasks.pcall(function() return a.photo:getDevelopSettings() end)
+            if ok and type(s) == "table" and tonumber(s.Exposure2012) then
+                tong = tong + 1
+                local e = tonumber(s.Exposure2012)
+                local K, T = tonumber(s.Temperature), tonumber(s.Tint)
+                local doi = math.abs(e - w.Exposure2012) > 0.005
+                    or (w.Temperature and K and math.abs(K - w.Temperature) > 30)
+                    or (w.Tint and T and math.abs(T - w.Tint) > 0.5)
+                if doi then
+                    local khoa = string.format("%.2f|%s|%s|%s", e, tostring(K), tostring(T),
+                                               tostring(tonumber(s.Highlights2012)))
+                    local g = nhom[khoa]
+                    if not g then
+                        g = { n = 0, cu = {}, s = s }
+                        nhom[khoa] = g
+                    end
+                    g.n = g.n + 1
+                    g.cu[string.format("%.2f", w.Exposure2012)] = true
+                end
+            end
+        end
+    end
+    local tot = nil
+    for _, g in pairs(nhom) do
+        if not tot or g.n > tot.n then tot = g end
+    end
+    if not tot then return nil end
+    local soCu = 0
+    for _ in pairs(tot.cu) do soCu = soCu + 1 end
+    if tot.n >= M.DB_TOI_THIEU and tot.n >= M.DB_TI_LE * tong and soCu >= 3 then
+        return { n = tot.n, tong = tong, s = tot.s, so_cu = soCu }
+    end
+    return nil
+end
+
+--[[ Dừng cả lượt: mọi ảnh renditionIsDone(false) — Lightroom render vào thư mục tạm (không
+     bao giờ ra thư mục xuất), xong xoá. ]]
+local function dungLuot(filterContext, lyDo)
+    local tamDs = {}
+    local tuy = { filterSettings = function(rend, _es)
+        local ok, kq = pcall(function()
+            local dich = rend.destinationPath
+            if not dich or dich == "" then return nil end
+            local thu = LrPathUtils.child(LrPathUtils.parent(dich), ".autotone_dung_xuat")
+            if not LrFileUtils.exists(thu) then LrFileUtils.createAllDirectories(thu) end
+            local tam = LrPathUtils.child(thu, LrPathUtils.leafName(dich))
+            tamDs[#tamDs + 1] = tam
+            return tam
+        end)
+        if ok then return kq end
+        return nil
+    end }
+    for _, rts in filterContext:renditions(tuy) do
+        rts:renditionIsDone(false, lyDo)
+    end
+    for _, tam in ipairs(tamDs) do
+        LrTasks.pcall(function() if LrFileUtils.exists(tam) then LrFileUtils.delete(tam) end end)
+    end
+    for _, tam in ipairs(tamDs) do
+        LrTasks.pcall(function()
+            local thu = LrPathUtils.parent(tam)
+            local con = false
+            for _ in LrFileUtils.files(thu) do con = true break end
+            if not con then LrFileUtils.delete(thu) end
+        end)
+        break
+    end
+end
+
 function M.postProcessRenderedPhotos(functionContext, filterContext)
+    local pt = filterContext.propertyTable or {}
+    if pt.autotone_kiem_dong_bo ~= false then
+        local okD, db = LrTasks.pcall(function() return M.kiemDongBo(filterContext.renditionsToSatisfy) end)
+        if not okD then
+            log("kiểm Sync nhầm lỗi (bỏ qua, xuất như thường): " .. tostring(db))
+        elseif db then
+            local s = db.s
+            local chu = string.format("Exposure %s · WB %s / %s · Highlights %s",
+                                      tostring(s.Exposure2012), tostring(s.Temperature), tostring(s.Tint),
+                                      tostring(s.Highlights2012))
+            log(string.format("CẢNH BÁO Sync nhầm: %d/%d ảnh cùng %s — tool đã áp %d mức Exposure khác nhau",
+                              db.n, db.tong, chu, db.so_cu))
+            local chon = "ok"
+            LrTasks.pcall(function()
+                chon = LrDialogs.confirm(
+                    string.format("AutoTone: %d ảnh sắp xuất đang mang CÙNG một bộ thông số", db.n),
+                    chu .. string.format(" — khác số AutoTone đã áp RIÊNG cho từng ảnh (%d mức Exposure khác nhau).", db.so_cu)
+                        .. "\n\nThường do lệnh Sync Settings của Lightroom (Ctrl+Shift+S — nằm sát Ctrl+Shift+E Export)"
+                        .. " chạy khi đang chọn cả thư mục: Exposure / WB riêng từng ảnh bị thay bằng số của MỘT ảnh."
+                        .. " Xem bảng History của ảnh: bước \"Synchronize Settings\"."
+                        .. "\n\nDừng xuất để kiểm tra lại (Ctrl+Z hoặc History)?",
+                    "Dừng xuất", "Vẫn xuất")
+            end)
+            if chon ~= "cancel" then
+                log("người dùng DỪNG xuất — nghi Sync nhầm")
+                dungLuot(filterContext, "AutoTone: dừng xuất — ảnh vừa bị Sync cùng một bộ thông số")
+                return
+            end
+            log("người dùng vẫn xuất (đã cảnh báo Sync nhầm)")
+        end
+    end
+    return M._xuat(functionContext, filterContext)
+end
+
+function M._xuat(functionContext, filterContext)
     local pt = filterContext.propertyTable or {}
     local bat = pt.autotone_rt_bat ~= false
     local songSong = pt.autotone_rt_song_song ~= false

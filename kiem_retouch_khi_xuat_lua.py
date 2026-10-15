@@ -142,7 +142,8 @@ local fake = {
       THANH[#THANH + 1] = s
       return s end,
   LrView = { bind = function(k) return { bind = k } end },
-  LrDialogs = { showBezel = function(m) BEZEL = m end },
+  LrDialogs = { showBezel = function(m) BEZEL = m end,
+                confirm = function(a, b, c, d) HOI = a .. " | " .. b; NUT = { c, d }; return TRA_LOI or "ok" end },
 }
 function import(name) return fake[name] or {} end
 package.path = [[%s/?.lua;]] .. package.path
@@ -151,7 +152,8 @@ function boLoc(ds, pt)
   local rends, sats = {}, {}
   for i, d in ipairs(ds) do
     local r = { i = i }
-    local ph = { localIdentifier = i, getRawMetadata = function(self, k) return d.raw end }
+    local ph = { localIdentifier = i, getRawMetadata = function(self, k) return d.raw end,
+                 getDevelopSettings = function(self) return d.st end }
     r.src = { photo = ph,
               waitForRender = function(self)
                 SU_KIEN[#SU_KIEN + 1] = "render" .. i
@@ -195,6 +197,8 @@ def lua_ds(ds):
         e["noi"] = k
         if d.get("hong"):
             e["hong"] = True
+        if d.get("st") is not None:
+            e["st"] = L.table_from(d["st"])
         t[i] = e
     return t
 
@@ -381,6 +385,57 @@ files = [fp[i]["file"] for i in range(1, len(fp) + 1)]
 ktra("Info.lua: mảng 2 hành động, id 'ghi lại thư mục Export' cũ giữ nguyên",
      ids == ["vn.saymedia.autotone.batduongdan", "vn.saymedia.autotone.retouchkhixuat"]
      and files == ["BatDuongDan.lua", "RetouchKhiXuat.lua"], str(ids))
+
+# ---- 10. chốt Sync nhầm (15/10): ảnh tool áp số RIÊNG nay cùng một bộ số -> hỏi trước khi xuất
+#  User 15/10 (thư mục Vtt): "Synchronize Settings" của Lightroom 11:01:33 chép một bộ số sang
+#  831 / 832 ảnh, 26 giây sau xuất 834 ảnh -> ảnh xuất ra mất Exposure / WB riêng.
+JD = PL / "jobs"
+SYN = [anh(f"SYN{i:02d}.jpg") for i in range(12)]
+SYN_RAW = [str(RAW / f"SYN{i:02d}.ARW") for i in range(12)]
+TOOL = [{"Exposure2012": round(-0.3 + 0.05 * i, 2), "Temperature": 4700 + 20 * i, "Tint": 20, "Highlights2012": -29}
+        for i in range(12)]
+(JD / "apply_20261015_103600_Vtt.done").write_text(
+    "path\tExposure2012\tHighlights2012\tTemperature\tTint\n"
+    + "".join(f"{r}\t{t['Exposure2012']:.2f}\t-29\t{t['Temperature']}\t20\n" for r, t in zip(SYN_RAW, TOOL)),
+    encoding="utf-8")
+#  job @curve / khôi phục sau đó không tính là số tool áp
+(JD / "apply_20261015_103700_Vtt@curve.done").write_text(
+    "path\tExposure2012\n" + "".join(f"{r}\t0.20\n" for r in SYN_RAW), encoding="utf-8")
+SYNC = {"Exposure2012": 0.2, "Temperature": 4929, "Tint": 19, "Highlights2012": -44}
+
+
+def ds_syn(st):
+    for a in SYN:
+        if a.exists():
+            a.unlink()
+    return [{"path": a, "raw": r, "noi": a.stem + JPEG_DUOI, "st": st(i)} for i, (a, r) in enumerate(zip(SYN, SYN_RAW))]
+
+
+L.execute('HOI = nil; TRA_LOI = "ok"')
+kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC)))
+hoi = L.globals().HOI
+log = (JD / "plugin.log").read_text(encoding="utf-8")
+ktra("12 ảnh tool áp riêng nay cùng Exposure 0.2 / WB 4929 / 19 -> HỎI trước khi render, nút mặc định 'Dừng xuất'",
+     hoi is not None and "12 ảnh" in hoi and "Synchronize Settings" in hoi and L.globals().NUT[1] == "Dừng xuất",
+     str(hoi)[:120])
+ktra("…Dừng xuất: không ảnh nào ra thư mục xuất, không trạm retouch, thư mục tạm đã dọn, log ghi rõ",
+     kq == [False] * 12 and not any(a.exists() for a in SYN) and not (REN / ".autotone_dung_xuat").exists()
+     and "CẢNH BÁO Sync nhầm: 12/12" in log and "DỪNG xuất" in log, str(kq))
+L.execute('HOI = nil; TRA_LOI = "cancel"')
+kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC)))
+ktra("…chọn 'Vẫn xuất' -> xuất đủ 12 ảnh (retouch như thường)",
+     L.globals().HOI is not None and kq == [True] * 12 and all(nd(a).startswith(b"RT:") for a in SYN), str(kq))
+L.execute('HOI = nil; TRA_LOI = "ok"')
+kq, _ = chay_loc(ds_syn(lambda i: dict(TOOL[i])))
+ktra("số Lightroom = số tool áp -> không hỏi, xuất bình thường",
+     L.globals().HOI is None and kq == [True] * 12, str(L.globals().HOI))
+kq, _ = chay_loc(ds_syn(lambda i: dict(TOOL[i], Exposure2012=TOOL[i]["Exposure2012"] - 0.3 - 0.01 * i)))
+ktra("user sửa tay MỖI ẢNH MỘT SỐ (không phải Sync) -> không hỏi",
+     L.globals().HOI is None and kq == [True] * 12, str(L.globals().HOI))
+kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC) if i < 3 else dict(TOOL[i])))
+ktra("chỉ 3 ảnh bị Sync (dưới ngưỡng 10) -> không hỏi", L.globals().HOI is None and kq == [True] * 12)
+kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC)), autotone_kiem_dong_bo=False)
+ktra("tắt autotone_kiem_dong_bo -> không hỏi", L.globals().HOI is None and kq == [True] * 12)
 
 print()
 print("KET QUA:", "DAT HET" if not LOI else f"{len(LOI)} LOI: {LOI}")

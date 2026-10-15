@@ -1407,6 +1407,22 @@ hiện 1-6 người đó thì ưu tiên đo sáng và cân bằng trên mặt c�
   40 s (12 tiến trình). Tờ ghép mặt kiểm bằng mắt: scratchpad `thu_chu_the.py`.
 Kiểm: `test_chu_the.py`.
 
+## Sync nhầm trước khi Export (15/10) — chốt trong `RetouchKhiXuat.lua`, BẬT
+
+User: "khi tôi đã sửa files, sau đó bấm xuất bên ngoài Tool thì trong Lr lại bị add lại các thông số
+cũ". Lịch sử catalog (thư mục Vtt): 11:01:33 bước **"Synchronize Settings" của chính Lightroom**
+chép một bộ số (Exposure +0.2, WB 4929 / 19, Highlights −44, curve) sang 831 / 832 ảnh trong 3 s,
+26 s trước lượt Export 834 ảnh. KHÔNG phải tool: mọi lần ghi của tool / plugin mang tên "AutoTone…",
+"Preset: …" (AutoRetouch: "Auto Retouch…"), plugin không có mã tạo bước Sync, app không gửi phím;
+ChupCore (góp ý, 11:00:44) chỉ đọc. Ctrl+Shift+S (Sync Settings) nằm sát Ctrl+Shift+E (Export).
+Chốt: hậu kỳ "Retouch khi xuất", TRƯỚC khi render — ảnh trong lượt mà tool từng áp số riêng
+(`soToolGhi`: lần áp chính gần nhất, bỏ @curve / khôi phục) nay cùng MỘT bộ số khác (≥ 10 ảnh,
+≥ 30% lượt, trước ≥ 3 mức Exposure) -> LrDialogs.confirm, mặc định "Dừng xuất" -> mọi ảnh
+renditionIsDone(false), render vào `.autotone_dung_xuat` rồi xoá (không file nào ra thư mục xuất).
+Tắt: `autotone_kiem_dong_bo = false`. Chỉ bảo vệ lượt Export CÓ tích "AutoTone: Retouch khi xuất".
+Đọc lịch sử develop: `Adobe_libraryImageDevelopHistoryStep` (text zlib bỏ 4 byte đầu) — scratchpad
+`tim_ghi_lai.py`, `dem_sync_vtt.py`. Kiểm: `kiem_retouch_khi_xuat_lua.py` mục 10.
+
 ## Mở lại nhân P sau khi cập nhật BIOS (12/10) — `xuat_ui.de_xuat_an_toan`
 
 Chế độ an toàn CPU (ghim Lightroom + app + engine vào nhân E khi Xuất, v58) sinh ra vì
