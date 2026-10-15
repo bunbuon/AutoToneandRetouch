@@ -462,10 +462,16 @@ function M.kiemDongBo(dsRend)
     return nil
 end
 
---[[ Dừng cả lượt: mọi ảnh renditionIsDone(false) — Lightroom render vào thư mục tạm (không
-     bao giờ ra thư mục xuất), xong xoá. ]]
+--[[ Dừng cả lượt: mọi ảnh renditionIsDone(false), KHÔNG ảnh nào ở lại thư mục xuất.
+     15/10 (duyệt trước v88): bản đầu chỉ renditionIsDone(false) rồi xoá thư mục tạm NGAY —
+     Lightroom vẫn render tiếp sau đó (render chạy độc lập với vòng lọc: đo thật 15/10 lượt
+     Vtt), file mới rơi vào .autotone_dung_xuat không ai dọn; và lượt Lightroom bỏ qua đường
+     tạm (Export with Previous — xem đầu file) thì ảnh SAI ghi thẳng thư mục xuất dù đã chọn
+     "Dừng xuất". Nay từng ảnh: xin Lightroom KHỎI render (skipRender); không được thì đợi
+     render xong -> bản ở thư mục tạm xoá, bản lọt thẳng thư mục xuất chuyển vào Thùng rác
+     (khôi phục được — Lightroom cũng chuyển bản cũ cùng tên vào đó khi ghi đè). ]]
 local function dungLuot(filterContext, lyDo)
-    local tamDs = {}
+    local tamDs, tamCua = {}, {}
     local tuy = { filterSettings = function(rend, _es)
         local ok, kq = pcall(function()
             local dich = rend.destinationPath
@@ -474,13 +480,38 @@ local function dungLuot(filterContext, lyDo)
             if not LrFileUtils.exists(thu) then LrFileUtils.createAllDirectories(thu) end
             local tam = LrPathUtils.child(thu, LrPathUtils.leafName(dich))
             tamDs[#tamDs + 1] = tam
+            tamCua[dich] = tam
             return tam
         end)
         if ok then return kq end
         return nil
     end }
-    for _, rts in filterContext:renditions(tuy) do
+    local lot = 0
+    for src, rts in filterContext:renditions(tuy) do
+        local boDuoc = LrTasks.pcall(function() src:skipRender() end)
+        if not boDuoc then
+            local okR, duong = src:waitForRender()
+            local dich = rts.destinationPath
+            if okR and duong and duong ~= "" then
+                if duong == tamCua[dich] then
+                    LrTasks.pcall(function() if LrFileUtils.exists(duong) then LrFileUtils.delete(duong) end end)
+                elseif duong == dich then
+                    lot = lot + 1
+                    LrTasks.pcall(function() LrFileUtils.moveToTrash(duong) end)
+                    if lot <= 3 then
+                        log("dừng xuất: Lightroom bỏ qua đường tạm, đã ghi thẳng " .. tostring(duong)
+                            .. " -> chuyển vào Thùng rác")
+                    end
+                end
+            end
+        end
         rts:renditionIsDone(false, lyDo)
+    end
+    if lot > 0 then
+        log(string.format("dừng xuất: %d ảnh Lightroom ghi thẳng thư mục xuất -> đã chuyển vào Thùng rác", lot))
+        LrTasks.pcall(function()
+            LrDialogs.showBezel(string.format("AutoTone: đã dừng xuất — %d ảnh lỡ ghi ra đã chuyển vào Thùng rác", lot), 6)
+        end)
     end
     for _, tam in ipairs(tamDs) do
         LrTasks.pcall(function() if LrFileUtils.exists(tam) then LrFileUtils.delete(tam) end end)
@@ -509,8 +540,10 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
                                       tostring(s.Highlights2012))
             log(string.format("CẢNH BÁO Sync nhầm: %d/%d ảnh cùng %s — tool đã áp %d mức Exposure khác nhau",
                               db.n, db.tong, chu, db.so_cu))
-            local chon = "ok"
-            LrTasks.pcall(function()
+            --  hộp hỏi lỗi -> xuất như thường (đúng nguyên tắc của chốt: lỗi gì ở bước kiểm thì
+            --  bỏ qua), không âm thầm dừng cả lượt
+            local chon = "cancel"
+            local okHoi, loiHoi = LrTasks.pcall(function()
                 chon = LrDialogs.confirm(
                     string.format("AutoTone: %d ảnh sắp xuất đang mang CÙNG một bộ thông số", db.n),
                     chu .. string.format(" — khác số AutoTone đã áp RIÊNG cho từng ảnh (%d mức Exposure khác nhau).", db.so_cu)
@@ -520,6 +553,9 @@ function M.postProcessRenderedPhotos(functionContext, filterContext)
                         .. "\n\nDừng xuất để kiểm tra lại (Ctrl+Z hoặc History)?",
                     "Dừng xuất", "Vẫn xuất")
             end)
+            if not okHoi then
+                log("hộp hỏi Sync nhầm lỗi (xuất như thường): " .. tostring(loiHoi))
+            end
             if chon ~= "cancel" then
                 log("người dùng DỪNG xuất — nghi Sync nhầm")
                 dungLuot(filterContext, "AutoTone: dừng xuất — ảnh vừa bị Sync cùng một bộ thông số")

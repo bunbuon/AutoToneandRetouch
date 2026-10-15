@@ -115,6 +115,19 @@ def _files(d):
 
 g.py_files = _files
 g.py_move = lambda a, b: os.replace(a, b) or True
+THUNG_RAC = []          # LrFileUtils.moveToTrash giả: ghi lại đường + chuyển file vào _thung_rac
+
+
+def _trash(p):
+    THUNG_RAC.append(str(p))
+    if os.path.isfile(p):
+        d = Path(p).parent / "_thung_rac"
+        d.mkdir(exist_ok=True)
+        os.replace(p, d / Path(p).name)
+    return True
+
+
+g.py_trash = _trash
 g.py_mkdirs = lambda p: os.makedirs(p, exist_ok=True) or True
 L.execute(r'''
 _PLUGIN = { path = [[%s]] }
@@ -124,6 +137,7 @@ THANH = {}
 local fake = {
   LrFileUtils = { exists = function(p) return py_exists(p) end, delete = function(p) return py_delete(p) end,
                   move = function(a, b) return py_move(a, b) end,
+                  moveToTrash = function(p) return py_trash(p) end,
                   createAllDirectories = function(p) return py_mkdirs(p) end,
                   files = function(d) return py_files(d) end },
   LrPathUtils = { child = function(a, b) return a .. "/" .. b end,
@@ -155,6 +169,7 @@ function boLoc(ds, pt)
     local ph = { localIdentifier = i, getRawMetadata = function(self, k) return d.raw end,
                  getDevelopSettings = function(self) return d.st end }
     r.src = { photo = ph,
+              skipRender = CO_SKIP and function(self) SU_KIEN[#SU_KIEN + 1] = "bo" .. i end or nil,
               waitForRender = function(self)
                 SU_KIEN[#SU_KIEN + 1] = "render" .. i
                 if d.hong then return false, "loi render" end
@@ -436,6 +451,32 @@ kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC) if i < 3 else dict(TOOL[i])))
 ktra("chỉ 3 ảnh bị Sync (dưới ngưỡng 10) -> không hỏi", L.globals().HOI is None and kq == [True] * 12)
 kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC)), autotone_kiem_dong_bo=False)
 ktra("tắt autotone_kiem_dong_bo -> không hỏi", L.globals().HOI is None and kq == [True] * 12)
+#  duyệt trước v88: Lightroom BỎ QUA đường tạm (Export with Previous) -> ảnh sai lọt thẳng
+#  thư mục xuất dù chọn "Dừng xuất" -> phải chuyển vào Thùng rác (khôi phục được), không để lại
+L.execute('HOI = nil; TRA_LOI = "ok"; BO_QUA_DUONG = true')
+THUNG_RAC.clear()
+kq, sk = chay_loc(ds_syn(lambda i: dict(SYNC)))
+L.execute("BO_QUA_DUONG = nil")
+log = (JD / "plugin.log").read_text(encoding="utf-8")
+ktra("…Lightroom bỏ qua đường tạm + Dừng xuất: 12 ảnh sai chuyển vào Thùng rác, thư mục xuất trống",
+     kq == [False] * 12 and len(THUNG_RAC) == 12 and not any(a.exists() for a in SYN)
+     and "Thùng rác" in log and "Thùng rác" in str(L.globals().BEZEL), f"{len(THUNG_RAC)} · {kq[:2]}")
+#  Lightroom có skipRender -> không đợi render ảnh nào (không chờ cả lượt mới dừng)
+L.execute('HOI = nil; TRA_LOI = "ok"; CO_SKIP = true')
+kq, sk = chay_loc(ds_syn(lambda i: dict(SYNC)))
+L.execute("CO_SKIP = nil")
+ktra("…có skipRender: xin bỏ render từng ảnh, không waitForRender, thư mục tạm vẫn dọn sạch",
+     kq == [False] * 12 and sum(1 for e in sk if str(e).startswith("bo")) == 12
+     and not any(str(e).startswith("render") for e in sk)
+     and not (REN / ".autotone_dung_xuat").exists() and not any(a.exists() for a in SYN), str(sk[:4]))
+#  hộp hỏi lỗi -> xuất như thường (không âm thầm dừng cả lượt)
+L.execute('HOI = nil')
+L.execute('local LD = import("LrDialogs"); _CONFIRM_GOC = LD.confirm; LD.confirm = function() error("hop thoai hong") end')
+kq, _ = chay_loc(ds_syn(lambda i: dict(SYNC)))
+L.execute('import("LrDialogs").confirm = _CONFIRM_GOC')
+log = (JD / "plugin.log").read_text(encoding="utf-8")
+ktra("…hộp hỏi lỗi: xuất như thường + ghi log, không âm thầm dừng",
+     kq == [True] * 12 and "hộp hỏi Sync nhầm lỗi" in log, str(kq[:2]))
 
 print()
 print("KET QUA:", "DAT HET" if not LOI else f"{len(LOI)} LOI: {LOI}")

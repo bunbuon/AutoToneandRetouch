@@ -9947,7 +9947,9 @@ def moc_them_cot(folder: Path, them: dict[str, dict]) -> int:
     Dùng cho cột tool bắt đầu ghi sau khi mốc đã chốt (COT_HSL_L, 14/10)."""
     cu = load_baseline(folder)
     n = 0
-    for p, cot in (them or {}).items():
+    #  dict(...) bọc ngoài: `(them or {}).items()` với them là THAM SỐ làm Cython (bản mã hoá)
+    #  sập "Compiler crash in AnalyseExpressionsTransform" — build v88 dừng ở bước mã hoá
+    for p, cot in dict(them or {}).items():
         rec = cu.get(khoa_duong_dan(p))
         if not isinstance(rec, dict):
             continue
