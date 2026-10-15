@@ -91,7 +91,7 @@ LOAI_TRU = [
     "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
     "test_phanh_da_wb.py", "test_canh_ngoai_toi.py", "test_loc_may_mau_da.py",
     "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",
-    "test_ngon_ngu.py", "test_dua_ra_som.py", "kiem_toan_bo.py", "test_cham_sao.py", "test_xem_lr.py",
+    "test_ngon_ngu.py", "test_dua_ra_som.py", "test_chat_luong_ra.py", "kiem_toan_bo.py", "test_cham_sao.py", "test_xem_lr.py",
     "test_do_song_song.py", "kiem_preview_lr.py", "test_kiem_preview_lr.py",
     "kiem_hoc_mau_lua.py", "test_mo_hinh_lr.py", "mo_phong_lr.py", "test_doc_cache_lr.py", "test_do_truoc.py",
     "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py",
@@ -234,8 +234,11 @@ TAI_NGUYEN = [("models", "models"), ("AutoTone.lrplugin", "AutoTone.lrplugin"),
 BO_KHOI_PLUGIN = ["jobs", "jobs_dir.txt"]
 
 # Gói nặng của phần retouch — PyInstaller không tự dò ra hết
+#  jpeglib (15/10): saytool ghep_dct giữ nguyên hệ số DCT khối không sửa -> ảnh retouch
+#  ~ dung lượng ảnh gốc. Trước gói KHÔNG có -> mọi ảnh nén lại cả tấm (Vtt: 1.6 -> 4.8 MB).
+#  jpeglib nạp cjpeglib_*.pyd bằng cách LIỆT KÊ thư mục -> phải --collect-all.
 RETOUCH_GOI = ["torch", "torchvision", "onnxruntime", "insightface",
-               "mediapipe", "cv2", "scipy", "sklearn", "joblib", "skimage"]
+               "mediapipe", "cv2", "scipy", "sklearn", "joblib", "skimage", "jpeglib"]
 
 #[[ PHAI DONG GOI BANG MOT VENV SACH, KHONG PHAI PYTHON HE THONG.
 #

@@ -982,6 +982,44 @@ def ghi_cau_hinh(d: dict) -> None:
     dd.ghi_ben(CAU_HINH, json.dumps(cu, ensure_ascii=False, indent=2))
 
 
+#[[ CHAT LUONG ANH RA (15/10 — user: "anh chay qua retouch dung luong lai dang tang. Can co
+#   che de co the chon Quality anh xuat ra"). Do that Vtt: ban Lightroom xuat 1.6–2.8 MB ->
+#   ban retouch 4.8–7.9 MB. Hai nguyen nhan:
+#   (1) goi .exe KHONG co jpeglib -> saytool ghep_dct (giu NGUYEN he so DCT khoi khong sua,
+#       dung luong ~ anh goc) luon that bai -> ghi lai CA anh bang cv2;
+#   (2) app ep --chat-luong 98 cho me Retouch (tram Retouch khi xuat thi "auto") -> ca anh
+#       nen lai o q98, gap ~3 lan ban Lightroom q~80.
+#   Nay: retouch.json "chat_luong_ra" — "auto" (mac dinh) = ghep DCT (khong co jpeglib thi
+#   nen lai theo chat luong anh goc + 2); mot so = nen lai CA anh o dung muc do
+#   (--nen-lai-het / nguyen_ven=False — ghep DCT bo qua chat luong). Moi duong chay (me
+#   Retouch, tram Retouch khi xuat, nut Xuat) doc tu day qua chay(). ]]
+CHAT_LUONG_RA = ("auto", 100, 95, 90, 85, 80)
+
+
+def chuan_chat_luong(v):
+    """'auto' hoặc số nguyên 1–100 (giá trị lạ -> 'auto')."""
+    if v is None or str(v).strip().lower() in ("", "auto"):
+        return "auto"
+    try:
+        return max(1, min(100, int(float(v))))
+    except (TypeError, ValueError):
+        return "auto"
+
+
+def chat_luong_ra(cf: dict | None = None):
+    """Chất lượng ảnh ra người dùng chọn (retouch.json "chat_luong_ra"), mặc định 'auto'."""
+    d = doc_cau_hinh() if cf is None else dict(cf)
+    return chuan_chat_luong(d.get("chat_luong_ra", "auto"))
+
+
+def ten_chat_luong(v) -> str:
+    """Nhãn hiện trên nút chọn."""
+    v = chuan_chat_luong(v)
+    if v == "auto":
+        return "Theo ảnh gốc (giữ dung lượng)"
+    return f"JPEG {v}" + (" — tối đa, file rất to" if v >= 100 else "")
+
+
 def tim_tool() -> Path | None:
     """Chỗ đã ghi trước, rồi bản trong gói, rồi mới dò. None nếu không thấy đâu.
 
@@ -1548,7 +1586,7 @@ def dem(vao: Path, ra: Path, de_quy: bool = False) -> tuple[int, int]:
 
 
 def lenh(goc: Path, vao: Path, ra: Path, muc: dict,
-         may: str = "auto", chat_luong: int = 98,
+         may: str = "auto", chat_luong="auto",
          de_quy: bool = False, lam_lai: bool = False,
          gioi_han: int = 0, luong: int = LUONG_MAC_DINH,
          che_do: str = CHE_DO_MAC_DINH, ghi_de: bool = False,
@@ -1570,12 +1608,15 @@ def lenh(goc: Path, vao: Path, ra: Path, muc: dict,
     #   Giao dien da hoi nguoi dung roi (xem RetouchWindow.start), nen o day
     #   bao saytool khoi hoi nua.
     #]]
+    cl = chuan_chat_luong(chat_luong)
     if ghi_de:
         tham = ["chay", str(vao), "--ghi-de", "--dong-y-ghi-de",
-                "--may", may, "--chat-luong", str(int(chat_luong))]
+                "--may", may, "--chat-luong", str(cl)]
     else:
         tham = ["chay", str(vao), str(ra), "--may", may,
-                "--chat-luong", str(int(chat_luong))]
+                "--chat-luong", str(cl)]
+    if cl != "auto":
+        tham.append("--nen-lai-het")       # ghép DCT bỏ qua chất lượng — chọn số là nén lại cả ảnh
     #[[ CHI truyen --luong khi nguoi dung EP mot con so.
     #
     #   phan_cung.so_luong() co nhanh `if xin > 0: return min(xin, ...)`, nen
@@ -1823,10 +1864,14 @@ def chay(goc: Path, vao: Path, ra: Path, muc: dict, engine=None, **kw):
     #   Engine do mat xong khong thay mat nao -> chep nguyen ban, khong chuan bi buoc nao. ]]
     if "bo_khong_nguoi" not in kw:
         kw["bo_khong_nguoi"] = bool(doc_cau_hinh().get("bo_khong_nguoi", True))
+    #  15/10: chất lượng ảnh ra theo lựa chọn của người dùng (xem CHAT_LUONG_RA)
+    kw["chat_luong"] = chuan_chat_luong(kw["chat_luong"]) if kw.get("chat_luong") is not None \
+        else chat_luong_ra()
     if engine is not None and getattr(engine, "chay_duoc", lambda: False)():
         tham = dict(vao=str(vao), ra=str(ra), muc=dict(muc),
                     bo_khong_nguoi=bool(kw["bo_khong_nguoi"]),
-                    may=kw.get("may", "auto"), chat_luong=kw.get("chat_luong", 98),
+                    may=kw.get("may", "auto"), chat_luong=kw["chat_luong"],
+                    nguyen_ven=kw["chat_luong"] == "auto",
                     de_quy=bool(kw.get("de_quy", False)), lam_lai=bool(kw.get("lam_lai", False)),
                     gioi_han=int(kw.get("gioi_han", 0) or 0),
                     luong=int(kw.get("luong", LUONG_MAC_DINH) or 0),

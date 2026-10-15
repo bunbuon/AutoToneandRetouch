@@ -1064,8 +1064,9 @@ class Tram:
         chi_tiet = ""
         ma = 1
         try:
+            #  15/10: chất lượng ảnh ra theo lựa chọn ở màn Retouch (mặc định "auto")
             for loai, gt in rt.chay(self.goc_tool(), vao, ra, muc, engine=may,
-                                    lam_lai=True, chat_luong="auto"):
+                                    lam_lai=True, chat_luong=rt.chat_luong_ra()):
                 if loai == "dong":
                     cuoi.append(str(gt))
                     del cuoi[:-12]

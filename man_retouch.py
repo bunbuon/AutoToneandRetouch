@@ -855,6 +855,24 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         except Exception:                                    # noqa: BLE001
             return int(getattr(self, "_tien_do_tool", 0) or 0)
 
+    def _mo_menu_chat_luong(self):
+        """Menu chọn chất lượng ảnh ra (retouch.json "chat_luong_ra")."""
+        menu = tk.Menu(self, tearoff=0)
+        dang = self.rt.chat_luong_ra()
+        for v in self.rt.CHAT_LUONG_RA:
+            menu.add_command(label=("● " if v == dang else "   ") + self.rt.ten_chat_luong(v),
+                             command=lambda v=v: self._chon_chat_luong(v))
+        self.app._bat_menu(menu, self.btn_chat_luong)
+
+    def _chon_chat_luong(self, v):
+        v = self.rt.chuan_chat_luong(v)
+        self.rt.ghi_cau_hinh({"chat_luong_ra": v})
+        self.cf["chat_luong_ra"] = v
+        try:
+            self.btn_chat_luong.configure(text=self.rt.ten_chat_luong(v))
+        except tk.TclError:
+            pass
+
     def _cap_nhat_nut_chay(self):
         """“Chạy retouch · N ảnh” — N = số tấm ĐANG CHỌN ở dải ảnh (đúng những
         tấm start() sẽ chạy). Chưa có ảnh / chưa chọn thì chỉ “Chạy retouch”."""
@@ -1083,9 +1101,25 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             "retouch da tay / chân / thân ở những ảnh đó thì tắt ô này.",
             lenh=lambda: self.rt.ghi_cau_hinh(
                 {"bo_khong_nguoi": bool(self.v_bo_khong_nguoi.get())}))
+        #[[ CHAT LUONG ANH RA (15/10 — user: "anh chay qua retouch dung luong lai dang
+        #   tang"). retouch.json "chat_luong_ra" — xem retouch.CHAT_LUONG_RA. ]]
+        self.o_chat_luong = ttk.Frame(g_tm)
+        ttk.Label(self.o_chat_luong, text="Chất lượng ảnh ra").pack(side="left")
+        self.btn_chat_luong = gd.NutTron(
+            self.o_chat_luong, self.rt.ten_chat_luong(self.rt.chat_luong_ra(self.cf)),
+            kieu="phu", font=gd.CHU, mui_ten=True, command=self._mo_menu_chat_luong)
+        self.btn_chat_luong.pack(side="left", padx=(8, 0), fill="x", expand=True)
+        hoi(self.o_chat_luong,
+            "Theo ảnh gốc (khuyên dùng): chỉ vùng được retouch được nén lại, phần còn lại "
+            "giữ nguyên từng điểm ảnh của file gốc — dung lượng gần bằng ảnh Lightroom "
+            "xuất ra.\n\nChọn một số (100 / 95 / 90 / 85 / 80): nén lại CẢ ảnh ở đúng mức "
+            "đó. Số càng cao càng nét nhưng file càng to (100 có thể gấp 3–4 lần ảnh "
+            "gốc); thấp hơn chất lượng ảnh gốc thì file nhỏ hơn nhưng mất chi tiết.\n\n"
+            "Áp cho Chạy retouch, Xuất & retouch và Retouch khi xuất của Lightroom.")
         #  thứ tự hiện lại khi đổi nguồn (xem _ap_nguon_ui)
         self._dat_cho(self.o_tu_moi, fill="x", anchor="w", pady=2)
         self._dat_cho(self.o_bo_khong_nguoi, fill="x", anchor="w", pady=2)
+        self._dat_cho(self.o_chat_luong, fill="x", anchor="w", pady=(6, 2))
         self._dat_cho(self.o_ghide, truoc=self.o_tu_moi, fill="x", anchor="w", pady=(10, 2))
         self._dat_cho(self.o_ra, truoc=self.o_ghide, fill="x", pady=(3, 0))
         self._dat_cho(self.hang_ra, truoc=self.o_ra, fill="x", pady=(6, 0))

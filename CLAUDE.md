@@ -1407,6 +1407,19 @@ hiện 1-6 người đó thì ưu tiên đo sáng và cân bằng trên mặt c�
   40 s (12 tiến trình). Tờ ghép mặt kiểm bằng mắt: scratchpad `thu_chu_the.py`.
 Kiểm: `test_chu_the.py`.
 
+## Chất lượng ảnh ra Retouch + jpeglib trong gói (15/10, v89)
+
+User: "ảnh chạy qua retouch dung lượng lại đang tăng — cần chọn Quality ảnh xuất ra". Vtt: bản
+Lightroom 1.6–2.8 MB -> retouch 4.8–7.9 MB. Hai gốc: (1) gói .exe KHÔNG có `jpeglib` (venv_build
+thiếu; dong_goi ghi chú từ 17/9 "tuỳ chọn") -> saytool `ghep_dct` (giữ nguyên hệ số DCT khối không
+sửa) luôn thất bại -> nén lại CẢ ảnh bằng cv2; (2) app ép `--chat-luong 98`. Đo thật SAY-Media-09401
+(LR 2.05 MB): auto + ghép DCT 2.42 MB (×1.18) · JPEG 90 2.76 MB · JPEG 98 4.77 MB (×2.32 = lỗi user).
+Sửa: `jpeglib==1.0.2` cài vào venv_build + "jpeglib" trong `dong_goi.RETOUCH_GOI` (--collect-all:
+nạp cjpeglib_*.pyd bằng liệt kê thư mục). retouch.json `chat_luong_ra` ("auto" mặc định | 100/95/
+90/85/80), nút "Chất lượng ảnh ra" ở màn Retouch (dưới "Bỏ qua ảnh không có người"); `retouch.chay`
+điền cho mọi đường (mẻ, trạm Retouch khi xuất, Xuất & retouch); số -> `--nen-lai-het` /
+`nguyen_ven=False` (ghép DCT bỏ qua chất lượng). Kiểm: `test_chat_luong_ra.py`.
+
 ## Duyệt trước v88 (15/10) — 4 agent đọc diff 8e50b9f..HEAD, đã sửa
 
 - **Chặn build:** `(them or {}).items()` (them = THAM SỐ) trong `moc_them_cot` làm Cython 3.3
