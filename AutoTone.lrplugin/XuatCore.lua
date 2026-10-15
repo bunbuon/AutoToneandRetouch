@@ -332,6 +332,9 @@ function M.xuat(photos, dest, thongSo, _lo, tienDo)
     if err then
         Core.log("xuatanh: LOI phien xuat -> " .. tostring(err))
     end
+    if daLam == 0 and tong > 0 and not dung then
+        Core.log(string.format("xuatanh: phien xuat %d anh khong tra rendition nao (Lightroom bo qua phien?)", tong))
+    end
     --  bấm ✕ trên thanh Lightroom: vòng lặp tự dừng (stopIfCanceled) trước khi kịp hỏi
     if not dung and daLam < tong and lrBamHuy() then
         dung, huyLR = true, true
@@ -417,6 +420,11 @@ function M.runRequest()
         return 0
     end
 
+    --  15/10: lượt Vtt 11:00:35 "ra 0/0" không rõ vì sao — ghi số ảnh sau lọc để lần sau biết
+    Core.log(string.format("xuatanh: %d anh sau loc (%s, bo sao %d) -> %s", #photos,
+                           (type(opts.anh) == "table" and #opts.anh > 0) and
+                               string.format("app chi dinh %d anh", #opts.anh) or "theo thu muc",
+                           boSao or 0, tostring(dest)))
     M.xoaCoDung()          -- cờ sót của lần trước làm lượt mới dừng ngay lô đầu
     M.xoaBang()            -- bảng của lượt trước: app đọc nhầm là ảnh lượt này
     local t0 = os.time()
