@@ -1103,6 +1103,9 @@ class MayMixin:
         try:
             n0 = (self._luot_chay or {}).get("tong") or sum(len(a) for _m, a, _l in viec)
             self._dat_tien_do_tt(0, n0, f"Đang retouch 0/{n0} ảnh  ·  đang khởi động…")
+            #  xoá dòng trạng thái của lượt TRƯỚC (vd "Retouch dừng ở 56/775 ảnh", màu
+            #  cam) — 15/10 nó nằm lì cạnh tiến độ lượt mới, user tưởng lượt mới cũng dừng
+            self.app.status(f"Đang retouch {n0} ảnh…")
         except Exception:                                    # noqa: BLE001
             pass
 
@@ -1197,11 +1200,17 @@ class MayMixin:
                         #   dung giua chung: tam nao da xong thi khong mat. ]]
                         self._tien_do_tool = 0
                         self._vao_luot, self._ra_luot = d, d_ra
+                        self._som_luot = 0
+                        self._luot_hien = (a, vao, d_ra, ra, de_quy, ghi_de)
                         try:
                             ma = chay_mot(d, m, ra=d_ra, ghi_de=False, lam_lai=False)
                         finally:
                             self._vao_luot = self._ra_luot = None
-                        n_ra = self.rt.dua_ket_qua_ra(a, vao, d_ra, ra, de_quy, ghi_de)
+                        with self._khoa_som:
+                            self._luot_hien = None
+                            n_ra = self.rt.dua_ket_qua_ra(a, vao, d_ra, ra, de_quy, ghi_de)
+                            n_ra += int(getattr(self, "_som_luot", 0) or 0)
+                            self._som_luot = 0
                         if lc is not None:
                             lc["xong"] += n_ra
                         self._tien_do_tool = 0
@@ -1219,8 +1228,39 @@ class MayMixin:
 
         #  còn mẻ chưa báo xong (luồng đã hết nhưng _pump chưa xử lý "ma") — xem _quet_moi
         self._cho_xong = True
+        self._khoa_som = threading.Lock()
+        self._luot_hien = None
+        self._som_luot = 0
         self.worker = threading.Thread(target=work, daemon=True)
         self.worker.start()
+
+    def _don_som(self):
+        """Lượt đang chạy qua thư mục tạm: tấm nào engine đã ghi xong thì đưa ra thư
+        mục ra / đè lên ảnh gốc NGAY (luồng chính, theo nhịp bơm) — người dùng thấy
+        kết quả từng tấm, không đợi cả lượt. Xem retouch.dua_ket_qua_ra."""
+        lh = getattr(self, "_luot_hien", None)
+        khoa = getattr(self, "_khoa_som", None)
+        if not lh or khoa is None:
+            return
+        da_ra: list = []
+        with khoa:
+            if self._luot_hien is not lh:
+                return
+            a, vao, d_ra, ra, de_quy, ghi_de = lh
+            try:
+                n = self.rt.dua_ket_qua_ra(a, vao, d_ra, ra, de_quy, ghi_de,
+                                           chi_on_dinh=True, da_ra=da_ra)
+            except Exception:                                # noqa: BLE001
+                return
+            self._som_luot = int(getattr(self, "_som_luot", 0) or 0) + n
+        if not da_ra:
+            return
+        anh = self._anh_dang
+        if anh and str(anh) in da_ra and not self._xem_dang_hien:
+            try:
+                self._hien_anh_dia(anh, giu_khung=True)
+            except Exception:                                # noqa: BLE001
+                traceback.print_exc()
 
     # ------------------------------------------------------------ tự retouch ảnh mới
     #[[ TU RETOUCH ANH MOI (7/10 — user: "Tu dong Retouch cac anh moi khi duoc
@@ -1940,6 +1980,7 @@ class MayMixin:
         #]]
         song = bool(self.worker and self.worker.is_alive())
         if song:
+            self._don_som()
             now = time.monotonic()
             if now - getattr(self, "_lan_dem", 0.0) >= 1.5:
                 self._lan_dem = now

@@ -1407,6 +1407,22 @@ hiện 1-6 người đó thì ưu tiên đo sáng và cân bằng trên mặt c�
   40 s (12 tiến trình). Tờ ghép mặt kiểm bằng mắt: scratchpad `thu_chu_the.py`.
 Kiểm: `test_chu_the.py`.
 
+## Retouch: đưa kết quả ra SỚM + dọn thư mục tạm (15/10) — `retouch.py`, `retouch_may.py`
+
+User (Vtt, 775 ảnh, ghi đè lên ảnh gốc): "Retouching đang xử lý rất nhiều nhưng không thấy trả ra
+kết quả ngoài folder". Mẻ chạy qua thư mục tạm (`.autotone_retouch_tam/nhom_i` liên kết cứng ->
+`ra_i`) và CHỈ đưa ra khi cả lượt xong — 495 tấm xong vẫn nằm ẩn. Bản "đưa ra sớm" viết 13/10
+nằm trong stash `sua-tay-truoc-13-10` (chưa từng commit) -> chuyển vào: `_don_som` (nhịp `_pump`)
+gọi `dua_ket_qua_ra(chi_on_dinh=True)` — chỉ file đứng yên ≥ `ON_DINH_RA_GIAY` và os.replace
+được, KHÔNG chép dự phòng; `_som_luot` cộng vào số cuối lượt; ảnh lớn đang xem tải lại.
+Đè giữa lượt an toàn: engine đọc bản liên kết cứng trong nhom_i (inode gốc), `_quet_moi` nhận ảnh
+mới theo đường dẫn (không theo mtime). Lượt mới xoá dòng trạng thái cũ ("Retouch dừng ở 56/775",
+màu cam, từng nằm lì cạnh tiến độ). `don_thu_muc_tam`: thư mục vào trong Google Drive -> Drive cầm
+file + thả desktop.ini -> rmtree xoá MỐC rồi kẹt -> lần sau tạo `_1`, `_2`…; nay mốc xoá SAU CÙNG,
+còn sót thì giữ mốc để lần sau dọn. Kiểm: `test_dua_ra_som.py` (nhóm retouch).
+`test_xuat_mot_thao_tac.py` hỏng 4 mục trên cây dev KỂ CẢ bản HEAD (dữ liệu cục bộ chưa theo dõi
+trong thư mục dev); checkout sạch chỉ hỏng mục nút "3 · Xuất" (có từ trước).
+
 ## Sync nhầm trước khi Export (15/10) — chốt trong `RetouchKhiXuat.lua`, BẬT
 
 User: "khi tôi đã sửa files, sau đó bấm xuất bên ngoài Tool thì trong Lr lại bị add lại các thông số

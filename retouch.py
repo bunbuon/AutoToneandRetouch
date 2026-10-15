@@ -28,6 +28,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import duong_dan as dd
@@ -1201,10 +1202,26 @@ def chon_chung_rieng(m: dict, theo_nhom, dung: str) -> dict:
     return dict(m)
 
 
+ON_DINH_RA_GIAY = 0.6     # file ra tạm phải đứng yên chừng này mới coi là ghi xong (đưa ra sớm)
+
+
 def dua_ket_qua_ra(anh: list, vao, ra_tam, ra, de_quy: bool = False,
-                   ghi_de: bool = False) -> int:
+                   ghi_de: bool = False, chi_on_dinh: bool = False,
+                   da_ra: list | None = None) -> int:
     """Kết quả một lượt chạy trên thư mục tạm -> đúng chỗ của nó: thư mục ra,
     hoặc ĐÈ LÊN ẢNH GỐC khi ghi_de. -> số tấm đã đưa ra.
+
+    chi_on_dinh (đưa ra SỚM trong lúc lượt còn chạy): chỉ lấy file đã đứng yên
+    ON_DINH_RA_GIAY và đổi tên được (engine còn cầm file thì os.replace lỗi -> để lần
+    sau), KHÔNG chép dự phòng — chép một file đang ghi dở là giao khách ảnh hỏng.
+    da_ra: nếu đưa danh sách vào thì nhận thêm đường dẫn ảnh VÀO đã có kết quả.
+
+    #[[ VI SAO DUA RA SOM (viet 13/10, nam trong stash, dua vao 15/10): ca luot chay
+    #   xong moi chuyen ket qua tu thu muc tam ra -> user 15/10 (Vtt, 775 anh, ghi de
+    #   len anh goc): "Retouching dang xu ly rat nhieu nhung khong thay tra ra ket qua
+    #   ngoai folder" — 495 tam da xong van nam trong .autotone_retouch_tam_1/ra_1, an,
+    #   phai doi ca me ~35 phut. Luoi anh (_dem) va anh lon doc tu thu muc ra, nen
+    #   chuyen som la thay som. ]]
 
     #[[ 6/10 — user bi chan "Ghi de chi chay duoc MOT muc". Truoc day chay theo
     #   nhom muc + ghi de bi tu choi: saytool --ghi-de tren thu muc tam (lien
@@ -1223,6 +1240,12 @@ def dua_ket_qua_ra(anh: list, vao, ra_tam, ra, de_quy: bool = False,
         q = ra_tam / rel
         if not q.is_file():
             continue
+        if chi_on_dinh:
+            try:
+                if time.time() - q.stat().st_mtime < ON_DINH_RA_GIAY:
+                    continue
+            except OSError:
+                continue
         dich = p if ghi_de else duong_ket_qua(p, vao, ra, de_quy)
         if dich is None:
             continue
@@ -1230,8 +1253,12 @@ def dua_ket_qua_ra(anh: list, vao, ra_tam, ra, de_quy: bool = False,
         try:
             os.replace(q, dich)
         except OSError:
+            if chi_on_dinh or not q.is_file():
+                continue
             shutil.copy2(q, dich)
         n += 1
+        if da_ra is not None:
+            da_ra.append(str(p))
     return n
 
 
@@ -1387,9 +1414,44 @@ def don_thu_muc_tam(d) -> bool:
     d = Path(d)
     if not d.exists():
         return True
-    if not (d / MOC_TAM).is_file():
+    moc = d / MOC_TAM
+    if not moc.is_file():
         return False
-    shutil.rmtree(d, ignore_errors=True)
+    #[[ 15/10 — MOC XOA SAU CUNG. rmtree(d) xoa moc truoc, roi ket o nhom_1 / ra_1:
+    #   thu muc vao nam trong Google Drive (mirror), Drive con cam file lien ket
+    #   cung de tai len + tha desktop.ini vao ra_1 -> thu muc tam o lai MAT MOC ->
+    #   lan chay sau coi la thu muc cua nguoi dung, lay ten _1, _2 ... (user Vtt:
+    #   .autotone_retouch_tam rong nam lai). Nay don het phan con lai (thu lai vai
+    #   lan — file "dang cho xoa" bien mat khi Drive buong), con sot thi GIU moc
+    #   de lan sau don tiep. ]]
+    def _con_lai() -> list:
+        try:
+            return [c for c in d.iterdir() if c.name != MOC_TAM]
+        except OSError:
+            return []
+    for lan in range(3):
+        for c in _con_lai():
+            if c.is_dir() and not c.is_symlink():
+                shutil.rmtree(c, ignore_errors=True)
+            else:
+                try:
+                    c.unlink()
+                except OSError:
+                    pass
+        if not _con_lai():
+            break
+        time.sleep(0.5)
+    if _con_lai():
+        return False
+    try:
+        moc.unlink()
+        d.rmdir()
+    except OSError:
+        try:
+            if d.is_dir() and not moc.exists():
+                moc.write_text("AutoTone — thu muc tam, xoa duoc\n", encoding="utf-8")
+        except OSError:
+            pass
     return not d.exists()
 
 

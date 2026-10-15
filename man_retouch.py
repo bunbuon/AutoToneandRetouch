@@ -850,7 +850,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
             return int(getattr(self, "_tien_do_tool", 0) or 0)
         try:
             _t, sau = self.rt.dem(d, d_ra, bool(self.v_dequy.get()))
-            return max(int(sau), int(getattr(self, "_tien_do_tool", 0) or 0))
+            som = int(getattr(self, "_som_luot", 0) or 0)   # đã đưa ra sớm, không còn ở ra tạm
+            return max(int(sau) + som, int(getattr(self, "_tien_do_tool", 0) or 0))
         except Exception:                                    # noqa: BLE001
             return int(getattr(self, "_tien_do_tool", 0) or 0)
 
