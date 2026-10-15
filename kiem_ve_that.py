@@ -238,6 +238,16 @@ def kiem_luoi(tam: Path) -> None:
                   for t in c.find_withtag("o"))
     ktra("file không đọc được thì ghi rõ, không treo", ds[60]["path"] in luoi._hong
          and hong_ve, "“không đọc được ảnh”")
+    #  15/10 (user: ô "can't read photo" mãi trong lúc Lightroom xuất): đọc trúng file GHI DỞ ->
+    #  file ghi xong (đổi mtime / cỡ) thì tự đọc lại, không kẹt mãi
+    import shutil as _sh
+    _sh.copyfile(ds[0]["path"], ds[60]["path"])
+    t0 = time.time()
+    while time.time() - t0 < 10 and ds[60]["path"] not in luoi._anh_pil:
+        chay(1, 0.1)
+    ktra("file ghi xong sau khi đọc hỏng -> tự đọc lại (hết 'không đọc được ảnh')",
+         ds[60]["path"] in luoi._anh_pil and ds[60]["path"] not in luoi._hong,
+         f"{time.time() - t0:.1f} s")
 
     # ---- ô SẼ KHÔNG ĐƯỢC GHI: tối đi + nhãn lý do
     luoi.chon(ds[3]["path"])

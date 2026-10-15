@@ -447,13 +447,13 @@ class XuatDialog(tk.Toplevel):
         self.v_chi_chua_sao = tk.BooleanVar(value=(self._so_da_loc > 0) if ccs is None else bool(ccs))
         self.v_retouch_ra = tk.StringVar(value=cd["retouch_ra"])
         self.v_cache_gb = tk.StringVar(value=f"{cd['cache_mb'] / 1024.0:.1f}".rstrip("0").rstrip("."))
-        #[[ 12/10 (user: "mac dinh se tat tinh nang retouch song song"): hop mo len
-        #   LUON tat — tat = Lightroom xuat xong roi moi retouch (tuan tu). Khong nap
-        #   lai lua chon cu: vua xuat vua retouch phai la viec chon cho tung luot. ]]
-        self.v_tu_retouch = tk.BooleanVar(value=False)
-        #  9/10: mặc định theo preset đang chọn ở Retouch ("" = Tuỳ chỉnh)
-        self.v_preset = tk.StringVar(value=(preset_md if preset_md is not None
-                                            else cd.get("preset")) or "")
+        #[[ 12/10 (user: "mac dinh se tat tinh nang retouch song song"): chua chon lan nao
+        #   thi TAT. 15/10 (user: "khi chon setting va bam chay thi can luu lai setting do
+        #   cho lan sau khi mo len lai"): nap lai lua chon cua lan BAM CHAY gan nhat. ]]
+        self.v_tu_retouch = tk.BooleanVar(value=bool(cd.get("tu_retouch", False)))
+        #  9/10: mặc định theo preset đang chọn ở Retouch; 15/10: Retouch đang "Tuỳ chỉnh"
+        #  ("") thì nhớ preset của lần bấm chạy trước
+        self.v_preset = tk.StringVar(value=(preset_md or cd.get("preset")) or "")
         self.v_ep = tk.BooleanVar(value=bool(cd["ep_song_song"]))
         #[[ 12/10 (user: "bo muc 6"): khong con o "Chi dung nhan E" — an toan CPU
         #   TU QUYET theo microcode (de_xuat_an_toan: Intel 13/14 chua va 0x12B moi
@@ -596,6 +596,30 @@ class XuatDialog(tk.Toplevel):
         self.lbl_preset = ttk.Label(frm, text="", style="Mo.TLabel", wraplength=WRAP, justify="left")
         self.lbl_preset.pack(anchor="w", pady=(2, 0))
         self.cb_preset.bind("<<ComboboxSelected>>", lambda _e: self._lam_moi_preset())
+        #[[ 15/10 (user test v89: "chua thay co phan chon quality cua Retouch"): chat luong
+        #   anh retouch ra — DUNG CHUNG retouch.json "chat_luong_ra" voi man Retouch. Ban
+        #   khong kem retouch (khong co retouch.py) thi khong hien. ]]
+        self._cl_ds, self._cl_nhan, cl0 = [], [], None
+        try:
+            import retouch as _rt
+            self._cl_ds = list(_rt.CHAT_LUONG_RA)
+            self._cl_nhan = [ngon_ngu.t(_rt.ten_chat_luong(v)) for v in self._cl_ds]
+            cl0 = _rt.chat_luong_ra()
+        except Exception:                                    # noqa: BLE001
+            self._cl_ds, self._cl_nhan = [], []
+        self.v_chat_rt = tk.StringVar(value="")
+        if self._cl_ds:
+            o6b = ttk.Frame(frm)
+            o6b.pack(fill="x", pady=(6, 0))
+            ttk.Label(o6b, text="Chất lượng ảnh retouch").pack(side="left")
+            self.cb_chat_rt = ttk.Combobox(o6b, textvariable=self.v_chat_rt, state="readonly",
+                                           width=34, values=self._cl_nhan)
+            self.cb_chat_rt.current(self._cl_ds.index(cl0) if cl0 in self._cl_ds else 0)
+            self.cb_chat_rt.pack(side="left", padx=(8, 0))
+            ttk.Label(frm, style="Mo.TLabel", wraplength=WRAP, justify="left",
+                      text="Theo ảnh gốc: chỉ vùng retouch được nén lại — dung lượng gần bằng "
+                           "ảnh Lightroom xuất. Chọn số: nén lại cả ảnh ở mức đó (cao = file "
+                           "to).").pack(anchor="w", pady=(2, 0))
         self.the_tn = gd.TheBao(frm, muc="canh", chu="")
         self.the_tn.pack(fill="x", pady=(8, 0))
         o7 = ttk.Frame(frm)
@@ -834,6 +858,18 @@ class XuatDialog(tk.Toplevel):
                 + ".\n\nVẫn chạy song song? Có thể rất chậm hoặc hết bộ nhớ.", parent=self):
             return
         preset = self._ten_preset()
+        chat_rt = None
+        if self._cl_ds:
+            try:
+                chat_rt = self._cl_ds[self._cl_nhan.index(self.v_chat_rt.get())]
+            except ValueError:
+                chat_rt = None
+            if chat_rt is not None:
+                try:
+                    import retouch as _rt
+                    _rt.ghi_cau_hinh({"chat_luong_ra": _rt.chuan_chat_luong(chat_rt)})
+                except Exception:                            # noqa: BLE001
+                    pass
         an_toan = bool(self._an_toan)
         chi_chua = bool(self.v_chi_chua_sao.get())
         ghi_cai_dat({"chi_chua_sao": chi_chua, "chat": chat, "va_cham": self.v_va_cham.get(),
@@ -856,7 +892,7 @@ class XuatDialog(tk.Toplevel):
             "bo_sao": -1 if chi_chua else (1 if self.v_bo_sao1.get() else 0),
             "thu_muc_retouch": "" if ghi_de else thu_muc_retouch_cua(tm),
             "cache_mb": cache_mb, "tu_retouch": tu, "song_song": song_song,
-            "preset": preset, "tai_nguyen": dict(self._tn),
+            "preset": preset, "chat_luong_ra": chat_rt, "tai_nguyen": dict(self._tn),
             "an_toan_cpu": an_toan, "nhan_e": list(self._nhan_e) if an_toan else [],
             "ly_do_tuan_tu": list(getattr(self, "_ly_do", [])) if (tu and not song_song) else [],
         }

@@ -2038,3 +2038,32 @@ TU_DIEN.update({
         ('  Tip: turn on Auto Sync in Develop (the switch next to the Sync button) so Lightroom '
          'denoises the whole list in one task instead of photo by photo.'),
 })
+
+#  15/10 v90: chất lượng ảnh ra Retouch, nút Chạy khi đang có lượt
+TU_DIEN.update({
+    'Chất lượng ảnh ra': 'Output quality',
+    'Chất lượng ảnh retouch': 'Retouch output quality',
+    'Theo ảnh gốc (giữ dung lượng)': 'Match original (keep file size)',
+    'JPEG {} — tối đa, file rất to': 'JPEG {} — maximum, very large files',
+    ('Theo ảnh gốc (khuyên dùng): chỉ vùng được retouch được nén lại, phần còn lại '
+     'giữ nguyên từng điểm ảnh của file gốc — dung lượng gần bằng ảnh Lightroom '
+     'xuất ra.\n\nChọn một số (100 / 95 / 90 / 85 / 80): nén lại CẢ ảnh ở đúng mức '
+     'đó. Số càng cao càng nét nhưng file càng to (100 có thể gấp 3–4 lần ảnh '
+     'gốc); thấp hơn chất lượng ảnh gốc thì file nhỏ hơn nhưng mất chi tiết.\n\n'
+     'Áp cho Chạy retouch, Xuất & retouch và Retouch khi xuất của Lightroom.'):
+        ('Match original (recommended): only the retouched areas are re-compressed; everything '
+         'else keeps the original file\'s pixels exactly — file size stays close to the photo '
+         'Lightroom exported.\n\nPick a number (100 / 95 / 90 / 85 / 80): the WHOLE photo is '
+         're-compressed at that level. Higher is sharper but larger (100 can be 3–4× the '
+         'original); below the original\'s quality gives smaller files but loses detail.\n\n'
+         'Applies to Run retouch, Export & retouch and Lightroom\'s Retouch on export.'),
+    ('Theo ảnh gốc: chỉ vùng retouch được nén lại — dung lượng gần bằng ảnh Lightroom xuất. '
+     'Chọn số: nén lại cả ảnh ở mức đó (cao = file to).'):
+        ('Match original: only retouched areas are re-compressed — size close to the Lightroom '
+         'export. A number: the whole photo is re-compressed at that level (higher = larger file).'),
+    'Đang xuất & retouch  ·  {} ảnh': 'Exporting & retouching  ·  {} photos',
+    'Đang xuất & retouch…': 'Exporting & retouching…',
+    'Đang retouch  ·  {} ảnh': 'Retouching  ·  {} photos',
+    'Đang retouch…': 'Retouching…',
+    'Đang retouch {} ảnh…': 'Retouching {} photos…',
+})

@@ -1420,6 +1420,19 @@ nạp cjpeglib_*.pyd bằng liệt kê thư mục). retouch.json `chat_luong_ra`
 điền cho mọi đường (mẻ, trạm Retouch khi xuất, Xuất & retouch); số -> `--nen-lai-het` /
 `nguyen_ven=False` (ghép DCT bỏ qua chất lượng). Kiểm: `test_chat_luong_ra.py`.
 
+## User test v89 -> v90 (15/10)
+
+- Ô "Chất lượng ảnh ra" màn Retouch VÔ HÌNH ở v89: `_dat_cho` chỉ NHỚ chỗ ẩn / hiện, không pack
+  (ô tạo bằng `ct()` mới tự pack) -> pack tay; hai dòng (nhãn / nút) — một dòng làm bảng phải phình
+  404 -> 420 px (kiem_retouch_gui "bề ngang"). Hộp Xuất mục 5 thêm "Chất lượng ảnh retouch" (chung
+  retouch.json `chat_luong_ra`).
+- Hộp Xuất nhớ "Retouch song song" của lần BẤM CHẠY gần nhất (12/10 luôn tắt; user 15/10: "chọn
+  setting và bấm chạy thì cần lưu lại"); preset: Retouch đang "Tuỳ chỉnh" thì nhớ preset lần trước.
+- Dải ảnh "không đọc được ảnh" mãi khi Lightroom đang ghi dở file: `luoi_anh._hong` nay nhớ dấu file,
+  `_xet_hong` 1.5 s/lần — file đổi thì `_doc` lại (KHÔNG `_ve()` ngay: vẽ chen làm hỏng
+  kiem_retouch_gui 2/3 lần). Ghi đè giữa lượt: `_don_som` gọi `lam_moi_anh` cho tấm vừa thay.
+- Nút Chạy lúc có lượt: "Đang xuất & retouch · 383 ảnh" (trước: số tấm đang chọn "1 ảnh").
+
 ## Duyệt trước v88 (15/10) — 4 agent đọc diff 8e50b9f..HEAD, đã sửa
 
 - **Chặn build:** `(them or {}).items()` (them = THAM SỐ) trong `moc_them_cot` làm Cython 3.3

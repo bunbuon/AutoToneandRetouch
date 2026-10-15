@@ -1273,6 +1273,15 @@ class MayMixin:
                         pass
         if not da_ra:
             return
+        #  ghi đè: ảnh gốc vừa được THAY bằng bản retouch -> dải ảnh / lưới đọc lại ảnh nhỏ
+        if ghi_de:
+            for ten_l in ("luoi", "luoi_to"):
+                lw = getattr(self, ten_l, None)
+                if lw is not None:
+                    try:
+                        lw.lam_moi_anh(da_ra)
+                    except Exception:                        # noqa: BLE001
+                        pass
         anh = self._anh_dang
         if anh and str(anh) in da_ra and not self._xem_dang_hien:
             try:
@@ -1791,6 +1800,10 @@ class MayMixin:
                 except tk.TclError:
                     pass
         self._hien_tien_do_xuat()
+        try:
+            self._cap_nhat_nut_chay()          # nút Chạy nói tổng ảnh của lượt xuất (15/10)
+        except Exception:                                    # noqa: BLE001
+            pass
 
     def _hien_tien_do_xuat(self):
         x = getattr(self, "_xuat", None)

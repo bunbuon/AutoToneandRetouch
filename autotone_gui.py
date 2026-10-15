@@ -5151,6 +5151,13 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self.wait_window(d)
         if d.ket_qua:
             kq = dict(d.ket_qua)
+            #  chất lượng retouch chọn ở hộp Xuất -> nút ở màn Retouch hiện đúng (15/10)
+            if kq.get("chat_luong_ra") is not None and rt_win is not None \
+                    and hasattr(rt_win, "_chon_chat_luong"):
+                try:
+                    rt_win._chon_chat_luong(kq["chat_luong_ra"])
+                except Exception:                            # noqa: BLE001
+                    pass
             if chi_anh:
                 kq["chi_anh"] = [str(p) for p in chi_anh]
             kq["giu_giao_dien"] = bool(giu_giao_dien)

@@ -68,6 +68,15 @@ def thu_muc_kho() -> Path:
     return goc / "anh_nho"
 
 
+def _dau_tep(p):
+    """(mtime_ns, cỡ) của file — None nếu không đọc được."""
+    try:
+        st = os.stat(p)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
 def khoa_kho(path: str) -> str | None:
     """Tên file trong kho: đổi file gốc (mtime/cỡ) là đổi khoá, ảnh cũ tự hết
     hiệu lực — không bao giờ hiện ảnh nhỏ của một file đã bị thay."""
@@ -296,7 +305,9 @@ class LuoiAnh(tk.Frame):
         self._cao_dai = 0                  # cao ô ảnh ở chế độ dải (đã lượng tử)
         self._anh_tk: OrderedDict = OrderedDict()   # (path, cỡ) -> PhotoImage
         self._anh_pil: OrderedDict = OrderedDict()  # path -> PIL (đã đọc)
-        self._hong: set = set()
+        #  ảnh đọc hỏng: {đường: [dấu file lúc hỏng, số lần xét]} — xem _xet_hong
+        self._hong: dict = {}
+        self._hen_hong = None
         self._bo_doc: BoDoc | None = None
         self._hen_bom = None
         self._hen_ve = None
@@ -465,7 +476,7 @@ class LuoiAnh(tk.Frame):
             s = {str(p) for p in ds_path}
             for p in s:
                 self._anh_pil.pop(p, None)
-                self._hong.discard(p)
+                self._hong.pop(p, None)
             for k in [k for k in self._anh_tk if k[0] in s]:
                 self._anh_tk.pop(k, None)
         self._ve()
@@ -869,6 +880,29 @@ class LuoiAnh(tk.Frame):
         if self._hen_bom is None:
             self._hen_bom = self.after(40, self._bom)
 
+    def _xet_hong(self):
+        """Ảnh "không đọc được" vì file ĐANG GHI DỞ (Lightroom đang xuất, retouch đang đè —
+        user 15/10 thấy ô "can't read photo" mãi trong lúc xuất): file đổi (mtime / cỡ) thì
+        đọc lại; đứng yên ~1 phút thì thôi xét (hỏng thật)."""
+        self._hen_hong = None
+        doi = []
+        for p, v in list(self._hong.items()):
+            if _dau_tep(p) != v[0]:
+                doi.append(p)
+            else:
+                v[1] += 1
+        for p in doi:
+            self._hong.pop(p, None)
+        if doi:
+            #  chỉ xin đọc lại ở luồng nền — KHÔNG vẽ lại cả dải ngay (vẽ chen giữa thao tác
+            #  chọn / xem trước làm lệch kiem_retouch_gui); đọc xong _bom tự vẽ như ảnh mới về
+            self._doc(doi)
+        if any(v[1] < 40 for v in self._hong.values()):
+            try:
+                self._hen_hong = self.after(1500, self._xet_hong)
+            except tk.TclError:
+                pass
+
     def _bom(self):
         """Nhận ảnh luồng nền đọc xong (ở luồng chính), vẽ lại nếu có mới."""
         self._hen_bom = None
@@ -877,7 +911,12 @@ class LuoiAnh(tk.Frame):
         co = False
         for p, im in self._bo_doc.lay_xong():
             if im is None:
-                self._hong.add(p)
+                self._hong[p] = [_dau_tep(p), 0]
+                if self._hen_hong is None:
+                    try:
+                        self._hen_hong = self.after(1500, self._xet_hong)
+                    except tk.TclError:
+                        pass
             else:
                 self._anh_pil[p] = im
                 while len(self._anh_pil) > 1500:

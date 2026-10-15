@@ -390,6 +390,28 @@ def phan_giao_dien():
              kq and kq["song_song"] is False and kq["tu_retouch"] is True and kq["ly_do_tuan_tu"],
              str(kq and kq["ly_do_tuan_tu"]))
         ktra("cài đặt được nhớ (chat 88 -> ghi ở lần đầu, lần hai giữ)", xuat_ui.doc_cai_dat()["chat"] == 88)
+        #  15/10 (user test v89): bấm chạy là NHỚ lựa chọn cho lần mở sau (cả "Retouch song
+        #  song"); hộp có ô chất lượng ảnh retouch, dùng chung retouch.json với màn Retouch
+        import retouch as _rt
+        d = xuat_ui.XuatDialog(root, buoi="Test", thu_muc_goi_y=str(TAM / "giao"), thong_so_lr=st,
+                               preset_md="")
+        d.update()
+        ktra("mở lại hộp: nhớ 'Retouch song song' của lần bấm chạy trước", d.v_tu_retouch.get() is True)
+        ktra("hộp Xuất có ô 'Chất lượng ảnh retouch', mặc định Theo ảnh gốc",
+             hasattr(d, "cb_chat_rt") and d.cb_chat_rt.current() == 0
+             and "giữ dung lượng" in d.v_chat_rt.get(), d.v_chat_rt.get())
+        d._nhan_tn({"ram_trong_gb": 20, "vram_trong_gb": 6, "card": "RTX", "cpu": 8, "dia_trong_gb": 50})
+        d.cb_chat_rt.current(list(_rt.CHAT_LUONG_RA).index(90))
+        d.v_tu_retouch.set(False)
+        d._bat_dau()
+        ktra("chọn JPEG 90 -> retouch.json chat_luong_ra 90, kết quả hộp mang theo",
+             _rt.chat_luong_ra() == 90 and (d.ket_qua or {}).get("chat_luong_ra") == 90)
+        d = xuat_ui.XuatDialog(root, buoi="Test", thu_muc_goi_y=str(TAM / "giao"), thong_so_lr=st)
+        d.update()
+        ktra("…mở lại: ô chất lượng hiện JPEG 90, 'Retouch song song' tắt như lần chạy trước",
+             d.v_chat_rt.get() == "JPEG 90" and d.v_tu_retouch.get() is False, d.v_chat_rt.get())
+        d._huy()
+        _rt.ghi_cau_hinh({"chat_luong_ra": "auto"})
         #  13/10 (user: nhân P đã hết lỗi): hộp Xuất KHÔNG ghim nhân E, kể cả máy mà
         #  đề xuất cũ (Intel 13/14 + microcode chưa vá / không đọc được) sẽ bật
         cu_md2, cu_e2 = xuat_ui.de_xuat_an_toan, xuat_ui.nhan_e
@@ -498,6 +520,13 @@ def phan_giao_dien():
              not (rt_win.worker and rt_win.worker.is_alive())
              and not (ra / "IMG_1.jpg").exists()
              and "Lightroom xuất 1/2" in rt_win._chu_tt_chay, rt_win._chu_tt_chay)
+        #  15/10 (user: "đang xuất 383 files nhưng trên nút lại báo 1 photos")
+        ktra("đang có lượt xuất: nút Chạy nói tổng ảnh của LƯỢT (2), không phải số tấm đang chọn",
+             "Đang xuất & retouch" in rt_win.btn_run.cget("text") and "2" in rt_win.btn_run.cget("text"),
+             rt_win.btn_run.cget("text"))
+        ktra("màn Retouch: ô 'Chất lượng ảnh ra' HIỆN (đã pack — bản v89 vô hình)",
+             rt_win.o_chat_luong.winfo_manager() == "pack"
+             and "Theo ảnh gốc" in rt_win.btn_chat_luong.cget("text"), rt_win.btn_chat_luong.cget("text"))
         #[[ 9/10 WORKER (user: "co anh thi load vao preview va add luon preset len
         #   Review"): anh vua xuat ra hien NGAY tren dai anh + anh lon, ke ca khi
         #   chua retouch (tuan tu). ]]

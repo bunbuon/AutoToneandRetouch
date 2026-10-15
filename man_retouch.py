@@ -888,6 +888,17 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         if self._la_raw_mode():
             #  9/10: RAW — Lightroom xuất rồi retouch; 12/10: chỉ ảnh đang chọn
             chu = f"Xuất & retouch  ·  {n} ảnh…" if n else "Xuất & retouch…"
+        #[[ 15/10 (user: "đang xuất 383 files nhưng trên nút lại báo 1 photos"): đang có lượt
+        #   chạy thì nút (bị khoá) nói LƯỢT ĐANG CHẠY, không phải số tấm đang chọn ở dải ảnh. ]]
+        x = getattr(self, "_xuat", None)
+        lc = getattr(self, "_luot_chay", None)
+        w = getattr(self, "worker", None)
+        if x is not None:
+            tong = int(x.get("tong") or 0)
+            chu = f"Đang xuất & retouch  ·  {tong} ảnh" if tong else "Đang xuất & retouch…"
+        elif w is not None and w.is_alive():
+            tong = int((lc or {}).get("tong") or 0)
+            chu = f"Đang retouch  ·  {tong} ảnh" if tong else "Đang retouch…"
         if btn.cget("text") != chu:
             btn.configure(text=chu)
 
@@ -944,6 +955,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         """Đang chạy: nút Chạy khoá, nút Dừng hiện ra; xong thì ngược lại."""
         self.btn_run.configure(state="disabled" if co else "normal")
         self.btn_stop.configure(state="normal" if co else "disabled")
+        self._cap_nhat_nut_chay()
         try:
             if co:
                 self.btn_stop.pack(side="left", padx=(0, 6), before=self.btn_run)
@@ -1104,12 +1116,19 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         #[[ CHAT LUONG ANH RA (15/10 — user: "anh chay qua retouch dung luong lai dang
         #   tang"). retouch.json "chat_luong_ra" — xem retouch.CHAT_LUONG_RA. ]]
         self.o_chat_luong = ttk.Frame(g_tm)
-        ttk.Label(self.o_chat_luong, text="Chất lượng ảnh ra").pack(side="left")
+        #  PHẢI pack: _dat_cho chỉ NHỚ chỗ (để ẩn / hiện lại), không pack — bản v89 thiếu
+        #  dòng này nên ô vô hình (user test 15/10: "chưa thấy có phần chọn quality")
+        self.o_chat_luong.pack(fill="x", anchor="w", pady=(6, 2))
+        #  hai dòng (nhãn / nút): chung một dòng thì bảng phải phình 404 -> 420 px, lệch bề
+        #  ngang với Cân tone (kiem_retouch_gui)
+        dong_cl = ttk.Frame(self.o_chat_luong)
+        dong_cl.pack(fill="x")
+        ttk.Label(dong_cl, text="Chất lượng ảnh ra").pack(side="left")
         self.btn_chat_luong = gd.NutTron(
             self.o_chat_luong, self.rt.ten_chat_luong(self.rt.chat_luong_ra(self.cf)),
             kieu="phu", font=gd.CHU, mui_ten=True, command=self._mo_menu_chat_luong)
-        self.btn_chat_luong.pack(side="left", padx=(8, 0), fill="x", expand=True)
-        hoi(self.o_chat_luong,
+        self.btn_chat_luong.pack(fill="x", pady=(4, 0))
+        hoi(dong_cl,
             "Theo ảnh gốc (khuyên dùng): chỉ vùng được retouch được nén lại, phần còn lại "
             "giữ nguyên từng điểm ảnh của file gốc — dung lượng gần bằng ảnh Lightroom "
             "xuất ra.\n\nChọn một số (100 / 95 / 90 / 85 / 80): nén lại CẢ ảnh ở đúng mức "
