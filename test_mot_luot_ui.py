@@ -147,6 +147,25 @@ def main() -> int:
              doc_cfg()["mau_mot_luot"] is True and thanh_luoi.doc_kv("mau_mot_luot") is True)
         app.v_mot_luot.set(False)
         ktra("…tắt -> nhớ False", doc_cfg()["mau_mot_luot"] is False and thanh_luoi.doc_kv("mau_mot_luot") is False)
+        hop.destroy()
+        #  15/10 (v91, lọc 1037): plan() bỏ HẾT ảnh (cả buổi bị coi là sửa tay) -> bảng không
+        #  sập (min() của rỗng), hộp Xử lý ảnh báo rõ, không gửi Áp
+        hop = mo_luot([])
+        app.items = []
+        at.SO_ANH_NGUOI_SUA, at.CANH_BAO_XUAT, at.CANH_BAO_PLUGIN = 361, "", ""
+        try:
+            app._fill_table()
+            loi_bang = ""
+        except Exception as ex:                              # noqa: BLE001
+            loi_bang = repr(ex)
+        ktra("bảng tổng kết với 0 ảnh không sập", not loi_bang, loi_bang)
+        n_ap = len(ap_goi)
+        app.cancel_flag = False
+        app._xl_sau_do([], cfg_(mau_mot_luot=False))
+        ktra("0 ảnh còn để áp -> hộp kết thúc, nói rõ 'sửa tay', không gửi Áp",
+             app._xl.get("xong") and "sửa tay" in hop.lbl_tong.cget("text") and len(ap_goi) == n_ap,
+             hop.lbl_tong.cget("text")[:120])
+        at.SO_ANH_NGUOI_SUA = 0
 
         # ------------------------------------------------------------ 2
         print("2. đo trước -> tính lại -> áp")

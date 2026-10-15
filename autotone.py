@@ -11251,8 +11251,23 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         #  attach_catalog_settings: buoi da dat lai thi mot thu moc moi.
         cu, t_xuat, t_ghi = ban_xuat_cu_hon_lan_ghi(Path(folder or "."),
                                                     ban_xuat=ban_xuat)
-        DAT_LAI_BUOI = "" if cu else buoi_dat_lai(items, export or {}, Path(folder or "."))
-        attach_catalog_settings(items, export or {}, Path(folder or "."), persist=False,
+        #[[ 15/10 v91 (lọc 1037: 361/361 ảnh bị bỏ "sửa tay" -> bảng rỗng, min() lỗi): user
+        #   ĐẶT LẠI cả buổi trong Lightroom (As Shot, Tone 0) sau lần tool ghi; vòng nhận
+        #   của plugin đứng nên không có bản xuất mới -> bản xuất CŨ hơn lần ghi -> trước
+        #   đây BỎ QUA xét "buổi đặt lại", rồi lọc sửa tay so với catalog đọc thẳng -> cả
+        #   buổi bị coi là sửa tay. Nay đọc thẳng catalog TRƯỚC: bản xuất cũ mà đọc được
+        #   catalog thì xét đặt lại + gắn thông số trên CATALOG (ô bản xuất có mà catalog
+        #   đọc thẳng không có — As Shot K, crop… — giữ của bản xuất). ]]
+        #  15/10: số đọc THẲNG catalog (đủ ô, mới) — nhận ảnh sửa tay cả khi bản xuất cũ
+        hien = None
+        if cfg.get("bo_qua_nguoi_sua", True) and lan_ghi_cuoi(Path(folder or ".")):
+            hien = thong_so_catalog(Path(folder or "."))
+        xuat_dung = dict(export or {})
+        if cu and hien:
+            xuat_dung = {k: {**dict(xuat_dung.get(k) or {}), **dict(v)} for k, v in dict(hien).items()}
+            xuat_dung.update({k: v for k, v in dict(export or {}).items() if k not in hien})
+        DAT_LAI_BUOI = "" if (cu and not hien) else buoi_dat_lai(items, xuat_dung, Path(folder or "."))
+        attach_catalog_settings(items, xuat_dung, Path(folder or "."), persist=False,
                                 bo_moc=DAT_LAI_BUOI == "dat-lai")
         #[[ As Shot cua tung anh — TRUOC khi bo anh nguoi sua: anh user da mo
         #   trong Develop chinh la anh Lightroom da dung, tuc anh co As Shot
@@ -11267,11 +11282,6 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         CANH_BAO_PLUGIN = canh_bao_plugin_cu(export or {}, cfg)
         if CANH_BAO_PLUGIN:
             print("[!] " + CANH_BAO_PLUGIN, file=sys.stderr)
-        #  15/10: số đọc THẲNG catalog (đủ ô, mới) — nhận ảnh sửa tay cả khi bản xuất cũ
-        hien = None
-        if (cfg.get("bo_qua_nguoi_sua", True) and not DAT_LAI_BUOI
-                and lan_ghi_cuoi(Path(folder or "."))):
-            hien = thong_so_catalog(Path(folder or "."))
         if cu and hien is None:
             #[[ BAN XUAT CU HON LAN GHI -> KHONG duoc chay danh_dau_nguoi_sua.
             #   Gia dinh cua no da hong (xem ban_xuat_cu_hon_lan_ghi). Chay tiep

@@ -1463,6 +1463,16 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## Cả buổi bị bỏ "sửa tay" khi bản xuất cũ (15/10, v92) — `plan`
+
+User (lọc 1037, v91): "ValueError: min() iterable argument is empty" ngay sau Phân tích. Buổi đã
+ĐẶT LẠI trong Lightroom (361 ảnh As Shot / Tone 0) sau lần tool ghi; vòng nhận plugin đứng (nhịp
+22:18, LR vẫn mở) -> bản xuất 17:23:44 CŨ hơn job 17:23:59. `plan` cũ: `DAT_LAI_BUOI = "" if cu`
+rồi lọc sửa tay so catalog đọc thẳng -> 361/361 "sửa tay" -> `items` rỗng -> `_fill_table` sập.
+Nay đọc `thong_so_catalog` TRƯỚC; `cu and hien` -> `buoi_dat_lai` + `attach_catalog_settings` trên
+catalog (gộp ô chỉ bản xuất có). `_fill_table` chịu 0 ảnh; `_xl_sau_do` báo "cả N ảnh … sửa tay".
+Kiểm: `kiem_dat_lai_buoi` §6, `test_mot_luot_ui`. Phát lại: scratchpad `soi_rong_1037.py`.
+
 ## Chất lượng ảnh ra Retouch + jpeglib trong gói (15/10, v89)
 
 User: "ảnh chạy qua retouch dung lượng lại đang tăng — cần chọn Quality ảnh xuất ra". Vtt: bản

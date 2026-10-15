@@ -7168,9 +7168,10 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                  + (f" · đo lúc {datetime.fromtimestamp(luc).strftime('%H:%M %d/%m')}"
                     + (" (đã lưu)" if getattr(self, "_do_nap", False) else "")
                     if luc else ""))
+        #  15/10: plan() có thể bỏ HẾT ảnh (cả buổi "sửa tay") — min() của rỗng làm sập
         msg = (f"{n} ảnh · {nsc} cảnh · {changed} ảnh sẽ đổi · "
                f"ΔEV từ {min(deltas):+.2f} đến {max(deltas):+.2f} "
-               f"(trung bình {sum(deltas)/n:+.2f})")
+               f"(trung bình {sum(deltas)/n:+.2f})" if deltas else f"{n} ảnh")
         #[[ Bang it anh hon thu muc thi PHAI noi ngay o day. Do la cau hoi dau
         #   tien nguoi dung dat ra, va cho nay la cho ho dang nhin. ]]
         hong = getattr(self, "_do_hong", [])

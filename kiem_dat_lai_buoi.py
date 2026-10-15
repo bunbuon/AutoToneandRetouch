@@ -14,6 +14,9 @@ Mục kiểm (plan() THẬT, nguồn catalog, thư mục buổi tên có dấu c
     3. Sửa tay thật, lẻ tẻ (3/12 ảnh, mỗi ảnh một số) -> vẫn lọc 3 ảnh như cũ.
     4. Đổi đồng loạt nhưng chỉ ở thiểu số (3/12) -> vẫn là sửa tay.
     5. Cả buổi đồng bộ +0.3 EV (mỗi ảnh một số) -> không phải đặt lại, lọc hết.
+    6. (15/10 v91, lọc 1037) bản xuất CŨ hơn lần ghi (vòng nhận plugin đứng) mà catalog đọc
+       thẳng cho thấy cả buổi đã đặt lại -> "dat-lai", không lọc, tính trên catalog; catalog
+       còn số tool ghi -> không lọc oan; không đọc được catalog -> cảnh báo như cũ.
 
 Chạy:  python kiem_dat_lai_buoi.py
 """
@@ -158,6 +161,56 @@ def main() -> int:
         ds = chay(buoi, jobs, lambda i: dict(tool_con(i), Exposure2012=f"{tool_exp(i) + 0.3:.2f}"))
         ktra("đồng bộ +0.3 EV cả buổi (mỗi ảnh một số) -> lọc hết, không coi là đặt lại",
              at.SO_ANH_NGUOI_SUA == N and at.DAT_LAI_BUOI == "", f"lọc {at.SO_ANH_NGUOI_SUA}, {at.DAT_LAI_BUOI!r}")
+
+    # ---- 6. ban xuat cu hon lan ghi + catalog doc thang
+    import os
+
+    def chay_cu(buoi: Path, jobs: Path, xuat_cu, hien) -> list:
+        """Bản xuất trên đĩa CŨ hơn job (plugin không trả bản mới) + catalog đọc thẳng `hien`."""
+        at.LR_JOB_DIR = jobs
+        ds = anh_buoi()
+        export = {at.khoa_duong_dan(r["path"]): dict(xuat_cu(i)) for i, r in enumerate(ds)}
+        f = jobs / "export_20261008_094000.tsv"
+        cot = sorted({k for v in export.values() for k in v})
+        f.write_text("\n".join(["path\t" + "\t".join(cot)] + [
+            r["path"] + "\t" + "\t".join(export[at.khoa_duong_dan(r["path"])].get(c, "") for c in cot)
+            for r in ds]) + "\n", encoding="utf-8")
+        job = next(jobs.glob("apply_*.done"))
+        os.utime(f, (job.stat().st_mtime - 60, job.stat().st_mtime - 60))
+        goc_tsc = at.thong_so_catalog
+        at.thong_so_catalog = lambda folder: (None if hien is None else
+                                              {at.khoa_duong_dan(r["path"]): dict(hien(i))
+                                               for i, r in enumerate(ds)})
+        cfg = dict(at.DEFAULTS, source="catalog", burst=False, blink=False)
+        try:
+            with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                at.plan(ds, cfg, buoi, export, ban_xuat=f)
+        finally:
+            at.thong_so_catalog = goc_tsc
+        return ds
+
+    with tempfile.TemporaryDirectory(prefix="kiem_dat_lai_") as t:
+        buoi, jobs = dung(Path(t), co_moc=True)
+        #  bản xuất cũ chụp TRƯỚC lần ghi (preset cũ), catalog thật: cả buổi đã đặt lại MOI
+        ds = chay_cu(buoi, jobs, lambda i: CU | {"Exposure2012": "0"}, lambda i: MOI)
+        ktra("bản xuất cũ + catalog đọc thẳng đã đặt lại -> 'dat-lai' (không còn 'cả buổi sửa tay')",
+             at.DAT_LAI_BUOI == "dat-lai" and at.SO_ANH_NGUOI_SUA == 0 and len(ds) == N,
+             f"{at.DAT_LAI_BUOI!r} lọc {at.SO_ANH_NGUOI_SUA}, còn {len(ds)}")
+        ktra("… tính trên CATALOG hiện tại (5000 K), không trên bản xuất cũ (5950 K)",
+             all(at.get_f(r["crs"], "Temperature") == 5000 for r in ds),
+             str(sorted({at.get_f(r["crs"], "Temperature") for r in ds})))
+    with tempfile.TemporaryDirectory(prefix="kiem_dat_lai_") as t:
+        buoi, jobs = dung(Path(t), co_moc=True)
+        ds = chay_cu(buoi, jobs, lambda i: CU | {"Exposure2012": "0"}, tool_con)
+        ktra("bản xuất cũ + catalog còn số tool ghi -> không đặt lại, không lọc oan",
+             at.DAT_LAI_BUOI == "" and at.SO_ANH_NGUOI_SUA == 0 and len(ds) == N,
+             f"{at.DAT_LAI_BUOI!r} lọc {at.SO_ANH_NGUOI_SUA}")
+    with tempfile.TemporaryDirectory(prefix="kiem_dat_lai_") as t:
+        buoi, jobs = dung(Path(t), co_moc=True)
+        ds = chay_cu(buoi, jobs, lambda i: CU | {"Exposure2012": "0"}, None)
+        ktra("bản xuất cũ + KHÔNG đọc được catalog -> cảnh báo, không lọc (như cũ)",
+             bool(at.CANH_BAO_XUAT) and at.SO_ANH_NGUOI_SUA == 0 and len(ds) == N,
+             at.CANH_BAO_XUAT[:60])
 
     print("TAT CA DAT" if not LOI else f"{len(LOI)} LOI: {LOI}")
     return 1 if LOI else 0

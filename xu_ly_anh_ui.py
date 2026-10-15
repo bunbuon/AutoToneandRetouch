@@ -483,6 +483,18 @@ class XuLyAnhMixin:
             hop.buoc("ap", "loi", "dừng: số liệu Lightroom chưa dùng được")
             self._xl_ket_thuc("loi", canh_bao)
             return False
+        if not self.items:
+            #  15/10: plan() bỏ hết ảnh (vd. cả buổi khác số tool ghi -> "sửa tay") — nói rõ,
+            #  không gửi job rỗng
+            n_sua = int(getattr(at, "SO_ANH_NGUOI_SUA", 0) or 0)
+            hop.buoc("do", "xong", "không còn ảnh nào để áp")
+            hop.buoc("ap", "bo", "không có ảnh nào để áp")
+            self._xl_ket_thuc("loi", (
+                f"Cả {gd.so_vn(n_sua)} ảnh đều khác số tool ghi lần trước nên được coi là ảnh "
+                "bạn đã sửa tay trong Lightroom — không áp gì. Nếu bạn vừa đặt lại cả buổi: "
+                "đóng hộp thoại đang mở trong Lightroom (hoặc mở lại Lightroom) để plugin "
+                "chạy lại, rồi bấm Xử lý ảnh." if n_sua else "Không còn ảnh nào để áp."))
+            return False
         hop.buoc("do", "xong", f"{gd.so_vn(len(items))} ảnh"
                  + (f" · {gd.so_vn(len(self._do_hong))} ảnh không đo được"
                     if getattr(self, "_do_hong", None) else ""))

@@ -2233,3 +2233,17 @@ TU_DIEN.update({
     'chưa có bản sao lưu nào (chưa nhập cài đặt lần nào)': 'no backup yet (settings were never imported)',
     'bản sao lưu hỏng': 'broken backup',
 })
+
+#  15/10 (v92): plan() bỏ hết ảnh (cả buổi bị coi là sửa tay)
+TU_DIEN.update({
+    ('Cả {} ảnh đều khác số tool ghi lần trước nên được coi là ảnh bạn đã sửa tay trong '
+     'Lightroom — không áp gì. Nếu bạn vừa đặt lại cả buổi: đóng hộp thoại đang mở trong '
+     'Lightroom (hoặc mở lại Lightroom) để plugin chạy lại, rồi bấm Xử lý ảnh.'):
+        ('All {} photos differ from what the tool wrote last time, so they are treated as photos '
+         'you edited by hand in Lightroom — nothing applied. If you just reset the whole session: '
+         'close any open dialog in Lightroom (or restart Lightroom) so the plugin runs again, then '
+         'press Process photos.'),
+    'Không còn ảnh nào để áp.': 'No photos left to apply.',
+    'không còn ảnh nào để áp': 'no photos left to apply',
+    'không có ảnh nào để áp': 'no photos to apply',
+})
