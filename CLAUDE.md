@@ -1463,6 +1463,19 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## Ảnh ám VÀNG (đèn ấm trong nhà) -> WB lượt 2 theo da đo thật (16/10) — `wb_vang_luot2`, `am_vang_bat` BẬT
+
+User (DERMAL LOGIA RAW, mẫu "Lễ Vu Quy"): "vẫn đang bị vàng quá". Đáp án tay 4 cặp ảnh liền: CHỈ đổi
+Temperature (tool 5012/5100 -> 4512 / 4262 / 4012 / 3929 K, Tint giữ 16). Da đo trên ảnh Lightroom ở WB tool
+vàng hơn đích +0.50…+1.30 stop; user đi 0.45–0.67 (trung vị 0.63) quãng mired tới WB đưa da về đích
+(Bradford, `_giai_wb_da`). Vùng trắng KHÔNG dùng được (phông sáng tím hồng; ở WB user vùng trắng hơi xanh).
+Đo trên JPEG máy thì sai (2709 / VTT trung vị +0.67 / +0.99 vàng mà sau chuỗi da gần đích) -> CHỈ quyết
+trên ảnh Lightroom đã áp: lượt 2 (curve tắt thì dựng một ảnh / loạt — `chon_dai_dien_vang`), da thật vàng
+≥ `am_vang_nguong` 0.3 stop -> WB lạnh đi `am_vang_manh` 0.6 quãng, giữ Tint, theo LOẠT, trần 1500 K; ảnh
+ám vàng không giải curve da. Trừ Kỷ yếu / WB không phải "Da trắng hồng" / ngoài trời / p_trong < 0.5.
+Mô phỏng DERMAL (`mo_phong_vang.py`): 4554 / 4055 / 3973 / 4009 K vs tay 4512 / 4262 / 4012 / 3929; 160/208
+ảnh, trung vị −602 K. 2709: 32/40 ảnh −530 K; Vtt 11/13 −476 K (đích mặc định). Kiểm: `test_am_mau` §7.
+
 ## Mẫu "Mặc định" cũng là đích màu da (16/10) — `at.dich_mac_dinh`, `mau_da_mac_dinh_dich` BẬT
 
 User (DERMAL LOGIA RAW, A7 V, sự kiện trong nhà): "chưa thấy các bức ảnh này về được gần với màu đích".
