@@ -53,6 +53,8 @@ from hop_thoai import (BuoiWindow, GuWindow, LogWindow,     # noqa: F401
 from cua_saytool import _cua_saytool, _tro_insightface   # noqa: F401
 from xu_ly_anh_ui import XuLyAnhMixin                     # 13/10: nút Xử lý ảnh
 from tin_dung_ui import TinDungMixin                      # 13/10: credit + một máy một lúc
+from hoc_mau_ui import HocMauMixin                        # 15/10: học màu Lightroom từ app
+from chuyen_cai_dat_ui import ChuyenCaiDatMixin           # 15/10: chuyển cài đặt sang máy khác
 
 
 #[[ BAY KHAU — xuong song cua ung dung.
@@ -288,7 +290,7 @@ def _pick_txt(r: dict) -> str:
     return ""
 
 
-class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
+class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame):
     """Cửa sổ chính, dáng Evoto (3/10 tối) — xem _build_shell().
 
     BỐ CỤC
@@ -2450,6 +2452,13 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self.v_ngoai_toi = tk.BooleanVar(            # 12/10: at.gan_canh / _wb_ngoai_toi
             value=bool(at.DEFAULTS.get("wb_ngoai_toi", True)))
         self.v_burst = tk.BooleanVar(value=False)
+        #[[ 15/10 (user chọn "Đưa nút học + 4 mô hình + công tắc"): chuỗi màu da MỘT LƯỢT
+        #   (mau_mot_luot) — trước chỉ bật được bằng AUTOTONE_MOT_LUOT. Mặc định TẮT; máy
+        #   chưa có mô hình màu Lightroom tự đi đường thường. Nhớ qua lần mở sau. ]]
+        import thanh_luoi as _tl
+        self.v_mot_luot = tk.BooleanVar(value=bool(_tl.doc_kv("mau_mot_luot", False)))
+        self.v_mot_luot.trace_add("write", lambda *_a: _tl.ghi_kv(
+            "mau_mot_luot", bool(self.v_mot_luot.get())))
         self.v_blink = tk.BooleanVar(value=False)
         self.v_upright = tk.BooleanVar(value=False)
         self.v_lrpush = tk.BooleanVar(value=True)
@@ -2703,6 +2712,12 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                      "nhớ mẫu dùng gần nhất và mẫu riêng của từng buổi."
             ).pack(side="right", padx=(0, 6))
         self._ve_mau_da()
+        ct(g_tone, self.v_mot_luot, "Chế độ nhanh một lượt (thử nghiệm)",
+           "Đo da trên preview Lightroom rồi tính WB / HSL / Color Grading một lần cho "
+           "trúng màu da đích — nhanh hơn đường thường (đo trên buổi thật: 15 → 6 phút). "
+           "Cần mô hình màu Lightroom của máy ảnh: bộ cài có sẵn Sony A7 IV, A7 V, Nikon "
+           "Z5 II, Z 8; máy khác học ở ⋯ › Học màu Lightroom cho máy ảnh này…. Máy chưa "
+           "có mô hình tự đi đường thường.")
         #[[ Hai o nay chi co nghia voi mode absolute/hybrid — _on_mode_change()
         #   bat/tat chung, nen phai giu dung ten bien lbl_target/sp_target/
         #   lbl_blend/sp_blend. De ngay duoi o "Che do" vi chung phu thuoc no. ]]
@@ -2921,7 +2936,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                   self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
                   self.v_ngoai_toi, self.v_bu_k, self.v_bu_tint, self.v_mau_da,
                   self.v_ap_loai, self.v_denoise, self.v_denoise_iso,
-                  self.v_curve_da, self.v_curve_chay):
+                  self.v_curve_da, self.v_curve_chay, self.v_mot_luot):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         self._tom_tat_nhom()
 
@@ -3091,6 +3106,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                            ("Hoàn tác…", self.do_undo),
                            ("Đọc từ Lightroom", self.do_read_from_lr),
                            ("Học từ buổi này", self.do_learn),
+                           ("Học màu Lightroom cho máy ảnh này…", lambda: self.hoc_mau_lr()),
                            (None, None),
                            ("Duyệt nhanh trước khi Export…",
                             lambda: self._chon_khau("day")),
@@ -3103,7 +3119,11 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                            (None, None),
                            ("Tải bản tăng tốc GPU…", self.tai_gpu),
                            ("Kiểm tra cập nhật…", self.kiem_cap_nhat),
-                           ("Credit & thiết bị…", self.xem_credit)):
+                           ("Credit & thiết bị…", self.xem_credit),
+                           (None, None),
+                           ("Xuất cài đặt sang máy khác…", self.xuat_cai_dat),
+                           ("Nhập cài đặt từ máy khác…", self.nhap_cai_dat),
+                           ("Khôi phục cài đặt trước khi nhập…", self.khoi_phuc_cai_dat)):
             if nhan is None:
                 self.menu_them.add_separator()
             else:
@@ -5087,7 +5107,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #   nguoi dung van ep duoc. ]]
         """
         #  13/10: Export… cũng là việc nặng (Lightroom xuất + retouch) — trước giờ không chốt
-        if self._khoa_chan():
+        if self._khoa_chan() or self._hm_chan():
             return
         f = self.folder()
         if not f:
@@ -5748,6 +5768,14 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                      "Không sao với chế độ “Đưa mặt về mức sáng chuẩn”, nhưng "
                      "“Cân trong từng cảnh” sẽ không còn cảnh nào để cân.")
 
+    def _wb_da_hoc(self) -> dict:
+        """Lệch WB As Shot đã học theo máy (wb_may.bang_cfg), trừ chính buổi đang mở."""
+        try:
+            import wb_may
+            return wb_may.bang_cfg(tru_buoi=self.folder())
+        except Exception:                                    # noqa: BLE001
+            return {}
+
     def read_cfg(self) -> dict:
         cfg = dict(at.DEFAULTS)
         cfg.update(mode=self.mode_value(),
@@ -5790,6 +5818,9 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
                    ap_anh_loai=self.v_ap_loai.get(),
                    dong_bo_loat=self.v_dong_bo_loat.get(),
                    mat_sang_nhat=self.v_mat_sang_nhat.get(),
+                   mau_mot_luot=bool(self.v_mot_luot.get()),
+                   #  15/10: lệch WB As Shot đã học theo máy các buổi trước (wb_may.json)
+                   wb_asshot_da_hoc=self._wb_da_hoc(),
                    dong_bo_chu_the=self.v_dong_bo_chu_the.get(),
                    wb_ngoai_toi=self.v_ngoai_toi.get(),
                    #  12/10: bù K / Tint cả buổi + màu da đích học từ ảnh đã sửa
@@ -7026,6 +7057,14 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self.refresh_plan()
         self._xuat_khoa = True              # rồi đứng yên tới khi bấm “Nạp lại catalog”
         self._nut_catalog()
+        #  15/10: nhớ lệch WB As Shot theo máy (wb_may.json) — chỉ nguồn catalog (có As Shot
+        #  thật để so); plan() vừa chạy trong refresh_plan đã điền at.ASSHOT_BUOI
+        if self.source_value() == "catalog" and not self.cancel_flag:
+            try:
+                import wb_may
+                wb_may.ghi_buoi(root, getattr(at, "ASSHOT_BUOI", {}))
+            except Exception:                                # noqa: BLE001
+                pass
         if getattr(self, "chuoi", False) and self._xl_dang():
             #  13/10: nút Xử lý ảnh — đo xong tự áp (xu_ly_anh_ui)
             self.chuoi = False
@@ -7459,6 +7498,10 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         if self._khoa_chan():
             if tu_dong:
                 self._xl_ap_loi("Chưa kích hoạt bản quyền — chưa áp gì vào Lightroom.")
+            return
+        if self._hm_chan():                 # 15/10: đang học màu Lightroom (hoc_mau_ui)
+            if tu_dong:
+                self._xl_ap_loi("Đang học màu Lightroom — chưa áp gì vào Lightroom.")
             return
         if not self.items:
             if tu_dong:
@@ -8055,7 +8098,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
 
     def do_read_from_lr(self):
         """Thay cho: vào Lightroom -> Plug-in Extras -> xuất thông số."""
-        if self._khoa_chan():
+        if self._khoa_chan() or self._hm_chan():
             return
         if not self.folder():
             messagebox.showinfo("Chưa chọn thư mục", "Chọn thư mục buổi chụp trước.")
@@ -8075,7 +8118,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
 
         Gộp ba bước thành một: xuất thông số, chạy learn_corrections, hiện bảng.
         Chạy SAU khi bạn đã sửa tay xong thì kết quả mới có nghĩa."""
-        if self._khoa_chan():
+        if self._khoa_chan() or self._hm_chan():
             return
         root = self.folder()
         if not root:
@@ -8357,6 +8400,8 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         #   bi sua ma khong hoan tac duoc — app giu con tin chinh anh goc cua
         #   khach. Do la muc do gay hai vuot xa moi khoan tien key.
         #]]
+        if self._hm_chan():                 # 15/10: đang học màu — plugin trả ảnh giữa các mẻ
+            return
         root = self.folder()
         if not root:
             messagebox.showinfo("Thiếu thư mục", "Chọn thư mục ảnh trước đã.")

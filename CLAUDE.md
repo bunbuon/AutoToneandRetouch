@@ -1407,6 +1407,62 @@ hiện 1-6 người đó thì ưu tiên đo sáng và cân bằng trên mặt c�
   40 s (12 tiến trình). Tờ ghép mặt kiểm bằng mắt: scratchpad `thu_chu_the.py`.
 Kiểm: `test_chu_the.py`.
 
+## Ảnh ám xanh nặng: WB theo da (15/10, v91) — `cuu_am_mau`, `am_mau_bat` BẬT
+
+User (buổi `G:\lọc 1037`, Nikon Z 6II, núi buổi sáng): "nhận diện được khuôn mặt và không thấy
+vùng da hoặc thấy 1 ít nhưng lại không đưa được màu da về màu đích" (NVQ_9532 / 9547 "0 điểm da",
+NVQ_9493 da R 55.9 G 58.4 B 74). Gốc: cổng da tuyệt đối `skin_mask` (hue ≤ 50° / ≥ 345°) loại da
+ám xanh; WB chỉ xét lại theo vùng trắng (tuyết / mây ám xanh trượt); trần WB ±300 K, curve, HSL,
+CG đều nhỏ hơn mức ám. User cho phép "WB theo da, CHỈ với ảnh ám nặng".
+- **Cổng da bù von Kries** (`bu_am_mau`, `skin_mask(px, bu)`): chỉ ám xanh / lục (B ≥ 0.95 R, G ≥
+  0.85 R), thử lại khi cổng tuyệt đối < `DIEM_DA_TOI_THIEU` — `measure`, `chon_da_hop`,
+  `mat_na_da._du_phong`; mask_xem ghi "da ám màu (đã bù khi lọc)".
+- **Nhận ảnh ám** (`am_mau_cua`): Places365 `p_trong` ≤ 0.2, giờ 5–18, khung ám 0.3–1.3 stop
+  (đèn màu sân khấu ám hơn -> bỏ), mặt xanh hơn đích ≥ 1.3 stop, KHÔNG flash (bit 0). Ngưỡng 1.0
+  bắt nhầm PUBGM (+1.00…+1.21, flash gel) -> 1.3 + chốt flash.
+- **WB** (`wb_cuu_am` -> `_giai_wb_da`, Bradford `doi_wb`, lưới mired 70–400 / tint ±60 rồi tinh):
+  quyết theo LOẠT, trần ±4000 K / ±25 tint quanh preset, `am_mau_manh` 0.9; WB máy không có (Z 6II
+  không K MakerNote, catalog không AsShot) -> trung vị `wb_may_adobe` của model -> preset.
+  Bradford trên JPEG máy ra 11–16.7k K (Picture Control phóng đại) nên LƯỢT 2
+  (`wb_cuu_am_luot2`, trong `_xl_curve_luong`) đo da THẬT trên ảnh Lightroom, ghi Temperature /
+  Tint vào job @curve (`curve_da.ghi_job` cột WB khi có `wb_l2`; RetouchKhiXuat gộp đúng hai cột đó).
+- Ảnh `am_mau` không bị: kiểm lại WB theo vùng trắng (`chuoi_mau_da_mau` 2b, `mau_mot_luot` bước
+  4), `dong_bo_cum` chép WB từ ảnh thường.
+- Mô phỏng lọc 1037 (chỉ đọc): 9 ảnh, WB 5391/10 -> 9250/41 (kẹp), da dư +1.25…+1.48 -> +0.06…
+  +0.26 stop dự đoán; quét 17 buổi đã phân tích: chỉ 9 ảnh này bị gắn. Scratchpad `quet_am_mau.py`.
+Kiểm: `test_am_mau.py`.
+
+## Bản cài cho máy khác (15/10, v91): học màu trong app · một lượt · lệch WB theo máy · chuyển cài đặt
+
+User: "giờ sẽ cần đóng gói để cho cài đặt trên các máy khác và thợ có thể sử dụng các thiết bị
+khác nhau" -> chọn "Đưa nút học + 4 mô hình + công tắc", "Chuyển cài đặt sang máy khác", "Nhớ lệch
+WB theo máy".
+- **Học màu từ app** (`hoc_mau_ui.HocMauMixin`, ⋯ › "Học màu Lightroom cho máy ảnh này…"):
+  `hoc_mau_lr` VÀO gói (trước LOAI_TRU), API không argv: `kiem_san_sang`, `cac_khoa_cho`,
+  `chay(..., bao, tien, dung, buoc)`; báo cáo vào `goc_du_lieu()/ket_qua_kiem`. Hộp chọn máy (tick
+  sẵn máy chưa học ≥ 6 ảnh), cửa sổ tiến trình = `HopXuLy` (tham số `buoc` / `tieu_de` / `dang`,
+  `ket_thuc(nut=)`). Đang học CHẶN ghi Lightroom (`_hm_chan`: Xử lý ảnh, Áp, Xuất, Hoàn tác, Đọc
+  từ Lightroom, Học từ buổi này, xem preset `preset_ui._gui_tiep`) — plugin trả thông số gốc giữa
+  các mẻ, job chen vào bị đè. Đóng app khi đang học: hỏi -> xin dừng -> chờ trả ảnh -> thoát.
+  Tổng kết Xử lý ảnh có nút "Học màu máy này…" khi công tắc một lượt BẬT và máy ≥ 6 ảnh chưa có
+  mô hình (`xl["ml_thieu"]`). ~5 phút / máy trên máy dev (580 lần dựng).
+- **Mô hình kèm gói** `mo_hinh_lr_goc/` (4 .json ĐẠT: A7 IV, A7 V, Z5 II, Z 8; TAI_NGUYEN):
+  `mo_hinh_lr.nap` = dữ liệu ĐẠT -> gói ĐẠT -> bản nào có; `AUTOTONE_MO_HINH_GOC` "" tắt (bài kiểm).
+- **Công tắc** Thiết lập › Tone › "Chế độ nhanh một lượt (thử nghiệm)" (`v_mot_luot`, kv
+  `luoi_xem.json` "mau_mot_luot", mặc định TẮT) -> `read_cfg["mau_mot_luot"]`.
+- **Lệch WB theo máy** (`wb_may.py`, `wb_may.json`): `uoc_asshot` bỏ cặp > 60 mired, điền
+  `at.ASSHOT_BUOI`; `_on_analyzed` (catalog) `ghi_buoi` khi n ≥ 3, IQR ≤ 12; `read_cfg`
+  `wb_asshot_da_hoc = bang_cfg(tru_buoi=buổi đang mở)`; `lech_asshot` trộn buổi + đã học (trọng số
+  ≤ 30 cặp), kẹp ±30, không có -> bảng cũ. `wb_may_adobe` nay cũng dùng nó. Chưa dữ liệu = y như cũ.
+- **Chuyển cài đặt** (`chuyen_cai_dat.py` + `_ui`, ⋯ › Xuất / Nhập / Khôi phục): zip manifest +
+  sha256, DANH SÁCH CHO PHÉP (mau_da bỏ `_theo_buoi`, gu, retouch/xuat/preset_xem/luoi_xem lọc
+  khoá, wb_may, retouch_preset, mô hình .json), KHÔNG BAO GIỜ khoa.json* / may.txt; nhập = kiểm gói
+  -> sao lưu `sao_luu_cai_dat/` -> gộp (mô hình ĐẠT thắng) -> hỏi mở lại app.
+Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_mot_luot_ui`,
+`test_mau_mot_luot` §6, `test_wb_may`, `test_chuyen_cai_dat`, `kiem_dong_goi`. Bẫy: `kiem_man_hinh`
+chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
+kiem_toan_bo (dữ liệu tạm) thì đạt.
+
 ## Chất lượng ảnh ra Retouch + jpeglib trong gói (15/10, v89)
 
 User: "ảnh chạy qua retouch dung lượng lại đang tăng — cần chọn Quality ảnh xuất ra". Vtt: bản

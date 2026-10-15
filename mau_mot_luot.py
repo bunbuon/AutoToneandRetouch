@@ -878,6 +878,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
     if wb_bat:
         lech_tat_ca = []
         for canh, ds in theo_canh.items():
+            ds = [r for r in ds if not r.get("am_mau")]   # 15/10: WB đã cứu theo da — giữ
             lech = []
             for r in ds:
                 if id(r) not in mm:

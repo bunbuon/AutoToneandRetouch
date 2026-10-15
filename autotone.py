@@ -1134,7 +1134,7 @@ SKIN_SAT_HI = 0.72
 #]]
 SKIN_DARK_REL = 0.35
 
-def skin_mask(px_srgb) -> "np.ndarray":
+def skin_mask(px_srgb, bu=None) -> "np.ndarray":
     """Lọc pixel THẬT SỰ là da trong ô mặt.
 
     Ô mặt là hình chữ nhật nên luôn dính kính, tóc, cổ áo, hậu cảnh. Đo thật
@@ -1145,8 +1145,14 @@ def skin_mask(px_srgb) -> "np.ndarray":
     (hue <= 50° hoặc >= 345°) với độ bão hoà vừa phải, còn vest xanh, tóc đen,
     áo trắng thì rơi ra ngoài.
 
+    bu (15/10): hệ số 3 kênh tuyến tính (bu_am_mau) — lọc trên điểm ĐÃ BÙ ÁM: ảnh ám xanh
+    nặng có da hue ~230°, cổng tuyệt đối loại sạch ("không thấy da · 0 điểm da").
+
     px_srgb: mảng (N, 3) sRGB 0..1. Trả về mảng bool (N,).
     """
+    if bu is not None:
+        px_srgb = linear_to_srgb(np.clip(srgb_to_linear(np.asarray(px_srgb, dtype=np.float64))
+                                         * np.asarray(bu, dtype=np.float64), 0.0, 1.0))
     mx = px_srgb.max(axis=1)
     mn = px_srgb.min(axis=1)
     d = mx - mn + EPS
@@ -1165,6 +1171,37 @@ def skin_mask(px_srgb) -> "np.ndarray":
     return (((hue <= SKIN_HUE_HI) | (hue >= SKIN_HUE_LO))
             & (sat > SKIN_SAT_LO) & (sat < SKIN_SAT_HI)
             & (mx > 0.08) & (mx < 0.99))
+
+
+def linear_to_srgb(a) -> np.ndarray:
+    a = np.clip(np.asarray(a, dtype=np.float64), 0.0, None)
+    return np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1.0 / 2.4) - 0.055)
+
+
+def bu_am_mau(px_srgb) -> "np.ndarray | None":
+    """Hệ số 3 kênh (von Kries, tuyến tính) đưa TRUNG VỊ các điểm (ô mặt) về sắc da chuẩn
+    (skin_ref_rgb), GIỮ độ sáng — cho skin_mask(px, bu). None khi trung vị đã lọt cổng da
+    (không ám), quá tối, hoặc ám KHÔNG phải xanh (B < 0.95 R: đèn vàng / đỏ / tím là việc
+    của các nhánh WB khác — không đoán da trên ảnh đó).
+
+    #[[ 15/10 buổi lọc 1037: mặt trên JPEG máy (0.20, 0.21, 0.28) — cổng hue <= 50° loại hết,
+    #   mặt nạ dự phòng ra 0 điểm, measure() lấy cả ô (dính mũ / kính). Bù theo trung vị ô
+    #   rồi mới lọc: điểm da về dải cam, mũ xanh đậm / kính đen vẫn ra ngoài. ]]"""
+    px = np.asarray(px_srgb, dtype=np.float64).reshape(-1, 3)
+    if len(px) < 9:
+        return None
+    med = np.median(px, axis=0)
+    if float(med.max()) < 0.08 or bool(skin_mask(med[None, :])[0]):
+        return None
+    lin = srgb_to_linear(med) + EPS
+    #  ám XANH / xanh lơ (bóng râm, bình minh): B >= R và G không tụt dưới R — ám tím / hồng
+    #  (đèn sân khấu, G thấp hẳn) không đoán
+    if lin[2] < 0.95 * lin[0] or lin[1] < 0.85 * lin[0]:
+        return None
+    ref = srgb_to_linear(np.asarray(DEFAULTS["skin_ref_rgb"], dtype=np.float64) / 255.0) + EPS
+    g = ref / lin
+    y0, y1 = float(lin @ _SRGB_XYZ[1]), float((lin * g) @ _SRGB_XYZ[1])
+    return g * (y0 / max(y1, EPS))
 
 
 def face_detector():
@@ -1875,6 +1912,15 @@ def measure(path: Path, preview_px: int, meter: str, hl_cut: float = 0.85,
                 #]]
                 pc = af[y0:y1, x0:x1].reshape(-1, 3)
                 sk = skin_mask(pc)
+                #  15/10: ảnh ÁM XANH NẶNG — cổng tuyệt đối loại sạch da -> lọc lại trên điểm đã
+                #  bù ám (bu_am_mau; ảnh không ám thì None, như cũ). Không bù thì nhánh "cả ô"
+                #  lấy cả mũ / kính / nền vào màu da dùng để cứu WB (cuu_am_mau).
+                if sk.sum() < max(9, int(0.15 * sk.size)):
+                    bu_ = bu_am_mau(pc)
+                    if bu_ is not None:
+                        sk_bu = skin_mask(pc, bu_)
+                        if sk_bu.sum() > sk.sum():
+                            sk = sk_bu
                 # Vut not pixel toi hon han vung da — xem SKIN_DARK_REL
                 if SKIN_DARK_REL > 0 and sk.sum() >= 9:
                     sk_hue = sk
@@ -3970,6 +4016,20 @@ DEFAULTS = {
     "wb_temp_max": 1000.0,
     "wb_tint_gain": 30.0,
     "wb_tint_max": 12.0,
+    #[[ ẢNH ÁM XANH NẶNG -> WB THEO DA (15/10, user: "nhận diện được khuôn mặt và không thấy
+    #   vùng da ... không đưa được màu da về màu đích"; cho phép "WB theo da, chỉ với ảnh ám
+    #   nặng"). Xem am_mau_cua / cuu_am_mau. Ngưỡng đo trên 17 buổi đã phân tích: chỉ 9 ảnh
+    #   lọc 1037 (núi bình minh 06:38 / 07:38, +1.59…+2.14) trúng; sân khấu LED buổi 1005
+    #   (trong nhà 0.82–0.998, khung +1.3…+4.8) không; PUBGM 14:51 (+1.00…+1.21, sát ngưỡng
+    #   cũ 1.0) không. Ảnh flash NỔ không xét (mặt do flash chiếu, không phải ám môi trường). ]]
+    "am_mau_bat": True,
+    "am_mau_mat_ev": 1.3,         # da (face_rgb) XANH hơn da đích ≥ chừng này stop (log2 B/R)
+    "am_mau_khung": (0.3, 1.3),   # cả khung ám xanh VỪA (stop) — ám cực mạnh là đèn màu cố ý
+    "am_mau_p_trong": 0.2,        # Places365: ngoài trời CHẮC (thiếu số -> không cứu)
+    "am_mau_gio": (5, 18),        # chỉ ảnh ban ngày (giờ chụp trong [5, 18))
+    "am_mau_manh": 0.9,           # kéo da về đích chừng này phần quãng (giữ chút không khí)
+    "am_mau_tran_K": 4000.0,      # trần lệch WB so với preset (5250 -> tối đa ~9250 K)
+    "am_mau_tran_tint": 25.0,
     #[[ QUY TRINH "PRESET KHONG WB, KHONG TONE" (3/10) — xem preset_chua_ap().
     #
     #   User de xuat: import RAW -> ap preset BO TRONG nhom White Balance va nhom
@@ -4043,6 +4103,8 @@ DEFAULTS = {
     "wb_asshot_min_K": 50.0,
     "wb_asshot_lech_mired": {"ILCE-7M4": 1.0, "ILCE-7M5": 9.5, "NIKON Z 8": 4.4,
                              "NIKON": 4.4},
+    #  15/10: lệch đã học các buổi trước {MODEL: {"lech", "n"}} — app điền từ wb_may.json
+    "wb_asshot_da_hoc": {},
     "preview_px": 480,
     "marker": True,
     "lr_push": True,      # ghi job cho plugin Lightroom sau khi apply
@@ -5815,32 +5877,59 @@ def _asshot_catalog(crs: dict) -> float:
     return max(get_f(crs, "Temperature", 0.0), 0.0)
 
 
+#[[ 15/10 (user chọn "Nhớ lệch WB theo máy" — bản cài cho thợ dùng máy ảnh khác nhau):
+#   độ lệch K máy (MakerNote) -> thang Adobe trước chỉ học trong CHÍNH buổi (≥ 3 cặp K máy /
+#   As Shot thật) hoặc lấy bảng wb_asshot_lech_mired (4 máy của dev). Nay mỗi buổi học được
+#   ghi vào wb_may.json (wb_may.ghi_buoi, chỉ khi ổn định: ≥ 3 cặp, IQR ≤ 12 mired); buổi
+#   sau trộn số trong buổi với số đã học (cfg["wb_asshot_da_hoc"] = wb_may.bang_cfg — trừ
+#   chính buổi đang mở để không đếm hai lần). Chưa có dữ liệu -> y như cũ.
+#   ASSHOT_BUOI: {MODEL: {"lech", "n", "iqr"}} của lần uoc_asshot gần nhất. ]]
+ASSHOT_BUOI: dict = {}
+ASSHOT_CAP_TOI_DA = 60.0       # mired — cặp lệch hơn: As Shot bị sửa / đọc nhầm, bỏ
+ASSHOT_TRONG_SO_HOC = 30.0     # số cặp tối đa của dữ liệu đã học khi trộn với buổi
+ASSHOT_KEP = 30.0              # mired — độ lệch dùng được tối đa
+
+
+def lech_asshot(model: str, cfg: dict, buoi: dict | None = None) -> float:
+    """Độ lệch mired (1e6/K_adobe − 1e6/K_máy) của máy: trộn số học TRONG BUỔI (ASSHOT_BUOI)
+    với số đã học các buổi trước (cfg["wb_asshot_da_hoc"], trọng số tối đa
+    ASSHOT_TRONG_SO_HOC cặp), kẹp ±ASSHOT_KEP; không có thì bảng wb_asshot_lech_mired (khớp
+    tên máy dài nhất), không có nữa thì 0."""
+    m = str(model or "").upper()
+    b = dict(ASSHOT_BUOI if buoi is None else buoi).get(m)
+    h = {str(k).upper(): v for k, v in dict(cfg.get("wb_asshot_da_hoc") or {}).items()}.get(m)
+    nb = float(b["n"]) if b else 0.0
+    nh = min(float((h or {}).get("n") or 0.0), ASSHOT_TRONG_SO_HOC) if h else 0.0
+    if nb + nh > 0:
+        x = ((nb * float(b["lech"]) if b else 0.0) + (nh * float(h["lech"]) if h else 0.0)) / (nb + nh)
+        return float(np.clip(x, -ASSHOT_KEP, ASSHOT_KEP))
+    return _theo_may(cfg.get("wb_asshot_lech_mired"), m, 0.0)
+
+
 def uoc_asshot(items: list, cfg: dict) -> int:
     """Gan r["asshot_K"] — nhiet do As Shot THANG ADOBE — cho moi anh dang As
     Shot (preset bo trong WB). Tra ve so anh uoc duoc.
 
     Thu tu: (1) so that trong catalog; (2) K trong MakerNote quy sang thang
-    Adobe bang wb_asshot_lech_mired — hoc tu CHINH buoi neu may do co >= 3 cap
-    (K may, As Shot that), khong thi lay bang trong DEFAULTS (khop ten may dai
-    nhat), khong co thi 0. Khong co ca hai -> khong gan, compute_values tinh nhu
-    cu tren nen 5250."""
+    Adobe bang lech_asshot — hoc tu CHINH buoi neu may do co >= 3 cap (K may,
+    As Shot that) tron voi so da hoc cac buoi truoc (wb_may.json), khong thi
+    lay bang trong DEFAULTS (khop ten may dai nhat), khong co thi 0. Khong co
+    ca hai -> khong gan, compute_values tinh nhu cu tren nen 5250."""
+    ASSHOT_BUOI.clear()
     if not cfg.get("wb_theo_asshot"):
         return 0
-    bang = {str(k).upper(): float(v)
-            for k, v in (cfg.get("wb_asshot_lech_mired") or {}).items()}
     cap: dict = {}
     for r in items:
         t, k = _asshot_catalog(r.get("crs") or {}), _so(r.get("wb_may_K"))
-        if t > 0 and k and k > 0:
+        if t > 0 and k and k > 0 and abs(1e6 / t - 1e6 / k) <= ASSHOT_CAP_TOI_DA:
             cap.setdefault(str(r.get("model") or "").upper(), []).append(1e6 / t - 1e6 / k)
-    hoc = {m: float(np.median(v)) for m, v in cap.items() if len(v) >= 3}
+    for m, v in cap.items():
+        if len(v) >= 3:
+            ASSHOT_BUOI[m] = {"lech": float(np.median(v)), "n": len(v),
+                              "iqr": float(np.percentile(v, 75) - np.percentile(v, 25))}
 
     def lech(model: str) -> float:
-        m = model.upper()
-        if m in hoc:
-            return hoc[m]
-        khop = [k for k in bang if k and k in m]
-        return bang[max(khop, key=len)] if khop else 0.0
+        return lech_asshot(model, cfg)
 
     n = 0
     for r in items:
@@ -6075,6 +6164,189 @@ def _skin_wb(cfg: dict, temp_adj: float, tint_adj: float,
 
 
 # ======================================================================
+# ẢNH ÁM XANH NẶNG -> WB THEO DA (15/10)
+# ======================================================================
+#[[ User 15/10 (buổi G:\lọc 1037, Nikon Z 6II, núi lúc bình minh trong bóng râm): "nhận diện
+#   được khuôn mặt và không thấy vùng da hoặc thấy 1 ít nhưng lại đang không đưa được màu da về
+#   màu đích". Mặt trên JPEG máy XANH hơn da đích 1.06–1.37 stop (B > R), cả khung ám
+#   +0.67…+0.97. Đường thường không cứu được: cổng da tuyệt đối loại sạch da, WB theo da lấy
+#   TRUNG VỊ CẢNH (ảnh thường át đi — tool ghi 5399 / 10 như cả cảnh), kiểm lại theo vùng trắng
+#   không có điểm trung tính (tuyết / mây ám xanh), các trần (WB ±300 K, curve 0.03, HSL 15/20,
+#   CG) nhỏ hơn mức ám nhiều lần. User cho phép WB theo da CHỈ với ảnh ám nặng.
+#   PHÂN BIỆT với ánh đèn CỐ Ý — sân khấu LED buổi 1005 (18:30–21:43): mặt +0.9…+3.5, khung
+#   +1.3…+4.8, Places365 trong nhà 0.82–0.998 -> cần ngoài trời CHẮC, ban ngày, khung ám VỪA. ]]
+def am_mau_cua(r: dict, cfg: dict) -> float | None:
+    """Độ xanh của da so với da đích (stop) nếu ảnh là ảnh ÁM XANH NẶNG cần cứu WB; None nếu
+    không (thiếu số đo nào cũng là không — thà không cứu còn hơn cứu nhầm đèn màu cố ý)."""
+    if not cfg.get("am_mau_bat", True) or r.get("bw"):
+        return None
+    f, khung = r.get("face_rgb"), r.get("rgb_mean")
+    p_trong = r.get("p_trong")
+    dt = r.get("dt_obj")
+    if not f or not khung or p_trong is None or dt is None or min(float(x) for x in f) <= 0:
+        return None
+    if float(p_trong) > float(cfg.get("am_mau_p_trong", 0.2)):
+        return None
+    try:
+        if int(_so(r.get("flash")) or 0) & 1:        # EXIF Flash bit 0 = flash đã nổ
+            return None
+    except (TypeError, ValueError):
+        pass
+    g0, g1 = (int(v) for v in (cfg.get("am_mau_gio") or (5, 18)))
+    if not g0 <= int(getattr(dt, "hour", -1)) < g1:
+        return None
+    trong, ngoai = dich_da(cfg)
+    ref = srgb_to_linear(np.asarray(ngoai if _nhan_da_ngoai(r, cfg) else trong,
+                                    dtype=np.float64) / 255.0) + EPS
+    ev = wb_cast(np.asarray(f, dtype=np.float64))[0] - wb_cast(ref)[0]
+    k_ev = wb_cast(np.asarray(khung, dtype=np.float64))[0]
+    k_lo, k_hi = (float(v) for v in (cfg.get("am_mau_khung") or (0.3, 1.3)))
+    if ev < float(cfg.get("am_mau_mat_ev", 1.0)) or not k_lo <= k_ev <= k_hi:
+        return None
+    return float(ev)
+
+
+def wb_cuu_am(r: dict, cfg: dict, may_md: tuple | None = None) -> tuple[float, float] | None:
+    """(Temperature, Tint) Lightroom đưa da (face_rgb, đo trên JPEG máy ở WB máy) về da
+    đích — giải bằng doi_wb (Bradford), lưới thô rồi mịn theo mired / tint. Kéo am_mau_manh
+    phần quãng từ WB preset. may_md: WB máy dự phòng khi ảnh không có (Nikon Z 6II không ghi
+    K vào MakerNote, catalog thiếu AsShotTemperature — lọc 1037): trung vị cùng đời máy trong
+    buổi, không có nữa thì WB preset. None = không có preset WB."""
+    pt, pti = preset_val(r, "Temperature"), preset_val(r, "Tint")
+    may = wb_may_adobe(r, cfg) or may_md or ((pt, pti) if pt > 0 else None)
+    f = r.get("face_rgb")
+    if may is None or pt <= 0 or not f:
+        return None
+    t, ti = _giai_wb_da(np.asarray(f, dtype=np.float64), may, _dich_da_lin(r, cfg))
+    return _keo_manh(cfg, (pt, pti), (t, ti))
+
+
+def _dich_da_lin(r: dict, cfg: dict) -> np.ndarray:
+    """Da đích (RGB tuyến tính) của ảnh — trong / ngoài trời như _skin_wb."""
+    trong, ngoai = dich_da(cfg)
+    return srgb_to_linear(np.asarray(ngoai if _nhan_da_ngoai(r, cfg) else trong,
+                                     dtype=np.float64) / 255.0) + EPS
+
+
+def _giai_wb_da(f_lin, tu: tuple, ref_lin) -> tuple[float, float]:
+    """(K, Tint) để màu da `f_lin` (RGB tuyến tính, dựng ở WB `tu`) có cùng sắc (log2 B/R,
+    G/√RB) với da đích — doi_wb (Bradford), lưới thô rồi mịn theo mired / tint."""
+    rt, ri = wb_cast(np.asarray(ref_lin, dtype=np.float64))
+    f_lin = np.asarray(f_lin, dtype=np.float64)
+
+    def sai(m_, ti_):
+        d = np.maximum(doi_wb(f_lin, tu, (1e6 / m_, ti_)), 1e-6)
+        mt, mi = wb_cast(d)
+        return (mt - rt) ** 2 + (mi - ri) ** 2
+
+    tot = min(((sai(m_, ti_), m_, ti_) for m_ in np.arange(70.0, 401.0, 10.0)
+               for ti_ in np.arange(-60.0, 61.0, 5.0)))
+    tot = min(((sai(m_, ti_), m_, ti_) for m_ in np.arange(tot[1] - 10.0, tot[1] + 10.5, 1.0)
+               for ti_ in np.arange(tot[2] - 5.0, tot[2] + 5.25, 0.5) if m_ > 20.0))
+    return 1e6 / float(tot[1]), float(tot[2])
+
+
+def _keo_manh(cfg: dict, goc: tuple, dich: tuple) -> tuple[float, float]:
+    """Từ WB `goc` kéo am_mau_manh phần quãng tới WB `dich` (theo mired / tint)."""
+    k = float(cfg.get("am_mau_manh", 0.9))
+    m0 = 1e6 / float(goc[0])
+    m_ = m0 + k * (1e6 / float(dich[0]) - m0)
+    return 1e6 / m_, float(goc[1]) + k * (float(dich[1]) - float(goc[1]))
+
+
+def cuu_am_mau(items: list, cfg: dict) -> int:
+    """Ảnh ÁM XANH NẶNG (am_mau_cua): WB = WB đưa da về đích (wb_cuu_am), quyết theo LOẠT (các
+    ảnh ám liền nhau ra cùng WB — trung vị mired / tint), kẹp am_mau_tran_K / _tint quanh
+    preset. Ghi đè temp_adj / tint_adj mọi bước WB tự động trước đó (gọi trong decide TRƯỚC
+    bù K / Tint cả buổi của người dùng và phanh da theo WB). Gắn r["am_mau"] (stop) để các
+    bước sau (xét lại vùng trắng, đồng bộ cụm, chuỗi một lượt) không kéo WB ảnh này về cảnh
+    thường. -> số ảnh được cứu."""
+    for r in items:
+        r.pop("am_mau", None)
+        r.pop("am_mau_wb", None)
+    if not cfg.get("am_mau_bat", True) or cfg.get("wb") not in ("asshot", "skin"):
+        return 0
+    giai: dict = {}
+    may_md: dict = {}
+    for r in items:
+        ev = am_mau_cua(r, cfg)
+        if ev is None:
+            continue
+        r["am_mau"] = round(ev, 2)
+        mdl = str(r.get("model") or "")
+        if mdl not in may_md:
+            ds_ = [w_ for w_ in (wb_may_adobe(x, cfg) for x in items
+                                 if str(x.get("model") or "") == mdl) if w_ is not None]
+            may_md[mdl] = ((1e6 / float(np.median([1e6 / w_[0] for w_ in ds_])),
+                            float(np.median([w_[1] for w_ in ds_]))) if ds_ else None)
+        w = wb_cuu_am(r, cfg, may_md[mdl])
+        if w is not None:
+            giai[id(r)] = w
+    if not giai:
+        return 0
+    tran_k = float(cfg.get("am_mau_tran_K", 2500.0))
+    tran_ti = float(cfg.get("am_mau_tran_tint", 25.0))
+    n = 0
+    for g in nhom_loat([r for r in items if id(r) in giai], cfg):
+        m_ = float(np.median([1e6 / giai[id(r)][0] for r in g]))
+        ti_ = float(np.median([giai[id(r)][1] for r in g]))
+        for r in g:
+            pt, pti = preset_val(r, "Temperature"), preset_val(r, "Tint")
+            r["temp_adj"] = float(np.clip(1e6 / m_ - pt, -tran_k, tran_k))
+            r["tint_adj"] = float(np.clip(ti_ - pti, -tran_ti, tran_ti))
+            r["am_mau_wb"] = (int(round(pt + r["temp_adj"])), int(round(pti + r["tint_adj"])))
+            _them_ghi_chu(r, "am-mau:wb-theo-da")
+            n += 1
+    return n
+
+
+def wb_cuu_am_luot2(ds: list, do_map: dict, cfg: dict) -> int:
+    """LƯỢT 2 cho ảnh ám xanh nặng (r["am_mau"]): đo da THẬT trên ảnh Lightroom vừa dựng —
+    WB "từ" là đúng số vừa áp (new_temp / new_tint), không còn đoán WB máy hay qua Picture
+    Control của JPEG máy (lượt 1 đo trên đó nên chỉ gần đúng). -> WB bổ sung đưa da về đích,
+    quyết theo loạt, trong trần am_mau_tran_K / _tint quanh preset. Gắn r["wb_l2"] = (K,
+    Tint) — curve_da.ghi_job ghi cùng job lượt 2 (plugin tự đặt WhiteBalance Custom).
+    do_map: {id(r): kết quả curve_da.do_anh}. -> số ảnh có WB bổ sung."""
+    import curve_lr as _cl
+    for r in ds:
+        r.pop("wb_l2", None)
+    if not cfg.get("am_mau_bat", True):
+        return 0
+    giai: dict = {}
+    for r in ds:
+        do = do_map.get(id(r)) or {}
+        if not r.get("am_mau") or not r.get("new_temp") or not do.get("ok", True):
+            continue
+        P = do.get("da_mn") if do.get("da_mn") is not None else do.get("da_cu")
+        if P is None or len(P) < 50:
+            continue
+        lin = srgb_to_linear(np.clip(_cl.mien_sang_srgb(np.asarray(P, dtype=np.float64),
+                                                         do.get("mien") or "melissa"), 0.0, 1.0))
+        tu = (float(r["new_temp"]), float(r.get("new_tint", 0)))
+        dich = _giai_wb_da(np.median(lin, axis=0) + EPS, tu, _dich_da_lin(r, cfg))
+        giai[id(r)] = _keo_manh(cfg, tu, dich)
+    if not giai:
+        return 0
+    tran_k = float(cfg.get("am_mau_tran_K", 4000.0))
+    tran_ti = float(cfg.get("am_mau_tran_tint", 25.0))
+    n = 0
+    for g in nhom_loat([r for r in ds if id(r) in giai], cfg):
+        t = 1e6 / float(np.median([1e6 / giai[id(r)][0] for r in g]))
+        ti = float(np.median([giai[id(r)][1] for r in g]))
+        for r in g:
+            pt, pti = preset_val(r, "Temperature"), preset_val(r, "Tint")
+            if pt <= 0:
+                continue
+            t_r = float(np.clip(t, pt - tran_k, pt + tran_k))
+            ti_r = float(np.clip(ti, pti - tran_ti, pti + tran_ti))
+            if abs(t_r - float(r["new_temp"])) > 50.0 or abs(ti_r - float(r.get("new_tint", 0))) > 2.0:
+                r["wb_l2"] = (int(round(t_r)), int(round(ti_r)))
+                _them_ghi_chu(r, "am-mau:wb-luot2")
+                n += 1
+    return n
+
+
+# ======================================================================
 # MÔ HÌNH MÀU LIGHTROOM — Color Grading tính theo TRẠNG THÁI từng ảnh
 # ======================================================================
 #[[ 8/10, buoi ky yeu "raw 19.4" (preset Bong22: Custom 5950 / +19, Saturation
@@ -6267,7 +6539,7 @@ def wb_may_adobe(r: dict, cfg: dict) -> tuple[float, float] | None:
         k = _so(r.get("wb_may_K"))
         if not k or k <= 0:
             return None
-        lech = _theo_may(cfg.get("wb_asshot_lech_mired"), str(r.get("model") or ""), 0.0)
+        lech = lech_asshot(str(r.get("model") or ""), cfg)     # 15/10: + số đã học theo máy
         t = 1e6 / max(1e6 / float(k) + lech, 20.0)
     if _asshot_catalog(crs) > 0 and str(crs.get("Tint", "")).strip() != "":
         ti = get_f(crs, "Tint", 0.0)
@@ -6849,6 +7121,10 @@ def chon_da_hop(arr, box) -> np.ndarray | None:
     pc = arr[y0:y1, x0:x1].reshape(-1, 3)
     sk = skin_mask(pc)
     if sk.sum() < max(9, int(0.15 * sk.size)):
+        bu_ = bu_am_mau(pc)                  # 15/10: ảnh ám xanh nặng — xem skin_mask(bu)
+        if bu_ is not None:
+            sk = skin_mask(pc, bu_)
+    if sk.sum() < max(9, int(0.15 * sk.size)):
         return None
     lin = srgb_to_linear(pc[sk])
     yy = lin @ _SRGB_XYZ[1]
@@ -7395,6 +7671,8 @@ def chuoi_mau_da_mau(items: list, cfg: dict, folder=None, job_dir: Path | None =
     if wb_bat and co_trang:
         theo_canh: dict = {}
         for r in mau_anh:
+            if r.get("am_mau"):              # 15/10: WB đã cứu theo da (cuu_am_mau) — giữ
+                continue
             theo_canh.setdefault(r.get("scene"), []).append(r)
         lech_tat_ca = []
         for canh, ds in theo_canh.items():
@@ -8530,6 +8808,7 @@ def decide(items: list, cfg: dict) -> None:
         _tint_tran_am(items, cfg)
         _wb_ky_yeu(items, cfg)
         _wb_ngoai_toi(items, cfg)        # 12/10: ngoai troi buoi toi khong ha K
+    cuu_am_mau(items, cfg)               # 15/10: anh am xanh nang -> WB theo da (de moi buoc tren)
     _wb_bu_ca_buoi(items, cfg)           # 12/10: o "Bu K / Tint ca buoi" — sau moi buoc WB tu dong
     #  WB da chot -> kiem lai da TRUOC hai buoc bu sang chu y (11/10)
     phanh_da_sau_wb(items, cfg)
@@ -8805,7 +9084,9 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
                 if dd.get(k) is not None and r.get(k) != dd.get(k):
                     r[k] = dd[k]
                     doi.append("tone")
-            if dd.get("new_temp") and (r.get("new_temp"), r.get("new_tint")) != (dd.get("new_temp"), dd.get("new_tint")):
+            #  15/10: một tấm ám xanh nặng (WB cứu theo da), tấm kia không -> KHÔNG chép WB
+            if dd.get("new_temp") and bool(r.get("am_mau")) == bool(dd.get("am_mau")) \
+                    and (r.get("new_temp"), r.get("new_tint")) != (dd.get("new_temp"), dd.get("new_tint")):
                 r["new_temp"], r["new_tint"] = dd["new_temp"], dd.get("new_tint")
                 #  ghi WB tường minh ở CẢ hai: đại diện "không đổi WB" thì Lightroom giữ WB đang
                 #  có của nó — có thể khác new_temp (WB tool ghi lần trước)

@@ -2067,3 +2067,169 @@ TU_DIEN.update({
     'Đang retouch…': 'Retouching…',
     'Đang retouch {} ảnh…': 'Retouching {} photos…',
 })
+
+#  15/10 (v91): học màu Lightroom từ app, chế độ nhanh một lượt, chuyển cài đặt, ảnh ám xanh
+TU_DIEN.update({
+    'Học màu Lightroom': 'Learn Lightroom color',
+    'Học màu Lightroom cho máy ảnh này…': 'Learn Lightroom color for this camera…',
+    'Học màu Lightroom cho máy ảnh': 'Learn Lightroom color for cameras',
+    'chưa học': 'not learned yet',
+    'đã học, CHƯA ĐẠT': 'learned, NOT PASSED',
+    'có sẵn trong bộ cài': 'bundled with the installer',
+    'đã học (ĐẠT)': 'learned (PASSED)',
+    'ĐẠT': 'PASSED',
+    'CHƯA ĐẠT / không chạy hết': 'NOT PASSED / did not finish',
+    'đã dừng': 'stopped',
+    'đã dừng — ảnh đã trả lại': 'stopped — photos restored',
+    ('Lightroom dựng thử khoảng 20 ảnh của buổi với vài chục thông số khác nhau, rồi trả lại '
+     'đúng thông số cũ. App học cách Lightroom ra màu da trên đúng máy + profile đó — dùng cho '
+     '“Chế độ nhanh một lượt”.'):
+        ('Lightroom test-renders about 20 photos of the session with a few dozen different '
+         'settings, then restores the original settings. The app learns how Lightroom renders '
+         'skin for that exact camera + profile — used by “Fast one-pass mode”.'),
+    '{} ảnh · {}': '{} photos · {}',
+    '{} ảnh — cần ít nhất {} ảnh có mặt': '{} photos — needs at least {} photos with faces',
+    ('Trong lúc học: để Lightroom mở, đừng sửa ảnh của buổi này. History của các ảnh được dựng '
+     'thử có thêm vài bước; ảnh được trả lại đúng thông số cũ. App tạm khoá Xử lý ảnh / Áp / '
+     'Xuất tới khi học xong (bấm Dừng bất cứ lúc nào).'):
+        ('While learning: keep Lightroom open and do not edit this session\'s photos. The test-'
+         'rendered photos get a few extra History steps; their original settings are restored. '
+         'The app locks Process photos / Apply / Export until learning finishes (press Stop at '
+         'any time).'),
+    'Học {} máy · khoảng {}–{} phút': 'Learn {} cameras · about {}–{} min',
+    'Chưa chọn máy nào.': 'No camera selected.',
+    'Bắt đầu học': 'Start learning',
+    ('Đang học màu Lightroom — chờ học xong (hoặc bấm Dừng trong cửa sổ học) rồi làm việc '
+     'này.'):
+        ('Learning Lightroom color — wait until it finishes (or press Stop in the learning '
+         'window), then do this.'),
+    ('Học màu Lightroom cần nguồn ảnh là Catalog Lightroom (Thiết lập › Nguồn) — Lightroom '
+     'phải đang mở buổi này.'):
+        ('Learning Lightroom color needs the Lightroom Catalog source (Settings › Source) — '
+         'Lightroom must have this session open.'),
+    'Đang kiểm plugin Lightroom + máy ảnh của buổi…': 'Checking the Lightroom plugin + the session\'s cameras…',
+    'Không chuẩn bị được: {}': 'Could not prepare: {}',
+    'App đang bận (xử lý / áp / xuất ảnh) — chờ xong rồi học màu Lightroom.':
+        'The app is busy (processing / applying / exporting) — wait until it finishes, then learn Lightroom color.',
+    ('Buổi này không có ảnh dùng để học (cần ảnh RAW có mặt, không 1★, không chỉnh cục '
+     'bộ).'):
+        'This session has no photos usable for learning (needs RAW photos with faces, not 1★, no local adjustments).',
+    'Đọc thông số Lightroom': 'Read Lightroom settings',
+    'Đang học màu Lightroom…': 'Learning Lightroom color…',
+    '{} · {} máy · đừng sửa ảnh trong Lightroom lúc này': '{} · {} cameras · do not edit photos in Lightroom now',
+    'Đang dừng — chờ Lightroom trả lại ảnh về thông số cũ…': 'Stopping — waiting for Lightroom to restore the photos…',
+    'Lightroom dựng {} / {}': 'Lightroom rendering {} / {}',
+    'Đang dừng học màu — chờ Lightroom trả lại ảnh…': 'Stopping the learning — waiting for Lightroom to restore the photos…',
+    ('Đang học màu Lightroom. Dừng học, chờ Lightroom trả lại ảnh về thông số cũ rồi thoát '
+     'app?'):
+        'Learning Lightroom color. Stop, wait for Lightroom to restore the photos, then quit the app?',
+    '✓ {} máy đã có mô hình màu Lightroom (lưu trong thư mục dữ liệu của app).':
+        '✓ {} cameras now have a Lightroom color model (saved in the app\'s data folder).',
+    'Bật Thiết lập › Tone › “Chế độ nhanh một lượt (thử nghiệm)” để dùng.':
+        'Turn on Settings › Tone › “Fast one-pass mode (experimental)” to use it.',
+    ('Máy CHƯA ĐẠT vẫn dùng đường thường — thử học lại trên một buổi khác (nhiều ảnh có mặt, '
+     'ánh sáng đa dạng hơn).'):
+        ('Cameras that did NOT PASS keep using the normal path — try learning again on another '
+         'session (more photos with faces, more varied light).'),
+    ('Đã dừng — ảnh đã được trả lại thông số cũ (kiểm vài ảnh trong Lightroom nếu muốn '
+     'chắc).'):
+        'Stopped — the photos were restored to their original settings (check a few in Lightroom to be sure).',
+    'Báo cáo: {}': 'Report: {}',
+    'Đã dừng học màu': 'Learning stopped',
+    'Học màu xong': 'Learning finished',
+    'Học màu chưa đạt hết': 'Learning did not pass for every camera',
+    'Chưa học được': 'Could not learn',
+    'plugin xuất thông số hiện tại…': 'plugin is exporting the current settings…',
+    'chọn ảnh học…': 'choosing photos to learn from…',
+    'Đọc thông số hiện tại (catalog + bản xuất của plugin)…': 'Reading current settings (catalog + plugin export)…',
+    'Học mô hình + kiểm định để-lại-một-ảnh…': 'Fitting the model + leave-one-out validation…',
+    'Plugin AutoTone trong Lightroom chưa chạy — mở Lightroom rồi thử lại.':
+        'The AutoTone plugin in Lightroom is not running — open Lightroom and try again.',
+    ('Plugin trong Lightroom là bản cũ (thiếu khả năng học màu) — cài lại Tone&Retouch bằng '
+     'bộ cài đầy đủ rồi khởi động lại Lightroom (bản cập nhật tự động không mang plugin).'):
+        ('The plugin in Lightroom is an old version (cannot learn color) — reinstall '
+         'Tone&Retouch with the full installer, then restart Lightroom (automatic updates do '
+         'not carry the plugin).'),
+    'Buổi này chưa phân tích — bấm Xử lý ảnh trước rồi thử lại.':
+        'This session has not been analysed — press Process photos first, then try again.',
+    #  tổng kết Xử lý ảnh
+    ('· Màu da một lượt: chưa học màu Lightroom cho máy {} — lần này dùng đường thường. Học: '
+     '⋯ › Học màu Lightroom cho máy ảnh này…'):
+        ('· One-pass skin color: Lightroom color not learned yet for camera {} — the normal '
+         'path was used this time. Learn it: ⋯ › Learn Lightroom color for this camera…'),
+    '⚠ lệch nhiều cả buổi — nên học màu Lightroom lại (⋯ › Học màu Lightroom cho máy ảnh này…)':
+        '⚠ large deviation across the session — re-learn Lightroom color (⋯ › Learn Lightroom color for this camera…)',
+    'Học màu máy này…': 'Learn this camera\'s color…',
+    'Đang học màu Lightroom — chưa áp gì vào Lightroom.': 'Learning Lightroom color — nothing applied to Lightroom.',
+    'đang học màu Lightroom — xem preset sau khi học xong': 'learning Lightroom color — preview presets after it finishes',
+    ('· Ảnh ám xanh nặng (ngoài trời, da xanh hơn đích): {} ảnh — WB chỉnh theo da ({} K), {} '
+     'ảnh hoàn thiện theo da đo trên ảnh Lightroom.'):
+        ('· Heavy blue cast (outdoors, skin bluer than the target): {} photos — WB set from the '
+         'skin ({} K), {} photos finished from skin measured on the Lightroom render.'),
+    '· Ảnh ám xanh nặng (ngoài trời, da xanh hơn đích): {} ảnh — WB chỉnh theo da ({} K).':
+        '· Heavy blue cast (outdoors, skin bluer than the target): {} photos — WB set from the skin ({} K).',
+    '· Ảnh ám xanh nặng (ngoài trời, da xanh hơn đích): {} ảnh — WB chỉnh theo da.':
+        '· Heavy blue cast (outdoors, skin bluer than the target): {} photos — WB set from the skin.',
+    ' · da ám màu (đã bù khi lọc)': ' · color-cast skin (compensated when masking)',
+    'da ám màu (đã bù khi lọc)': 'color-cast skin (compensated when masking)',
+    #  công tắc + menu
+    'Chế độ nhanh một lượt (thử nghiệm)': 'Fast one-pass mode (experimental)',
+    ('Đo da trên preview Lightroom rồi tính WB / HSL / Color Grading một lần cho trúng màu da '
+     'đích — nhanh hơn đường thường (đo trên buổi thật: 15 → 6 phút). Cần mô hình màu Lightroom '
+     'của máy ảnh: bộ cài có sẵn Sony A7 IV, A7 V, Nikon Z5 II, Z 8; máy khác học ở ⋯ › Học màu '
+     'Lightroom cho máy ảnh này…. Máy chưa có mô hình tự đi đường thường.'):
+        ('Measures skin on the Lightroom preview, then computes WB / HSL / Color Grading once to '
+         'hit the target skin color — faster than the normal path (measured on a real session: '
+         '15 → 6 min). Needs a Lightroom color model for the camera: the installer includes Sony '
+         'A7 IV, A7 V, Nikon Z5 II, Z 8; learn other cameras at ⋯ › Learn Lightroom color for '
+         'this camera…. Cameras without a model use the normal path.'),
+    'Xuất cài đặt sang máy khác…': 'Export settings to another computer…',
+    'Nhập cài đặt từ máy khác…': 'Import settings from another computer…',
+    'Khôi phục cài đặt trước khi nhập…': 'Restore settings from before the import…',
+    #  chuyển cài đặt
+    'Chuyển cài đặt': 'Transfer settings',
+    'App đang bận — chờ xong việc đang chạy rồi nhập / khôi phục cài đặt.':
+        'The app is busy — wait for the current task to finish, then import / restore settings.',
+    '{}\n\nMở lại app để dùng cài đặt mới.': '{}\n\nRestart the app to use the new settings.',
+    'Khởi động lại ngay': 'Restart now',
+    'Để sau': 'Later',
+    'Máy này chưa có cài đặt nào để mang đi.': 'This computer has no settings to take along yet.',
+    'Lưu gói cài đặt': 'Save settings package',
+    'Gói cài đặt Tone&Retouch': 'Tone&Retouch settings package',
+    'Không ghi được gói: {}': 'Could not write the package: {}',
+    ('Đã lưu gói cài đặt ({} KB):\n{}\n\nGồm: {}.\n\nKhông gồm bản quyền (key) — máy mới kích '
+     'hoạt key riêng. Trên máy mới: ⋯ › Nhập cài đặt từ máy khác…'):
+        ('Settings package saved ({} KB):\n{}\n\nContains: {}.\n\nThe license (key) is not '
+         'included — activate a key on the new computer. On the new computer: ⋯ › Import '
+         'settings from another computer…'),
+    'Chọn gói cài đặt': 'Choose a settings package',
+    'Không nhập được gói: {}.': 'Could not import the package: {}.',
+    ('Gói từ app {} · {} · {}\nGồm: {}.\n\nMẫu màu da / preset trùng tên lấy theo gói; mô hình '
+     'màu Lightroom đã đạt trên máy này được giữ. Cài đặt hiện tại được sao lưu trước — trả lại '
+     'được ở ⋯ › Khôi phục cài đặt trước khi nhập…. Bản quyền (key) không bị đụng.\n\nNhập '
+     'ngay?'):
+        ('Package from app {} · {} · {}\nContains: {}.\n\nSkin samples / presets with the same '
+         'name are taken from the package; Lightroom color models that passed on this computer '
+         'are kept. Current settings are backed up first — restore them at ⋯ › Restore settings '
+         'from before the import…. The license (key) is not touched.\n\nImport now?'),
+    'Đã nhập cài đặt: {}.': 'Settings imported: {}.',
+    'Đã nhập: {}.': 'Imported: {}.',
+    'Chưa có bản sao lưu nào — máy này chưa nhập cài đặt lần nào.':
+        'No backup yet — this computer has never imported settings.',
+    'Trả cài đặt về như trước lần nhập lúc {}?': 'Restore the settings from before the import at {}?',
+    'Không khôi phục được: {}.': 'Could not restore: {}.',
+    'Đã khôi phục cài đặt trước lần nhập.': 'Settings from before the import restored.',
+    'Đã khôi phục {} file cài đặt.': 'Restored {} settings files.',
+    'mẫu màu da': 'skin samples', 'gu đã học': 'learned taste', 'mức retouch': 'retouch levels',
+    'thiết lập xuất': 'export settings', 'preset xem': 'preview preset',
+    'chế độ một lượt': 'one-pass mode', 'lệch WB theo máy': 'per-camera WB offset',
+    '{} mô hình màu Lightroom': '{} Lightroom color models', '{} preset retouch': '{} retouch presets',
+    'không có gì': 'nothing',
+    'không phải gói cài đặt của app (thiếu manifest)': 'not a settings package of this app (no manifest)',
+    'không phải gói cài đặt của app': 'not a settings package of this app',
+    'gói tạo từ bản app mới hơn — cập nhật app trước': 'the package comes from a newer app version — update the app first',
+    'manifest hỏng': 'broken manifest',
+    'gói quá lớn': 'package too large',
+    'chưa có bản sao lưu nào (chưa nhập cài đặt lần nào)': 'no backup yet (settings were never imported)',
+    'bản sao lưu hỏng': 'broken backup',
+})

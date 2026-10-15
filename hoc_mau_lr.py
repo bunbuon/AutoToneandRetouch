@@ -45,16 +45,36 @@ for _l in (sys.stdout, sys.stderr):
         pass
 
 DONG: list = []
+#  15/10 (học màu TỪ APP — hoc_mau_ui): mỗi dòng nói / mỗi nhịp tiến độ còn gửi tới các hàm này
+_BAO: list = []                  # f(dong: str)
+_TIEN: list = []                 # f(xong: int, tong: int, bien: str, con_lai: str)
 
 
 def noi(s: str = "") -> None:
     print(s, flush=True)
     DONG.append(s)
+    for f in list(_BAO):
+        try:
+            f(s)
+        except Exception:                                    # noqa: BLE001
+            pass
+
+
+def _tien(x: int, tong: int, bien: str, con_lai: str) -> None:
+    print(f"\r  dựng {x}/{tong} · {bien}{con_lai}      ", end="", flush=True)
+    for f in list(_TIEN):
+        try:
+            f(x, tong, bien, con_lai)
+        except Exception:                                    # noqa: BLE001
+            pass
 
 
 def luu_bao_cao(ten: str) -> Path:
-    d = GOC / "ket_qua_kiem"
-    d.mkdir(exist_ok=True)
+    #  15/10: thư mục DỮ LIỆU app (bản cài: thư mục gói là chỉ đọc) — chạy mã nguồn thì
+    #  goc_du_lieu() vẫn là thư mục mã nguồn như trước
+    import duong_dan as dd
+    d = dd.goc_du_lieu() / "ket_qua_kiem"
+    d.mkdir(parents=True, exist_ok=True)
     f = d / f"hoc_mau_{ten}_{datetime.now():%Y%m%d_%H%M%S}.txt"
     f.write_text("\n".join(DONG) + "\n", encoding="utf-8")
     return f
@@ -70,9 +90,10 @@ def nap_phan_tich(folder: Path) -> list:
         return []
 
 
-def thong_so_hien_tai(folder: Path, jobs: Path, cho: float = 90.0) -> dict:
+def thong_so_hien_tai(folder: Path, jobs: Path, cho: float = 90.0, xin_xuat: bool = True) -> dict:
     """{khoá: thông số} — catalog (đủ khoá, kể cả CameraProfile / PV / HSL Lum) gộp bản
-    xuất của plugin (AsShotTemperature cho ảnh As Shot)."""
+    xuất của plugin (AsShotTemperature cho ảnh As Shot). xin_xuat=False: chỉ catalog (nhanh —
+    hộp chọn máy của app)."""
     import autotone as at
     import doc_cache_lr as dc
     out: dict = {}
@@ -83,6 +104,8 @@ def thong_so_hien_tai(folder: Path, jobs: Path, cho: float = 90.0) -> dict:
                 out[k] = dc.dong_xuat(dc.thong_so(a.get("text")))
         finally:
             con.close()
+    if not xin_xuat:
+        return out
     truoc = at.ban_xuat_cho_thu_muc(folder, jobs)
     t_truoc = truoc.stat().st_mtime if truoc else 0
     try:
@@ -289,7 +312,7 @@ def main() -> int:
     noi("Máy / profile của buổi: " + (", ".join(f"{k} ({n} ảnh)" for k, n in ds_khoa) or "không có"))
     ma_ra, ket = 0, []
     for k, n in ds_khoa:
-        cu = mh.nap(k)
+        cu = mh.nap(k, kem_goc=False)       # 15/10: máy chỉ có bản kèm gói vẫn học được
         if cu is not None and not a.lai and (cu.dat or (mh.thu_muc() / f"{k}_mau.npz").is_file()):
             noi(f"\n— {k}: đã có {'mô hình ĐẠT' if cu.dat else 'mẫu học (mô hình chưa đạt)'} "
                 f"({cu.thong_tin.get('ngay')}) — bỏ qua (học lại từ mẫu: --phan_tich {k}; "
@@ -333,9 +356,23 @@ def ds_luot_cu(items: list, cur: dict, ma: str, jobs: Path) -> tuple[list, str]:
     return ds, khoa
 
 
-def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a, ma: str | None = None) -> int:
+def _xin_dung_cho_tra(jobs: Path) -> None:
+    """Xin plugin dừng rồi chờ nó TRẢ LẠI ảnh (tối đa 2 phút) — Ctrl+C / nút Dừng của app."""
+    import mo_hinh_lr as mh
+    mh.xin_dung(jobs)
+    noi("\nĐã xin dừng — chờ plugin trả lại ảnh…")
+    het = time.monotonic() + 120
+    while time.monotonic() < het and mh.tien_do(jobs).get("trang_thai") == "dang_chay":
+        time.sleep(1.0)
+    noi("Plugin đã dừng (ảnh đã trả lại)." if mh.tien_do(jobs).get("trang_thai") != "dang_chay"
+        else "[!] Plugin chưa báo dừng — mở Lightroom kiểm vài ảnh.")
+
+
+def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a, ma: str | None = None,
+            dung=None) -> int:
     """Một máy / profile: gửi biến thể cho plugin, chờ dựng xong, học + kiểm định, lưu.
     ma: lượt dựng đã gửi trước (--tiep) — không gửi lại, chờ / dùng ảnh dựng của nó.
+    dung: hàm -> True khi người dùng bấm Dừng (app) — như Ctrl+C.
     -> 0 ĐẠT · 1 chưa đạt / không chạy hết · 2 Lightroom không nhận."""
     import autotone as at
     import mo_hinh_lr as mh
@@ -389,7 +426,7 @@ def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a, ma: str | None = N
                 x = int(td.get("xong") or 0)
                 da = time.monotonic() - t0
                 con_lai = f" · còn ~{(da / x * (tong - x)) / 60:.0f} phút" if x > 10 else ""
-                print(f"\r  dựng {x}/{tong} · {td.get('bien', '')}{con_lai}      ", end="", flush=True)
+                _tien(x, tong, str(td.get("bien", "")), con_lai)
                 if td.get("trang_thai") in ("xong", "dung", "loi", "thay"):
                     break
             elif not da_thay and time.monotonic() - t0 > 120:
@@ -398,15 +435,11 @@ def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a, ma: str | None = N
             if time.monotonic() - t0 > a.cho_toi_da:
                 mh.xin_dung(jobs)
                 noi("\n[!] Quá giờ — đã xin plugin dừng.")
+            if dung is not None and dung():
+                raise KeyboardInterrupt
             time.sleep(1.0)
     except KeyboardInterrupt:
-        mh.xin_dung(jobs)
-        noi("\nĐã xin dừng — chờ plugin trả lại ảnh…")
-        het = time.monotonic() + 120
-        while time.monotonic() < het and mh.tien_do(jobs).get("trang_thai") == "dang_chay":
-            time.sleep(1.0)
-        noi("Plugin đã dừng (ảnh đã trả lại)." if mh.tien_do(jobs).get("trang_thai") != "dang_chay"
-            else "[!] Plugin chưa báo dừng — mở Lightroom kiểm vài ảnh.")
+        _xin_dung_cho_tra(jobs)
         return 1
     print()
     noi(f"Plugin: {td.get('trang_thai')} · {td.get('xong')}/{td.get('tong')} lần dựng · "
@@ -428,6 +461,115 @@ def hoc_mot(folder: Path, jobs: Path, ds: list, khoa: str, a, ma: str | None = N
         shutil.rmtree(dest, ignore_errors=True)              # mẫu đã lưu (.npz) đủ để học lại
     noi(f"\nĐã lưu mô hình: {mh.thu_muc() / (khoa + '.json')}")
     return 0 if m.dat else 1
+
+
+# ------------------------------------------------------------------ gọi từ app (15/10)
+#[[ User 15/10 ("đóng gói để cài trên các máy khác, thợ dùng thiết bị khác nhau"): học màu
+#   Lightroom phải chạy được TỪ APP đã cài — trước chỉ có HOC_MAU_LR.bat (dòng lệnh, cần Python
+#   hệ thống, không có trong gói). Ba hàm dưới không đọc sys.argv, không import
+#   kiem_preview_lr (không có trong gói); dòng lệnh main() giữ nguyên. Xem hoc_mau_ui. ]]
+def kiem_san_sang(folder: Path, jobs: Path | None = None) -> tuple[str, list]:
+    """-> ("", items) khi học được; ("lý do", []) khi chưa (plugin tắt / bản cũ / chưa phân tích)."""
+    import autotone as at
+    import mo_hinh_lr as mh
+    jobs = Path(jobs or at.LR_JOB_DIR)
+    nhip, kn = at.plugin_nhip(jobs), at.plugin_kha_nang(jobs)
+    if nhip is None or nhip > 90:
+        return "Plugin AutoTone trong Lightroom chưa chạy — mở Lightroom rồi thử lại.", []
+    if mh.KHA_NANG not in kn:
+        return ("Plugin trong Lightroom là bản cũ (thiếu khả năng học màu) — cài lại Tone&Retouch "
+                "bằng bộ cài đầy đủ rồi khởi động lại Lightroom (bản cập nhật tự động không mang "
+                "plugin)."), []
+    items = nap_phan_tich(Path(folder))
+    if not items:
+        return "Buổi này chưa phân tích — bấm Xử lý ảnh trước rồi thử lại.", []
+    return "", items
+
+
+def cac_khoa_cho(folder: Path, items: list) -> list:
+    """[(khoá, số ảnh dùng được, trạng thái "dat" | "goi" | "chua_dat" | "chua_hoc")] của buổi —
+    đọc thẳng catalog (nhanh, không nhờ plugin). Đông ảnh trước."""
+    import mo_hinh_lr as mh
+    cur = thong_so_hien_tai(Path(folder), Path("."), xin_xuat=False)
+    out = []
+    for k, n in cac_khoa(items, cur):
+        m = mh.nap(k)
+        tt = "chua_hoc" if m is None else ("chua_dat" if not m.dat else
+                                           ("goi" if getattr(m, "nguon", "") == "goi" else "dat"))
+        out.append((k, int(n), tt))
+    return out
+
+
+def chay(folder: Path, jobs: Path | None = None, *, khoa_ds: list | None = None, n: int = 20,
+         canh: int = 1024, cho_toi_da: float = 3600.0, bao=None, tien=None, dung=None,
+         buoc=None) -> dict:
+    """Học các máy / profile `khoa_ds` của buổi (None = mọi khoá ≥ TOI_THIEU ảnh chưa có mô hình
+    ĐẠT trong thư mục dữ liệu). bao(dòng) / tien(xong, tong, biến, còn lại) / dung() -> True /
+    buoc(mã, trạng thái, chi tiết) — mã "chuan_bi" hoặc chính khoá; trạng thái dang / xong /
+    loi / bo (cửa sổ tiến trình của app).
+    -> {"ma": 0 | 1 | 2, "ket": [(khoá, "ĐẠT" | …)], "bao_cao": đường file, "loi": lý do}."""
+    import types
+    import autotone as at
+    import mo_hinh_lr as mh
+    folder = Path(folder)
+    jobs = Path(jobs or at.LR_JOB_DIR)
+    DONG.clear()
+    if bao is not None:
+        _BAO.append(bao)
+    if tien is not None:
+        _TIEN.append(tien)
+
+    def _b(ma, tt, ct=""):
+        if buoc is not None:
+            try:
+                buoc(ma, tt, ct)
+            except Exception:                                # noqa: BLE001
+                pass
+
+    try:
+        noi(f"HỌC MÀU LIGHTROOM — {datetime.now():%d/%m/%Y %H:%M}")
+        noi(f"Thư mục buổi: {folder}")
+        loi, items = kiem_san_sang(folder, jobs)
+        if loi:
+            noi("[!] " + loi)
+            _b("chuan_bi", "loi", loi)
+            return {"ma": 2, "ket": [], "bao_cao": str(luu_bao_cao("loi")), "loi": loi}
+        _b("chuan_bi", "dang", "plugin xuất thông số hiện tại…")
+        noi("Đọc thông số hiện tại (catalog + bản xuất của plugin)…")
+        cur = thong_so_hien_tai(folder, jobs)
+        _b("chuan_bi", "xong", f"{len(cur)} ảnh")
+        if khoa_ds is None:
+            khoa_ds = [k for k, so in cac_khoa(items, cur) if so >= TOI_THIEU
+                       and not ((mh.nap(k, kem_goc=False) or types.SimpleNamespace(dat=False)).dat)]
+        a = types.SimpleNamespace(canh=int(canh), cho_toi_da=float(cho_toi_da))
+        ma_ra, ket = 0, []
+        for k in khoa_ds:
+            if dung is not None and dung():
+                ket.append((k, "đã dừng"))
+                _b(k, "bo", "đã dừng")
+                ma_ra = max(ma_ra, 1)
+                continue
+            noi(f"\n=== {k} ===")
+            _b(k, "dang", "chọn ảnh học…")
+            ds, _k = chon_anh_hoc(items, cur, n, khoa=k)
+            m_ra = hoc_mot(folder, jobs, ds, k, a, dung=dung)
+            if m_ra == 1 and dung is not None and dung():
+                ket.append((k, "đã dừng"))
+                _b(k, "bo", "đã dừng — ảnh đã trả lại")
+            else:
+                ket.append((k, {0: "ĐẠT", 1: "CHƯA ĐẠT / không chạy hết"}.get(m_ra, "lỗi")))
+                _b(k, "xong" if m_ra == 0 else "loi", ket[-1][1])
+            ma_ra = max(ma_ra, m_ra)
+            if m_ra >= 2:
+                noi("[!] Dừng — Lightroom / plugin không trả lời.")
+                break
+        noi("\nTỔNG KẾT: " + ("; ".join(f"{k}: {v}" for k, v in ket) or "không có máy nào cần học"))
+        return {"ma": ma_ra, "ket": ket, "bao_cao": str(luu_bao_cao("app_" + folder.name)), "loi": ""}
+    finally:
+        if bao is not None and bao in _BAO:
+            _BAO.remove(bao)
+        if tien is not None and tien in _TIEN:
+            _TIEN.remove(tien)
 
 
 if __name__ == "__main__":

@@ -114,12 +114,15 @@ def cau_thoi_gian(kh: dict) -> str:
 class HopXuLy(tk.Toplevel):
     """Cửa sổ tiến trình của MỘT lượt Xử lý ảnh."""
 
-    def __init__(self, app, co_denoise: bool, khi_dung, co_curve: bool = False):
+    def __init__(self, app, co_denoise: bool, khi_dung, co_curve: bool = False,
+                 buoc: tuple | None = None, tieu_de: str = "Xử lý ảnh",
+                 dang: str = "Đang xử lý ảnh…"):
+        #  15/10: buoc / tieu_de / dang — cửa sổ Học màu Lightroom (hoc_mau_ui) dùng chung
         super().__init__(app.winfo_toplevel())
         m = gd.MAU
         self.app = app
         self._khi_dung = khi_dung
-        self.title("Xử lý ảnh")
+        self.title(tieu_de)
         self.transient(app.winfo_toplevel())
         self.resizable(False, False)
         self.configure(background=m["nen"])
@@ -130,7 +133,7 @@ class HopXuLy(tk.Toplevel):
         o.pack(fill="both", expand=True)
         dau = tk.Frame(o, background=m["nen"])
         dau.pack(fill="x")
-        self.lbl_tieu_de = tk.Label(dau, text="Đang xử lý ảnh…", background=m["nen"],
+        self.lbl_tieu_de = tk.Label(dau, text=dang, background=m["nen"],
                                     foreground=m["chu"], font=gd.phong(13, "dam2"))
         self.lbl_tieu_de.pack(side="left")
         self.lbl_gio = tk.Label(dau, text="", background=m["nen"], foreground=m["mo"],
@@ -143,7 +146,7 @@ class HopXuLy(tk.Toplevel):
         self.hang: dict = {}
         self.tt: dict = {}
         s = gd.don_vi(self) + 6
-        for ma, ten in BUOC:
+        for ma, ten in (buoc or BUOC):
             if ma == "denoise" and not co_denoise:
                 continue
             h = tk.Frame(o, background=m["nen"])
@@ -283,8 +286,9 @@ class HopXuLy(tk.Toplevel):
         if self._khi_dung is not None:
             self._khi_dung()
 
-    def ket_thuc(self, tieu_de: str, dong: list, loi: bool = False):
-        """Lượt xong (hoặc dừng / lỗi): hộp hiện lại thành bảng tổng kết + chuông."""
+    def ket_thuc(self, tieu_de: str, dong: list, loi: bool = False, nut: tuple | None = None):
+        """Lượt xong (hoặc dừng / lỗi): hộp hiện lại thành bảng tổng kết + chuông.
+        nut = (nhãn, lệnh): thêm một nút cạnh Đóng (bấm = đóng hộp rồi chạy lệnh)."""
         self._xong = True
         m = gd.MAU
         try:
@@ -298,6 +302,13 @@ class HopXuLy(tk.Toplevel):
             self.btn_dung.pack_forget()
             self.btn_an.pack_forget()
             self.btn_dong.pack(side="right")
+            if nut:
+                def _lam(lenh=nut[1]):
+                    self.destroy()
+                    lenh()
+                self.btn_them = gd.NutTron(self.day, nut[0], kieu="phu", nen=m["nen"],
+                                           command=_lam)
+                self.btn_them.pack(side="right", padx=(0, 8))
             self.bind("<Return>", lambda _e: self.destroy())
             self.hien()
             self.bell()
@@ -323,6 +334,8 @@ class XuLyAnhMixin:
         if self._khoa_chan() or self.busy or self._xl_dang():
             if self._xl_dang() and self._xl_hop() is not None:
                 self._xl_hop().hien()
+            return
+        if self._hm_chan():                 # 15/10: đang học màu Lightroom (hoc_mau_ui)
             return
         if getattr(self, "_dang_cho_lr", False):
             self.status("Lần gửi trước Lightroom chưa áp xong — chờ nó, hoặc bấm “Huỷ gửi” "
@@ -500,6 +513,11 @@ class XuLyAnhMixin:
         for r in mat:
             may.setdefault(ml.khoa_cua(r), r)
         co = [k for k, r in may.items() if ml.mo_hinh_cho(r) is not None]
+        #  15/10: máy đủ ảnh mà chưa có mô hình -> tổng kết có nút "Học màu máy này…"
+        dem: dict = {}
+        for r in mat:
+            dem[ml.khoa_cua(r)] = dem.get(ml.khoa_cua(r), 0) + 1
+        xl["ml_thieu"] = sorted(k for k in may if k not in co and dem.get(k, 0) >= 6)
         if not co:
             xl["truoc_kq"] = {"bo": "chua-hoc", "may": sorted({str(r.get("model") or "?")
                                                               for r in mat})}
@@ -567,6 +585,10 @@ class XuLyAnhMixin:
         if not xl or hop is None or xl.get("xong"):
             return
         xl["items_ghi"] = list(items_ghi)
+        #  15/10: ảnh ám xanh nặng (WB cứu theo da) -> lượt 2 đo da thật hoàn thiện WB, kể cả
+        #  khi curve da tắt (chỉ dựng / đo đúng các ảnh đó)
+        xl["n_am_mau"] = (sum(1 for r in items_ghi if r.get("am_mau"))
+                          if self.source_value() == "catalog" else 0)
         xl["so_gui"] = so_gui
         if job:
             xl["job"] = job
@@ -607,7 +629,7 @@ class XuLyAnhMixin:
             ket = ("xong" if not bad else "loi",
                    f"Lightroom đã áp {gd.so_vn(xl.get('so_gui', 0))} ảnh"
                    + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else " · kiểm chứng đủ"))
-            if xl.get("curve") or xl.get("n_mot_luot"):
+            if xl.get("curve") or xl.get("n_mot_luot") or xl.get("n_am_mau"):
                 xl["ap_ket"] = ket                 # chốt khi lượt 2 (ngầm) xong — _xl_chot_ap
                 hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
             else:
@@ -630,7 +652,7 @@ class XuLyAnhMixin:
         import curve_da
         xl = self._xl
         hop = xl.get("hop")
-        if not xl.get("curve") and not xl.get("n_mot_luot"):
+        if not xl.get("curve") and not xl.get("n_mot_luot") and not xl.get("n_am_mau"):
             self._xl_denoise()
             return
         if curve_da.KHA_NANG not in at.plugin_kha_nang():
@@ -652,6 +674,8 @@ class XuLyAnhMixin:
         ds = [r for r in curve_da.chon_anh([r for r in ghi if not r.get("mot_luot")], cfg)] \
             if xl.get("curve") else []
         ds += [r for r in mau if r not in ds]
+        co_ds = {id(r) for r in ds}
+        ds += [r for r in ghi if r.get("am_mau") and id(r) not in co_ds]   # 15/10: WB lượt 2
         xl["ml_ds"], xl["ml_mau"] = ml_ds, {id(r) for r in mau}
         #  14/10: lượt 2 theo cụm cùng khung tới cả ảnh một lượt KHÔNG đo (đo trước 2 ảnh / loạt)
         xl["ml_tat"] = [r for r in ghi if r.get("mot_luot")]
@@ -790,12 +814,19 @@ class XuLyAnhMixin:
             if not xl.get("curve_huy"):
                 do_map = {k: v for k, v in xl["curve_do"].items()}
                 mau_ids = xl.get("ml_mau") or set()
-                ds_cu = [r for r in ds if id(r) not in mau_ids]
+                #  15/10: ảnh ám xanh nặng KHÔNG giải curve — da đo dưới WB chưa hoàn thiện,
+                #  WB lượt 2 (wb_cuu_am_luot2) sửa; curve nữa là sửa hai lần
+                ds_cu = ([r for r in ds if id(r) not in mau_ids and not r.get("am_mau")]
+                         if xl.get("curve") else [])
                 xl["curve_tt"] = curve_da.ket_thuc(ds_cu, {id(r): do_map[id(r)] for r in ds_cu
                                                            if id(r) in do_map}, cfg)
                 #  14/10: ảnh liên tiếp cùng khung -> cùng curve lượt 2
                 at.dong_bo_cum_luot2(ds_cu, cfg, khoa=("curve_ghi",))
+                #  15/10: ảnh ám xanh nặng -> WB bổ sung theo da đo THẬT trên ảnh Lightroom
+                xl["am_mau_l2"] = at.wb_cuu_am_luot2(ds, do_map, cfg)
                 ghi_ds = list(ds_cu)
+                co_ghi = {id(r) for r in ghi_ds}
+                ghi_ds += [r for r in ds if r.get("wb_l2") and id(r) not in co_ghi]
                 if xl.get("ml_ds"):
                     import mau_mot_luot as ml
                     xl["ml_soat"] = ml.soat(xl["ml_ds"], {k: do_map[k] for k in mau_ids
@@ -1113,7 +1144,8 @@ class XuLyAnhMixin:
         tk = xl.get("truoc_kq") or {}
         if tk.get("bo") == "chua-hoc":
             return ("· Màu da một lượt: chưa học màu Lightroom cho máy "
-                    f"{', '.join(tk.get('may') or [])} — chạy HOC_MAU_LR.bat; lần này dùng đường cũ.")
+                    f"{', '.join(tk.get('may') or [])} — lần này dùng đường thường. Học: "
+                    "⋯ › Học màu Lightroom cho máy ảnh này…")
         n = int(xl.get("n_mot_luot") or 0)
         if not n:
             return ""
@@ -1128,7 +1160,8 @@ class XuLyAnhMixin:
                 cau += (f" · {gd.so_vn(sa['lech'])} ảnh lệch (bật Curve da để tự hoàn thiện)"
                         if sa.get("can") else f" · {gd.so_vn(sa['lech'])} ảnh lệch (Curve không chỉnh thêm được)")
             if sa.get("ca_buoi"):
-                cau += " · ⚠ lệch nhiều cả buổi — nên học màu Lightroom lại (HOC_MAU_LR.bat)"
+                cau += (" · ⚠ lệch nhiều cả buổi — nên học màu Lightroom lại (⋯ › Học màu "
+                        "Lightroom cho máy ảnh này…)")
             if not xl.get("ml_lich_su"):
                 xl["ml_lich_su"] = True
                 try:
@@ -1205,6 +1238,15 @@ class XuLyAnhMixin:
             if bu:
                 dong.append(f"· Ảnh liền nhau cùng khung: {gd.so_vn(len(bu))} ảnh ánh sáng thật lệch "
                             "(flash không kịp hồi…) được bù sáng riêng cho đều với cả loạt.")
+            #  15/10: ảnh ám xanh nặng — WB chỉnh theo da (autotone.cuu_am_mau / wb_cuu_am_luot2)
+            am = [r for r in xl.get("items_ghi") or [] if r.get("am_mau")]
+            if am:
+                wbs = sorted({int(r["am_mau_wb"][0]) for r in am if r.get("am_mau_wb")})
+                l2 = sum(1 for r in am if r.get("wb_l2"))
+                dong.append(f"· Ảnh ám xanh nặng (ngoài trời, da xanh hơn đích): {gd.so_vn(len(am))} ảnh — "
+                            "WB chỉnh theo da"
+                            + (f" ({wbs[0]}–{wbs[-1]} K)" if len(wbs) > 1 else (f" ({wbs[0]} K)" if wbs else ""))
+                            + (f", {gd.so_vn(l2)} ảnh hoàn thiện theo da đo trên ảnh Lightroom." if l2 else "."))
             kq = xl.get("denoise_kq")
             if kq is not None and kq.get("ly_do") != "lightroom-chua-ho-tro":
                 dong.append(f"· Denoise: bật {kq.get('bat', 0)} ảnh ISO ≥ "
@@ -1232,8 +1274,12 @@ class XuLyAnhMixin:
             dong.append(ly_do or "Có lỗi — xem dòng trạng thái.")
         dong.append(f"\nThời gian: {_thoi_gian(giay)}"
                     + (f" ({cau_thoi_gian(kh)})" if kieu == "xong" and cau_thoi_gian(kh) else ""))
+        nut = None
+        if kieu == "xong" and xl.get("ml_thieu"):
+            thieu = list(xl["ml_thieu"])
+            nut = ("Học màu máy này…", lambda: self.hoc_mau_lr(khoa_ds=thieu))
         if hop is not None:
-            hop.ket_thuc(tieu_de, dong, loi=(kieu == "loi"))
+            hop.ket_thuc(tieu_de, dong, loi=(kieu == "loi"), nut=nut)
         try:
             self._set_busy(self.busy)
             self._lam_moi_buoc()

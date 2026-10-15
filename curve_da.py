@@ -824,17 +824,21 @@ def ghi_job(items: list, name: str, job_dir: Path | None = None) -> Path | None:
     thật — r["hsl_l2"], 14/10), chỉ ảnh có đổi. Tên apply_<giờ>_<buổi>@curve.tsv."""
     thu = (*at.COT_HSL, *at.COT_HSL_L)
     hsl_k = [k for k in thu if any(k in (r.get("hsl_l2") or {}) for r in items)]
+    #  15/10: ảnh ám xanh nặng — WB bổ sung đo trên ảnh Lightroom thật (at.wb_cuu_am_luot2)
+    wb_k = ["Temperature", "Tint"] if any(r.get("wb_l2") for r in items) else []
     rows = [[r.get("lr_path") or r["path"],
              *[str((r.get("curve_ghi") or {}).get(k) or "") for k in at.COT_CURVE],
              *[str(int(round(float(r["hsl_l2"][k])))) if k in (r.get("hsl_l2") or {}) else ""
-               for k in hsl_k]]
-            for r in items if r.get("curve_ghi") or r.get("hsl_l2")]
+               for k in hsl_k],
+             *([str(int(r["wb_l2"][0])), str(int(r["wb_l2"][1]))] if r.get("wb_l2") else
+               [""] * len(wb_k))]
+            for r in items if r.get("curve_ghi") or r.get("hsl_l2") or r.get("wb_l2")]
     if not rows:
         return None
     d = Path(job_dir or at.LR_JOB_DIR)
     d.mkdir(parents=True, exist_ok=True)
     dest = d / f"apply_{datetime.now():%Y%m%d_%H%M%S}_{at.ten_job(name)}{at.HAU_TO_CURVE}.tsv"
-    lines = ["path\t" + "\t".join([*at.COT_CURVE, *hsl_k])] + ["\t".join(c) for c in rows]
+    lines = ["path\t" + "\t".join([*at.COT_CURVE, *hsl_k, *wb_k])] + ["\t".join(c) for c in rows]
     tmp = dest.with_suffix(".part")
     tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.replace(tmp, dest)

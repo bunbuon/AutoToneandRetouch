@@ -259,6 +259,85 @@ def main() -> int:
     ktra("--tiep: học từ ảnh dựng đã có, không gửi lại, ĐẠT", ma == 0 and not nk2
          and any("Học tiếp" in d for d in H.DONG), "\n".join(H.DONG)[-300:])
     os.environ.pop("AUTOTONE_GIU_HOC_MAU", None)
+
+    print("6. gọi từ app: H.chay (hoc_mau_ui)")
+    #  15/10: học màu chạy từ bản cài — không sys.argv, có callback tiến độ / bước / Dừng
+    (jobs / at.NHIP_PLUGIN).unlink()
+    bao6, buoc6 = [], []
+    kq = H.chay(buoi, jobs, khoa_ds=[khoa], n=N, bao=bao6.append,
+                buoc=lambda *x: buoc6.append(x))
+    ktra("plugin chưa chạy -> mã 2, lý do, bước chuan_bi lỗi", kq["ma"] == 2 and "chưa chạy" in kq["loi"]
+         and ("chuan_bi", "loi") == buoc6[-1][:2], str(buoc6))
+    dung, nk = threading.Event(), []
+    th = threading.Thread(target=plugin, args=(dung, nk), daemon=True)
+    th.start()
+    (jobs / at.NHIP_PLUGIN).write_text(nhip, encoding="utf-8")
+    bao6, tien6, buoc6 = [], [], []
+    try:
+        kq = H.chay(buoi, jobs, khoa_ds=[khoa], n=N, bao=bao6.append,
+                    tien=lambda *x: tien6.append(x), buoc=lambda *x: buoc6.append(x))
+    finally:
+        dung.set()
+        th.join(5)
+    ktra("học xong: mã 0, kết quả ĐẠT theo khoá", kq["ma"] == 0 and kq["ket"] == [(khoa, "ĐẠT")], str(kq))
+    ktra("callback: dòng báo + tiến độ dựng + bước chuan_bi/khoá dang -> xong",
+         bao6 and tien6 and [x[:2] for x in buoc6] == [("chuan_bi", "dang"), ("chuan_bi", "xong"),
+                                                      (khoa, "dang"), (khoa, "xong")], str(buoc6))
+    ktra("callback được gỡ sau lượt (không rò sang lượt sau)", not H._BAO and not H._TIEN)
+    ktra("báo cáo ghi vào thư mục DỮ LIỆU app (bản cài: thư mục gói chỉ đọc)",
+         Path(kq["bao_cao"]).is_file() and Path(os.environ["AUTOTONE_DATA"]) in Path(kq["bao_cao"]).parents,
+         kq["bao_cao"])
+
+    #  Dừng giữa chừng: plugin giả nhận yêu cầu, báo đang dựng, chờ cờ dừng rồi báo "dung"
+    def plugin_cho_dung(dung_ev: threading.Event, nk: list, da_nhan: threading.Event):
+        while not dung_ev.is_set():
+            rx = jobs / "request_export.txt"
+            if rx.exists():
+                rx.unlink()
+                cot = ["WhiteBalance", "Temperature", "Tint", "AsShotTemperature", "AsShotTint",
+                       "Exposure2012", "Highlights2012", "Shadows2012", "ToneCurvePV2012",
+                       "CameraProfile", "ProcessVersion"]
+                dong = ["path\t" + "\t".join(cot)]
+                for r in items:
+                    c = cat[at.khoa_duong_dan(r["path"])]
+                    dong.append(r["path"] + "\t" + "\t".join(c.get(k, "") for k in cot))
+                time.sleep(1.1)
+                (jobs / f"export_{time.strftime('%Y%m%d_%H%M%S')}.tsv").write_text(
+                    "\n".join(dong) + "\n", encoding="utf-8")
+            rq = jobs / "request_hocmau.txt"
+            if rq.exists():
+                req = json.loads(rq.read_text(encoding="utf-8"))
+                rq.unlink()
+                nk.append(req)
+                (jobs / "hocmau_tiendo.txt").write_text(
+                    f"id={req['id']}\ntrang_thai=dang_chay\nxong=3\ntong=100\n", encoding="utf-8")
+                da_nhan.set()
+            co = jobs / mh.TEN_CO_DUNG
+            if nk and co.exists():
+                co.unlink()
+                (jobs / "hocmau_tiendo.txt").write_text(
+                    f"id={nk[-1]['id']}\ntrang_thai=dung\nxong=3\ntong=100\n", encoding="utf-8")
+            time.sleep(0.05)
+
+    dung, nk, da_nhan = threading.Event(), [], threading.Event()
+    th = threading.Thread(target=plugin_cho_dung, args=(dung, nk, da_nhan), daemon=True)
+    th.start()
+    (jobs / at.NHIP_PLUGIN).write_text(nhip, encoding="utf-8")
+    buoc6 = []
+    t_dung = time.monotonic()
+    try:
+        kq = H.chay(buoi, jobs, khoa_ds=[khoa, k_khac], n=N, dung=da_nhan.is_set,
+                    buoc=lambda *x: buoc6.append(x))
+    finally:
+        dung.set()
+        th.join(5)
+    ktra("bấm Dừng giữa lúc dựng: xin plugin dừng, chờ trả ảnh, mã 1, máy sau không học",
+         kq["ma"] == 1 and kq["ket"] == [(khoa, "đã dừng"), (k_khac, "đã dừng")] and len(nk) == 1
+         and time.monotonic() - t_dung < 60, str(kq["ket"]))
+    ktra("…bước của hai máy: bo (đã dừng)", [x[:2] for x in buoc6 if x[0] != "chuan_bi"]
+         == [(khoa, "dang"), (khoa, "bo"), (k_khac, "bo")], str(buoc6))
+    ktra("…mô hình ĐẠT cũ vẫn còn (dừng không xoá / ghi đè)", (mh.nap(khoa) or None) is not None
+         and mh.nap(khoa).dat)
     for f in (GOC / "ket_qua_kiem").glob("hoc_mau_*.txt"):
         if f.stat().st_mtime > time.time() - 600:
             f.unlink()

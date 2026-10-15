@@ -18,6 +18,7 @@ Chạy:  python3 kiem_dong_goi.py
 from __future__ import annotations
 
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -91,6 +92,18 @@ def main() -> int:
          "ai có nó thì tự sinh mã gia hạn được")
     ktra("mọi file kiểm/đo đều bị loại ra khỏi gói",
          not (kiem - loai), " ".join(sorted(kiem - loai)))
+
+    #  15/10: học màu Lightroom chạy được TỪ BẢN CÀI (hoc_mau_ui) — công cụ đo / mô phỏng thì không
+    ktra("hoc_mau_lr vào gói, mo_phong_lr / kiem_mot_luot / kiem_preview_lr thì không",
+         "hoc_mau_lr" in dg.NGAM and "hoc_mau_lr.py" not in dg.LOAI_TRU
+         and all(f in dg.LOAI_TRU for f in ("mo_phong_lr.py", "kiem_mot_luot.py", "kiem_preview_lr.py")))
+    goc_mh = GOC / "mo_hinh_lr_goc"
+    tep_mh = sorted(goc_mh.iterdir()) if goc_mh.is_dir() else []
+    ktra("mo_hinh_lr_goc là tài nguyên gói, chỉ có mô hình .json ĐẠT",
+         ("mo_hinh_lr_goc", "mo_hinh_lr_goc") in dg.TAI_NGUYEN and bool(tep_mh)
+         and all(f.suffix == ".json" and not f.stem.endswith("_st")
+                 and json.loads(f.read_text(encoding="utf-8")).get("dat") for f in tep_mh),
+         " ".join(f.name for f in tep_mh))
 
     # ---------- dòng lệnh PyInstaller
     c = dg.lenh("mac", retouch=False)

@@ -383,6 +383,7 @@ class MoHinh:
         self.dat = False
         self.khoa = ""
         self.thong_tin = {}
+        self.nguon = ""                   # "du_lieu" | "goi" (nap) — không lưu vào json
 
     # ---------------------------------------------------------- áp
     #[[ HAI KIỂU ĐƯỜNG ĐÁP ỨNG (kieu_g). "kenh": mỗi kênh một hàm trên giá trị miền curve
@@ -1051,11 +1052,61 @@ def luu(mh: MoHinh, mau: list | None = None) -> Path:
     return f
 
 
-def nap(khoa: str) -> MoHinh | None:
+#[[ MÔ HÌNH KÈM GÓI (15/10 — bản cài cho máy khác): 4 mô hình đã học trên máy dev (A7 IV,
+#   A7 V, Z5 II, Z 8 — Adobe Standard, PV 15.4) nằm trong gói, thư mục `mo_hinh_lr_goc` (chỉ
+#   .json, không mẫu npz / file dev). Thợ dùng đúng máy đó khỏi học lại; mô hình học trên
+#   máy họ (thư mục dữ liệu) vẫn thắng. AUTOTONE_MO_HINH_GOC: "" = tắt (bài kiểm), đường
+#   dẫn = dùng thư mục đó. ]]
+def thu_muc_goc() -> Path | None:
+    v = os.environ.get("AUTOTONE_MO_HINH_GOC")
+    if v is not None:
+        return Path(v) if v.strip() else None
+    import duong_dan as dd
+    return Path(dd.tai_nguyen("mo_hinh_lr_goc"))
+
+
+def _nap_tu(d: Path | None, khoa: str) -> MoHinh | None:
+    if d is None:
+        return None
     try:
-        return MoHinh.tu_dict(json.loads((thu_muc() / f"{khoa}.json").read_text(encoding="utf-8")))
+        return MoHinh.tu_dict(json.loads((Path(d) / f"{khoa}.json").read_text(encoding="utf-8")))
     except (OSError, ValueError, KeyError, TypeError):
         return None
+
+
+def nap(khoa: str, kem_goc: bool = True) -> MoHinh | None:
+    """Mô hình của khoá: ĐẠT trong thư mục dữ liệu -> ĐẠT kèm gói -> bản nào có (chưa đạt).
+    m.nguon = "du_lieu" | "goi". kem_goc=False: chỉ thư mục dữ liệu (học --tat_ca vẫn học máy
+    chỉ có bản kèm gói)."""
+    m1 = _nap_tu(thu_muc(), khoa)
+    if m1 is not None:
+        m1.nguon = "du_lieu"
+        if m1.dat:
+            return m1
+    m2 = _nap_tu(thu_muc_goc(), khoa) if kem_goc else None
+    if m2 is not None:
+        m2.nguon = "goi"
+        if m2.dat:
+            return m2
+    return m1 or m2
+
+
+def ds_mo_hinh() -> list:
+    """[(khoá, nguồn "du_lieu" | "goi", đạt)] — mọi mô hình có (dữ liệu trước, bỏ file dev)."""
+    out, co = [], set()
+    for nguon, d in (("du_lieu", thu_muc()), ("goi", thu_muc_goc())):
+        if d is None or not Path(d).is_dir():
+            continue
+        for f in sorted(Path(d).glob("*.json")):
+            k = f.stem
+            if k in co or k.endswith("_st") or k.startswith("du_doan") or k == "lich_su":
+                continue
+            m = _nap_tu(d, k)
+            if m is None:
+                continue
+            co.add(k)
+            out.append((k, nguon, bool(m.dat)))
+    return out
 
 
 def nap_mau(khoa: str) -> list:

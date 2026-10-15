@@ -376,7 +376,7 @@ function M.soToolGhi(can)
     local ds = {}
     for p in LrFileUtils.files(jobDir()) do
         local ten = LrPathUtils.leafName(p) or ""
-        if string.match(ten, "^apply_.*%.done$") and not string.find(ten, "@curve", 1, true)
+        if string.match(ten, "^apply_.*%.done$")
                 and not string.find(string.lower(ten), "khoiphuc", 1, true) then
             ds[#ds + 1] = p
         end
@@ -384,6 +384,9 @@ function M.soToolGhi(can)
     table.sort(ds)                       -- apply_<YYYYmmdd_HHMMSS>_… -> theo giờ
     local out = {}
     for _, p in ipairs(ds) do
+        --  15/10: job lượt 2 (@curve) GỘP ô nó có lên lần áp chính (WB hoàn thiện của ảnh ám
+        --  xanh nặng nằm ở đó) — không thay cả bản ghi (job lượt 2 không có Exposure)
+        local gop = string.find(LrPathUtils.leafName(p) or "", "@curve", 1, true) ~= nil
         local fh = io.open(p, "r")
         if fh then
             local dau = fh:read("*l")
@@ -395,12 +398,13 @@ function M.soToolGhi(can)
                     local o = tachTab((string.gsub(dong, "\r$", "")))
                     local k = chuanDuong(o[cot.path or 1])
                     if k ~= "" and (can == nil or can[k]) then
-                        local rec = {}
+                        local rec = (gop and out[k]) or {}
                         for _, c in ipairs(M.DB_COT) do
                             local v = cot[c] and tonumber(o[cot[c]])
-                            if v then rec[c] = v end
+                            --  lượt 2 chỉ ghi được WB trong các cột này
+                            if v and (not gop or c == "Temperature" or c == "Tint") then rec[c] = v end
                         end
-                        out[k] = rec
+                        if not gop or out[k] or next(rec) then out[k] = rec end
                     end
                 end
             end

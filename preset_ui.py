@@ -320,6 +320,14 @@ class DieuPhoiPreset:
     def _gui_tiep(self) -> None:
         if not self.hang_doi or not self.p:
             return
+        #  15/10: đang học màu Lightroom (hoc_mau_ui) — plugin trả thông số gốc giữa các mẻ,
+        #  áp preset tạm chen vào sẽ bị đè / làm hỏng lượt học
+        hm = getattr(self.app, "_hm_dang", None)
+        if callable(hm) and hm():
+            self.hang_doi.clear()
+            self.loi = "đang học màu Lightroom — xem preset sau khi học xong"
+            self._cap_nhat_nut()
+            return
         thu_muc, ds = self.hang_doi.pop(0)
         try:
             if self.loai == "ap":

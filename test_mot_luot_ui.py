@@ -6,7 +6,9 @@ App THẬT + "plugin" giả. Đo trước (do_truoc.chay) / tính kế hoạch �
 Xử lý ảnh.
 
 Mục kiểm
-    1. tắt / chưa học màu Lightroom -> đi thẳng sang Áp; tổng kết nhắc HOC_MAU_LR
+    1. tắt / chưa học màu Lightroom -> đi thẳng sang Áp; tổng kết chỉ tới menu học màu (15/10:
+       nút trong app thay HOC_MAU_LR.bat), máy đủ ảnh chưa học -> nút "Học màu máy này…";
+       công tắc "Chế độ nhanh một lượt" nhớ qua lần mở sau
     2. bật + có mô hình -> pha "đo da trên preview Lightroom" -> tính lại kế hoạch -> Áp
     3. Dừng lúc đang đo trước -> "Đã dừng", chưa áp gì
     4. áp xong: ảnh một lượt CHỈ SOÁT (một ảnh mỗi loạt + ảnh lẻ), ảnh đường cũ đo đủ
@@ -120,9 +122,31 @@ def main() -> int:
         ktra("bật mà chưa học màu cho máy -> không đo trước, nhớ lý do",
              app._xl_bat_truoc(items, cfg_(mau_mot_luot=True)) is False
              and app._xl.get("truoc_kq", {}).get("bo") == "chua-hoc")
-        ktra("…tổng kết nhắc chạy HOC_MAU_LR (tên máy)", "HOC_MAU_LR" in app._xl_cau_mot_luot(app._xl)
+        ktra("…tổng kết chỉ tới menu học màu (tên máy), không còn HOC_MAU_LR.bat",
+             "Học màu Lightroom cho máy ảnh này" in app._xl_cau_mot_luot(app._xl)
+             and "HOC_MAU_LR" not in app._xl_cau_mot_luot(app._xl)
              and "ILCE-7M4" in app._xl_cau_mot_luot(app._xl), app._xl_cau_mot_luot(app._xl))
+        ktra("…1 ảnh (< 6) -> không gợi ý học máy đó", app._xl.get("ml_thieu") == [])
         hop.destroy()
+        sau = [dict(T.anh(f"S{i}"), path=str(buoi / f"S{i}.ARW"), model="ILCE-7M4") for i in range(6)]
+        hop = mo_luot(sau)
+        app._xl_bat_truoc(sau, cfg_(mau_mot_luot=True))
+        ktra("máy đủ 6 ảnh chưa có mô hình -> ml_thieu có khoá máy đó",
+             app._xl.get("ml_thieu") == [ml.khoa_cua(sau[0])], str(app._xl.get("ml_thieu")))
+        hoc_goi = []
+        app.hoc_mau_lr = lambda khoa_ds=None: hoc_goi.append(khoa_ds)
+        app._xl["items_ghi"] = []
+        app._xl_ket_thuc("xong")
+        ktra("tổng kết có nút 'Học màu máy này…' -> mở học màu với đúng máy",
+             getattr(hop, "btn_them", None) is not None and (hop.btn_them.invoke() or True)
+             and hoc_goi == [[ml.khoa_cua(sau[0])]], str(hoc_goi))
+        del app.hoc_mau_lr
+        import thanh_luoi
+        app.v_mot_luot.set(True)
+        ktra("công tắc một lượt: bật -> read_cfg có mau_mot_luot, nhớ vào luoi_xem.json",
+             doc_cfg()["mau_mot_luot"] is True and thanh_luoi.doc_kv("mau_mot_luot") is True)
+        app.v_mot_luot.set(False)
+        ktra("…tắt -> nhớ False", doc_cfg()["mau_mot_luot"] is False and thanh_luoi.doc_kv("mau_mot_luot") is False)
 
         # ------------------------------------------------------------ 2
         print("2. đo trước -> tính lại -> áp")

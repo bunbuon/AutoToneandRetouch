@@ -134,6 +134,36 @@ def main() -> int:
          len(mau) == 8 and float(np.abs(m.khop(mau).ap(a0["mau"]["px"]["nen"], a0["st"]["nen"], a0["st"]["tohop1"])
                                         - p1).max()) < 1e-4)
 
+    print("6b. mô hình kèm gói (mo_hinh_lr_goc — bản cài cho máy khác, 15/10)")
+    os.environ.pop("AUTOTONE_MO_HINH_GOC", None)
+    goc_that = m.thu_muc_goc()
+    that = sorted(goc_that.glob("*.json")) if goc_that and goc_that.is_dir() else []
+    ktra("bộ cài mang 4 mô hình ĐẠT (A7 IV, A7 V, Z5 II, Z 8)", len(that) == 4
+         and all(m._nap_tu(goc_that, f.stem).dat for f in that), " ".join(f.stem for f in that))
+    goc = tam / "goc"
+    goc.mkdir()
+    k_z = "NIKON_Z_8__Adobe_Standard__15.4"
+    d_goi = dict(mh.thanh_dict(), khoa=k_z, dat=True)
+    (goc / f"{k_z}.json").write_text(json.dumps(d_goi), encoding="utf-8")
+    os.environ["AUTOTONE_MO_HINH_GOC"] = str(goc)
+    m_g = m.nap(k_z)
+    ktra("máy chỉ có bản kèm gói -> nạp bản gói (nguon goi)", m_g is not None and m_g.dat
+         and m_g.nguon == "goi")
+    ktra("kem_goc=False (học --tat_ca) -> không thấy bản gói", m.nap(k_z, kem_goc=False) is None)
+    (m.thu_muc() / f"{k_z}.json").write_text(json.dumps(dict(d_goi, dat=False)), encoding="utf-8")
+    m_g = m.nap(k_z)
+    ktra("dữ liệu CHƯA ĐẠT + gói ĐẠT -> bản gói thắng", m_g.dat and m_g.nguon == "goi")
+    (m.thu_muc() / f"{k_z}.json").write_text(json.dumps(dict(d_goi, dat=True)), encoding="utf-8")
+    ktra("dữ liệu ĐẠT -> bản học trên máy này thắng", m.nap(k_z).nguon == "du_lieu")
+    ds_mh = m.ds_mo_hinh()
+    ktra("ds_mo_hinh: mỗi khoá một dòng, bỏ file _st / du_doan",
+         [k for k, _n, _d in ds_mh].count(k_z) == 1 and not any(k.endswith("_st") for k, _n, _d in ds_mh),
+         str(ds_mh))
+    os.environ["AUTOTONE_MO_HINH_GOC"] = ""
+    ktra("AUTOTONE_MO_HINH_GOC rỗng -> tắt bản gói", m.thu_muc_goc() is None)
+    (m.thu_muc() / f"{k_z}.json").unlink()
+    ktra("…tắt thì khoá chỉ có ở gói -> None", m.nap(k_z) is None)
+
     print("7. ngoài khoảng đã học")
     base = anh[0]["st"]["nen"]
     ktra("Exposure +1.5 -> ngoại suy", "Exposure2012" in mh.ngoai_pham_vi(base, dict(base, Exposure2012=m._so(base["Exposure2012"]) + 1.5)))

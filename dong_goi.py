@@ -91,11 +91,13 @@ LOAI_TRU = [
     "test_ky_yeu_vong3.py", "test_luu_phan_tich.py", "test_mat_sang_nhat.py",
     "test_phanh_da_wb.py", "test_canh_ngoai_toi.py", "test_loc_may_mau_da.py",
     "test_mau_da_mot_dich.py", "test_xu_ly_anh.py", "kiem_ota.py", "ota_tu_cay.py",
-    "test_ngon_ngu.py", "test_dua_ra_som.py", "test_chat_luong_ra.py", "kiem_toan_bo.py", "test_cham_sao.py", "test_xem_lr.py",
+    "test_ngon_ngu.py", "test_dua_ra_som.py", "test_chat_luong_ra.py", "test_am_mau.py", "kiem_toan_bo.py", "test_cham_sao.py", "test_xem_lr.py",
     "test_do_song_song.py", "kiem_preview_lr.py", "test_kiem_preview_lr.py",
     "kiem_hoc_mau_lua.py", "test_mo_hinh_lr.py", "mo_phong_lr.py", "test_doc_cache_lr.py", "test_do_truoc.py",
     "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py",
-    "test_kiem_mot_luot.py", "hoc_mau_lr.py", "kiem_mot_luot.py", "test_mask_xem.py",
+    #  15/10: hoc_mau_lr VÀO gói (học màu Lightroom từ app — hoc_mau_ui); bài kiểm thì không
+    "test_kiem_mot_luot.py", "kiem_mot_luot.py", "test_mask_xem.py",
+    "test_hoc_mau_ui.py", "test_wb_may.py", "test_chuyen_cai_dat.py",
     "test_dong_bo_cum.py", "test_nguoi_sua_lich_su.py", "test_chu_the.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
@@ -179,7 +181,10 @@ NGAM = ["autotone", "giao_dien", "duong_dan", "khoa", "trang_thai", "thu_gu",
         #  14/10: đọc thẳng cache preview + thông số của Lightroom (import trong hàm)
         "doc_cache_lr", "do_truoc", "mau_mot_luot",
         #  14/10: lớp mask da trên preview (nút "Mask da" — import trong hàm)
-        "mask_xem"]
+        "mask_xem",
+        #  15/10: học màu Lightroom từ app + chuyển cài đặt (mixin của App — autotone_gui.pyd
+        #  import, PyInstaller không thấy) + nhớ lệch WB theo máy (import trong hàm)
+        "hoc_mau_lr", "hoc_mau_ui", "chuyen_cai_dat", "chuyen_cai_dat_ui", "wb_may"]
 
 #[[ MODULE THU VIEN NGOAI PyInstaller KHONG TU THAY (NGAM chi cho module cua du
 #   an — kiem_dong_goi canh).
@@ -213,7 +218,9 @@ NGAM_RETOUCH = ["retouch"]
 #  13/10: anh_moi/ = ảnh mồi hâm nóng retouch (tram_retouch.anh_moi_ds) — bản cài
 #  trước đây không có ảnh mẫu nào (insightface ở gói tách) nên không bao giờ hâm nóng
 TAI_NGUYEN = [("models", "models"), ("AutoTone.lrplugin", "AutoTone.lrplugin"),
-              ("fonts", "fonts"), ("anh_moi", "anh_moi")]
+              ("fonts", "fonts"), ("anh_moi", "anh_moi"),
+              #  15/10: 4 mô hình màu Lightroom học trên máy dev (mo_hinh_lr.thu_muc_goc)
+              ("mo_hinh_lr_goc", "mo_hinh_lr_goc")]
 
 #[[ THU MUC jobs/ KHONG DUOC VAO GOI.
 #

@@ -221,6 +221,20 @@ def main() -> int:
     ktra("vùng trắng đúng đích -> giữ WB (da lệch thì HSL / Curve / CG lo)",
          all(r["new_temp"] == nhiet[r["path"]] for r in r6)
          and all(r["mau_da_bao"]["wb"] == "giu" for r in r6), str([r["mau_da_bao"]["wb"] for r in r6]))
+    #  15/10: ảnh ÁM XANH NẶNG đã cứu WB theo da (autotone.cuu_am_mau) — vùng trắng lệch đích
+    #  kéo WB cả cảnh, nhưng KHÔNG được kéo ảnh am_mau về lại
+    cfg6b = dict(CFG, mau_da_dich=dict(CFG["mau_da_dich"], trang={"trong": [float(ab[0]) + 0.03,
+                                                                           float(ab[1]) - 0.03]}),
+                 wb_xet_lai_min_anh=2)                 # cảnh 3 ảnh, bỏ ảnh am_mau còn 2
+    for r in [r for r in moi if r["scene"] == 1]:
+        tinh_lai(r, cfg6b)
+    r6[0]["am_mau"] = True
+    nhiet = {r["path"]: r["new_temp"] for r in r6}
+    ml.chuoi([r for r in moi if r["scene"] == 1], cfg6b)
+    doi = [r for r in r6[1:] if r["new_temp"] != nhiet[r["path"]]]
+    ktra("vùng trắng lệch đích -> WB cảnh đổi, ảnh am_mau giữ WB đã cứu",
+         doi and r6[0]["new_temp"] == nhiet[r6[0]["path"]], f"đổi {len(doi)}/{len(r6) - 1}")
+    r6[0].pop("am_mau", None)
 
     print("7. job")
     for r in moi:

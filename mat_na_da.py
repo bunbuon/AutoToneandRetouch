@@ -273,8 +273,10 @@ def _vung_cat(m, W, H):
             int(min(W, x + fw + px)), int(min(H, y + fh + py)))
 
 
-def _du_phong(img, m) -> np.ndarray:
-    """Mặt nạ dự phòng (H, W) bool cho một mặt: elip − mắt − miệng ∩ skin_mask."""
+def _du_phong(img, m) -> tuple:
+    """Mặt nạ dự phòng (H, W) bool cho một mặt: elip − mắt − miệng ∩ skin_mask
+    -> (mặt nạ, đã bù ám: bool). 15/10: ảnh ám xanh nặng — cổng tuyệt đối loại sạch da thì
+    lọc lại trên điểm đã bù ám (at.bu_am_mau)."""
     import cv2
     H, W = img.shape[:2]
     x, y, fw, fh = m[:4]
@@ -294,10 +296,18 @@ def _du_phong(img, m) -> np.ndarray:
         mk[int(y + fh * 0.30):int(y + fh * 0.48), int(x):int(x + fw)] = 0
         mk[int(y + fh * 0.72):int(y + fh * 0.86), int(x + fw * 0.30):int(x + fw * 0.70)] = 0
     da = mk.astype(bool)
+    bu_dung = False
     if da.any():
         px = img[da].astype(np.float32) / 255.0
-        da[da] = at.skin_mask(px)
-    return da
+        sk = at.skin_mask(px)
+        if int(sk.sum()) < DIEM_DA_TOI_THIEU:
+            bu = at.bu_am_mau(px)
+            if bu is not None:
+                sk_bu = at.skin_mask(px, bu)
+                if int(sk_bu.sum()) > int(sk.sum()):
+                    sk, bu_dung = sk_bu, True
+        da[da] = sk
+    return da, bu_dung
 
 
 def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True,
@@ -327,6 +337,7 @@ def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True,
         mats, crop = khung_san(r, W, H), False
     da = np.zeros((H, W), bool)
     kieu_dung = None
+    bu_am = False
     ly_do = "" if mats else "không thấy mặt"
     for m in mats:
         fw = m[2]
@@ -342,7 +353,8 @@ def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True,
         if mk is None:
             if fw < MAT_NHO_DU_PHONG:
                 continue
-            mk, kieu = _du_phong(img_rgb, m), "du_phong"
+            (mk, bu_m), kieu = _du_phong(img_rgb, m), "du_phong"
+            bu_am = bu_am or bu_m
         #  co mép: bỏ viền tóc / tai / nền dính mép mặt nạ
         k = max(2, int(round(0.02 * fw)))
         mk = cv2.erode(mk.astype(np.uint8),
@@ -365,4 +377,5 @@ def mat_na(img_rgb, r: dict | None = None, dung_parse: bool = True,
             "da_tho": da_tho,
             "kieu": kieu_dung if n >= DIEM_DA_TOI_THIEU else None,
             "mat": [tuple(float(v) for v in m[:4]) for m in mats], "do_lai": do_lai,
-            "crop": crop, "n": n if n >= DIEM_DA_TOI_THIEU else 0, "ly_do": ly_do}
+            "crop": crop, "n": n if n >= DIEM_DA_TOI_THIEU else 0, "ly_do": ly_do,
+            "bu_am": bool(bu_am and n >= DIEM_DA_TOI_THIEU)}

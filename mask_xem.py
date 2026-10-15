@@ -104,6 +104,7 @@ def tinh(src, r: dict | None) -> dict | None:
     ma[m["da"]] = 1
     return {"wh": (W, H), "ma": ma, "mat": [list(b) for b in m["mat"]], "kieu": m.get("kieu"),
             "n": int(m.get("n") or 0), "ly_do": m.get("ly_do") or "", "do_lai": m.get("do_lai"),
+            "bu_am": bool(m.get("bu_am")),
             "rgb_da": rgb_pt(img[m["da"]]) if m["da"].any() else None}
 
 
@@ -173,6 +174,8 @@ def tom_tat(kq: dict | None, dich=None) -> str:
             "tron": "phân vùng + dự phòng"}.get(kq.get("kieu") or "", "không thấy da")
     ma = kq["ma"]
     cau = f"{kieu} · {len(kq.get('mat') or [])} mặt · {int((ma == 1).sum()):,} điểm da".replace(",", ".")
+    if kq.get("bu_am"):
+        cau += " · da ám màu (đã bù khi lọc)"
     if kq.get("rgb_da"):
         R, G, B = kq["rgb_da"]
         cau += f" · da R {R:.1f} G {G:.1f} B {B:.1f} %"

@@ -59,7 +59,7 @@ NHOM = [
         "kiem_che_do_sang.py", "kiem_do_mat.py", "kiem_lens_co.py",
     ]),
     ("mau", "Màu da · WB · HSL · Color Grade", [
-        "test_wb_asshot.py", "test_phanh_da_wb.py", "test_hsl_da.py", "test_hsl_da_cuoi.py",
+        "test_wb_asshot.py", "test_wb_may.py", "test_phanh_da_wb.py", "test_hsl_da.py", "test_hsl_da_cuoi.py",
         "test_chuoi_mau_da.py", "test_mau_da_mot_dich.py", "test_loc_may_mau_da.py",
         "kiem_grade_trang_thai.py", "kiem_den_trang.py",
     ]),
@@ -69,7 +69,7 @@ NHOM = [
     ]),
     ("hoc_mau", "Học màu Lightroom + chuỗi một lượt (mới 14/10, chưa bật)", [
         "test_mo_hinh_lr.py", "test_doc_cache_lr.py", "test_do_truoc.py",
-        "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py",
+        "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py", "test_hoc_mau_ui.py",
         "test_kiem_mot_luot.py", "test_mask_xem.py", "test_dong_bo_cum.py", "test_nguoi_sua_lich_su.py", "test_chu_the.py",
     ]),
     ("lr", "Lightroom: plugin · job · catalog · preset · bản xuất", [
@@ -92,7 +92,7 @@ NHOM = [
         "test_cap_nhat.py", "test_gop_y.py",
     ]),
     ("retouch", "Retouch & Xuất", [
-        "test_tram_retouch.py", "test_retouch_cwd.py", "test_retouch_luong.py", "test_dua_ra_som.py", "test_chat_luong_ra.py",
+        "test_tram_retouch.py", "test_retouch_cwd.py", "test_retouch_luong.py", "test_dua_ra_som.py", "test_chat_luong_ra.py", "test_am_mau.py", "test_chuyen_cai_dat.py",
         "test_xuat_mot_thao_tac.py", "kiem_tim_tool.py", "kiem_retouch_095.py",
         "kiem_xem_truoc.py", "kiem_retouch_gui.py",
     ]),
