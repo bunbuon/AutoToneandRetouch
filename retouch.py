@@ -90,6 +90,46 @@ NHAN_DEP = {
     "chan": ("Kéo dài chân", "Mức 100 = giãn thêm 14.5%. Cần ảnh toàn thân"),
 }
 
+#[[ MO TA NGAN cua tung thanh keo (15/10 — user: "rut ngan lai tat ca cac phan giai thich
+#   ... khach hang k can nhin thay"). Goi y cua saytool la ghi chu ky thuat ("Mo hinh hoc tu
+#   anh Evoto that ...", "khop tu N khuon mat, thu hep X%") — giao dien hien cau duoi day;
+#   khoa khong co trong bang thi giu goi y cua saytool. ]]
+MO_TA_KEO = {
+    "vet": "Xoá mụn, vết thâm, nốt ruồi nhỏ trên mặt.",
+    "vet_body": "Xoá mụn, vết thâm trên da tay, chân, cơ thể.",
+    "bong_dau": "Giảm độ bóng dầu trên da mặt.",
+    "min_da": "Làm mịn da mặt, giữ kết cấu da.",
+    "dodge_burn": "Làm đều vùng sáng tối trên da mặt.",
+    "da_deu": "Làm đều màu da.",
+    "da_body": "Làm mịn da tay, chân, cơ thể.",
+    "nhan_mat": "Làm mờ nếp nhăn quanh mắt.",
+    "nhan_tran": "Làm mờ nếp nhăn trán.",
+    "nong_cam": "Làm gọn vùng nọng cằm.",
+    "rang": "Làm trắng răng.",
+    "lq_thon_mat": "Làm thon gọn khuôn mặt.",
+    "chan": "Kéo dài chân (cần ảnh toàn thân).",
+    "keo_chan": "Kéo dài chân (cần ảnh toàn thân).",
+    "cao": "Tăng chiều cao (cần ảnh toàn thân).",
+    "toc": "Lấp vùng tóc thưa / hói.",
+}
+
+def ten_raw_xmp(p) -> str | None:
+    """Tên RAW gốc (không đuôi, chữ thường) ghi trong XMP của JPEG Lightroom xuất
+    (crs:RawFileName, rồi xmpMM:PreservedFileName) — None khi không có."""
+    try:
+        with open(p, "rb") as fh:
+            dau = fh.read(512 * 1024)
+    except OSError:
+        return None
+    for k in (rb"crs:RawFileName", rb"xmpMM:PreservedFileName"):
+        m = re.search(k + rb'(?:="|>)([^"<]+)', dau)
+        if m:
+            ten = m.group(1).decode("utf-8", "replace").strip()
+            if ten:
+                return Path(ten).stem.lower()
+    return None
+
+
 #[[ Co cua rieng de chay saytool khi app da dong goi. Xem worker o autotone_gui.
 #]]
 CO_SAY_CHAY = "--say-chay"
@@ -602,6 +642,7 @@ def thanh_keo(goc=None, lam_lai: bool = False) -> list:
         except (IndexError, TypeError, ValueError):
             continue
         n2, g2 = NHAN_DEP.get(ten, (nhan, goi))
+        g2 = MO_TA_KEO.get(ten, g2)
         #[[ GIU can_torch (phan tu thu 5 neu co) de giao dien hien "· can tai
         #   torch". Ban day du co torch nen can_torch=False het; nhung giu cho
         #   dung voi ban --nhe (torch tai sau). Hang 4 phan tu (saytool cu) thi

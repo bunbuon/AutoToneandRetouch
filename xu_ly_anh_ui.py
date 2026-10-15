@@ -1232,27 +1232,31 @@ class XuLyAnhMixin:
             if xl.get("chua_nhan"):
                 dong.append(f"⚠ {xl['chua_nhan']} ảnh Lightroom chưa nhận đúng — bấm dòng trạng "
                             "thái trên thanh trên để xem.")
-            cv = xl.get("curve_kq")
+            #  15/10 (user: "Các thông báo hiển thị ngắn gọn. Các thay đổi chi tiết bỏ đi"):
+            #  curve / một lượt / chủ thể / cụm / ám xanh chỉ hiện ở bản dev (mã nguồn)
+            import duong_dan as dd
+            chi_tiet = not dd.dong_goi()
+            cv = xl.get("curve_kq") if chi_tiet else None
             if cv is not None and self._xl_tong_ket_curve(cv):
                 dong.append(self._xl_tong_ket_curve(cv))
             cau_ml = self._xl_cau_mot_luot(xl)
-            if cau_ml:
+            if cau_ml and chi_tiet:
                 dong.append(cau_ml)
             #  15/10: ảnh liền nhau cùng khung mà ánh sáng THẬT lệch (flash không kịp hồi…) —
             #  autotone.dong_bo_cum / mau_mot_luot.can_sang_cum bù Exposure riêng
             #  15/10: chủ thể chính (autotone.gan_chu_the)
-            ct = dict(getattr(at, "CHU_THE", {}) or {})
+            ct = dict(getattr(at, "CHU_THE", {}) or {}) if chi_tiet else {}
             if ct.get("nguoi"):
                 dong.append(f"· Chủ thể chính: {len(ct['nguoi'])} người xuất hiện nhiều nhất ("
                             + " · ".join(gd.so_vn(p["n_anh"]) for p in ct["nguoi"])
                             + f" ảnh) — đo sáng + màu da theo mặt họ ở {gd.so_vn(ct.get('anh', 0))} ảnh.")
             bu = [r for r in xl.get("items_ghi") or [] if r.get("bu_cum_ev")]
-            if bu:
+            if bu and chi_tiet:
                 dong.append(f"· Ảnh liền nhau cùng khung: {gd.so_vn(len(bu))} ảnh ánh sáng thật lệch "
                             "(flash không kịp hồi…) được bù sáng riêng cho đều với cả loạt.")
             #  15/10: ảnh ám xanh nặng — WB chỉnh theo da (autotone.cuu_am_mau / wb_cuu_am_luot2)
             am = [r for r in xl.get("items_ghi") or [] if r.get("am_mau")]
-            if am:
+            if am and chi_tiet:
                 wbs = sorted({int(r["am_mau_wb"][0]) for r in am if r.get("am_mau_wb")})
                 l2 = sum(1 for r in am if r.get("wb_l2"))
                 dong.append(f"· Ảnh ám xanh nặng (ngoài trời, da xanh hơn đích): {gd.so_vn(len(am))} ảnh — "
@@ -1274,7 +1278,7 @@ class XuLyAnhMixin:
                             "(cần Lightroom Classic 14.4 trở lên).")
             if self.source_value() == "catalog":
                 dong.append("Không cần Read Metadata from File — sang Develop là thấy.")
-                if self._xem_lr_bat_dau(xl):
+                if self._xem_lr_bat_dau(xl) and chi_tiet:
                     dong.append("· Lưới đang đổi sang preview Lightroom (giống hệt Lightroom).")
             tieu_de = "Xử lý xong"
             self.status(f"✓ Xử lý xong · {_thoi_gian(giay)}", gd.MAU["xong"])

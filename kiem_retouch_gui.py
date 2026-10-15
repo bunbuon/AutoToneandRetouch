@@ -1605,6 +1605,29 @@ def main() -> int:
         w._dung_theo_doi("kiểm xong")
     except Exception:                                        # noqa: BLE001
         pass
+    #  15/10 (NVQ_6851 -> SAY-Media-6851.jpg): Export của Lightroom ĐỔI TÊN file -> mức riêng
+    #  vẫn ghép về tên RAW (XMP crs:RawFileName trong file xuất), không rơi về mức chung
+    xuat_dt = Path(tmp) / "xuat_doi_ten"
+    xuat_dt.mkdir()
+    for i in range(3):
+        f = xuat_dt / f"SAY-Media-{i}.jpg"
+        Image.new("RGB", (300, 200), (10, 10, 10)).save(f)
+        b_ = f.read_bytes()
+        xmp = f'<x:xmpmeta><rdf:Description crs:RawFileName="R{i}.ARW"/></x:xmpmeta>'.encode()
+        f.write_bytes(b_[:2] + b"\xff\xfe" + (len(xmp) + 2).to_bytes(2, "big") + xmp + b_[2:])
+    ktra("ten_raw_xmp: đọc tên RAW gốc trong file xuất", rt.ten_raw_xmp(str(xuat_dt / "SAY-Media-1.jpg")) == "r1")
+    bat.clear()
+    w.bat_dau_theo_xuat(vao=str(xuat_dt), ra="", ghi_de=True, muc={"vet": 10},
+                        song_song=True, rieng_ten=goi["rieng_ten"])
+    w._chay_anh_moi([str(xuat_dt / f"SAY-Media-{i}.jpg") for i in range(3)])
+    viec = bat[-1]["viec"] if bat else []
+    nhom = sorted((m.get("vet"), sorted(Path(a).name for a in ds)) for m, ds, _l in viec)
+    ktra("file xuất bị đổi tên: SAY-Media-1 (RAW R1) vẫn theo mức riêng 40",
+         nhom == [(10, ["SAY-Media-0.jpg", "SAY-Media-2.jpg"]), (40, ["SAY-Media-1.jpg"])], str(nhom))
+    try:
+        w._dung_theo_doi("kiểm đổi tên xong")
+    except Exception:                                        # noqa: BLE001
+        pass
     del w._chay_viec
 
     root.destroy()

@@ -234,10 +234,7 @@ class CotThuMuc(tk.Frame):
                                      command=lambda: self._goi(khi_export))
         self.btn_export.goi_y = gd.GoiY(
             self.btn_export,
-            "Lightroom xuất ảnh cỡ gốc rồi app retouch — một thao tác.\n"
-            "Hộp thoại chọn: chất lượng JPEG, thư mục xuất, ảnh retouch ghi đâu, "
-            "cache xem trước, retouch ngay trong lúc xuất hay sau khi xuất xong "
-            "(có kiểm tài nguyên máy). Tiến độ ở bước 5 · Xử lý & xuất.")
+            "Lightroom xuất ảnh rồi app retouch — một thao tác.")
         self.btn_export.grid(row=0, column=1, sticky="ew", padx=(4, 0))
         self._day_nut.pack(side="bottom", fill="x", padx=(12, 8), pady=(0, 12), before=khung)
         self.thanh = ttk.Scrollbar(khung, orient="vertical", command=self.cay.yview)

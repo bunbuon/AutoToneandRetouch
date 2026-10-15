@@ -499,16 +499,12 @@ class XuatDialog(tk.Toplevel):
                       text=f"Chỉ xuất {self._so_chon} ảnh đang chọn ở Retouch — "
                            "chọn ảnh nào xuất ảnh đó (bỏ qua lọc sao ở mục 2).").pack(
                 anchor="w", pady=(2, 0))
-        mo("Một thao tác: Lightroom xuất ảnh cỡ gốc → app retouch (ngay trong lúc "
-           "xuất, hoặc sau khi xuất xong). Kích thước, không gian màu, metadata, "
-           "quy tắc đặt tên vẫn theo thông số Export của Lightroom.")
+        mo("Lightroom xuất ảnh rồi app retouch — một thao tác.")
 
         # ---- 1. chất lượng
         tieu_de("1 · Chất lượng JPEG")
         self.tt_chat = gd.ThanhTruot(frm, self.v_chat, 1, 100, 1, nhan="Chất lượng",
-                                     mo="1–100 như hộp thoại Export của Lightroom. "
-                                        "Ảnh giao khách thường 80–92; 100 nặng gấp "
-                                        "đôi mà mắt không thấy khác.",
+                                     mo="Chất lượng JPEG (1–100).",
                                      mac_dinh=str(chat_lr), dai=WRAP - 60)
         self.tt_chat.pack(fill="x")
         khi = luc_lr.strftime("%d/%m %H:%M") if luc_lr else "không rõ lúc nào"
@@ -567,10 +563,7 @@ class XuatDialog(tk.Toplevel):
         # ---- 4. cache
         tieu_de("4 · Bộ nhớ cache xem trước")
         self.tt_cache = gd.ThanhTruot(frm, self.v_cache_gb, 0.5, 20, 0.5, nhan="Dung lượng (GB)",
-                                      mo="Ảnh xem trước retouch đã tính được lưu lại để "
-                                         "mở lại thư mục / đang chạy mẻ vẫn xem được "
-                                         "ngay. Vượt dung lượng thì tự xoá tấm lâu không "
-                                         "xem nhất.", dai=WRAP - 60)
+                                      mo="Dung lượng lưu ảnh xem trước retouch.", dai=WRAP - 60)
         self.tt_cache.pack(fill="x")
         o4 = ttk.Frame(frm)
         o4.pack(fill="x", pady=(4, 0))

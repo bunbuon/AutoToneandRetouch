@@ -87,6 +87,19 @@ def mps_hong() -> bool:
 #      (Cung bay voi _hoi_keo/kiem_tra/lenh_saytool: frozen exe != python.)
 #
 #   Nho tach ham, logic xem truoc chi viet MOT lan, hai duong goi cung no. ]]
+def _quy_goc(nc, y: dict) -> None:
+    """15/10: ảnh mở là bản TRUNG GIAN nhỏ hơn ảnh gốc (preview RAW / Lightroom dựng) ->
+    ngưỡng "mặt quá nhỏ" của engine (nguong_mat = px * ty_le) quy theo cạnh dài ảnh GỐC
+    (y["canh_goc"]), như khi chạy thật trên ảnh xuất cỡ gốc. Phải gọi TRƯỚC nc.mat."""
+    try:
+        cg = float(y.get("canh_goc") or 0)
+        canh = float(max(nc.anh.shape[:2]))
+        if cg > canh > 0:
+            nc.ty_le = canh / cg
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
 def vong_xem():
     """Vòng lặp tiến trình con tính ảnh xem trước: đọc JSON ở stdin, trả JSON
     (ảnh nén base64) ở stdout. Dùng chung cho bản mã nguồn (qua MA_CON) và bản
@@ -484,6 +497,7 @@ def vong_xem():
                 FP = y["fp"]
                 DEM.clear()                  # anh moi: bo dem cua anh cu
                 _ = NC.anh
+                _quy_goc(NC, y)
                 H, W = NC.anh.shape[:2]
                 #[[ Moi mat: [x, y, rong, cao] theo diem anh cua ban 1400px, mat
                 #   TO truoc — nut "Vao mat" cua khung anh di lan luot. ]]

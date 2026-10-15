@@ -492,9 +492,8 @@ class NutPresetLR(tk.Frame):
         self.btn = gd.NutTron(self, "Preset LR: không áp", kieu="phu", nen=self._nen,
                               font=gd.CHU, mui_ten=True, command=self._mo)
         self.btn.pack(side="left")
-        self.btn.goi_y = gd.GoiY(self.btn, "Chọn preset Lightroom để xem trước CẢ LƯỚI theo "
-                                 "preset đó — Lightroom render thật (cần Lightroom đang "
-                                 "mở). Không đổi ảnh trong catalog.")
+        self.btn.goi_y = gd.GoiY(self.btn, "Xem trước cả lưới theo một preset Lightroom (không đổi ảnh trong "
+                                           "catalog).")
         self.lbl = tk.Label(self, text="", background=self._nen, foreground=gd.MAU["mo"],
                             font=gd.CHU_NHO, anchor="w")
         self.lbl.pack(side="left", padx=(8, 0))
@@ -610,9 +609,7 @@ class BangPresetLR(tk.Toplevel):
         self.btn_dung.pack(side="left")
         self.btn_lai = gd.NutTron(hang, "Dựng cả buổi", kieu="toi", nen=m["nen"],
                                   font=gd.CHU, command=self._gui_lai)
-        self.btn_lai.goi_y = gd.GoiY(self.btn_lai, "Lightroom dựng theo preset MỌI ảnh của buổi "
-                                     "(~0,5–1 giây / ảnh). Bình thường chỉ ảnh đang xem + "
-                                     "trước / sau được dựng.")
+        self.btn_lai.goi_y = gd.GoiY(self.btn_lai, "Lightroom dựng theo preset mọi ảnh của buổi.")
         self.btn_lai.pack(side="left", padx=(6, 0))
         #  10/10 (user: "nếu thao tác đúng như trong Lightroom chọn Sync All thì làm")
         hang2 = tk.Frame(trong, background=m["nen"])
@@ -620,9 +617,7 @@ class BangPresetLR(tk.Toplevel):
         self.btn_ap = gd.NutTron(hang2, "Áp hẳn vào Lightroom…", kieu="phu", nen=m["nen"],
                                  font=gd.CHU, command=self._ap_han)
         self.btn_ap.pack(side="left")
-        self.btn_ap.goi_y = gd.GoiY(self.btn_ap, "Áp preset đang chọn vào catalog cho mọi ảnh "
-                                    "RAW của buổi — đúng như chọn hết ảnh rồi bấm preset "
-                                    "trong Lightroom. Có sổ để hoàn tác.")
+        self.btn_ap.goi_y = gd.GoiY(self.btn_ap, "Áp preset đang chọn cho mọi ảnh của buổi (hoàn tác được).")
         self.btn_ht = gd.NutTron(hang2, "Hoàn tác lần áp", kieu="toi", nen=m["nen"],
                                  font=gd.CHU, command=self._hoan_tac)
         self.btn_ht.pack(side="left", padx=(6, 0))

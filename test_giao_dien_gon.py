@@ -110,32 +110,23 @@ def chu_thich_cu(at) -> list[str]:
         #   duoi doi CHU vi su that da doi: cau cu "−1.19 lấy từ ảnh anh chấm
         #   tay" sai so, "mức đích ở trên" chi vao mot o khong con thay. Van
         #   kiem tung chu — khong bot dong nao. ]]
-        "Mức sáng ĐÍCH của da mặt (EV log2, càng âm càng tối). Mặc định "
-        f"{dich:+.2f}. Chỉ dùng ở chế độ “Đưa mặt về mức sáng chuẩn” và “Trộn”.",
+        #  15/10 (user: "rút ngắn lại tất cả các phần giải thích") — câu ngắn mới; bản dài
+        #  nằm ở GHI_CHU_TINH_NANG.md
+        "Mức sáng đích của da mặt (EV).",
         "Chỉ ở chế độ “Trộn”. 0 = theo trung vị cảnh, 1 = theo mức sáng chuẩn.",
         f"Ngưỡng EV100 {ev} · tính từ ISO + tốc + khẩu, không phải ISO không",
         "Kể cả ảnh chụp trong nhà bạt hay dưới mái che ban ngày",
         "Hội trường, sân khấu, hoặc chụp sau khi trời tối",
-        "Trần cho chiều DÌM TỐI. Đo ra phải dìm 1.8 EV mà đặt 1.00 thì chỉ dìm "
-        "1.00. Chiều kéo sáng do ô dưới quyết định.",
-        "Trần cho chiều KÉO SÁNG, để riêng vì hai chiều không đối xứng: dìm quá "
-        "tay chỉ mất công, kéo sáng thì cứu được ảnh ngược sáng hay chụp trước "
-        "màn LED. Phần chống cháy sáng vẫn gác.",
-        "Nhân vào mức chỉnh trước khi kẹp trần. 1.0 = đủ như đo được, 0.7 = dè "
-        "dặt, 1.2 = mạnh tay.",
+        "Mức giảm sáng tối đa cho mỗi ảnh (EV).",
+        "Mức tăng sáng tối đa cho mỗi ảnh (EV).",
+        "Độ mạnh của chỉnh sáng: 1.0 = đủ, nhỏ hơn = nhẹ tay, lớn hơn = mạnh tay.",
         "Ngăn làm cháy thêm — không gỡ được chỗ đã cháy sẵn",
         "Nghỉ lâu mà vẫn đứng nguyên một phông thì không tính là cảnh mới",
         # 8/10: luat moi loc trung khung + loc mat bo mat nghieng
-        "Chụp liên tiếp: ảnh 1–4 người CÓ NGƯỜI NHẮM MẮT → 1 sao; ai cũng mở mắt "
-        "thì giữ; ảnh trên 4 người giữ nguyên. Đo mắt khi phân tích (~0.8s/ảnh)",
-        "1 người hoặc nhóm 2–4; ảnh tập thể đông người bỏ qua. Chỉ xét mặt "
-        "trực diện / 3/4 — mặt nghiêng bỏ qua. Đo luôn khi phân tích, chậm "
-        "thêm ~0.8s/ảnh",
-        f"EV, cộng sau chống cháy. Cưới 0 · Sự kiện {bu:+.2f}. Ảnh không có mặt "
-        "giữ nguyên.",
-        # "nghỉ quá [5] phút thì coi là cảnh mới" — nhãn đổi thành "nghỉ quá
-        # (phút)" nên câu viết lại cho đứng một mình; ý giữ nguyên:
-        "thì coi là cảnh mới",
+        "Loạt ảnh chụp liên tiếp: tấm có người nhắm mắt được gắn 1 sao.",
+        "Gắn 1 sao cho ảnh có người nhắm mắt (ảnh 1–4 người).",
+        "Tăng / giảm sáng cho cả buổi (EV).",
+        "thì tính là cảnh mới",
     ]
 
 
@@ -569,10 +560,10 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     ktra("dòng tóm tắt Cách cân tone không nói mức đích (ô đã ẩn)",
          "đích" not in nt.l_tom.cget("text") and moc not in nt.l_tom.cget("text"),
          nt.l_tom.cget("text")[:60])
-    ktra("dấu ? của Bù sáng cả buổi nói mốc sáng mặt",
+    ktra("dấu ? của Bù sáng cả buổi có câu mô tả ngắn",
          app.sp_bu_sang.hoi is not None
-         and f"Mốc sáng mặt: {float(moc):+.2f} EV" in app.sp_bu_sang.hoi.goi_y.chu,
-         "số 0 của thanh bù nghĩa là mặt về mốc này")
+         and "Tăng / giảm sáng cho cả buổi" in app.sp_bu_sang.hoi.goi_y.chu,
+         "15/10: câu ngắn — bản dài ở GHI_CHU_TINH_NANG.md")
     sg = app.sp_gap
     sg._khi_xong = lambda: None
     sg.thanh.set(7.3)
@@ -617,7 +608,7 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     trong = [w for w in hoi if la_con_cua(w, bang)]
     ktra("dấu ? nào trong bảng điều khiển cũng có chữ",
          len(trong) >= 20 and all(w.goi_y.chu for w in trong), f"{len(trong)} dấu ?")
-    h = next(w for w in trong if "KÉO SÁNG" in w.goi_y.chu)
+    h = next(w for w in trong if "tăng sáng tối đa" in w.goi_y.chu)
     h.event_generate("<Enter>", x=3, y=3)
     chay(2)
     chua = h.goi_y.cua is None
@@ -631,7 +622,7 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     h.event_generate("<Leave>", x=40, y=40)
     chay(3)
     ktra("rê chuột vào dấu ? thì hiện chú thích (sau một nhịp), rời ra thì tắt",
-         chua and hien and "KÉO SÁNG" in nhan and h.goi_y.cua is None,
+         chua and hien and "tăng sáng tối đa" in nhan and h.goi_y.cua is None,
          "không hiện ngay khi chuột lướt qua")
     ktra("chữ phụ không còn in sẵn dưới tính năng",
          not [w for w in ds if la_con_cua(w, bang)

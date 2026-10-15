@@ -1463,6 +1463,24 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## User test v92 -> v93 (15/10 khuya): chữ ngắn cho khách · thon mặt trên RAW
+
+- Nhóm Thiết lập "Ghìm & bảo vệ" đổi tên "Tone Curve" (Anh/Việt).
+- MỌI "?" / gợi ý rút thành câu ngắn (57 chỗ, AST thay tại chỗ — scratchpad `rut_gon_goi_y.py`); bản dài
+  cho phát triển ở `GHI_CHU_TINH_NANG.md` (không đóng gói). Thanh kéo Retouch: `retouch.MO_TA_KEO` thay
+  goi_y kỹ thuật của saytool ("học từ ảnh Evoto thật…"). Dòng trạng thái / tổng kết Xử lý ảnh: chi tiết
+  (ΔEV, màu da, HSL, curve, chủ thể, cụm, ám xanh) chỉ ở bản dev (`not dd.dong_goi()`).
+- "Mask da" chỉ bản dev. Retouch: Ctrl+A ở mọi chỗ của trang (`_ctrl_a`, gắn cửa sổ chính, bỏ qua ô
+  nhập); bỏ câu "Kéo thanh là xem ngay…" ở nguồn RAW; bỏ ô "Chất lượng ảnh ra" (chỉ còn ở hộp Xuất —
+  `do_xuat_hop` ghi retouch.json + `rt_win.cf`).
+- Thon mặt NVQ_6851 không đổi (agent đo): xem trước RAW mở ảnh trung gian 1600 px -> ngưỡng mặt nhỏ
+  quy theo ảnh đó (150 -> 131 px), 4 mặt ~90 px bị bỏ im lặng. `autotone.canh_goc_raw` (max ImageWidth/
+  Length IFD) -> `retouch_may` gửi `canh_goc` -> `xem_truoc._quy_goc` đặt `ty_le`. Xuất & retouch: file
+  bị Export đổi tên (SAY-Media-6851) mất mức riêng -> `muc_cua` ghép tên RAW qua hàng đợi / bảng xuất /
+  `retouch.ten_raw_xmp` (crs:RawFileName). Kiểm: `test_xem_goc_raw`, `kiem_retouch_gui` (đổi tên).
+- `test_xuat_mot_thao_tac` chạy RIÊNG trong thư mục mã nguồn lúc máy bận có thể hỏng 3 kiểm worker (cả
+  bản v92) — qua kiem_toan_bo thì đạt.
+
 ## Cả buổi bị bỏ "sửa tay" khi bản xuất cũ (15/10, v92) — `plan`
 
 User (lọc 1037, v91): "ValueError: min() iterable argument is empty" ngay sau Phân tích. Buổi đã

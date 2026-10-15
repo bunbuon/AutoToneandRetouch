@@ -258,6 +258,11 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self._canh_bao_keo(self.v_goc.get().strip().strip('"'))
         self.after(150, self._pump)
         self.bind("<Destroy>", self._khi_huy, add="+")
+        #  15/10 (user: "khi không bấm vào lưới ảnh không Ctrl + A được"): Ctrl+A ở bất kỳ
+        #  chỗ nào của trang Retouch chọn hết ảnh (trừ ô nhập chữ). Gắn ở cửa sổ chính — trang
+        #  là khung trong đó — và chỉ ăn khi trang đang hiện.
+        for phim in ("<Control-a>", "<Control-A>"):
+            self.winfo_toplevel().bind(phim, self._ctrl_a, add="+")
         #[[ Hoi tool NGAY khi mo, o luong nen. Truoc day chi hoi dong bo luc
         #   dung bang: hoi that bai la lang le roi ve ba thanh keo du phong va
         #   khong bao gio thu lai. ]]
@@ -405,19 +410,9 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         #  12/10 (giao diện mới): thanh nằm TRÊN ảnh lớn như bản thiết kế
         t.pack(side="top", fill="x", pady=(0, 10))
         self.thanh_xem = t
-        hoi = gd.NutHoi(t, "Kéo thanh ở bảng phải: ảnh lớn tính lại NGAY theo mức "
-                           "đó (bản xem trước). Bấm ✕ trên nhãn “Xem trước” để "
-                           "về bản trên đĩa.\n"
-                           "Lăn chuột: phóng to / thu nhỏ quanh con trỏ.\n"
-                           "Kéo: di chuyển ảnh đang phóng.\n"
-                           "Nháy đúp lên ảnh: về LƯỚI ẢNH (bấm một ô để mở to lại).\n"
-                           "So sánh: Sau · Trước | Sau cạnh nhau · Chia đôi (kéo "
-                           "vạch) — phóng / kéo một bên là bên kia theo.\n"
-                           "Giữ chuột trên ảnh (hoặc giữ phím \\): xem ảnh GỐC.\n"
-                           "← →: tấm trước / sau · 0: vừa khung · 1: 100% · "
-                           "M: vào mặt kế tiếp.\n"
-                           "Dải ảnh: Ctrl + bấm chọn thêm, Shift + bấm chọn một "
-                           "dãy — để Sync mức.", nen=nen)
+        hoi = gd.NutHoi(t, "Lăn chuột: phóng to · Kéo: di chuyển · Nháy đúp: về lưới.\nGiữ chuột "
+                           "(hoặc phím \\): xem ảnh gốc.\n← →: tấm trước / sau · 0: vừa khung · 1: "
+                           "100%.", nen=nen)
         hoi.pack(side="right", padx=(8, 0))
         self.btn_goc = gd.NutTron(t, "Giữ để so", kieu="toi", nen=nen, font=gd.CHU,
                                   icon="can_xem")
@@ -734,12 +729,10 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                 pass
         lbl = getattr(self, "lbl_nguon", None)
         if lbl is not None:
-            lbl.configure(text=(
-                "Kéo thanh là xem ngay trên ẢNH DUYỆT Lightroom (⋯ › Duyệt nhanh — đúng "
-                "WB / tone / preset); chưa có thì trên preview trong RAW. Đây là bộ "
-                "“Tuỳ chỉnh”: bấm “Xuất & retouch…” — Lightroom xuất rồi retouch đúng "
-                "mức này (chọn preset thì theo preset)." if raw else
-                "Ảnh Lightroom đã xuất: chạy retouch thẳng trên các file này."))
+            #  15/10 (user): nguồn RAW không còn câu giải thích "Kéo thanh là xem ngay…"
+            lbl.configure(text="" if raw else
+                          "Ảnh Lightroom đã xuất: chạy retouch thẳng trên các file này.")
+            self._hien_an(lbl, not raw)
         try:
             self._cap_nhat_nut_chay()
         except Exception:                                    # noqa: BLE001
@@ -855,23 +848,25 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         except Exception:                                    # noqa: BLE001
             return int(getattr(self, "_tien_do_tool", 0) or 0)
 
-    def _mo_menu_chat_luong(self):
-        """Menu chọn chất lượng ảnh ra (retouch.json "chat_luong_ra")."""
-        menu = tk.Menu(self, tearoff=0)
-        dang = self.rt.chat_luong_ra()
-        for v in self.rt.CHAT_LUONG_RA:
-            menu.add_command(label=("● " if v == dang else "   ") + self.rt.ten_chat_luong(v),
-                             command=lambda v=v: self._chon_chat_luong(v))
-        self.app._bat_menu(menu, self.btn_chat_luong)
-
-    def _chon_chat_luong(self, v):
-        v = self.rt.chuan_chat_luong(v)
-        self.rt.ghi_cau_hinh({"chat_luong_ra": v})
-        self.cf["chat_luong_ra"] = v
+    def _ctrl_a(self, _e=None):
+        """Ctrl+A: chọn hết ảnh của lưới đang hiện (lưới to hoặc dải ảnh)."""
         try:
-            self.btn_chat_luong.configure(text=self.rt.ten_chat_luong(v))
+            if not self.winfo_exists() or not self.winfo_viewable():
+                return None
+            w = self.focus_get()
+        except (tk.TclError, KeyError):
+            return None
+        if w is not None and w.winfo_class() in ("Entry", "TEntry", "Text", "TCombobox",
+                                                 "Spinbox", "TSpinbox"):
+            return None                                     # ô nhập chữ: Ctrl+A của ô đó
+        lt = getattr(self, "luoi_to", None)
+        try:
+            dung = (lt if lt is not None and getattr(self, "_che_do_anh", "luoi") == "luoi"
+                    and lt.winfo_viewable() else self.luoi)
         except tk.TclError:
-            pass
+            dung = self.luoi
+        dung.chon_het()
+        return "break"
 
     def _cap_nhat_nut_chay(self):
         """“Chạy retouch · N ảnh” — N = số tấm ĐANG CHỌN ở dải ảnh (đúng những
@@ -1066,13 +1061,16 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                                                          ("xuat", "Ảnh đã xuất")],
                                     command=self._doi_nguon)
         self.pd_nguon.pack(fill="x", pady=(4, 2))
-        self.lbl_nguon = ttk.Label(g_tm, style="Mo2.TLabel", text="", wraplength=WRAP,
+        #  15/10: nhãn nằm trong khung riêng luôn pack — ẩn nhãn (nguồn RAW) không làm đổi chỗ
+        o_nguon = ttk.Frame(g_tm)
+        o_nguon.pack(fill="x")
+        self.lbl_nguon = ttk.Label(o_nguon, style="Mo2.TLabel", text="", wraplength=WRAP,
                                    justify="left")
         self.lbl_nguon.pack(fill="x", pady=(0, 2))
+        self._dat_cho(self.lbl_nguon, fill="x", pady=(0, 2))
         _d, _l, self.e_vao, self.btn_vao = o_duong(
             g_tm, "Vào", self.v_vao,
-            "Thư mục Lightroom vừa Export ra — retouch lấy ảnh từ đây. Mở buổi "
-            "nào thì tự theo thư mục Export của buổi đó.",
+            "Thư mục ảnh Lightroom đã xuất.",
             lambda: self._pick(self.v_vao))
         #[[ MOT DONG NOI KHI O "VAO" LECH VOI THU MUC EXPORT CUA BUOI. KHONG tu
         #   ghi de len cai nguoi dung da go — chi noi va de mot nut. ]]
@@ -1088,8 +1086,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.hang_ra = hang_ra
         self.o_ra = self.e_ra.master
         o = ct(g_tm, self.v_ghide, "Ghi đè lên ảnh gốc",
-               "Không cần thư mục ra: ảnh retouch THAY THẾ ảnh gốc. Không lùi lại "
-               "được — lúc bấm Chạy sẽ hỏi lại kèm số ảnh và đường dẫn.",
+               "Ảnh retouch thay thế ảnh gốc (không hoàn tác được).",
                lenh=self._doi_ghide)
         o.pack_configure(pady=(10, 2))
         self.o_ghide = o
@@ -1098,47 +1095,18 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self._dat_cho(self.lbl_ghide, fill="x", pady=(2, 2))
         self.o_tu_moi = ct(
             g_tm, self.v_tu_moi, "Tự retouch ảnh mới thêm vào",
-            "Bật rồi bấm Chạy retouch: chạy xong app vẫn THEO DÕI thư mục Vào. "
-            "Ảnh nào mới chép vào — kể cả trong lúc đang chạy — được tự retouch "
-            "bằng MỨC CHUNG (các thanh ở thẻ Chung lúc bấm Chạy, không dùng mức "
-            "riêng giới tính) rồi xuất ra, hoặc ghi đè nếu đang bật ghi đè. Ảnh "
-            "có sẵn lúc bấm Chạy không bị tính là ảnh mới. Bấm Dừng để thôi theo "
-            "dõi.",
+            "Tiếp tục theo dõi thư mục Vào và tự retouch ảnh mới chép vào.",
             lenh=self._doi_tu_moi)
         self.o_bo_khong_nguoi = ct(
             g_tm, self.v_bo_khong_nguoi, "Bỏ qua ảnh không có người",
-            "Ảnh không thấy khuôn mặt nào (phong cảnh, đồ vật, trang trí, sân khấu "
-            "trống) thì không chạy retouch — chép nguyên bản, đỡ tốn thời gian. Ảnh "
-            "người quay lưng hoặc ở quá xa (không thấy mặt) cũng bị bỏ qua: cần "
-            "retouch da tay / chân / thân ở những ảnh đó thì tắt ô này.",
+            "Ảnh không có khuôn mặt thì không retouch, chép nguyên bản.",
             lenh=lambda: self.rt.ghi_cau_hinh(
                 {"bo_khong_nguoi": bool(self.v_bo_khong_nguoi.get())}))
-        #[[ CHAT LUONG ANH RA (15/10 — user: "anh chay qua retouch dung luong lai dang
-        #   tang"). retouch.json "chat_luong_ra" — xem retouch.CHAT_LUONG_RA. ]]
-        self.o_chat_luong = ttk.Frame(g_tm)
-        #  PHẢI pack: _dat_cho chỉ NHỚ chỗ (để ẩn / hiện lại), không pack — bản v89 thiếu
-        #  dòng này nên ô vô hình (user test 15/10: "chưa thấy có phần chọn quality")
-        self.o_chat_luong.pack(fill="x", anchor="w", pady=(6, 2))
-        #  hai dòng (nhãn / nút): chung một dòng thì bảng phải phình 404 -> 420 px, lệch bề
-        #  ngang với Cân tone (kiem_retouch_gui)
-        dong_cl = ttk.Frame(self.o_chat_luong)
-        dong_cl.pack(fill="x")
-        ttk.Label(dong_cl, text="Chất lượng ảnh ra").pack(side="left")
-        self.btn_chat_luong = gd.NutTron(
-            self.o_chat_luong, self.rt.ten_chat_luong(self.rt.chat_luong_ra(self.cf)),
-            kieu="phu", font=gd.CHU, mui_ten=True, command=self._mo_menu_chat_luong)
-        self.btn_chat_luong.pack(fill="x", pady=(4, 0))
-        hoi(dong_cl,
-            "Theo ảnh gốc (khuyên dùng): chỉ vùng được retouch được nén lại, phần còn lại "
-            "giữ nguyên từng điểm ảnh của file gốc — dung lượng gần bằng ảnh Lightroom "
-            "xuất ra.\n\nChọn một số (100 / 95 / 90 / 85 / 80): nén lại CẢ ảnh ở đúng mức "
-            "đó. Số càng cao càng nét nhưng file càng to (100 có thể gấp 3–4 lần ảnh "
-            "gốc); thấp hơn chất lượng ảnh gốc thì file nhỏ hơn nhưng mất chi tiết.\n\n"
-            "Áp cho Chạy retouch, Xuất & retouch và Retouch khi xuất của Lightroom.")
+        #  15/10 (user): "Chất lượng ảnh ra" chỉ còn ở hộp Xuất (chung retouch.json
+        #  chat_luong_ra — áp cho mọi đường retouch), bỏ khỏi thẻ Thư mục
         #  thứ tự hiện lại khi đổi nguồn (xem _ap_nguon_ui)
         self._dat_cho(self.o_tu_moi, fill="x", anchor="w", pady=2)
         self._dat_cho(self.o_bo_khong_nguoi, fill="x", anchor="w", pady=2)
-        self._dat_cho(self.o_chat_luong, fill="x", anchor="w", pady=(6, 2))
         self._dat_cho(self.o_ghide, truoc=self.o_tu_moi, fill="x", anchor="w", pady=(10, 2))
         self._dat_cho(self.o_ra, truoc=self.o_ghide, fill="x", pady=(3, 0))
         self._dat_cho(self.hang_ra, truoc=self.o_ra, fill="x", pady=(6, 0))
@@ -1159,10 +1127,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         o_ps = ttk.Frame(g_keo)
         o_ps.pack(fill="x", pady=(4, 0))
         ttk.Label(o_ps, text="Preset").pack(side="left")
-        hoi(o_ps, "Bộ mức đã lưu (cả mức riêng theo nhóm mặt). Chọn = áp cho ảnh "
-                  "đang xem như vừa kéo; chưa có ảnh thì làm mức chung. Lưu = ghi "
-                  "bảng đang hiện thành preset (hỏi tên). Hộp thoại Xuất cũng chọn "
-                  "preset từ đây cho cả lượt ảnh Lightroom xuất ra.")
+        hoi(o_ps, "Bộ mức retouch đã lưu. Chọn để áp, Lưu để lưu bảng hiện tại.")
         self.btn_ps_xoa = gd.NutTron(o_ps, "", kieu="chu", icon="dong", font=gd.CHU,
                                      command=self._xoa_preset)
         self.btn_ps_xoa.goi_y = gd.GoiY(self.btn_ps_xoa, "Xoá preset đang chọn")
@@ -1189,15 +1154,8 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         self.lbl_pham_vi = ttk.Label(o_pv, text="", wraplength=WRAP - 20,
                                      justify="left", anchor="w")
         self.lbl_pham_vi.pack(side="left")
-        hoi(o_pv, "Kéo thanh là chỉnh ẢNH ĐANG XEM (như Evoto) — ảnh lớn tính "
-                  "lại ngay. Mở thư mục mới thì mọi thanh ở 0; tự kéo tính năng "
-                  "muốn dùng.\n\n"
-                  "Reset về 0: đưa mọi thanh của ảnh đang xem về 0.\n\n"
-                  "Sync ảnh đã chọn: chép mức của ảnh đang xem sang các tấm đang "
-                  "chọn ở dải ảnh — Ctrl + bấm để chọn thêm, Shift + bấm để chọn "
-                  "một dãy, Ctrl+A chọn hết.\n\n"
-                  "Lúc chạy, ảnh khác mức nhau thì tool chạy theo từng nhóm mức "
-                  "(mỗi nhóm một lượt).")
+        hoi(o_pv, "Kéo thanh để chỉnh ảnh đang xem. Reset về 0: tắt hết. Sync: chép mức "
+                  "sang các ảnh đang chọn.")
         #[[ SYNC + RESET CHUYEN XUONG DUOI (user 5/10, nhu Evoto): hang the nhom
         #   + bang thanh keo o tren, thanh cong cu (Reset / Ve muc chung / Sync)
         #   nam DUOI bang keo. Nen cac nut nay dung o cuoi g_keo — xem o_duoi_keo
@@ -1235,22 +1193,18 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
                                     icon="dat_lai", command=self._reset_anh_0)
         self.btn_reset.pack(side="left")
         self.btn_reset.goi_y = gd.GoiY(
-            self.btn_reset, "Đưa mọi thanh của ẢNH ĐANG XEM về 0 (tắt hết tính "
-                            "năng). Muốn reset nhiều ảnh thì Reset rồi bấm Sync.")
+            self.btn_reset, "Đưa mọi thanh của ảnh đang xem về 0.")
         self.btn_sync_chon = gd.NutTron(o_duoi, "Sync ảnh đã chọn", kieu="phu", icon="dong_bo",
                                         font=gd.CHU, command=self._sync_chon)
         self.btn_sync_chon.pack(side="left", padx=(8, 0))
         self.btn_sync_chon.goi_y = gd.GoiY(
-            self.btn_sync_chon, "Chép mức của ảnh đang xem sang các tấm đang chọn "
-                                "ở dải ảnh (Ctrl / Shift + bấm để chọn nhiều tấm; "
-                                "Ctrl+A chọn hết).")
+            self.btn_sync_chon, "Chép mức của ảnh đang xem sang các ảnh đang chọn.")
 
         # ------------------------------------------------ máy & cách chạy
         dong = ttk.Frame(g_chay)
         dong.pack(fill="x", pady=(4, 0))
         ttk.Label(dong, text="Máy").pack(side="left")
-        hoi(dong, "auto: tự dùng card đồ hoạ nếu có. cuda: card NVIDIA. mps: Mac "
-                  "chip Apple. cpu: chỉ dùng CPU — chậm, nhưng máy nào cũng chạy.")
+        hoi(dong, "Phần cứng chạy retouch. auto: tự chọn (khuyên dùng).")
         self.chon_may = gd.PhanDoan(g_chay, self.v_may,
                                     [(x, x) for x in ("auto", "cuda", "mps", "cpu")])
         self.chon_may.pack(fill="x", pady=(3, 0))
@@ -1260,8 +1214,7 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         dong = ttk.Frame(g_chay)
         dong.pack(fill="x", pady=(10, 0))
         ttk.Label(dong, text="Số luồng").pack(side="left")
-        hoi(dong, "0 = để tool tự dò theo số lõi và bộ nhớ còn trống — khuyên "
-                  "dùng. Ép một con số là tắt phần tự dò đó.")
+        hoi(dong, "Số luồng chạy. 0 = tự chọn (khuyên dùng).")
         o = ttk.Frame(g_chay)
         o.pack(fill="x", pady=(3, 0))
         ttk.Spinbox(o, from_=0, to=16, width=4, textvariable=self.v_luong,
@@ -1277,16 +1230,14 @@ class RetouchWindow(MucMixin, MayMixin, Khung):
         dong = ttk.Frame(g_chay)
         dong.pack(fill="x", pady=(10, 0))
         ttk.Label(dong, text="Chế độ").pack(side="left")
-        hoi(dong, "Tự động: tool tự đo máy rồi chọn — nên dùng. Tiết kiệm: một "
-                  "luồng, ô nhớ nhỏ nhất — cho máy yếu hoặc khi đang chạy việc "
-                  "khác. Nhanh: dám dùng nhiều bộ nhớ hơn.")
+        hoi(dong, "Tự động: tool tự chọn (khuyên dùng). Tiết kiệm: cho máy yếu. Nhanh: dùng "
+                  "nhiều bộ nhớ hơn.")
         self.chon_che_do = gd.PhanDoan(
             g_chay, self.v_che_do,
             [(c, self.TEN_CHE_DO.get(c, c)) for c in rt.CHE_DO])
         self.chon_che_do.pack(fill="x", pady=(3, 0))
         o = ct(g_chay, self.v_lamlai, "Làm lại cả ảnh đã có kết quả",
-               "Mặc định tool bỏ qua ảnh đã có trong thư mục ra — chạy lại là đi "
-               "tiếp từ chỗ dừng. Bật để làm lại từ đầu.")
+               "Bật: làm lại cả ảnh đã có trong thư mục ra.")
         o.pack_configure(pady=(10, 2))
         ct(g_chay, self.v_dequy, "Cả thư mục con")
 

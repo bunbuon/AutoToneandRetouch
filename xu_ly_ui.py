@@ -222,10 +222,7 @@ class TrangXuLy(tk.Frame):
                                        command=self._doi_che_do, nen=m["tam"])
         self.chon_che_do.pack(fill="x", pady=(12, 0))
         self.chon_che_do.goi_y = gd.GoiY(
-            self.chon_che_do, "Chế độ chạy của Retouch. Tự động: tool tự đo máy rồi "
-                              "chọn — nên dùng. Nhanh: dám dùng nhiều bộ nhớ hơn. "
-                              "Tiết kiệm: một luồng, ô nhớ nhỏ nhất — cho máy yếu "
-                              "hoặc khi đang chạy việc khác.")
+            self.chon_che_do, "Chế độ chạy Retouch. Tự động: khuyên dùng.")
         self.the_canh = gd.TheBao(t3, muc="canh", chu="")
         self.btn_gpu = self.the_canh.tao_nut("Tải bản tăng tốc GPU…", self._tai_gpu)
 

@@ -62,6 +62,17 @@ class MayMixin:
     #   duyet > preview nhung, xem nguon_xem.anh_xem). Tin engine tra ve mang
     #   duong dan JPEG -> _dich_tin() doi nguoc ve RAW, phan con lai cua may xem
     #   truoc khong phai biet gi. ]]
+    def _canh_goc(self, path) -> int:
+        """Cạnh dài ảnh RAW gốc (nhớ theo đường dẫn) — 0 khi không biết."""
+        nho = self.__dict__.setdefault("_canh_goc_nho", {})
+        if path not in nho:
+            try:
+                import autotone as at
+                nho[path] = int(at.canh_goc_raw(path) or 0)
+            except Exception:                                # noqa: BLE001
+                nho[path] = 0
+        return nho[path]
+
     def _fp_that(self, path):
         if not path:
             return path
@@ -392,7 +403,13 @@ class MayMixin:
         if path == self._xem_fp and self._xem_goc_im is not None \
                 and src == getattr(self, "_xem_src", src):
             return
-        if m.gui(viec="mo_anh", fp=src):
+        #[[ 15/10 (user: "làm thon mặt không thấy thay đổi" — NVQ_6851): RAW xem qua ảnh
+        #   TRUNG GIAN (Lightroom dựng 1600 px / preview nhúng) -> engine quy ngưỡng "mặt quá
+        #   nhỏ" theo ảnh trung gian: thon mặt (150 px) thành 131 px, cả 4 mặt ~90 px bị bỏ
+        #   im lặng (cả mịn da / D&B / răng / nếp nhăn mắt). Gửi cạnh dài ảnh GỐC để engine
+        #   quy đúng như lúc chạy thật trên ảnh xuất cỡ gốc. ]]
+        cg = self._canh_goc(path) if str(src) != str(path) else 0
+        if m.gui(viec="mo_anh", fp=src, canh_goc=cg):
             self._xem_mo_dang = path
             self._xem_src = src            # 9/10: nguồn đổi (preset LR mới về) -> mở lại
 
@@ -1525,6 +1542,7 @@ class MayMixin:
             if nc in da or not (nc == vao_nc or nc.startswith(vao_nc + os.sep)):
                 continue
             da.add(nc)
+            td.setdefault("hd_raw", {})[nc] = Path(_src).stem.lower()   # tên RAW (mức riêng)
             ds_hd.append(theo_nc.get(nc, os.path.normpath(jpg)))
             td["hd_vua_co"] = True
         return True
@@ -1596,10 +1614,32 @@ class MayMixin:
         rieng_ten = td.get("rieng_ten") or {}
         ghi_rieng = False
         giu_gd = bool(td.get("giu_gd"))
+        #[[ 15/10 (NVQ_6851 xuất thành SAY-Media-6851.jpg): Export của Lightroom đặt tên
+        #   mới -> mức riêng (khoá theo tên RAW) tra theo tên file xuất trượt, ảnh ăn mức
+        #   CHUNG (thon mặt 16 thay vì 48). Ghép file xuất -> tên RAW: hàng đợi / bảng xuất
+        #   của plugin (gốc -> jpg), rồi XMP crs:RawFileName trong chính file JPEG. ]]
+        raw_cua = dict(td.get("hd_raw") or {})
+        if rieng_ten and td.get("xuat"):
+            try:
+                import xuat_lr
+                for src_, jpg_ in xuat_lr.bang_anh().items():
+                    raw_cua.setdefault(os.path.normcase(os.path.normpath(jpg_)),
+                                       Path(src_).stem.lower())
+            except Exception:                                # noqa: BLE001
+                pass
+
+        def ten_raw(p):
+            s = Path(p).stem.lower()
+            if not rieng_ten or s in rieng_ten:
+                return s
+            r = raw_cua.get(os.path.normcase(os.path.normpath(str(p))))
+            if r is None and td.get("xuat"):
+                r = self.rt.ten_raw_xmp(p)
+            return r or s
 
         def muc_cua(p):
             nonlocal ghi_rieng
-            m = rieng_ten.get(Path(p).stem.lower())
+            m = rieng_ten.get(ten_raw(p))
             if giu_gd:
                 #  lượt tách: KHÔNG đụng bảng mức của trang đang mở — ghi bảng riêng
                 #  của thư mục xuất (td["muc_anh_xuat"])

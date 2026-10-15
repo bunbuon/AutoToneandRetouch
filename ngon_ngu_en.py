@@ -2247,3 +2247,139 @@ TU_DIEN.update({
     'không còn ảnh nào để áp': 'no photos left to apply',
     'không có ảnh nào để áp': 'no photos to apply',
 })
+
+#  15/10 (v93): mô tả ngắn thay giải thích dài (bản dài: GHI_CHU_TINH_NANG.md)
+TU_DIEN.update({
+    'Tăng / giảm sáng cho cả buổi (EV).':
+        'Brighten / darken the whole session (EV).',
+    'Ấm / lạnh hơn cho cả buổi (K). Dương = ấm hơn, âm = lạnh hơn.':
+        'Warmer / cooler for the whole session (K). Positive = warmer, negative = cooler.',
+    'Chỉnh Tint cho cả buổi. Dương = hồng hơn, âm = xanh lá hơn.':
+        'Tint for the whole session. Positive = more magenta, negative = more green.',
+    'Ảnh ngoài trời chụp từ 17h: giữ không khí ấm của đèn, không kéo lạnh.':
+        "Outdoor photos from 5 pm: keep the warm light, don't cool it down.",
+    'Đưa mặt về mức sáng chuẩn (khuyên dùng): mọi ảnh có mặt cùng một mức sáng da.\nCân trong từng cảnh / cả buổi: theo độ sáng trung bình.\nTrộn: pha giữa hai cách.':
+        'Bring faces to a standard level (recommended): every photo with faces gets the same skin brightness.\nBalance per scene / whole session: by average brightness.\nBlend: a mix of both.',
+    'Vùng dùng để đo độ sáng. “Khuôn mặt + điểm bắt nét” là khuyên dùng.':
+        'Where brightness is measured. “Face + focus point” is recommended.',
+    'Ảnh nhóm: đo theo mặt nét và sáng nhất để không ai bị cháy.':
+        'Group photos: meter on the sharpest, brightest face so nobody is blown out.',
+    'Da trắng hồng: đưa màu da về màu đích.\nTheo nhiệt độ máy: giữ WB của máy ảnh.\nGrey-world: cân theo màu trung bình của ảnh.':
+        "Fair rosy skin: bring skin to the target color.\nCamera temperature: keep the camera WB.\nGrey-world: balance on the photo's average color.",
+    'Tính màu da một lần trên preview Lightroom — nhanh hơn. Cần học màu Lightroom cho máy ảnh (⋯ › Học màu Lightroom…).':
+        'Computes skin color once on the Lightroom preview — faster. Needs Lightroom color learned for the camera (⋯ › Learn Lightroom color…).',
+    'Mức sáng đích của da mặt (EV).':
+        'Target face skin brightness (EV).',
+    'Mức giảm sáng tối đa cho mỗi ảnh (EV).':
+        'Maximum darkening per photo (EV).',
+    'Mức tăng sáng tối đa cho mỗi ảnh (EV).':
+        'Maximum brightening per photo (EV).',
+    'Độ mạnh của chỉnh sáng: 1.0 = đủ, nhỏ hơn = nhẹ tay, lớn hơn = mạnh tay.':
+        'Strength of the exposure correction: 1.0 = full, lower = gentler, higher = stronger.',
+    'Mở vùng tối khi ảnh bị bết.':
+        'Open up the shadows when they are blocked.',
+    'Chỉnh HSL kênh Cam để da về đúng màu đích.':
+        'Adjust the Orange HSL channel to bring skin to the target color.',
+    'Dùng Color Grading đưa da về trắng hồng khi HSL chưa đủ. Có thể làm ám màu cả khung.':
+        'Use Color Grading to bring skin to fair rosy when HSL is not enough. May tint the whole frame.',
+    'Chỉnh 4 vùng sáng của Tone Curve (Highlights / Lights / Darks / Shadows), cộng lên preset.':
+        'Adjusts the 4 Tone Curve regions (Highlights / Lights / Darks / Shadows) on top of the preset.',
+    'Chỉnh curve R / G / B để da mặt về đúng màu đích.':
+        'Adjusts the R / G / B curves to bring face skin to the target color.',
+    'Hạ vùng sáng nhất của curve khi ảnh bị cháy.':
+        'Lowers the brightest part of the curve when the photo is blown out.',
+    'Hai ảnh cách nhau quá số phút này thì tính là cảnh mới.':
+        'Photos more than this many minutes apart start a new scene.',
+    'Đổi phông hoặc chỗ đứng thì tính là cảnh mới.':
+        'A new backdrop or position starts a new scene.',
+    'Buổi nhiều máy: gom cảnh riêng cho từng máy.':
+        'Multi-camera sessions: group scenes per camera.',
+    'Các ảnh trong cùng cảnh có cùng độ sáng và màu.':
+        'Photos in the same scene get the same brightness and color.',
+    'Loạt ảnh chụp liền tay cùng thông số nhận cùng một mức sáng và màu.':
+        'A burst with the same settings gets one brightness and color.',
+    'Chuỗi ảnh cùng một người: da đều nhau giữa các tấm.':
+        'A sequence of the same person: even skin across the shots.',
+    'Loạt ảnh chụp liên tiếp: tấm có người nhắm mắt được gắn 1 sao.':
+        "Bursts: shots where someone's eyes are closed get 1 star.",
+    'Gắn 1 sao cho ảnh có người nhắm mắt (ảnh 1–4 người).':
+        'Gives 1 star to photos with closed eyes (1–4 people).',
+    'Tự chỉnh thẳng (Upright Auto) cho ảnh chụp trước backdrop / màn LED.':
+        'Auto straighten (Upright Auto) for photos in front of a backdrop / LED wall.',
+    'Bật: áp cho mọi ảnh, ảnh Loại gắn 1★. Tắt: chỉ áp ảnh Giữ.':
+        'On: apply to every photo, rejected photos get 1★. Off: apply only to kept photos.',
+    'Bật AI Denoise của Lightroom cho ảnh có ISO từ ngưỡng bên dưới.':
+        'Turns on Lightroom AI Denoise for photos at or above the ISO below.',
+    'Phân tích ảnh rồi áp vào Lightroom.':
+        'Analyze the photos, then apply to Lightroom.',
+    'Huỷ lần gửi mà Lightroom chưa nhận.':
+        'Cancel the send Lightroom has not picked up.',
+    'Chọn loại buổi chụp — đặt sẵn mức sáng và màu phù hợp.':
+        'Choose the session type — presets suitable brightness and color.',
+    'Màu da mà tool đưa về. “Tạo từ ảnh đã sửa…” để lấy màu da theo gu của bạn.':
+        'The skin color the tool aims for. “Create from edited photos…” to use your own taste.',
+    'Lăn chuột: phóng to · Kéo: di chuyển · Nháy đúp: về lưới.\nGiữ chuột (hoặc phím \\): xem ảnh gốc.\n← →: tấm trước / sau · 0: vừa khung · 1: 100%.':
+        'Scroll: zoom · Drag: pan · Double-click: back to grid.\nHold the mouse (or \\ key): view the original.\n← →: previous / next · 0: fit · 1: 100%.',
+    'Thư mục ảnh Lightroom đã xuất.':
+        'Folder of photos exported from Lightroom.',
+    'Ảnh retouch thay thế ảnh gốc (không hoàn tác được).':
+        'Retouched photos replace the originals (cannot be undone).',
+    'Tiếp tục theo dõi thư mục Vào và tự retouch ảnh mới chép vào.':
+        'Keep watching the Input folder and retouch new photos automatically.',
+    'Ảnh không có khuôn mặt thì không retouch, chép nguyên bản.':
+        'Photos without faces are copied unchanged.',
+    'Bộ mức retouch đã lưu. Chọn để áp, Lưu để lưu bảng hiện tại.':
+        'Saved retouch levels. Choose to apply, Save to store the current levels.',
+    'Kéo thanh để chỉnh ảnh đang xem. Reset về 0: tắt hết. Sync: chép mức sang các ảnh đang chọn.':
+        'Drag a slider to adjust the current photo. Reset to 0: turn everything off. Sync: copy levels to the selected photos.',
+    'Đưa mọi thanh của ảnh đang xem về 0.':
+        'Set every slider of the current photo to 0.',
+    'Chép mức của ảnh đang xem sang các ảnh đang chọn.':
+        "Copy the current photo's levels to the selected photos.",
+    'Phần cứng chạy retouch. auto: tự chọn (khuyên dùng).':
+        'Hardware used for retouching. auto: choose automatically (recommended).',
+    'Số luồng chạy. 0 = tự chọn (khuyên dùng).':
+        'Number of workers. 0 = automatic (recommended).',
+    'Tự động: tool tự chọn (khuyên dùng). Tiết kiệm: cho máy yếu. Nhanh: dùng nhiều bộ nhớ hơn.':
+        'Automatic: the tool decides (recommended). Economy: for weak computers. Fast: uses more memory.',
+    'Bật: làm lại cả ảnh đã có trong thư mục ra.':
+        'On: redo photos already in the output folder.',
+    'Xem trước cả lưới theo một preset Lightroom (không đổi ảnh trong catalog).':
+        'Preview the whole grid with a Lightroom preset (the catalog is not changed).',
+    'Lightroom dựng theo preset mọi ảnh của buổi.':
+        'Lightroom renders every photo of the session with the preset.',
+    'Áp preset đang chọn cho mọi ảnh của buổi (hoàn tác được).':
+        'Apply the chosen preset to every photo of the session (can be undone).',
+    'Lightroom xuất ảnh rồi app retouch — một thao tác.':
+        'Lightroom exports, then the app retouches — one step.',
+    'Chất lượng JPEG (1–100).':
+        'JPEG quality (1–100).',
+    'Dung lượng lưu ảnh xem trước retouch.':
+        'Disk space for retouch previews.',
+    'Lọc theo số sao. Bấm lại đúng số sao để bỏ lọc.':
+        'Filter by star rating. Click the same rating again to clear.',
+    'Cần tải thư viện AI lần đầu chạy retouch.':
+        'Needs the AI library, downloaded the first time you run retouch.',
+    'Chế độ chạy Retouch. Tự động: khuyên dùng.':
+        'Retouch run mode. Automatic: recommended.',
+})
+
+#  15/10 (v93): mô tả ngắn thanh kéo Retouch (retouch.MO_TA_KEO)
+TU_DIEN.update({
+    'Xoá mụn, vết thâm, nốt ruồi nhỏ trên mặt.': 'Removes acne, dark spots and small moles on the face.',
+    'Xoá mụn, vết thâm trên da tay, chân, cơ thể.': 'Removes acne and dark spots on arms, legs and body.',
+    'Giảm độ bóng dầu trên da mặt.': 'Reduces oily shine on the face.',
+    'Làm mịn da mặt, giữ kết cấu da.': 'Smooths face skin while keeping its texture.',
+    'Làm đều vùng sáng tối trên da mặt.': 'Evens out light and shadow on face skin.',
+    'Làm đều màu da.': 'Evens out skin color.',
+    'Làm mịn da tay, chân, cơ thể.': 'Smooths skin on arms, legs and body.',
+    'Làm mờ nếp nhăn quanh mắt.': 'Softens wrinkles around the eyes.',
+    'Làm mờ nếp nhăn trán.': 'Softens forehead wrinkles.',
+    'Làm gọn vùng nọng cằm.': 'Tightens the double chin.',
+    'Làm trắng răng.': 'Whitens teeth.',
+    'Làm thon gọn khuôn mặt.': 'Slims the face.',
+    'Kéo dài chân (cần ảnh toàn thân).': 'Lengthens legs (needs a full-body photo).',
+    'Tăng chiều cao (cần ảnh toàn thân).': 'Increases height (needs a full-body photo).',
+    'Lấp vùng tóc thưa / hói.': 'Fills thinning / bald hair areas.',
+    'Mặc định không chạy cho nhóm này — bật “riêng” để chạy.': 'Off by default for this group — turn on “custom” to run it.',
+})

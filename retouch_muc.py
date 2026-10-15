@@ -218,17 +218,13 @@ class MucMixin:
             lct = ttk.Label(dong, text="· cần tải torch", style="Mo2.TLabel")
             lct.pack(side="left", padx=(6, 0))
             self._o_keo.append(lct)
-            lct.goi_y = gd.GoiY(lct, "Tính năng này cần thư viện AI (torch) — "
-                                     "bản cài tải về lần đầu bấm “Chạy retouch”. "
-                                     "Đặt mức trước cũng được; tải xong là chạy.")
+            lct.goi_y = gd.GoiY(lct, "Cần tải thư viện AI lần đầu chạy retouch.")
         chu = goi
         if nh:
             t = self.rt.tin_keo(goc).get(ten) or {}
+            #  15/10: chỉ câu ngắn — ghi chú kỹ thuật của saytool (ghi_chu) không hiện cho khách
             if nh in (t.get("bo_qua") or ()):
-                chu = ("Bước này mặc định KHÔNG chạy cho nhóm này — bật “riêng” "
-                       "là ép nó chạy. " + goi)
-            elif t.get("ghi_chu"):
-                chu = t["ghi_chu"]
+                chu = "Mặc định không chạy cho nhóm này — bật “riêng” để chạy."
         if chu:
             h = gd.NutHoi(dong, chu)
             h.pack(side="left", padx=(6, 0))

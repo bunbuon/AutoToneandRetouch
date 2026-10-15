@@ -524,9 +524,9 @@ def phan_giao_dien():
         ktra("đang có lượt xuất: nút Chạy nói tổng ảnh của LƯỢT (2), không phải số tấm đang chọn",
              "Đang xuất & retouch" in rt_win.btn_run.cget("text") and "2" in rt_win.btn_run.cget("text"),
              rt_win.btn_run.cget("text"))
-        ktra("màn Retouch: ô 'Chất lượng ảnh ra' HIỆN (đã pack — bản v89 vô hình)",
-             rt_win.o_chat_luong.winfo_manager() == "pack"
-             and "Theo ảnh gốc" in rt_win.btn_chat_luong.cget("text"), rt_win.btn_chat_luong.cget("text"))
+        #  15/10 (user): "Chất lượng ảnh ra" chỉ còn ở hộp Xuất — thẻ Thư mục Retouch không có
+        ktra("màn Retouch: KHÔNG còn ô 'Chất lượng ảnh ra' (chọn ở hộp Xuất)",
+             not hasattr(rt_win, "btn_chat_luong") and not hasattr(rt_win, "o_chat_luong"))
         #[[ 9/10 WORKER (user: "co anh thi load vao preview va add luon preset len
         #   Review"): anh vua xuat ra hien NGAY tren dai anh + anh lon, ke ca khi
         #   chua retouch (tuan tu). ]]
@@ -599,6 +599,19 @@ def phan_giao_dien():
             ktra("hết hàng đợi + Lightroom xong -> kết thúc lượt, đủ 2 ảnh",
                  rt_win._xuat is None and (ra2 / "A_1.jpg").is_file() and (ra2 / "A_2.jpg").is_file()
                  and "retouch 2 ảnh" in rt_win._chu_tt_chay, rt_win._chu_tt_chay)
+            #  15/10 (user): Ctrl+A ở trang Retouch chọn hết ảnh dù chưa bấm vào lưới
+            for lt in (rt_win.luoi, getattr(rt_win, "luoi_to", None)):
+                if lt is not None and lt.dang_chon is not None:
+                    lt.da_chon = {lt.dang_chon}
+            rt_win.btn_run.focus_set()
+            app.update()
+            rt_win.winfo_viewable = lambda: 1           # bài kiểm withdraw cửa sổ gốc
+            kq = rt_win._ctrl_a()
+            lts = [x for x in (rt_win.luoi, getattr(rt_win, "luoi_to", None)) if x is not None and x.ds]
+            ktra("Ctrl+A khi tiêu điểm không ở lưới -> chọn hết ảnh của lưới đang hiện",
+                 kq == "break" and any(set(x.da_chon) == {o["path"] for o in x.ds} and len(x.ds) > 1
+                                       for x in lts),
+                 str([(len(x.da_chon), len(x.ds)) for x in lts]))
         finally:
             at.LR_JOB_DIR = jd_cu
     finally:

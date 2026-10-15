@@ -2545,7 +2545,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         g_sang = nhom("sang", "Ánh sáng của buổi")
         g_tone = nhom("tone", "Cách cân tone")
         g_tran = nhom("tran", "Giới hạn chỉnh")
-        g_ghim = nhom("ghim", "Ghìm & bảo vệ")
+        g_ghim = nhom("ghim", "Tone Curve")                 # 15/10 user: trước "Ghìm & bảo vệ"
         g_canh = nhom("canh", "Gom cảnh & đồng bộ")
         g_loc = nhom("loc", "Lọc ảnh")
         #  13/10: Denoise là thông số develop như Highlights / HSL -> nhóm Ghìm & bảo vệ
@@ -2563,21 +2563,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #   chi ton them mot hang. ]]
         dong_lb = ttk.Frame(g_loai)
         dong_lb.pack(fill="x", pady=(4, 2))
-        hoi(dong_lb, "Cưới: không bù. Sự kiện: bù sáng "
-                     f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f} EV "
-                     "cho cả buổi. Kỷ yếu: bù sáng "
-                     f"{float(at.DEFAULTS.get('bu_sang_ky_yeu', 0.25)):+.2f} EV, tone nền "
-                     "sáng trong — trung tính sáng hơn, đen sâu hơn, vùng sáng nén lại "
-                     "(khi preset để trống Tone); không tự mở vùng tối; phanh chống "
-                     "cháy da nhường để mặt lên mức sáng chuẩn (tối đa "
-                     f"+{float(at.DEFAULTS.get('phanh_da_san_ky_yeu', 0.6)):.1f} EV); cân trắng ấm/hồng nhẹ "
-                     f"(+{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Temperature', 0)):.0f} K, "
-                     f"Tint +{float(dict(at.DEFAULTS.get('wb_bu_ky_yeu') or {}).get('Tint', 0)):.0f}); "
-                     "cảnh đèn vàng nặng (cân trắng kéo lạnh gần hết mức) sáng thêm "
-                     f"+{float(at.DEFAULTS.get('bu_sang_canh_am_ky_yeu', 0.5)):.1f} EV; "
-                     "KHÔNG chỉnh HSL (giữ HSL của preset; ảnh tool từng chỉnh HSL "
-                     "được trả về số preset). Không tự bật Color Grading (nó ám màu cả "
-                     "khung). Chọn xong vẫn sửa được số ở thanh dưới."
+        hoi(dong_lb, "Chọn loại buổi chụp — đặt sẵn mức sáng và màu phù hợp."
             ).pack(side="right", padx=(8, 0))
         NGAN_LB = {"cuoi": "Cưới", "su_kien": "Sự kiện", "ky_yeu": "Kỷ yếu"}
         self.cb_loai_buoi = gd.PhanDoan(
@@ -2594,25 +2580,17 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.sp_bu_sang = gd.ThanhTruot(
             hang_bu, self.v_bu_sang, -1.0, 1.0, 0.05, khi_xong=self.refresh_plan,
             nhan="Bù sáng +", mac_dinh="0",       # 12/10: bấm đúp thanh -> về 0
-            mo="Bù sáng cả buổi — EV, cộng sau chống cháy. Cưới 0 · Sự kiện "
-               f"{float(at.DEFAULTS.get('bu_sang_su_kien', 0.3)):+.2f}. "
-               "Ảnh không có mặt giữ nguyên. "
-               #[[ 4/10: o "Mat sang toi muc" da an — moc nam o day cho nguoi
-               #   dung biet so 0 cua thanh nay nghia la mat sang toi dau. ]]
-               f"Mốc sáng mặt: {float(at.DEFAULTS['face_target_ev']):+.2f} EV.")
+            mo="Tăng / giảm sáng cho cả buổi (EV).")
         self.sp_bu_sang.pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.sp_bu_k = gd.ThanhTruot(
             hang_bu, self.v_bu_k, -1000, 1000, 50, khi_xong=self.refresh_plan, nhan="K +",
             mac_dinh="0",
-            mo="Bù nhiệt độ cả buổi (K): cộng vào Temperature của mọi ảnh SAU mọi bước cân "
-               "WB tự động (kể cả “Ngoài trời buổi tối”). Dương = ấm hơn, âm = lạnh hơn. "
-               "Ảnh đen trắng giữ nguyên; Cân bằng trắng “Không đụng tới” thì không áp.")
+            mo="Ấm / lạnh hơn cho cả buổi (K). Dương = ấm hơn, âm = lạnh hơn.")
         self.sp_bu_k.pack(side="left", fill="x", expand=True, padx=4)
         self.sp_bu_tint = gd.ThanhTruot(
             hang_bu, self.v_bu_tint, -30, 30, 1, khi_xong=self.refresh_plan, nhan="Tint +",
             mac_dinh="0",
-            mo="Bù Tint cả buổi: cộng vào Tint của mọi ảnh như Bù K. Dương = hồng / magenta "
-               "hơn, âm = xanh lá hơn.")
+            mo="Chỉnh Tint cho cả buổi. Dương = hồng hơn, âm = xanh lá hơn.")
         self.sp_bu_tint.pack(side="left", fill="x", expand=True, padx=(4, 0))
         self.lbl_bu_sang = self.sp_bu_sang.lbl
         self.lbl_bu_k, self.lbl_bu_tint = self.sp_bu_k.lbl, self.sp_bu_tint.lbl
@@ -2655,40 +2633,27 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #[[ 12/10 — user: "su kien ngoai troi chieu toi ... WB dang dim K xuong, thuc te
         #   can tang K len". Canh do luc Phan tich (Places365) -> doi o nay chi tinh lai. ]]
         ct(g_sang, self.v_ngoai_toi, "Ngoài trời buổi tối: giữ ấm, không kéo lạnh",
-           "Tự nhận cảnh ngoài trời (cây, trời, phố) hay trong nhà (tường, trần, hội "
-           "trường) bằng mô hình Places365, gộp theo 30 phút. Ảnh ngoài trời chụp từ 17h, "
-           "trời tối: dùng màu da ánh sáng ngày và KHÔNG hạ nhiệt độ màu dưới preset — "
-           "đèn LED / flash gel cam là không khí của buổi. Chọn “Ánh đèn” ở trên thì "
-           "không áp.")
+           "Ảnh ngoài trời chụp từ 17h: giữ không khí ấm của đèn, không kéo lạnh.")
 
         # ------------------------------------------------ cách cân tone
         hop(g_tone, "Chế độ", self.v_mode, [m[0] for m in MODES],
             self._on_mode_change,
-            "Đưa mặt về mức sáng chuẩn: mọi ảnh có mặt đưa về cùng một mức sáng "
-            f"da ({float(at.DEFAULTS['face_target_ev']):+.2f} EV) — khuyên dùng.\n"
-            "Cân trong từng cảnh: theo trung vị độ "
-            "sáng của chính cảnh đó.\nCân cả buổi về một mức: trung vị của cả "
-            "buổi.\nTrộn: pha giữa trung vị cảnh và mức chuẩn (ô “Độ trộn”).")
+            "Đưa mặt về mức sáng chuẩn (khuyên dùng): mọi ảnh có mặt cùng một mức "
+            "sáng da.\nCân trong từng cảnh / cả buổi: theo độ sáng trung bình.\nTrộn: "
+            "pha giữa hai cách.")
         # đổi cách đo sáng thì phải quét lại ảnh
         hop(g_tone, "Đo sáng", self.v_meter, [m[0] for m in METERS],
             self._on_meter_change,
-            "Đo độ sáng ở đâu trên ảnh. “Khuôn mặt + điểm bắt nét” đo da mặt "
-            "của người được lấy nét — khuyên dùng. Đổi cách đo thì bấm "
-            "“Xử lý ảnh” để đo lại ảnh.")
+            "Vùng dùng để đo độ sáng. “Khuôn mặt + điểm bắt nét” là khuyên dùng.")
         #[[ 11/10 — user: "chi do sang tren mat sac net, out net bo qua; anh tap
         #   the thi xu ly cho mat dang sang nhat". Xem at.do_mat_sang_nhat. Tinh
         #   tren so do tung mat da co -> doi o nay chi tinh lai, khong quet lai. ]]
         ct(g_tone, self.v_mat_sang_nhat, "Ảnh nhiều người: đo mặt nét sáng nhất",
-           "Ảnh có từ 2 mặt: bỏ mặt out nét, đo theo mặt đang được chiếu "
-           "sáng nhất — mặt đó không bị cháy, cả nhóm cùng một mức. Ảnh đám "
-           "đông không tối đi quá 0.5 EV so với cách đo cũ. Ảnh một người "
-           "giữ nguyên.")
+           "Ảnh nhóm: đo theo mặt nét và sáng nhất để không ai bị cháy.")
         cb_wb = hop(g_tone, "Cân bằng trắng", self.v_wb, [w[0] for w in WBS],
                     self.refresh_plan,
-            "Da trắng hồng: kéo màu da về đích da trắng hồng (đích riêng cho ánh "
-            "sáng ngày và ánh đèn), kèm WB người chụp đặt trên máy khi preset để "
-            "trống WB.\nTheo nhiệt độ máy đo được: chỉ kéo về WB của máy.\n"
-            "Grey-world: cân theo màu trung bình của preview.")
+            "Da trắng hồng: đưa màu da về màu đích.\nTheo nhiệt độ máy: giữ WB của máy "
+            "ảnh.\nGrey-world: cân theo màu trung bình của ảnh.")
         #[[ 12/10 user: "mau da dich cho tung buoi ... moi nguoi co mot mau da theo gu cua
         #   ho -> cho ho chon mau da qua anh ma ho da sua san". Do da tren anh da sua bang
         #   CHINH measure() (at.mau_da_tu_anh), luu thanh mau co ten — dung lai buoi sau.
@@ -2703,29 +2668,19 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.cv_mau_da = tk.Canvas(dong_wb, width=40, height=16, highlightthickness=0,
                                    bg=gd.MAU["nen"])
         self.cv_mau_da.pack(side="right", padx=(0, 4))
-        hoi(dong_wb, "MÀU DA ĐÍCH — màu da mà Cân bằng trắng, HSL da và Color Grading cùng "
-                     "nhắm tới. Hai chấm: đích ánh đèn · đích ánh sáng ngày. Mặc định: da "
-                     "trắng hồng (đèn) và da rám (ngày).\n“Màu da › Tạo từ ảnh đã sửa…”: "
-                     "chọn vài ảnh JPEG bạn đã chỉnh xong theo gu của mình (xuất từ "
-                     "Lightroom). Tool đo da trên các mặt trong ảnh — cùng cách đo với ảnh "
-                     "RAW — tách theo ánh sáng ngày / đèn (EXIF), lưu thành mẫu có tên. App "
-                     "nhớ mẫu dùng gần nhất và mẫu riêng của từng buổi."
+        hoi(dong_wb, "Màu da mà tool đưa về. “Tạo từ ảnh đã sửa…” để lấy màu da theo gu của "
+                     "bạn."
             ).pack(side="right", padx=(0, 6))
         self._ve_mau_da()
         ct(g_tone, self.v_mot_luot, "Chế độ nhanh một lượt (thử nghiệm)",
-           "Đo da trên preview Lightroom rồi tính WB / HSL / Color Grading một lần cho "
-           "trúng màu da đích — nhanh hơn đường thường (đo trên buổi thật: 15 → 6 phút). "
-           "Cần mô hình màu Lightroom của máy ảnh: bộ cài có sẵn Sony A7 IV, A7 V, Nikon "
-           "Z5 II, Z 8; máy khác học ở ⋯ › Học màu Lightroom cho máy ảnh này…. Máy chưa "
-           "có mô hình tự đi đường thường.")
+           "Tính màu da một lần trên preview Lightroom — nhanh hơn. Cần học màu "
+           "Lightroom cho máy ảnh (⋯ › Học màu Lightroom…).")
         #[[ Hai o nay chi co nghia voi mode absolute/hybrid — _on_mode_change()
         #   bat/tat chung, nen phai giu dung ten bien lbl_target/sp_target/
         #   lbl_blend/sp_blend. De ngay duoi o "Che do" vi chung phu thuoc no. ]]
         self.lbl_target, self.sp_target = so(
             g_tone, "Mặt sáng tới mức", self.v_target, -3.0, 0.0, 0.01,
-            "Mức sáng ĐÍCH của da mặt (EV log2, càng âm càng tối). Mặc định "
-            f"{float(at.DEFAULTS['face_target_ev']):+.2f}. Chỉ dùng ở chế độ "
-            "“Đưa mặt về mức sáng chuẩn” và “Trộn”.", phim=0.05)
+            "Mức sáng đích của da mặt (EV).", phim=0.05)
         #[[ AN O "MAT SANG TOI MUC" (4/10 — user: "Do da co tinh nang bu sang ca
         #   buoi nen an di phan Mat sang toi muc di. Co the set ... ve -1.00").
         #   Sang toi theo buoi chinh o "Bu sang ca buoi" (nhom Loai buoi) — hai
@@ -2741,15 +2696,11 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
 
         # ------------------------------------------------ giới hạn chỉnh
         so(g_tran, "Dìm tối đa −", self.v_maxev, 0.1, 5.0, 0.05,
-           "Trần cho chiều DÌM TỐI. Đo ra phải dìm 1.8 EV mà đặt 1.00 thì chỉ "
-           "dìm 1.00. Chiều kéo sáng do ô dưới quyết định.")
+           "Mức giảm sáng tối đa cho mỗi ảnh (EV).")
         so(g_tran, "Kéo sáng tối đa +", self.v_maxup, 0.1, 5.0, 0.05,
-           "Trần cho chiều KÉO SÁNG, để riêng vì hai chiều không đối xứng: dìm "
-           "quá tay chỉ mất công, kéo sáng thì cứu được ảnh ngược sáng hay "
-           "chụp trước màn LED. Phần chống cháy sáng vẫn gác.")
+           "Mức tăng sáng tối đa cho mỗi ảnh (EV).")
         so(g_tran, "Mức độ can thiệp", self.v_gain, 0.1, 1.5, 0.05,
-           "Nhân vào mức chỉnh trước khi kẹp trần. 1.0 = đủ như đo được, "
-           "0.7 = dè dặt, 1.2 = mạnh tay.")
+           "Độ mạnh của chỉnh sáng: 1.0 = đủ, nhỏ hơn = nhẹ tay, lớn hơn = mạnh tay.")
 
         #[[ GHIM & BAO VE doi THONG SO cua tung anh (highlights, shadows, mau,
         #   curve) — chung deu tra loi cau "anh nay sang toi dau".
@@ -2759,68 +2710,26 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         ct(g_ghim, self.v_hl, "Tự kéo Highlights khi cháy sáng",
            "Ngăn làm cháy thêm — không gỡ được chỗ đã cháy sẵn")
         ct(g_ghim, self.v_sh, "Tự kéo Shadows khi bết tối",
-           "Nâng Shadows khi vùng tối bết lại; chỉ cộng lên số của preset.\n"
-           "Loại buổi Kỷ yếu thì không mở (giữ đen sâu như ảnh kỷ yếu đã duyệt).")
+           "Mở vùng tối khi ảnh bị bết.")
         #[[ 9/10: HSL mau da anh CUOI — quyet dinh tren da DO THAT o anh duyet
         #   Lightroom ve sau lan ghi WB + Tone (at.hsl_da_cuoi). Dat TRUOC o Color
         #   Grading: dung thu tu chuoi WB + Tone -> HSL -> Color Grading. ]]
         _k = at.DEFAULTS.get("hsl_da_cuoi_dam") or (0.036, 0.042)
         _h = at.DEFAULTS.get("hsl_da_cuoi_hue") or (36.0, 41.0)
         ct(g_ghim, self.v_hsl_da, "Tự chỉnh HSL màu da (Cưới)",
-           "Đã chọn MẪU Màu da (mọi loại buổi): kênh Cam đưa da về đúng màu da của mẫu — "
-           "một đích cho cả WB, HSL và Color Grading; da đo trên ảnh duyệt, chưa có thì dự "
-           "đoán; chạm trần vẫn áp phần làm da gần mẫu hơn.\n"
-           "Kênh Cam (Orange) đưa da chủ thể về TRẮNG, chỉ hơi hồng — CHỈ khi đã ĐO "
-           "được da thật sau WB + Tone:\n"
-           "1. Ghi (WB + Tone).  2. ⋯ → Duyệt nhanh → Dựng ảnh duyệt.  3. Ghi lại: "
-           "tool đo da trên ảnh duyệt Lightroom vẽ rồi mới quyết HSL.  4. Duyệt lại để "
-           "kiểm.\n"
-           f"· Độ đậm da về {float(_k[0]):.3f}–{float(_k[1]):.3f} (trắng hơn preset "
-           f"~0.046); hue {float(_h[0]):.0f}–{float(_h[1]):.0f}°: vàng hơn thì kéo bớt "
-           "vàng tới mép, đỏ hơn thì lùi về vàng; da trong khoảng thì không đụng. Theo "
-           "từng cảnh.\n"
-           "· Tính từ màu da của PRESET GỐC (trừ phần HSL tool đã ghi) — phần chỉnh "
-           "trước tự được gỡ, Ghi nhiều lần không cộng dồn.\n"
-           "· KHÔNG đổi cân trắng. Chỉ preset SAY (saymedia7v / NoWBExposure); tắt ô "
-           "thì ảnh tool đã chỉnh HSL trả về số preset.")
+           "Chỉnh HSL kênh Cam để da về đúng màu đích.")
         ct(g_ghim, self.v_grade, "Đẩy tone về da trắng hồng",
-           "Đã chọn MẪU Màu da: Color Grading xoay phần da CÒN lệch mẫu sau HSL, không "
-           "đẩy vùng trắng quá 0.003 OkLab (không ám).\n"
-           "Color Grading về da trắng hồng (da đào) như ảnh kỷ yếu anh đã duyệt — "
-           "bước CUỐI của chuỗi màu da: cân WB + Tone → đo màu da dự đoán trong "
-           "Lightroom → HSL kênh da (Kỷ yếu) → đo lại → Color Grading chỉ cho ảnh "
-           f"da CÒN lệch quá {float(at.DEFAULTS.get('grade_nguong_hue', 4)):.0f}°, "
-           f"tính trên phần vượt, trần Sat {int(at.DEFAULTS.get('grade_sat_max', 8))}.\n"
-           "· Lưu ý: Color Grading đổi màu cả các vùng cam / trắng trong khung, "
-           "dễ thấy ám màu — nên để TẮT trừ khi HSL chưa đủ.\n"
-           "· Kỷ yếu: bật / tắt ô này KHÔNG đổi cân trắng và HSL. Cưới / Sự kiện: "
-           "bật thì cân trắng đưa da về màu học từ ảnh kỷ yếu (riêng trong nhà và "
-           "ngoài trời).\n"
-           "· Cộng vào bánh xe Midtone + Highlight của preset, không ghi đè. Tắt "
-           "lại thì ảnh tool đã grade được trả về số của preset. Ảnh không thấy "
-           "mặt thì không grade.")
+           "Dùng Color Grading đưa da về trắng hồng khi HSL chưa đủ. Có thể làm ám "
+           "màu cả khung.")
         ct(g_ghim, self.v_curve, "Tự chỉnh Curve (parametric)",
-           "Cộng bốn núi parametric curve (Highlights / Lights / Darks / "
-           "Shadows) lên preset; point curve của preset giữ nguyên.")
+           "Chỉnh 4 vùng sáng của Tone Curve (Highlights / Lights / Darks / "
+           "Shadows), cộng lên preset.")
         #[[ 13/10: CURVE DIEM do tren anh Lightroom dung (luot 2 cua Xu ly anh, xem
         #   curve_da.py). User chot: mac dinh TAT cho toi khi xem PDF truoc / sau. ]]
         ct(g_ghim, self.v_curve_da, "Curve R/G/B: da mặt về màu đích",
-           "Sau khi áp WB / Tone, Lightroom dựng lại ảnh, app tách mặt nạ da mặt và "
-           "đo TỪNG điểm da, rồi chỉnh ba kênh R / G / B của curve để da về màu đích "
-           "(mẫu màu da nếu có). Ghép vào curve của preset, không ghi đè.\n"
-           "· Chỉ chỉnh dải sáng của da; vùng trắng / xám cùng độ sáng không được ám "
-           "quá 0,003 (OkLab) — vượt thì thu bớt.\n"
-           "· Không tới được đích thì vẫn chỉnh phần làm da gần đích hơn (không đổi "
-           "xấu hue để được chroma hay ngược lại).\n"
-           "· Cả loạt ảnh liền nhau cùng một curve. Cần nguồn catalog và plugin bản "
-           "mới; thêm ~7–10 phút / 1000 ảnh.")
+           "Chỉnh curve R / G / B để da mặt về đúng màu đích.")
         ct(g_ghim, self.v_curve_chay, "Curve tổng: nén vùng cháy sáng",
-           "Sau khi áp WB / Tone, ảnh Lightroom dựng còn cháy (≥ 2% khung có kênh ≥ 250, "
-           "đã bỏ đốm bóng) thì bẻ ĐỈNH curve tổng: dưới mức sáng của da giữ nguyên, "
-           "phần sáng nhất hạ xuống (đỉnh không dưới 235).\n"
-           "· Chỗ đã cháy hẳn trong RAW không lấy lại được chi tiết — thành trắng xám "
-           "phẳng.\n"
-           "· Cả loạt ảnh liền nhau cùng một mức nén.")
+           "Hạ vùng sáng nhất của curve khi ảnh bị cháy.")
 
         # ------------------------------------------- gom cảnh & đồng bộ
         #[[ HAI LUAT TACH CANH, MOI LUAT MOT CONG TAC.
@@ -2836,8 +2745,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         lui = gd.don_vi(self)
         self.lbl_gap, self.sp_gap = so(
             g_canh, "Nghỉ quá (phút)", self.v_gap, 1.0, 60.0, 0.5,
-            "Nghỉ giữa hai tấm quá số phút này thì coi là cảnh mới. Thanh "
-            "kéo 1–60; cần hơn thì gõ thẳng vào ô số (tới 240).", lui=lui)
+            "Hai ảnh cách nhau quá số phút này thì tính là cảnh mới.", lui=lui)
         #[[ Do that buoi 1308: trong 13 nhat cat theo gio, 6 nhat co khung hinh
         #   y nguyen — chinh la nhung doan check-in chup ~30 phut mot phong. ]]
         o_cs = ct(g_canh, self.v_gap_can_sig, "…nhưng chỉ khi bối cảnh cũng đổi",
@@ -2845,28 +2753,21 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                   "cảnh mới", lui=lui)
         self.cb_gap_can_sig = o_cs.winfo_children()[0]
         ct(g_canh, self.v_scenesig, "Tách cảnh theo bối cảnh khung hình",
-           "So chữ ký bố cục của từng khung; đổi phông / đổi chỗ đứng thì "
-           "sang cảnh mới dù chụp liền tay.")
+           "Đổi phông hoặc chỗ đứng thì tính là cảnh mới.")
         #[[ 12/10 (user): nhieu may chup xen nhau -> gom canh tren TUNG MAY, theo
         #   ten file — xem at.group_scenes(theo_may). ]]
         ct(g_canh, self.v_canh_may, "Gom cảnh theo từng máy (xếp theo tên file)",
-           "Buổi nhiều máy chụp cùng lúc: ảnh mỗi máy xếp theo tên file và gom cảnh "
-           "riêng — ảnh máy này không chen vào cảnh của máy kia làm vụn cảnh. Lưới "
-           "ảnh cũng hiện theo thứ tự đó.")
+           "Buổi nhiều máy: gom cảnh riêng cho từng máy.")
         ct(g_canh, self.v_level, "Đồng bộ sáng + màu trong cùng bối cảnh",
-           "Trong một cảnh, đưa mọi tấm về cùng độ sáng và màu SAU chỉnh — "
-           "xem liền một dải ảnh không bị nhấp nháy.")
+           "Các ảnh trong cùng cảnh có cùng độ sáng và màu.")
         #[[ 3/10 — user: "cung khung + cung thong so ma hai muc sang khac nhau
         #   phai giai quyet dut diem". Xem at.dong_bo_loat(). ]]
         ct(g_canh, self.v_dong_bo_loat, "Cùng khung + cùng thông số → cùng một mức",
-           "Loạt chụp liền tay (cùng máy, cùng khẩu/tốc/ISO, cùng bố cục, "
-           "trong 60 giây) nhận đúng MỘT mức sáng và màu.")
+           "Loạt ảnh chụp liền tay cùng thông số nhận cùng một mức sáng và màu.")
         #[[ 11/10 — user: "cung canh va cung chu the thi phai do cac buc anh
         #   cung chu the do de chinh cho ra deu sang". Xem at.dong_bo_chu_the. ]]
         ct(g_canh, self.v_dong_bo_chu_the, "Cùng chủ thể trong chuỗi ảnh liền → da đều nhau",
-           "Chuỗi ảnh liền nhau (cùng máy, cùng thông số, cách ≤ 15 giây) mà máy "
-           "lấy nét vào cùng người: đo da người đó ở từng tấm rồi chỉnh để da ra "
-           "đều nhau — người đi lại gần đèn sáng dần lên thì Exposure giảm dần theo.")
+           "Chuỗi ảnh cùng một người: da đều nhau giữa các tấm.")
 
         #[[ CANH BAO KHI TAT CA HAI LUAT -> ca buoi la MOT canh. "Dong bo sang
         #   + mau" mac dinh BAT va no san phang moi anh ve trung vi cua canh —
@@ -2888,21 +2789,16 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #   93 nhan that cua buoi 1308. ]]
         #  8/10: luat moi cua user — xem at.pick_burst / at.mat_nghieng
         ct(g_loc, self.v_burst, "Lọc ảnh trùng khung",
-           "Chụp liên tiếp: ảnh 1–4 người CÓ NGƯỜI NHẮM MẮT → 1 sao; ai cũng mở mắt "
-           "thì giữ; ảnh trên 4 người giữ nguyên. Đo mắt khi phân tích (~0.8s/ảnh)")
+           "Loạt ảnh chụp liên tiếp: tấm có người nhắm mắt được gắn 1 sao.")
         o = ct(g_loc, self.v_blink, "Lọc ảnh mắt không dùng được",
-               "1 người hoặc nhóm 2–4; ảnh tập thể đông người bỏ qua. Chỉ xét mặt "
-               "trực diện / 3/4 — mặt nghiêng bỏ qua. Đo luôn khi phân tích, chậm "
-               "thêm ~0.8s/ảnh")
+               "Gắn 1 sao cho ảnh có người nhắm mắt (ảnh 1–4 người).")
         self.cb_blink = o.winfo_children()[0]
         ct(g_loc, self.v_upright, "Auto Transform cho ảnh backdrop / màn LED",
-           "Ghi Upright = Auto cho ảnh nhiều đường thẳng (backdrop, màn LED) "
-           "có người mà mặt không chiếm quá lớn.")
+           "Tự chỉnh thẳng (Upright Auto) cho ảnh chụp trước backdrop / màn LED.")
         #[[ 13/10: nut "Xu ly anh" phan tich xong TU AP — khong con hop hoi "chi anh
         #   Giu / toan bo" giua chung (12/10). Pham vi dat san o day. ]]
         ct(g_loc, self.v_ap_loai, "Áp cả ảnh Loại 1★ vào Lightroom",
-           "Bật: Xử lý ảnh áp thông số cho MỌI ảnh, ảnh Loại được gắn 1★ để lọc bên "
-           "Lightroom. Tắt: chỉ áp ảnh Giữ — ảnh Loại không đổi thông số, không gắn sao.")
+           "Bật: áp cho mọi ảnh, ảnh Loại gắn 1★. Tắt: chỉ áp ảnh Giữ.")
 
         # ------------------------------------------------ giảm nhiễu (13/10)
         #[[ User 13/10: "Them option Denoise anh, tinh nang co san trong Lightroom.
@@ -2912,10 +2808,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #   Denoise ghi ngay vao anh, khong tao DNG) cho anh ISO >= nguong, SAU khi ap
         #   thong so — xem AutoToneCore.chayDenoise. ]]
         ct(g_denoise, self.v_denoise, "Denoise ảnh ISO cao (AI Denoise của Lightroom)",
-           "Ảnh có ISO từ ngưỡng dưới trở lên được bật Denoise của Lightroom ngay sau "
-           "khi áp thông số. Lightroom sẽ mở module Develop và chọn lần lượt từng ảnh "
-           "đó để bật (Lightroom Classic 14.4 trở lên); Denoise chạy nền trong "
-           "Lightroom, mỗi ảnh vài giây tuỳ card màn hình.")
+           "Bật AI Denoise của Lightroom cho ảnh có ISO từ ngưỡng bên dưới.")
         self.lbl_denoise_iso, self.sp_denoise_iso = so(
             g_denoise, "Bật từ ISO", self.v_denoise_iso, 400, 12800, 100,
             "Ảnh có ISO lớn hơn hoặc bằng số này mới Denoise. Mặc định 2000.",
@@ -3092,10 +2985,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.btn_xu_ly.pack(side="left")
         self.btn_xu_ly.goi_y = gd.GoiY(
             self.btn_xu_ly,
-            "Phân tích ảnh (ảnh đã có kết quả thì không đo lại) rồi tự áp vào "
-            "Lightroom — cửa sổ tiến trình báo từng bước, xong thì báo lại.\n"
-            "Ảnh Loại 1★, Denoise ảnh ISO cao: đặt trong Thiết lập (⚙).\n"
-            "Đo lại cả buổi: ⋯ → Phân tích lại cả buổi.")
+            "Phân tích ảnh rồi áp vào Lightroom.")
         self.v_lrpush.trace_add("write", lambda *_a: self._dat_chu_nut())
         self.menu_them = tk.Menu(self, tearoff=0)
         self.menu_them.add_checkbutton(label="Đẩy thẳng vào Lightroom",
@@ -3138,9 +3028,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                                       icon="dung", command=self.huy_gui)
         self.btn_huy_gui.goi_y = gd.GoiY(
             self.btn_huy_gui,
-            "Lightroom chưa nhận lần gửi này (chưa mở, hoặc plugin không chạy).\n"
-            "Huỷ để không còn job nằm chờ — lúc nào Lightroom mở lên cũng sẽ\n"
-            "không áp nó nữa. Sau đó bấm Xử lý ảnh lại khi Lightroom đã sẵn sàng.")
+            "Huỷ lần gửi mà Lightroom chưa nhận.")
         self.lbl_job.pack(side="left", fill="x", expand=True)
 
     def _build_dau(self, cha):
@@ -3332,9 +3220,11 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.loc_sao.pack(side="left", padx=(4, 0))
         #  14/10 (user: "show cái lớp mask của da đang dùng để tool xử lý … cho từng ảnh")
         self.v_mask = tk.BooleanVar(value=False)
-        self.chip_mask = gd.ChipBat(hang, self.v_mask, "Mask da", cham="#3cdc5a",
-                                    command=self._doi_mask, nen=m["toi"])
-        self.chip_mask.pack(side="left", padx=(8, 0))
+        #  15/10 (user): "Mask da" chỉ có ở bản dev — bản đóng gói không có nút này
+        if not dd.dong_goi():
+            self.chip_mask = gd.ChipBat(hang, self.v_mask, "Mask da", cham="#3cdc5a",
+                                        command=self._doi_mask, nen=m["toi"])
+            self.chip_mask.pack(side="left", padx=(8, 0))
         self.v_xem = tk.StringVar(value="luoi")
         self.v_kieu_xem = tk.StringVar(value="luoi")
         self.chon_xem = gd.NhomNutIcon(hang, self.v_kieu_xem,
@@ -5171,11 +5061,15 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.wait_window(d)
         if d.ket_qua:
             kq = dict(d.ket_qua)
-            #  chất lượng retouch chọn ở hộp Xuất -> nút ở màn Retouch hiện đúng (15/10)
-            if kq.get("chat_luong_ra") is not None and rt_win is not None \
-                    and hasattr(rt_win, "_chon_chat_luong"):
+            #  chất lượng retouch chọn ở hộp Xuất -> retouch.json + cấu hình màn Retouch đang
+            #  nhớ (15/10: ô chọn ở thẻ Thư mục Retouch đã bỏ — chỉ còn ở hộp Xuất)
+            if kq.get("chat_luong_ra") is not None:
                 try:
-                    rt_win._chon_chat_luong(kq["chat_luong_ra"])
+                    import retouch as _rt
+                    v_cl = _rt.chuan_chat_luong(kq["chat_luong_ra"])
+                    _rt.ghi_cau_hinh({"chat_luong_ra": v_cl})
+                    if rt_win is not None and isinstance(getattr(rt_win, "cf", None), dict):
+                        rt_win.cf["chat_luong_ra"] = v_cl
                 except Exception:                            # noqa: BLE001
                     pass
             if chi_anh:
@@ -7168,10 +7062,14 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                  + (f" · đo lúc {datetime.fromtimestamp(luc).strftime('%H:%M %d/%m')}"
                     + (" (đã lưu)" if getattr(self, "_do_nap", False) else "")
                     if luc else ""))
-        #  15/10: plan() có thể bỏ HẾT ảnh (cả buổi "sửa tay") — min() của rỗng làm sập
-        msg = (f"{n} ảnh · {nsc} cảnh · {changed} ảnh sẽ đổi · "
-               f"ΔEV từ {min(deltas):+.2f} đến {max(deltas):+.2f} "
-               f"(trung bình {sum(deltas)/n:+.2f})" if deltas else f"{n} ảnh")
+        #  15/10 (user: "Các thông báo hiển thị ngắn gọn. Các thay đổi chi tiết bỏ đi"): bản
+        #  đóng gói chỉ nói số ảnh / cảnh / ảnh đổi + cảnh báo cần làm gì; ΔEV, màu da, HSL…
+        #  chỉ hiện ở bản dev (chạy mã nguồn). deltas rỗng: plan() có thể bỏ HẾT ảnh.
+        chi_tiet = not dd.dong_goi()
+        msg = f"{n} ảnh · {nsc} cảnh · {changed} ảnh sẽ đổi"
+        if chi_tiet and deltas:
+            msg += (f" · ΔEV từ {min(deltas):+.2f} đến {max(deltas):+.2f} "
+                    f"(trung bình {sum(deltas)/n:+.2f})")
         #[[ Bang it anh hon thu muc thi PHAI noi ngay o day. Do la cau hoi dau
         #   tien nguoi dung dat ra, va cho nay la cho ho dang nhin. ]]
         hong = getattr(self, "_do_hong", [])
@@ -7192,7 +7090,9 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #   co / khong co HSL va Color Grading. ]]
         md = dict(getattr(at, "MAU_DA", None) or {})
         hc = dict(md.get("hsl") or {})
-        if md.get("mau"):
+        if not chi_tiet:
+            pass
+        elif md.get("mau"):
             msg += tom_tat_mau_da(md)
         elif hc.get("cuoi"):
             #[[ 9/10: HSL mau da anh cuoi — noi ro DA DO THAT o dau, quyet gi, va

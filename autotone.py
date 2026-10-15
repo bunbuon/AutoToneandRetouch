@@ -302,6 +302,18 @@ def _parse_ifd(data, offset, e, seen, jpegs, tags, depth=0):
             if v:
                 tags[key] = v[0]
 
+    #  15/10: cạnh dài lớn nhất trong mọi IFD (ImageWidth / Length, PixelX / YDimension) = cỡ
+    #  ảnh RAW gốc — retouch xem trước quy ngưỡng "mặt quá nhỏ" theo ảnh gốc (canh_goc_raw)
+    for tag in (0x0100, 0x0101, 0xA002, 0xA003):
+        if tag in ent:
+            v = get(tag)
+            try:
+                c = int(v[0]) if v else 0
+            except (TypeError, ValueError, IndexError):
+                c = 0
+            if 0 < c <= 20000 and c > int(tags.get("canh_max") or 0):
+                tags["canh_max"] = c
+
     if T_JPEG_OFFSET in ent and T_JPEG_LENGTH in ent:
         o, l = get(T_JPEG_OFFSET), get(T_JPEG_LENGTH)
         if o and l:
@@ -691,6 +703,14 @@ def _doc_khung_raw(mm, tags: dict, jpegs: list) -> bool:
     else:
         return False
     return True
+
+
+def canh_goc_raw(path) -> int:
+    """Cạnh dài (px) của ảnh RAW gốc đọc từ header — 0 khi không đọc được (CR3, file hỏng)."""
+    try:
+        return int((read_raw(Path(path))[1] or {}).get("canh_max") or 0)
+    except Exception:                                        # noqa: BLE001
+        return 0
 
 
 def read_raw(path: Path):

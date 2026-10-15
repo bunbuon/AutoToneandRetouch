@@ -3719,9 +3719,7 @@ class LocSao(tk.Frame):
         self.chip_chua = _Chip(self, "chua", "Chưa có sao", None, self._nen) if co_chua else None
         if self.chip_chua is not None:
             self.chip_chua.pack(side="left", padx=(6, 0))
-        self.c.goi_y = GoiY(self.c, "Lọc theo số sao trong Lightroom — bấm ≥ / = / ≤ để "
-                                    "đổi cách so, bấm lại đúng số sao để bỏ lọc. "
-                                    "Chấm sao: bấm sao dưới ảnh, hoặc phím 0–5.")
+        self.c.goi_y = GoiY(self.c, "Lọc theo số sao. Bấm lại đúng số sao để bỏ lọc.")
         self.ve()
         if self.chip_chua is not None:
             self.chip_chua.ve()
