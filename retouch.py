@@ -1202,7 +1202,37 @@ def chon_chung_rieng(m: dict, theo_nhom, dung: str) -> dict:
     return dict(m)
 
 
-ON_DINH_RA_GIAY = 0.6     # file ra tạm phải đứng yên chừng này mới coi là ghi xong (đưa ra sớm)
+ON_DINH_RA_GIAY = 1.5     # file ra tạm phải đứng yên chừng này mới coi là ghi xong (đưa ra sớm)
+
+
+def _meta_jpeg(f) -> tuple:
+    """(có EXIF APP1, có ICC APP2) của một JPEG — đọc đoạn đầu file, không giải nén.
+    Không phải JPEG / không đọc được -> (False, False)."""
+    try:
+        with open(f, "rb") as fh:
+            g = fh.read(256 * 1024)
+    except OSError:
+        return (False, False)
+    if len(g) < 4 or g[0] != 0xFF or g[1] != 0xD8:
+        return (False, False)
+    exif = icc = False
+    i = 2
+    while i + 4 <= len(g):
+        if g[i] != 0xFF:
+            break
+        m = g[i + 1]
+        if m == 0xDA or m in (0xC0, 0xC1, 0xC2):
+            break
+        if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
+            i += 2
+            continue
+        n = (g[i + 2] << 8) | g[i + 3]
+        if m == 0xE1 and g[i + 4:i + 10] == b"Exif\x00\x00":
+            exif = True
+        elif m == 0xE2 and g[i + 4:i + 16] == b"ICC_PROFILE\x00":
+            icc = True
+        i += 2 + n
+    return (exif, icc)
 
 
 def dua_ket_qua_ra(anh: list, vao, ra_tam, ra, de_quy: bool = False,
@@ -1246,6 +1276,17 @@ def dua_ket_qua_ra(anh: list, vao, ra_tam, ra, de_quy: bool = False,
                     continue
             except OSError:
                 continue
+            #[[ 15/10 (duyệt v88): engine (saytool ghi_anh.ghi) ghi JPEG ra đúng tên rồi MỞ
+            #   LẠI chèn EXIF / ICC của ảnh gốc (_chep_metadata). Máy chậm / thư mục Google
+            #   Drive mà khe giữa hai bước dài hơn ngưỡng đứng yên thì đưa ra sớm cuỗm file
+            #   giữa chừng -> ảnh giao khách MẤT ngày chụp + profile màu (AdobeRGB lệch màu),
+            #   _chep_metadata lỗi im lặng. Ảnh gốc có EXIF / ICC mà bản ra chưa có -> chưa
+            #   xong, để lượt sau (lượt cuối không xét — ảnh nào cũng ra). ]]
+            g_exif, g_icc = _meta_jpeg(p)
+            if g_exif or g_icc:
+                r_exif, r_icc = _meta_jpeg(q)
+                if (g_exif and not r_exif) or (g_icc and not r_icc):
+                    continue
         dich = p if ghi_de else duong_ket_qua(p, vao, ra, de_quy)
         if dich is None:
             continue

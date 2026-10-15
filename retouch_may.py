@@ -1131,7 +1131,11 @@ class MayMixin:
                 #   LUONG NEN - dong vao Tk tu luong khac la mot nguon treo
                 #   giao dien kinh dien. rt.dem() chi dem file, khong ve gi.
                 #]]
+                #  15/10: tấm ĐÃ ĐƯA RA SỚM không còn ở thư mục ra tạm (và ảnh vào của nó đã
+                #  gỡ khỏi nhom_i) -> cộng _som_luot, không thì "không làm thêm tấm nào" -> thôi
+                #  tự chạy lại dù engine vừa làm được hàng trăm tấm
                 _, truoc = self.rt.dem(thu_muc, ra, de_quy)
+                truoc += int(getattr(self, "_som_luot", 0) or 0)
                 ma_cuoi = 0
                 #[[ engine = may xem truoc DANG SONG luc goi (doc moi lan: no
                 #   chet giua me thi lan tu-chay-lai di duong tien trinh con). ]]
@@ -1154,6 +1158,7 @@ class MayMixin:
                     return ma_cuoi
                 tong, sau = self.rt.dem(thu_muc, ra, de_quy)
                 con = tong - sau
+                sau += int(getattr(self, "_som_luot", 0) or 0)
                 if sau <= truoc or con <= 0:
                     return ma_cuoi
                 self.log_q.put((
@@ -1201,6 +1206,7 @@ class MayMixin:
                         self._tien_do_tool = 0
                         self._vao_luot, self._ra_luot = d, d_ra
                         self._som_luot = 0
+                        self._nhom_luot = d
                         self._luot_hien = (a, vao, d_ra, ra, de_quy, ghi_de)
                         try:
                             ma = chay_mot(d, m, ra=d_ra, ghi_de=False, lam_lai=False)
@@ -1253,6 +1259,18 @@ class MayMixin:
             except Exception:                                # noqa: BLE001
                 return
             self._som_luot = int(getattr(self, "_som_luot", 0) or 0) + n
+            #[[ Tấm đã đưa ra: gỡ ảnh vào của nó khỏi nhom_i (chỉ là liên kết cứng / bản chép
+            #   tạm — ảnh gốc không đổi). Engine sập giữa mẻ thì lần tự chạy lại bỏ qua ảnh
+            #   "đã có kết quả" theo thư mục ra TẠM — tấm đã đưa đi không còn ở đó nên sẽ bị
+            #   làm lại từ đầu (tốn hàng trăm tấm); không còn ảnh vào thì không làm lại. ]]
+            nhom = getattr(self, "_nhom_luot", None)
+            if nhom is not None:
+                for pv in da_ra:
+                    try:
+                        rel = Path(pv).relative_to(Path(vao)) if de_quy else Path(Path(pv).name)
+                        (Path(nhom) / rel).unlink()
+                    except (OSError, ValueError):
+                        pass
         if not da_ra:
             return
         anh = self._anh_dang

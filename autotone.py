@@ -8700,6 +8700,54 @@ def _hieu_luc_cum(r: dict) -> dict:
     return out
 
 
+_CUM_CG = ("ColorGradeMidtoneHue", "ColorGradeMidtoneSat", "SplitToningHighlightHue",
+           "SplitToningHighlightSaturation")
+
+
+def _mau_sua_tay(r: dict) -> set:
+    """Nhóm ô màu ("hsl", "lum", "cg", "curve") mà số Lightroom ĐANG mang khác MỐC trong khi
+    lượt này tool KHÔNG ghi nhóm đó — tức người dùng tự sửa (danh_dau_nguoi_sua chỉ so được
+    ô tool từng ghi, nên sửa tay ở ô tool chưa bao giờ ghi lọt qua). Mốc thiếu ô -> không xét.
+
+    #[[ 15/10 (duyệt v88): dong_bo_cum chép HSL / CG / curve của ảnh đại diện sang mọi ảnh
+    #   cụm "cả khi số Lightroom đang mang khác" — đúng cho mốc lệch nhau (DSC_9689/9687 Sat
+    #   −22 / −45) nhưng xoá luôn curve / HSL người dùng tự chỉnh (mô phỏng: curve tay
+    #   0,0,128,150,255,255 -> 0,0,255,255; Sat Cam −30 -> −10). ]]"""
+    moc = r.get("crs") or {}
+    #  ô tool đã ghi ở lần áp gần nhất (plan gắn từ _lich_su_ghi): khác mốc là do TOOL, không
+    #  phải sửa tay (tool ghi mà người dùng đổi tiếp thì danh_dau_nguoi_sua đã loại cả ảnh)
+    tool = set(r.get("_o_tool_ghi") or ())
+
+    def khac(khoa, so: bool) -> bool:
+        for k in khoa:
+            if k in tool:
+                continue
+            m, h = moc.get(k), _gia_hien(r, k)
+            if m is None or str(m).strip() == "" or h is None:
+                continue
+            if so:
+                try:
+                    if abs(float(h) - float(m)) > 0.5:
+                        return True
+                except (TypeError, ValueError):
+                    continue
+            elif str(h).replace(" ", "") != str(m).replace(" ", ""):
+                return True
+        return False
+
+    out = set()
+    if not r.get("hsl_ghi") and khac(COT_HSL, True):
+        out.add("hsl")
+    if not r.get("hsl_l_ghi") and khac(COT_HSL_L, True):
+        out.add("lum")
+    if not r.get("gr_ghi") and khac(_CUM_CG, True):
+        out.add("cg")
+    if not (r.get("curve_ghi_mot_luot") or co_cot_curve(r.get("curve_reset") or {})) \
+            and khac(COT_CURVE, False):
+        out.add("curve")
+    return out
+
+
 #: ô job cụm cùng khung dùng CHUNG nguyên giá trị của ảnh đại diện (tông + WB)
 _CUM_TONE = ("new_highlights", "new_shadows", "new_Contrast2012", "new_Whites2012", "new_Blacks2012",
              "new_ParametricHighlights", "new_ParametricLights", "new_ParametricDarks",
@@ -8718,7 +8766,11 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
     if not cfg.get("dong_bo_cum", True):
         return 0
     n = 0
-    ds = [r for r in items if not r.get("bw") and r.get("new_exposure") is not None]
+    #  15/10 (duyệt v88): ảnh KHÔNG có trong bản xuất (ngoai_xuat — ảnh 1★ plugin bỏ, ảnh
+    #  buổi khác) không vào job nên không được làm đại diện: số màu của nó đọc ra 0 / preset
+    #  mặc định -> chép HSL 0 / CG 0 sang ảnh thật bên cạnh, xoá preset
+    ds = [r for r in items if not r.get("bw") and r.get("new_exposure") is not None
+          and not r.get("ngoai_xuat")]
     for g in nhom_cum(ds, cfg):
         hs = [h_may(r) for r in g]
         if len(g) < 2 or any(h is None for h in hs):
@@ -8731,6 +8783,7 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
                                                  -len(g[i].get("meter_boxes") or [])))
         dd = g[i_dd]
         hl_dd = _hieu_luc_cum(dd)
+        tay = {id(r): _mau_sua_tay(r) for r in g}
         bu = _bu_anh_sang_cum(g, hs, cfg)
         for r, h in zip(g, hs):
             doi = []
@@ -8759,16 +8812,20 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
                 r["wb_ep_ghi"] = dd["wb_ep_ghi"] = True
                 doi.append("wb")
             hl_r = _hieu_luc_cum(r)
-            if any(hl_r[k] != hl_dd[k] for k in COT_HSL):
+            #  nhóm màu người dùng tự sửa (ở ảnh này hoặc ở đại diện) -> không chép nhóm đó
+            t = tay[id(r)] | tay[id(dd)]
+            if t:
+                _them_ghi_chu(r, "dong-bo-cum:giu-sua-tay-" + "-".join(sorted(t)))
+            if "hsl" not in t and any(hl_r[k] != hl_dd[k] for k in COT_HSL):
                 r["hsl_moi"], r["hsl_ghi"] = {k: hl_dd[k] for k in COT_HSL}, True
                 doi.append("hsl")
-            if any(hl_dd[k] is not None and hl_r[k] != hl_dd[k] for k in COT_HSL_L):
+            if "lum" not in t and any(hl_dd[k] is not None and hl_r[k] != hl_dd[k] for k in COT_HSL_L):
                 r["hsl_l_moi"], r["hsl_l_ghi"] = {k: hl_dd[k] for k in COT_HSL_L if hl_dd[k] is not None}, True
                 doi.append("lum")
-            if (hl_r["gr_mid"], hl_r["gr_hi"]) != (hl_dd["gr_mid"], hl_dd["gr_hi"]):
+            if "cg" not in t and (hl_r["gr_mid"], hl_r["gr_hi"]) != (hl_dd["gr_mid"], hl_dd["gr_hi"]):
                 r["gr_mid"], r["gr_hi"], r["gr_ghi"] = hl_dd["gr_mid"], hl_dd["gr_hi"], True
                 doi.append("cg")
-            if hl_r["curve"] != hl_dd["curve"] and any(hl_dd["curve"]):
+            if "curve" not in t and hl_r["curve"] != hl_dd["curve"] and any(hl_dd["curve"]):
                 r["curve_ghi_mot_luot"] = dict(zip(COT_CURVE, hl_dd["curve"]))
                 doi.append("curve")
             if doi:
@@ -10954,7 +11011,10 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
             print(f"[i] Buoi da dat lai sau lan ghi truoc ({DAT_LAI_BUOI}) — tinh lai tu "
                   "trang thai catalog hien tai, khong loc anh sua tay.", file=sys.stderr)
         elif cfg.get("bo_qua_nguoi_sua", True):
-            n = danh_dau_nguoi_sua(items, export or {}, Path(folder or "."), hien=hien)
+            #  bản xuất CŨ hơn lần ghi (cu) mà đọc được catalog: CHỈ tin catalog — ảnh thiếu
+            #  trong `hien` mà so với bản xuất cũ là bị coi "sửa tay" oan (lỗi 2705 cũ)
+            n = danh_dau_nguoi_sua(items, {} if cu else (export or {}), Path(folder or "."),
+                                   hien=hien)
             SO_ANH_NGUOI_SUA = n
             if n:
                 items[:] = [r for r in items if not r.get("nguoi_sua")]
@@ -11013,6 +11073,13 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
     except Exception as ex:                                  # noqa: BLE001
         print(f"[!] Tra Luminance Cam ve moc loi, bo qua: {ex}", file=sys.stderr)
     #  14/10: ảnh liên tiếp cùng khung -> cùng ánh sáng / màu (sau MỌI bước quyết định)
+    #  15/10: ô tool đã ghi từng ảnh — dong_bo_cum phân biệt "khác mốc do tool" / "sửa tay"
+    try:
+        ghi_cu, _kp = _lich_su_ghi(Path(folder or "."))
+        for r in items:
+            r["_o_tool_ghi"] = tuple((ghi_cu.get(_stem_any(r["path"])) or {}).keys())
+    except Exception as ex:                                  # noqa: BLE001
+        print(f"[!] Doc lich su ghi cho cum loi, bo qua: {ex}", file=sys.stderr)
     try:
         dong_bo_cum(items, cfg)
     except Exception as ex:                                  # noqa: BLE001

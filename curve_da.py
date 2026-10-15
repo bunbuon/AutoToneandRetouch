@@ -257,7 +257,7 @@ def da_mau_mn(anh, r: dict | None) -> np.ndarray | None:
 #   Nhiều tiến trình, mỗi tiến trình ít luồng ORT -> đo không còn là khâu chậm nhất.
 #   Tiến trình con chỉ nhận vài khoá của r (KHOA_R_DO) + đường dẫn ảnh; trả mảng float32
 #   (nửa RAM, nửa lượng chép qua ống). ]]
-KHOA_R_DO = ("meter_boxes", "preview_wh", "cat_lr")
+KHOA_R_DO = ("meter_boxes", "all_boxes", "preview_wh", "cat_lr")   # all_boxes: mat_na_da.moi_mat
 
 
 def r_gon(r: dict | None) -> dict | None:

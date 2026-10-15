@@ -3713,7 +3713,7 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
             self._sao_cho = {}
         luc = time.monotonic()
         for p in paths:
-            self._sao_cho[at.khoa_duong_dan(p)] = (n, luc)
+            self._sao_cho[at.khoa_duong_dan(p)] = (n, luc, time.time())
         loc = getattr(self, "loc_sao", None)
         if loc is not None and loc.loc() is not None:
             self._cap_nhat_luoi(giu_cuon=True)          # đang lọc sao: ảnh có thể ra / vào
@@ -4037,12 +4037,25 @@ class App(XuLyAnhMixin, TinDungMixin, ttk.Frame):
         self._ds_lr = moi
         cu_sao = getattr(self, "_sao_lr", None)
         self._sao_lr = sao
-        #  sao vừa chấm: catalog đã có đúng số đó -> thôi đè; 60 giây vẫn chưa -> tin catalog
+        #[[ sao vừa chấm: catalog đã có đúng số đó -> thôi đè. 15/10 (duyệt v88): catalog_lr
+        #   đọc immutable = KHÔNG thấy WAL -> số sao Lightroom vừa ghi còn nằm trong WAL thì
+        #   chưa hiện; trước hết hạn cứng 60 giây là lưới quay về số CŨ. Nay giữ tới khi
+        #   catalog có đúng số, hoặc file .lrcat chính được ghi SAU lúc chấm > 20 giây
+        #   (Lightroom đã gộp WAL, plugin đã kịp áp) -> tin catalog; tối đa 30 phút. ]]
         cho = getattr(self, "_sao_cho", None)
         if cho:
             luc = time.monotonic()
-            for k, (n, t) in list(cho.items()):
-                if (sao is not None and int(sao.get(k, 0)) == n) or luc - t > 60:
+            try:
+                import catalog_lr
+                pc = catalog_lr.duong_catalog()
+                m_cat = os.path.getmtime(pc) if pc else 0.0
+            except Exception:                                # noqa: BLE001
+                m_cat = 0.0
+            for k, v in list(cho.items()):
+                n, t = v[0], v[1]
+                tg = v[2] if len(v) > 2 else 0.0
+                if (sao is not None and int(sao.get(k, 0)) == n) or luc - t > 1800 \
+                        or (tg and m_cat > tg + 20):
                     del cho[k]
         return cu != moi or cu_sao != sao
 

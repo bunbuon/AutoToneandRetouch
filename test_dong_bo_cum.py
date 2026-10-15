@@ -102,6 +102,9 @@ def main() -> int:
     b = anh("DSC_9798", 2.3, iso=640, sig_lech=0.086, new_exposure=0.0, new_temp=5173, new_tint=10,
             new_highlights=-24, gr_ghi=True, gr_mid=(67, 2), gr_hi=(234, 13),
             curve_ghi_mot_luot={k: "0,0,128,140,255,255" for k in at.COT_CURVE},
+            #  MỐC của tấm này đã khác (DSC_9689/9687 Sat −22 / −45) — số đang mang = mốc
+            crs={"HueAdjustmentOrange": "7", "SaturationAdjustmentOrange": "-45",
+                 "LuminanceAdjustmentOrange": "18"},
             crs_hien={"HueAdjustmentOrange": "7", "SaturationAdjustmentOrange": "-45",
                       "ColorGradeMidtoneHue": "47", "ColorGradeMidtoneSat": "10",
                       "SplitToningHighlightHue": "234", "SplitToningHighlightSaturation": "13",
@@ -119,6 +122,35 @@ def main() -> int:
     ktra("HSL / Luminance / CG / curve HIỆU LỰC như nhau cả cụm (mốc lệch nhau vẫn bằng)",
          all(h == hl[0] for h in hl[1:]), str([(h["HueAdjustmentOrange"], h["SaturationAdjustmentOrange"],
                                                h["LuminanceAdjustmentOrange"], h["gr_mid"]) for h in hl]))
+    #  15/10 (duyệt v88): người dùng TỰ sửa HSL / curve ở ô tool không ghi (số đang mang khác
+    #  mốc, không có trong lịch sử ghi) -> cụm KHÔNG chép đè nhóm đó; ô tool đã ghi -> vẫn đồng bộ
+    a2 = anh("DSC_9797", 0, new_exposure=-0.2)
+    t2 = anh("DSC_9798", 2.0, new_exposure=-0.2,
+             crs_hien={"HueAdjustmentOrange": "0", "SaturationAdjustmentOrange": "-30",
+                       "ColorGradeMidtoneHue": "47", "ColorGradeMidtoneSat": "10",
+                       "SplitToningHighlightHue": "234", "SplitToningHighlightSaturation": "13",
+                       "ToneCurvePV2012": "0,0,255,255"})
+    t2["crs"] = dict(t2["crs"], ToneCurvePV2012="0,0,255,255")
+    t2["crs_hien"]["ToneCurvePV2012"] = "0,0,128,150,255,255"
+    at.dong_bo_cum([a2, t2], cfg)
+    ktra("ảnh sửa tay HSL + curve (ô tool không ghi) -> cụm KHÔNG chép đè, ghi chú giữ sửa tay",
+         not t2.get("hsl_ghi") and not t2.get("curve_ghi_mot_luot")
+         and "giu-sua-tay-curve-hsl" in t2["notes"], f"{t2.get('hsl_moi')} · {t2['notes']}")
+    a3 = anh("DSC_9797", 0, new_exposure=-0.2)
+    t3 = anh("DSC_9798", 2.0, new_exposure=-0.2,
+             crs_hien={"HueAdjustmentOrange": "0", "SaturationAdjustmentOrange": "-30"},
+             _o_tool_ghi=("SaturationAdjustmentOrange",))
+    at.dong_bo_cum([a3, t3], cfg)
+    ktra("…khác mốc do TOOL đã ghi (lịch sử ghi) -> vẫn đồng bộ về số đại diện",
+         t3.get("hsl_ghi") and t3["hsl_moi"]["SaturationAdjustmentOrange"] == -13.0, str(t3.get("hsl_moi")))
+    #  ảnh KHÔNG có trong bản xuất (1★ plugin bỏ / buổi khác) không được làm đại diện — số màu của
+    #  nó đọc ra 0 -> chép HSL 0 / CG 0 sang ảnh thật bên cạnh (duyệt v88: mô phỏng 2 ảnh)
+    n4 = anh("DSC_9797", 0, new_exposure=-0.2, ngoai_xuat=True, crs={}, crs_hien=None)
+    t4 = anh("DSC_9798", 2.0, new_exposure=-0.2)
+    at.dong_bo_cum([n4, t4], cfg)
+    ktra("ảnh ngoài bản xuất không vào cụm: ảnh thật bên cạnh không bị chép HSL 0 / CG 0",
+         not t4.get("hsl_ghi") and not t4.get("gr_ghi") and "dong-bo-cum" not in t4["notes"],
+         f"{t4.get('hsl_moi')} · {t4['notes']}")
     ktra("WB + tông như nhau", len({(r["new_temp"], r["new_tint"], r["new_highlights"], r["new_shadows"]) for r in ds}) == 1,
          str([(r["new_temp"], r["new_tint"], r["new_highlights"]) for r in ds]))
     ktra("ghi chú dong-bo-cum ở ảnh bị kéo", sum("dong-bo-cum" in r["notes"] for r in ds) == 2,
