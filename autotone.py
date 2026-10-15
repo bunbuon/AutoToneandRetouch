@@ -4044,14 +4044,15 @@ DEFAULTS = {
     #   lọc 1037 (núi bình minh 06:38 / 07:38, +1.59…+2.14) trúng; sân khấu LED buổi 1005
     #   (trong nhà 0.82–0.998, khung +1.3…+4.8) không; PUBGM 14:51 (+1.00…+1.21, sát ngưỡng
     #   cũ 1.0) không. Ảnh flash NỔ không xét (mặt do flash chiếu, không phải ám môi trường). ]]
-    #[[ 16/10 ẢNH ÁM VÀNG (đèn ấm trong nhà) -> WB LƯỢT 2 theo da đo THẬT (wb_vang_luot2). User
-    #   (DERMAL LOGIA RAW): "vẫn đang bị vàng quá" — đáp án tay 4 cặp: CHỈ đổi Temperature
-    #   (5012/5100 -> 4512 / 4262 / 4012 / 3929 K, Tint giữ). Da đo trên ảnh Lightroom ở WB
-    #   tool vàng hơn đích +0.50…+1.30 stop; user đi 0.45–0.67 (trung vị 0.63) quãng mired tới
-    #   WB đưa da về đích (Bradford). Đo trên JPEG máy thì sai (2709 / VTT trung vị +0.67 /
-    #   +0.99 mà sau chuỗi da đã gần đích) -> CHỈ quyết trên ảnh Lightroom đã áp. ]]
-    "am_vang_bat": True, "am_vang_nguong": 0.3, "am_vang_manh": 0.6, "am_vang_tran_K": 1500.0,
-    "am_vang_p_trong": 0.5,
+    #[[ 16/10 WB LƯỢT 2 THEO DA ĐO THẬT, HAI CHIỀU, MỌI BUỔI (wb_da_luot2). User (DERMAL LOGIA
+    #   RAW): "vẫn đang bị vàng quá" — đáp án tay 4 cặp: CHỈ đổi Temperature (5012/5100 -> 4512 /
+    #   4262 / 4012 / 3929 K, Tint giữ). Da đo trên ảnh Lightroom ở WB tool vàng hơn đích
+    #   +0.50…+1.30 stop; user đi 0.45–0.67 (trung vị 0.63) quãng mired tới WB đưa da về đích
+    #   (Bradford). Đo trên JPEG máy thì sai (2709 / VTT trung vị +0.67 / +0.99 mà sau chuỗi da đã
+    #   gần đích) -> CHỈ quyết trên ảnh Lightroom đã áp. Rồi user: "áp dụng cho tất cả các buổi
+    #   ... Nếu đo thấy da vàng quá thì phải giảm và ngược lại" -> hai chiều (da xanh / lạnh quá
+    #   thì ấm lên), mọi loại buổi (cả Kỷ yếu), trong nhà lẫn ngoài trời. ]]
+    "wb_da_l2_bat": True, "wb_da_l2_nguong": 0.3, "wb_da_l2_manh": 0.6, "wb_da_l2_tran_K": 1500.0,
     "am_mau_bat": True,
     "am_mau_mat_ev": 1.3,         # da (face_rgb) XANH hơn da đích ≥ chừng này stop (log2 B/R)
     "am_mau_khung": (0.3, 1.3),   # cả khung ám xanh VỪA (stop) — ám cực mạnh là đèn màu cố ý
@@ -6330,48 +6331,60 @@ def cuu_am_mau(items: list, cfg: dict) -> int:
     return n
 
 
-def am_vang_can(cfg: dict) -> bool:
-    """Lượt 2 có xét ảnh ám vàng không: bật, WB "Da trắng hồng", nguồn catalog, không Kỷ yếu
-    (Kỷ yếu: WB theo vùng trung tính — đường riêng đã chỉnh theo đáp án tay)."""
-    return bool(cfg.get("am_vang_bat", True) and cfg.get("wb") == "skin"
-                and cfg.get("source") == "catalog" and cfg.get("loai_buoi") != "ky_yeu")
+def wb_da_can(cfg: dict) -> bool:
+    """Lượt 2 có xét WB theo da đo thật không: bật, nguồn catalog, WB "Da trắng hồng" / "Theo
+    nhiệt độ máy" (Không đụng tới / grey-world thì người dùng tự giữ WB)."""
+    return bool(cfg.get("wb_da_l2_bat", True) and cfg.get("source") == "catalog"
+                and cfg.get("wb") in ("skin", "asshot"))
 
 
-def vang_hop_le(r: dict, cfg: dict) -> bool:
-    """Ảnh được xét ám vàng: có mặt, có WB tool tính (new_temp), trong nhà chắc (Places365
-    p_trong ≥ am_vang_p_trong), không đen trắng / ám xanh / ngoài trời buổi tối (giữ ấm)."""
-    p = r.get("p_trong")
+def wb_da_hop_le(r: dict, cfg: dict) -> bool:
+    """Ảnh được xét: có mặt, có WB tool tính (new_temp), không đen trắng, không ám xanh nặng
+    (ảnh đó có WB lượt 2 riêng — wb_cuu_am_luot2, có cả Tint)."""
     return bool(r.get("new_temp") and r.get("meter_boxes") and not r.get("bw")
-                and not r.get("am_mau") and not r.get("ngoai_toi") and not r.get("ngoai_troi")
-                and p is not None and float(p) >= float(cfg.get("am_vang_p_trong", 0.5)))
+                and not r.get("am_mau"))
 
 
-def chon_dai_dien_vang(items: list, cfg: dict) -> list:
+def chon_dai_dien_da(items: list, cfg: dict) -> list:
     """Một ảnh mỗi LOẠT (mặt lớn nhất) để lượt 2 dựng + đo da khi curve da tắt."""
     out = []
-    for g in nhom_loat([r for r in items if vang_hop_le(r, cfg)], cfg):
+    for g in nhom_loat([r for r in items if wb_da_hop_le(r, cfg)], cfg):
         out.append(max(g, key=lambda r: max((float(b[2]) * float(b[3]) for b in r.get("meter_boxes") or []
                                               if len(b) >= 4), default=0.0)))
     return out
 
 
-def wb_vang_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None) -> int:
-    """LƯỢT 2 cho ảnh ÁM VÀNG (đèn ấm trong nhà): da đo THẬT trên ảnh Lightroom vừa dựng (ở WB
-    vừa áp) còn vàng hơn đích ≥ am_vang_nguong stop -> WB lạnh đi am_vang_manh phần quãng mired
-    tới WB đưa da về đích (Bradford), GIỮ Tint; quyết theo LOẠT (trung vị các ảnh đo được trong
-    loạt, áp cho cả loạt trong tat_ca), không lạnh hơn WB đã áp quá am_vang_tran_K. Gắn
-    r["wb_l2"] (curve_da.ghi_job ghi cùng job lượt 2) + r["am_vang"] (stop). -> số ảnh."""
+def _dich_da_lin_l2(r: dict, cfg: dict) -> np.ndarray:
+    """Da đích cho WB lượt 2: ảnh Places365 nói TRONG NHÀ (p_trong ≥ 0.5) luôn so đích trong nhà.
+    #[[ 16/10: 2709 (cưới) 189/199 ảnh bị _nhan_da_ngoai (chế độ Trộn, theo EV) xếp đích "da
+    #   rám ngoài trời" dù p_trong trung vị 0.76 -> da "xanh hơn đích" −0.48 stop -> WB lượt 2 kéo
+    #   ẤM 800 K. So đích trong nhà: +0.29 (gần như đúng). Đích da rám chỉ cho ảnh ngoài trời thật. ]]"""
+    p = r.get("p_trong")
+    if p is not None and float(p) >= 0.5:
+        trong, _ngoai = dich_da(cfg)
+        return srgb_to_linear(np.asarray(trong, dtype=np.float64) / 255.0) + EPS
+    return _dich_da_lin(r, cfg)
+
+
+def wb_da_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None) -> int:
+    """LƯỢT 2 — WB THEO DA ĐO THẬT, HAI CHIỀU: da trên ảnh Lightroom vừa dựng (ở WB vừa áp) lệch
+    đích ≥ wb_da_l2_nguong stop (log2 B/R) -> vàng quá thì WB LẠNH đi, xanh / lạnh quá thì ẤM lên,
+    wb_da_l2_manh phần quãng mired tới WB đưa da về đích (Bradford), GIỮ Tint; quyết theo LOẠT
+    (trung vị các ảnh đo được, áp cả loạt trong tat_ca), không quá wb_da_l2_tran_K quanh WB đã
+    áp. Ô "Ngoài trời buổi tối: giữ ấm" bật thì ảnh ngoài trời tối không bị kéo lạnh. Gắn
+    r["wb_l2"] (curve_da.ghi_job ghi cùng job lượt 2) + r["lech_da"] (stop, dương = vàng).
+    -> số ảnh."""
     import curve_lr as _cl
     tat_ca = list(tat_ca if tat_ca is not None else ds)
     for r in tat_ca:
-        r.pop("am_vang", None)
+        r.pop("lech_da", None)
         if not r.get("am_mau"):
             r.pop("wb_l2", None)
-    if not am_vang_can(cfg):
+    if not wb_da_can(cfg):
         return 0
     giai: dict = {}
     for r in ds:
-        if not vang_hop_le(r, cfg):
+        if not wb_da_hop_le(r, cfg):
             continue
         do = do_map.get(id(r)) or {}
         if not do.get("ok", True):
@@ -6382,33 +6395,36 @@ def wb_vang_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None)
         lin = srgb_to_linear(np.clip(_cl.mien_sang_srgb(np.asarray(P, dtype=np.float64),
                                                          do.get("mien") or "melissa"), 0.0, 1.0))
         da = np.median(lin, axis=0) + EPS
-        ref = _dich_da_lin(r, cfg)
+        ref = _dich_da_lin_l2(r, cfg)
         ev = float(wb_cast(ref)[0] - wb_cast(da)[0])
         t, _ti = _giai_wb_da(da, (float(r["new_temp"]), float(r.get("new_tint", 0))), ref)
         giai[id(r)] = (ev, t)
     if not giai:
         return 0
-    k = float(cfg.get("am_vang_manh", 0.6))
-    nguong = float(cfg.get("am_vang_nguong", 0.3))
-    tran = float(cfg.get("am_vang_tran_K", 1500.0))
+    k = float(cfg.get("wb_da_l2_manh", 0.6))
+    nguong = float(cfg.get("wb_da_l2_nguong", 0.3))
+    tran = float(cfg.get("wb_da_l2_tran_K", 1500.0))
+    giu_am = bool(cfg.get("wb_ngoai_toi", True))
     n = 0
-    for g in nhom_loat([r for r in tat_ca if vang_hop_le(r, cfg)], cfg):
+    for g in nhom_loat([r for r in tat_ca if wb_da_hop_le(r, cfg)], cfg):
         do_g = [giai[id(r)] for r in g if id(r) in giai]
         if not do_g:
             continue
         ev = float(np.median([x[0] for x in do_g]))
-        if ev < nguong:
+        if abs(ev) < nguong:
             continue
         m_dich = float(np.median([1e6 / x[1] for x in do_g]))
         for r in g:
+            if ev > 0 and giu_am and r.get("ngoai_toi"):
+                continue                        # ngoài trời buổi tối: giữ không khí ấm
             tu = float(r["new_temp"])
             m0 = 1e6 / tu
-            t_r = float(np.clip(1e6 / (m0 + k * (m_dich - m0)), tu - tran, tu))
-            if tu - t_r <= 50.0:
+            t_r = float(np.clip(1e6 / (m0 + k * (m_dich - m0)), tu - tran, tu + tran))
+            if abs(tu - t_r) <= 50.0 or (t_r < tu) != (ev > 0):
                 continue
             r["wb_l2"] = (int(round(t_r)), int(round(float(r.get("new_tint", 0)))))
-            r["am_vang"] = round(ev, 2)
-            _them_ghi_chu(r, "am-vang:wb-luot2")
+            r["lech_da"] = round(ev, 2)
+            _them_ghi_chu(r, "wb-da-luot2:" + ("lanh" if ev > 0 else "am"))
             n += 1
     return n
 
@@ -6422,7 +6438,7 @@ def wb_cuu_am_luot2(ds: list, do_map: dict, cfg: dict) -> int:
     do_map: {id(r): kết quả curve_da.do_anh}. -> số ảnh có WB bổ sung."""
     import curve_lr as _cl
     for r in ds:
-        if not r.get("am_vang"):
+        if not r.get("lech_da"):
             r.pop("wb_l2", None)
     if not cfg.get("am_mau_bat", True):
         return 0

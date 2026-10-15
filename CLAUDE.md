@@ -1463,7 +1463,7 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
-## Ảnh ám VÀNG (đèn ấm trong nhà) -> WB lượt 2 theo da đo thật (16/10) — `wb_vang_luot2`, `am_vang_bat` BẬT
+## WB lượt 2 theo da đo thật, HAI CHIỀU, mọi buổi (16/10) — `wb_da_luot2`, `wb_da_l2_bat` BẬT (bản đầu: ám vàng)
 
 User (DERMAL LOGIA RAW, mẫu "Lễ Vu Quy"): "vẫn đang bị vàng quá". Đáp án tay 4 cặp ảnh liền: CHỈ đổi
 Temperature (tool 5012/5100 -> 4512 / 4262 / 4012 / 3929 K, Tint giữ 16). Da đo trên ảnh Lightroom ở WB tool
@@ -1475,6 +1475,12 @@ trên ảnh Lightroom đã áp: lượt 2 (curve tắt thì dựng một ảnh /
 ám vàng không giải curve da. Trừ Kỷ yếu / WB không phải "Da trắng hồng" / ngoài trời / p_trong < 0.5.
 Mô phỏng DERMAL (`mo_phong_vang.py`): 4554 / 4055 / 3973 / 4009 K vs tay 4512 / 4262 / 4012 / 3929; 160/208
 ảnh, trung vị −602 K. 2709: 32/40 ảnh −530 K; Vtt 11/13 −476 K (đích mặc định). Kiểm: `test_am_mau` §7.
+User sau đó: "áp dụng cho tất cả các buổi ... da vàng quá thì phải giảm và ngược lại" -> `wb_da_luot2` HAI
+CHIỀU (da xanh -> ấm), mọi loại buổi (cả Kỷ yếu), trong / ngoài trời; ngoại lệ: đen trắng, WB "Không đụng
+tới"/grey, ô "Ngoài trời buổi tối: giữ ấm" (chỉ chặn chiều lạnh). BẪY: 2709 189/199 ảnh bị `_nhan_da_ngoai`
+(Trộn, theo EV) xếp đích DA RÁM dù p_trong 0.76 -> kéo ấm 800 K -> `_dich_da_lin_l2`: p_trong ≥ 0.5 luôn đích
+trong nhà. Mô phỏng sau sửa (trạng thái catalog hiện tại): 2709 584/1052 đổi (402 lạnh ~480 K, 182 ấm
+~650 K); Vtt 23/46 lạnh ~400 K; lọc 1037 168/301 (94 lạnh ~800, 74 ấm ~690). Bản v94 2026.10.16.1.
 
 ## Mẫu "Mặc định" cũng là đích màu da (16/10) — `at.dich_mac_dinh`, `mau_da_mac_dinh_dich` BẬT
 

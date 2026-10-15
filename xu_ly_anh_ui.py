@@ -601,14 +601,14 @@ class XuLyAnhMixin:
         #  khi curve da tắt (chỉ dựng / đo đúng các ảnh đó)
         xl["n_am_mau"] = (sum(1 for r in items_ghi if r.get("am_mau"))
                           if self.source_value() == "catalog" else 0)
-        #  16/10: ảnh trong nhà có mặt -> lượt 2 đo da thật xét ÁM VÀNG (at.wb_vang_luot2), kể
-        #  cả khi curve da tắt (chỉ dựng một ảnh mỗi loạt)
+        #  16/10: ảnh có mặt -> lượt 2 đo da thật, WB theo da HAI CHIỀU (at.wb_da_luot2), kể cả
+        #  khi curve da tắt (chỉ dựng một ảnh mỗi loạt) — mọi buổi
         try:
             cfg_v = self.read_cfg()
-            xl["am_vang_can"] = bool(at.am_vang_can(cfg_v)
-                                     and any(at.vang_hop_le(r, cfg_v) for r in items_ghi))
+            xl["wb_da_can"] = bool(at.wb_da_can(cfg_v)
+                                   and any(at.wb_da_hop_le(r, cfg_v) for r in items_ghi))
         except Exception:                                    # noqa: BLE001
-            xl["am_vang_can"] = False
+            xl["wb_da_can"] = False
         xl["so_gui"] = so_gui
         if job:
             xl["job"] = job
@@ -649,7 +649,7 @@ class XuLyAnhMixin:
             ket = ("xong" if not bad else "loi",
                    f"Lightroom đã áp {gd.so_vn(xl.get('so_gui', 0))} ảnh"
                    + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else " · kiểm chứng đủ"))
-            if xl.get("curve") or xl.get("n_mot_luot") or xl.get("n_am_mau") or xl.get("am_vang_can"):
+            if xl.get("curve") or xl.get("n_mot_luot") or xl.get("n_am_mau") or xl.get("wb_da_can"):
                 xl["ap_ket"] = ket                 # chốt khi lượt 2 (ngầm) xong — _xl_chot_ap
                 hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
             else:
@@ -673,7 +673,7 @@ class XuLyAnhMixin:
         xl = self._xl
         hop = xl.get("hop")
         if (not xl.get("curve") and not xl.get("n_mot_luot") and not xl.get("n_am_mau")
-                and not xl.get("am_vang_can")):
+                and not xl.get("wb_da_can")):
             self._xl_denoise()
             return
         if curve_da.KHA_NANG not in at.plugin_kha_nang():
@@ -697,10 +697,10 @@ class XuLyAnhMixin:
         ds += [r for r in mau if r not in ds]
         co_ds = {id(r) for r in ds}
         ds += [r for r in ghi if r.get("am_mau") and id(r) not in co_ds]   # 15/10: WB lượt 2
-        #  16/10: ám vàng — xét trên mọi ảnh trong nhà có mặt; curve tắt thì dựng một ảnh / loạt
-        xl["vang_tat"] = [r for r in ghi if at.vang_hop_le(r, cfg)] if at.am_vang_can(cfg) else []
+        #  16/10: WB theo da hai chiều — xét mọi ảnh có mặt; curve tắt thì dựng một ảnh / loạt
+        xl["da_tat"] = [r for r in ghi if at.wb_da_hop_le(r, cfg)] if at.wb_da_can(cfg) else []
         co_ds = {id(r) for r in ds}
-        ds += [r for r in at.chon_dai_dien_vang(xl["vang_tat"], cfg) if id(r) not in co_ds]
+        ds += [r for r in at.chon_dai_dien_da(xl["da_tat"], cfg) if id(r) not in co_ds]
         xl["ml_ds"], xl["ml_mau"] = ml_ds, {id(r) for r in mau}
         #  14/10: lượt 2 theo cụm cùng khung tới cả ảnh một lượt KHÔNG đo (đo trước 2 ảnh / loạt)
         xl["ml_tat"] = [r for r in ghi if r.get("mot_luot")]
@@ -841,12 +841,12 @@ class XuLyAnhMixin:
                 mau_ids = xl.get("ml_mau") or set()
                 #  15/10: ảnh ám xanh nặng -> WB bổ sung theo da đo THẬT trên ảnh Lightroom
                 xl["am_mau_l2"] = at.wb_cuu_am_luot2(ds, do_map, cfg)
-                #  16/10: ảnh ám vàng (đèn ấm trong nhà) -> WB lạnh đi theo da đo thật, cả loạt
-                xl["am_vang_l2"] = at.wb_vang_luot2(ds, do_map, cfg, tat_ca=xl.get("vang_tat"))
-                #  ảnh ám xanh / ám vàng KHÔNG giải curve — da đo dưới WB chưa hoàn thiện, WB lượt
-                #  2 sửa; curve nữa là sửa hai lần
+                #  16/10: da đo thật vàng / xanh quá -> WB lạnh / ấm theo da, cả loạt (mọi buổi)
+                xl["wb_da_l2"] = at.wb_da_luot2(ds, do_map, cfg, tat_ca=xl.get("da_tat"))
+                #  ảnh có WB lượt 2 (ám xanh / lệch da) KHÔNG giải curve — da đo dưới WB chưa hoàn
+                #  thiện, WB lượt 2 sửa; curve nữa là sửa hai lần
                 ds_cu = ([r for r in ds if id(r) not in mau_ids and not r.get("am_mau")
-                          and not r.get("am_vang")] if xl.get("curve") else [])
+                          and not r.get("lech_da")] if xl.get("curve") else [])
                 xl["curve_tt"] = curve_da.ket_thuc(ds_cu, {id(r): do_map[id(r)] for r in ds_cu
                                                            if id(r) in do_map}, cfg)
                 #  14/10: ảnh liên tiếp cùng khung -> cùng curve lượt 2
@@ -855,7 +855,7 @@ class XuLyAnhMixin:
                 co_ghi = {id(r) for r in ghi_ds}
                 ghi_ds += [r for r in ds if r.get("wb_l2") and id(r) not in co_ghi]
                 co_ghi = {id(r) for r in ghi_ds}
-                ghi_ds += [r for r in xl.get("vang_tat") or [] if r.get("wb_l2") and id(r) not in co_ghi]
+                ghi_ds += [r for r in xl.get("da_tat") or [] if r.get("wb_l2") and id(r) not in co_ghi]
                 if xl.get("ml_ds"):
                     import mau_mot_luot as ml
                     xl["ml_soat"] = ml.soat(xl["ml_ds"], {k: do_map[k] for k in mau_ids
@@ -1272,11 +1272,11 @@ class XuLyAnhMixin:
                 dong.append(f"· Ảnh liền nhau cùng khung: {gd.so_vn(len(bu))} ảnh ánh sáng thật lệch "
                             "(flash không kịp hồi…) được bù sáng riêng cho đều với cả loạt.")
             #  15/10: ảnh ám xanh nặng — WB chỉnh theo da (autotone.cuu_am_mau / wb_cuu_am_luot2)
-            av = [r for r in xl.get("items_ghi") or [] if r.get("am_vang") and r.get("wb_l2")]
+            av = [r for r in xl.get("items_ghi") or [] if r.get("lech_da") and r.get("wb_l2")]
             if av and chi_tiet:
-                ks = sorted({int(r["wb_l2"][0]) for r in av})
-                dong.append(f"· Ảnh ám vàng (đèn ấm trong nhà, da đo trên ảnh Lightroom vàng hơn đích):"
-                            f" {gd.so_vn(len(av))} ảnh — WB lạnh đi theo da ({ks[0]}–{ks[-1]} K).")
+                n_l = sum(1 for r in av if r["lech_da"] > 0)
+                dong.append(f"· WB theo da đo trên ảnh Lightroom: {gd.so_vn(n_l)} ảnh da vàng -> lạnh đi, "
+                            f"{gd.so_vn(len(av) - n_l)} ảnh da xanh -> ấm lên.")
             am = [r for r in xl.get("items_ghi") or [] if r.get("am_mau")]
             if am and chi_tiet:
                 wbs = sorted({int(r["am_mau_wb"][0]) for r in am if r.get("am_mau_wb")})

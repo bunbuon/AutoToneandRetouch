@@ -129,68 +129,89 @@ mk, bu_dung = mat_na_da._du_phong(img, (50, 40, 100, 120, 0.9, None))
 ktra("mặt nạ dự phòng: có điểm da trên mặt ám xanh, báo đã bù", int(mk.sum()) >= mat_na_da.DIEM_DA_TOI_THIEU and bu_dung,
      f"{int(mk.sum())} điểm")
 
-print("7. ám VÀNG (đèn ấm trong nhà) — WB lượt 2 theo da đo thật (16/10, DERMAL LOGIA RAW)")
+print("7. WB lượt 2 theo da đo thật — HAI CHIỀU, mọi buổi (16/10, DERMAL LOGIA RAW)")
 #  da dựng ở WB đã áp 5012 K trong khi WB "đúng" là 3700 K -> da vàng
 VANG_THAT = (3700.0, 16.0)
 #  ảnh TRONG NHÀ -> đích trong nhà (da trắng hồng), không phải REF (đích ngoài trời của mục 1–6)
 REF_T = at.srgb_to_linear(np.asarray(TRONG, float) / 255.0)
 
 
-def anh_vang(ten, giay, wb_ap=(5012.0, 16.0), that=VANG_THAT, **kw):
-    r = anh(ten, giay, p_trong=0.98, gio=20, flash=13, **kw)
+def anh_l2(ten, giay, wb_ap=(5012.0, 16.0), **kw):
+    r = anh(ten, giay, p_trong=0.98, gio=20, flash=13)
     r.update(new_temp=wb_ap[0], new_tint=wb_ap[1], ngoai_troi=False)
+    r.update(kw)
     return r
 
 
-def do_vang(r, that=VANG_THAT):
-    da = at.doi_wb(REF_T * 0.6, that, (float(r["new_temp"]), float(r["new_tint"])))
+def do_l2(r, that=VANG_THAT, ref=None):
+    ref = REF_T if ref is None else ref
+    da = at.doi_wb(ref * 0.6, that, (float(r["new_temp"]), float(r["new_tint"])))
     return {"ok": True, "mien": "melissa",
             "da_cu": cl.srgb_sang_mien(np.tile(at.linear_to_srgb(np.clip(da, 0, 1)), (300, 1)), "melissa")}
 
 
 CV = dict(CFG, source="catalog", wb="skin", loai_buoi="su_kien")
-loat_v = [anh_vang(f"V{i}", i * 2) for i in range(3)]
-do_m = {id(loat_v[0]): do_vang(loat_v[0])}            # đo MỘT tấm đại diện của loạt
-nv = at.wb_vang_luot2([loat_v[0]], do_m, CV, tat_ca=loat_v)
-ktra("da thật vàng -> cả loạt (kể cả tấm không đo) WB lạnh đi, cùng một K",
+loat_v = [anh_l2(f"V{i}", i * 2) for i in range(3)]
+nv = at.wb_da_luot2([loat_v[0]], {id(loat_v[0]): do_l2(loat_v[0])}, CV, tat_ca=loat_v)
+ktra("da thật VÀNG -> cả loạt (kể cả tấm không đo) WB lạnh đi, cùng một K",
      nv == 3 and len({r["wb_l2"] for r in loat_v}) == 1 and loat_v[0]["wb_l2"][0] < 5012 - 300,
      str([r.get("wb_l2") for r in loat_v]))
-ktra("…GIỮ Tint, gắn am_vang + ghi chú", all(r["wb_l2"][1] == 16 and r.get("am_vang")
-                                          and "am-vang:wb-luot2" in r["notes"] for r in loat_v))
+ktra("…GIỮ Tint, gắn lech_da (+) + ghi chú lạnh", all(r["wb_l2"][1] == 16 and r.get("lech_da", 0) > 0
+                                                    and "wb-da-luot2:lanh" in r["notes"] for r in loat_v))
 m0, m_that = 1e6 / 5012.0, 1e6 / VANG_THAT[0]
 m_moi = 1e6 / loat_v[0]["wb_l2"][0]
-ktra("…kéo am_vang_manh (0.6) quãng mired tới WB đưa da về đích (±3 mired)",
+ktra("…kéo wb_da_l2_manh (0.6) quãng mired tới WB đưa da về đích (±3 mired)",
      abs((m_moi - m0) - 0.6 * (m_that - m0)) <= 3.0, f"{m_moi - m0:.1f} vs {0.6 * (m_that - m0):.1f}")
-r1 = anh_vang("V1x", 0)
-at.wb_vang_luot2([r1], {id(r1): do_vang(r1)}, dict(CV, am_vang_manh=1.0))
-ktra("am_vang_manh 1.0 -> về đúng WB thật (±3 mired)", abs(1e6 / r1["wb_l2"][0] - m_that) <= 3.0,
+r1 = anh_l2("V1x", 0)
+at.wb_da_luot2([r1], {id(r1): do_l2(r1)}, dict(CV, wb_da_l2_manh=1.0))
+ktra("wb_da_l2_manh 1.0 -> về đúng WB thật (±3 mired)", abs(1e6 / r1["wb_l2"][0] - m_that) <= 3.0,
      str(r1.get("wb_l2")))
-gan = anh_vang("G", 0)
-at.wb_vang_luot2([gan], {id(gan): do_vang(gan, that=(4950.0, 16.0))}, CV)
-ktra("da gần đích (< am_vang_nguong) -> không đổi", not gan.get("wb_l2") and not gan.get("am_vang"))
-for ten_, kw_, cf_ in (("Kỷ yếu", {}, dict(CV, loai_buoi="ky_yeu")), ("WB theo máy", {}, dict(CV, wb="asshot")),
-                       ("ngoài trời", {"ngoai_troi": True}, CV), ("trong nhà không chắc", {"p_trong": 0.3}, CV),
-                       ("ngoài trời buổi tối", {"ngoai_toi": True}, CV)):
-    x = anh_vang("X", 0)
-    x.update(kw_)
-    at.wb_vang_luot2([x], {id(x): do_vang(x)}, cf_)
-    ktra(f"{ten_} -> không xét", not x.get("wb_l2"), str(x.get("wb_l2")))
-tr = anh_vang("T", 0, that=(2600.0, 16.0))
-at.wb_vang_luot2([tr], {id(tr): do_vang(tr, that=(2600.0, 16.0))}, dict(CV, am_vang_tran_K=800.0))
-ktra("kẹp trần am_vang_tran_K quanh WB đã áp", tr.get("wb_l2") and tr["wb_l2"][0] >= 5012 - 800,
+xanh = anh_l2("XA", 0, wb_ap=(5012.0, 16.0))
+at.wb_da_luot2([xanh], {id(xanh): do_l2(xanh, that=(7000.0, 16.0))}, CV)
+ktra("da thật XANH / lạnh quá -> WB ẤM lên (ngược chiều), giữ Tint",
+     xanh.get("wb_l2") and xanh["wb_l2"][0] > 5012 + 300 and xanh["wb_l2"][1] == 16
+     and xanh.get("lech_da", 0) < 0 and "wb-da-luot2:am" in xanh["notes"], str(xanh.get("wb_l2")))
+gan = anh_l2("G", 0)
+at.wb_da_luot2([gan], {id(gan): do_l2(gan, that=(4950.0, 16.0))}, CV)
+ktra("da gần đích (< wb_da_l2_nguong) -> không đổi", not gan.get("wb_l2") and not gan.get("lech_da"))
+REF_N = at.srgb_to_linear(np.asarray(NGOAI, float) / 255.0)
+for ten_, kw_, cf_, ref_ in (("Kỷ yếu", {}, dict(CV, loai_buoi="ky_yeu"), None),
+                             ("ngoài trời (đích da rám)", {"ngoai_troi": True, "p_trong": 0.01}, CV, REF_N),
+                             ("WB theo nhiệt độ máy", {}, dict(CV, wb="asshot"), None)):
+    x = anh_l2("X", 0, **kw_)
+    at.wb_da_luot2([x], {id(x): do_l2(x, ref=ref_)}, cf_)
+    ktra(f"{ten_} -> CŨNG xét (mọi buổi), lạnh đi", x.get("wb_l2") and x["wb_l2"][0] < 5012 - 300,
+         str(x.get("wb_l2")))
+for ten_, kw_, cf_ in (("WB Không đụng tới", {}, dict(CV, wb="off")), ("nguồn .xmp", {}, dict(CV, source="sidecar")),
+                       ("ảnh đen trắng", {"bw": True}, CV)):
+    x = anh_l2("Y", 0, **kw_)
+    at.wb_da_luot2([x], {id(x): do_l2(x)}, cf_)
+    ktra(f"{ten_} -> không đổi", not x.get("wb_l2"), str(x.get("wb_l2")))
+nt = anh_l2("NT", 0, ngoai_toi=True)
+at.wb_da_luot2([nt], {id(nt): do_l2(nt)}, CV)
+ktra("ngoài trời buổi tối + ô 'giữ ấm' BẬT -> không kéo lạnh", not nt.get("wb_l2"))
+nt2 = anh_l2("NT2", 0, ngoai_toi=True)
+at.wb_da_luot2([nt2], {id(nt2): do_l2(nt2)}, dict(CV, wb_ngoai_toi=False))
+ktra("…tắt ô 'giữ ấm' -> kéo lạnh như mọi ảnh", nt2.get("wb_l2") and nt2["wb_l2"][0] < 5012)
+nt3 = anh_l2("NT3", 0, ngoai_toi=True)
+at.wb_da_luot2([nt3], {id(nt3): do_l2(nt3, that=(7000.0, 16.0))}, CV)
+ktra("…da xanh ở ảnh ngoài trời tối vẫn được ẤM lên", nt3.get("wb_l2") and nt3["wb_l2"][0] > 5012)
+tr = anh_l2("T", 0)
+at.wb_da_luot2([tr], {id(tr): do_l2(tr, that=(2600.0, 16.0))}, dict(CV, wb_da_l2_tran_K=800.0))
+ktra("kẹp trần wb_da_l2_tran_K quanh WB đã áp", tr.get("wb_l2") and tr["wb_l2"][0] >= 5012 - 800,
      str(tr.get("wb_l2")))
-am_x = anh_vang("A", 0)
-am_x.update(am_mau=1.6, wb_l2=(9000, 30))
-at.wb_vang_luot2([am_x], {id(am_x): do_vang(am_x)}, CV, tat_ca=[am_x])
-ktra("ảnh ám xanh giữ WB lượt 2 của nó (không bị ám vàng xoá / đè)", am_x.get("wb_l2") == (9000, 30))
-dd_ = [anh_vang(f"D{i}", i * 2) for i in range(3)] + [anh_vang("E", 900)]
+am_x = anh_l2("A", 0, am_mau=1.6, wb_l2=(9000, 30))
+at.wb_da_luot2([am_x], {id(am_x): do_l2(am_x)}, CV, tat_ca=[am_x])
+ktra("ảnh ám xanh nặng giữ WB lượt 2 của nó (không bị xoá / đè)", am_x.get("wb_l2") == (9000, 30))
+dd_ = [anh_l2(f"D{i}", i * 2) for i in range(3)] + [anh_l2("E", 900)]
 dd_[1]["meter_boxes"] = [[0, 0, 200, 200]]
-dai = at.chon_dai_dien_vang(dd_, CV)
-ktra("chon_dai_dien_vang: một tấm mỗi loạt, mặt lớn nhất", len(dai) == 2 and dd_[1] in dai and dd_[3] in dai,
+dai = at.chon_dai_dien_da(dd_, CV)
+ktra("chon_dai_dien_da: một tấm mỗi loạt, mặt lớn nhất", len(dai) == 2 and dd_[1] in dai and dd_[3] in dai,
      str([r["path"][-8:] for r in dai]))
-ktra("am_vang_can: Kỷ yếu / WB không theo da / nguồn xmp -> không",
-     at.am_vang_can(CV) and not at.am_vang_can(dict(CV, loai_buoi="ky_yeu"))
-     and not at.am_vang_can(dict(CV, wb="asshot")) and not at.am_vang_can(dict(CV, source="sidecar")))
+ktra("wb_da_can: WB Không đụng tới / grey-world / nguồn xmp -> không; Kỷ yếu -> có",
+     at.wb_da_can(CV) and at.wb_da_can(dict(CV, loai_buoi="ky_yeu"))
+     and not at.wb_da_can(dict(CV, wb="off")) and not at.wb_da_can(dict(CV, wb="grey"))
+     and not at.wb_da_can(dict(CV, source="sidecar")))
 
 print()
 print("TẤT CẢ ĐẠT" if not LOI else f"{len(LOI)} LỖI: " + "; ".join(LOI))
