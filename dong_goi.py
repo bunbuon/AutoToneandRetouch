@@ -564,6 +564,27 @@ def co_retouch(goc_tool: Path | None) -> bool:
 MA_HOA_HET = False
 
 
+def jpeglib_nhi_phan(ngan: str) -> list:
+    """--add-binary cho từng thư viện cjpeglib_*.pyd của jpeglib (rỗng nếu môi trường build
+    không có jpeglib).
+
+    #[[ 15/10 build v89: jpeglib nạp cjpeglib_<bản>.pyd bằng ctypes sau khi LIỆT KÊ thư mục
+    #   cjpeglib/ — PyInstaller coi .pyd là module mở rộng, không ai import nên --collect-all
+    #   gom đủ .cpp / .lib mà bỏ HẾT .pyd -> trong gói jpeglib import được nhưng không có thư
+    #   viện nào -> saytool ghép DCT hỏng, ảnh retouch vẫn nén lại cả tấm. Gom tay. ]]"""
+    try:
+        import importlib.util
+        sp = importlib.util.find_spec("jpeglib")
+        d = Path(list(sp.submodule_search_locations)[0]) / "cjpeglib"
+    except Exception:                                        # noqa: BLE001
+        return []
+    out = []
+    for f in sorted(d.glob("cjpeglib_*")):
+        if f.suffix.lower() in (".pyd", ".dll", ".so"):
+            out += ["--add-binary", f"{f}{ngan}jpeglib/cjpeglib"]
+    return out
+
+
 def co_the_import(ten: str) -> bool:
     """True nếu gói `ten` CÓ THỂ import trong môi trường đang build.
 
@@ -806,6 +827,8 @@ def lenh(he: str, retouch: bool = True, goc_tool: Path | None = None,
                 print(f"  (bỏ --collect-all {g}: không có trong môi trường build)")
                 continue
             cmd += ["--collect-all", g]
+            if g == "jpeglib":
+                cmd += jpeglib_nhi_phan(ngan)
         if goc_tool:
             cmd += ["--add-data", f"{saytool_du(goc_tool)}{ngan}saytool"]
             #[[ MO HINH TRONG GOI HAY TAI SAU.
