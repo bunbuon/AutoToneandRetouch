@@ -6098,7 +6098,10 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #   tiep la vo ich, phai Reload. Plugin song thi nhan trong <= 2 giay. ]]
         nhip = at.plugin_nhip()
         chet = cho == "cho_nhan" and giay > 6 and (nhip is None or nhip > 30)
-        if chet:
+        ban = at.plugin_ban() if cho == "cho_nhan" and giay > 6 and not chet else ""
+        if ban:
+            dang_doc = f"   ⏳ Lightroom đang {ban} — yêu cầu sẽ được nhận ngay sau ({int(giay)}s)"
+        elif chet:
             dang_doc = ("   ⚠ Plugin trong Lightroom KHÔNG chạy"
                         + (f" (nhịp cuối {at.mo_ta_khoang(nhip)})" if nhip is not None else "")
                         + " — mở Lightroom, hoặc File › Plug-in Manager › AutoTone › "
@@ -6239,6 +6242,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         root = self.folder()
         if not root or self.source_value() != "catalog":
             return
+        self._xem_lr_nhuong()               # 16/10: thôi lượt preview lưới đang giữ plugin
         try:
             at.request_export(root)
         except OSError:
@@ -7031,6 +7035,19 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #  lại; bỏ đi để lần tính này nhẹ và ĐỒNG BỘ (_xl_sau_do dùng kết quả ngay sau đây)
         for r in items:
             r.pop("lr_truoc", None)
+        if self.cancel_flag and self._xl_dang():
+            #  16/10: Dừng giữa lượt Xử lý ảnh -> đóng lượt NGAY rồi mới tính bảng ở luồng nền
+            #  (phần đã đo) — at.plan trên luồng giao diện từng làm hộp đứng thêm vài giây
+            self.chuoi = False
+            self._xl_sau_do(items, cfg)
+            self.refresh_plan_nen(lambda _loi: None)
+            self._xuat_khoa = True
+            self._nut_catalog()
+            tong = int(getattr(self, "_so_anh_luot", 0) or len(self.pairs))
+            self.status(f"Đã dừng — mới đo {len(items)}/{tong} ảnh, chưa áp gì vào Lightroom.",
+                        gd.MAU["canh"])
+            self._td_cau_luot = ""
+            return
         self.refresh_plan(nen=False)
         self._xuat_khoa = True              # rồi đứng yên tới khi bấm “Nạp lại catalog”
         self._nut_catalog()
@@ -7042,8 +7059,10 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                 wb_may.ghi_buoi(root, getattr(at, "ASSHOT_BUOI", {}))
             except Exception:                                # noqa: BLE001
                 pass
-        if getattr(self, "chuoi", False) and self._xl_dang():
-            #  13/10: nút Xử lý ảnh — đo xong tự áp (xu_ly_anh_ui)
+        if (getattr(self, "chuoi", False) or self.cancel_flag) and self._xl_dang():
+            #  13/10: nút Xử lý ảnh — đo xong tự áp (xu_ly_anh_ui). 16/10: bấm Dừng thì
+            #  do_cancel() đã tắt self.chuoi — trước đây vì thế KHÔNG vào đây, hộp tiến trình
+            #  treo ở "Đang xử lý ảnh…" (user: "bấm dừng thì không thấy dừng")
             self.chuoi = False
             self._xl_sau_do(items, cfg)
         elif getattr(self, "chuoi", False):
@@ -7703,6 +7722,8 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self._items_ghi_luot = items_ghi
         if tu_dong:
             hoi = "tu_dong"
+        if self.cfg.get("source") == "catalog":
+            self._xem_lr_nhuong()           # 16/10: job áp không phải chờ lượt preview lưới
         at.LAST_JOB = None
         self._set_busy(True)
         self._so_dang_ghi = len(items_ghi)
@@ -8056,6 +8077,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
             if not root:
                 return
             before = at.export_stamp(thu_muc=root)
+            self._xem_lr_nhuong()           # 16/10: thôi lượt preview lưới đang giữ plugin
             try:
                 at.request_export(root)
             except OSError as ex:

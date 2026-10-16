@@ -2415,3 +2415,17 @@ TU_DIEN.update({
     'Cần cho phép ghi màn hình: System Settings › Privacy & Security › Screen Recording → bật Tone&Retouch, rồi mở lại app.':
         'Screen recording permission is needed: System Settings › Privacy & Security › Screen Recording → turn on Tone&Retouch, then reopen the app.',
 })
+
+#  16/10 (v97): Dừng giữa lượt đo + plugin bận (không phải không chạy)
+TU_DIEN.update({
+    'đang dừng…': 'stopping…',
+    'Đã dừng — mới đo {}/{} ảnh, chưa áp gì vào Lightroom.': 'Stopped — measured only {}/{} photos, nothing applied to Lightroom.',
+    '   ⏳ Lightroom đang {} — yêu cầu sẽ được nhận ngay sau ({}s)': '   ⏳ Lightroom is busy {} — the request will be picked up right after ({}s)',
+    'lấy preview cho lưới': 'fetching previews for the grid',
+    'dựng ảnh để hoàn thiện màu da': 'rendering photos to finish skin tone',
+    'lấy preview để đo da': 'fetching previews to measure skin',
+    'dựng ảnh duyệt': 'rendering review previews',
+    'xuất ảnh': 'exporting photos',
+    'dựng xem preset': 'rendering preset previews',
+    'học màu Lightroom': 'learning Lightroom color',
+})

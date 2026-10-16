@@ -12207,14 +12207,69 @@ def export_stamp(job_dir: Path | None = None, thu_muc=None) -> float:
 NHIP_PLUGIN = "plugin_song.txt"
 
 
+#: File tiến độ plugin ghi TRONG lúc làm việc dài (preview lưới, đo curve, xuất ảnh, xem
+#: preset…) -> tên việc hiện cho người dùng (plugin_ban).
+TIEN_DO_PLUGIN = {"xem_lr_tiendo.txt": "lấy preview cho lưới",
+                  "do_curve_tiendo.txt": "dựng ảnh để hoàn thiện màu da",
+                  "do_truoc_tiendo.txt": "lấy preview để đo da",
+                  "duyet_tiendo.txt": "dựng ảnh duyệt",
+                  "xuatanh_tiendo.txt": "xuất ảnh",
+                  "xempreset_tiendo.txt": "dựng xem preset",
+                  "hocmau_tiendo.txt": "học màu Lightroom"}
+BAN_GIAY = 30.0
+
+
+def _tien_do_moi(job_dir: Path | None = None) -> tuple[float, str, dict] | None:
+    """(giây, tên việc, nội dung) của file tiến độ plugin ghi GẦN NHẤT; None nếu không có."""
+    d = Path(job_dir or LR_JOB_DIR)
+    tot = None
+    for ten, viec in TIEN_DO_PLUGIN.items():
+        try:
+            tuoi = max(0.0, time.time() - (d / ten).stat().st_mtime)
+        except OSError:
+            continue
+        if tot is None or tuoi < tot[0]:
+            tot = (tuoi, ten, viec)
+    if tot is None:
+        return None
+    nd: dict = {}
+    try:
+        for dong in (d / tot[1]).read_text(encoding="utf-8", errors="replace").splitlines():
+            k, _, v = dong.partition("=")
+            if k:
+                nd[k.strip()] = v.strip()
+    except OSError:
+        pass
+    return tot[0], tot[2], nd
+
+
 def plugin_nhip(job_dir: Path | None = None) -> float | None:
-    """Giây kể từ nhịp cuối của vòng lặp plugin. None = chưa từng có nhịp (plugin
-    bản cũ chưa ghi nhịp, hoặc chưa bao giờ chạy)."""
+    """Giây kể từ lần cuối vòng lặp plugin còn thấy SỐNG: nhịp (plugin_song.txt) hoặc file
+    tiến độ của việc dài đang làm, cái nào mới hơn. None = chưa từng có nhịp (plugin bản cũ
+    chưa ghi nhịp, hoặc chưa bao giờ chạy).
+
+    #[[ 16/10: vòng lặp chỉ ghi nhịp ĐẦU mỗi vòng (Init.lua) — đang lấy preview cho lưới 500
+    #   ảnh (3–5 phút) nhịp cũ dần trong khi plugin vẫn làm việc đều (tiến độ ghi mỗi nhóm ảnh)
+    #   -> app từng báo "plugin KHÔNG chạy, Reload". Tiến độ mới = còn sống. ]]"""
     f = Path(job_dir or LR_JOB_DIR) / NHIP_PLUGIN
     try:
-        return max(0.0, time.time() - f.stat().st_mtime)
+        nhip = max(0.0, time.time() - f.stat().st_mtime)
     except OSError:
         return None
+    td = _tien_do_moi(job_dir)
+    if td is not None and td[0] < nhip:              # vừa ghi tiến độ (bất kể trạng thái) = sống
+        return td[0]
+    return nhip
+
+
+def plugin_ban(job_dir: Path | None = None) -> str:
+    """Việc dài plugin ĐANG làm ("lấy preview cho lưới 120/531") khi file tiến độ vừa ghi
+    (< BAN_GIAY) và còn "dang_chay"; "" khi rảnh / không rõ."""
+    td = _tien_do_moi(job_dir)
+    if td is None or td[0] > BAN_GIAY or td[2].get("trang_thai") != "dang_chay":
+        return ""
+    xong, tong = td[2].get("xong"), td[2].get("tong")
+    return td[1] + (f" {xong}/{tong}" if xong and tong else "")
 
 
 def plugin_buoc(job_dir: Path | None = None) -> str:

@@ -1463,6 +1463,28 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## Dừng giữa lượt đo · plugin BẬN chứ không phải "không chạy" (16/10, sau v96)
+
+- User: "bấm dừng thì không thấy dừng". `do_cancel()` tắt `self.chuoi` -> `_on_analyzed` chỉ gọi
+  `_xl_sau_do` khi `chuoi` -> hộp Xử lý ảnh treo ở "Đang xử lý ảnh…", bấm Xử lý ảnh lại chỉ mở lại
+  hộp cũ (at.analyze dừng thật sau 0,64 s — đo trên G:\TestAnhTimmy\TEST). Sửa: Dừng ở pha đo -> hộp
+  "đang dừng…" + khoá nút ngay; `_on_analyzed` có `cancel_flag` + lượt Xử lý -> `_xl_sau_do` TRƯỚC, bảng
+  tính nền (`refresh_plan_nen`); `_xl_cho_xuat_roi` không chờ đủ 20 s khi đã Dừng.
+- User: "sau mỗi lần phân tích ... điều chỉnh thông số để phân tích lại thì hay hiển thị thông báo plugin
+  Lr đang không nhận. Vào Lr Reload Plugin thì lại được". Vòng lặp plugin (Init.lua) TUẦN TỰ, ghi nhịp
+  đầu mỗi vòng; lượt lấy preview cho lưới sau mỗi Xử lý (`_xem_lr_bat_dau`, 531 ảnh = 183–270 s trong
+  plugin.log) giữ nó -> yêu cầu xuất thông số nằm chờ, nhịp > 30 s -> "Plugin KHÔNG chạy". Sửa (CHỈ phía
+  app, đi OTA được): `_xem_lr_nhuong()` (rút yêu cầu preview còn chờ / xin dừng — plugin dừng theo nhóm
+  ảnh, tự xoá cờ khi bắt đầu lượt mới) trước `_xin_xuat_nen`, `_ask_lr_export`, `do_apply` (catalog);
+  `at.plugin_nhip` tính cả file tiến độ plugin vừa ghi (`TIEN_DO_PLUGIN`), `at.plugin_ban()` -> dòng
+  trạng thái "Lightroom đang lấy preview cho lưới 200/531 — yêu cầu sẽ được nhận ngay sau".
+- Cơ chế đọc thông số catalog mỗi lần Xử lý ảnh: start_analyze -> scan_folder -> `_doc_xuat` (bản xuất
+  có sẵn của ĐÚNG thư mục) + `_xin_xuat_nen` (request_export.txt -> plugin ghi export_<giờ>.tsv) -> đo ảnh
+  mới -> (đủ kết quả cũ thì chờ bản xuất ≤ 20 s) -> `_on_analyzed` đọc bản xuất mới nhất -> plan() đọc
+  THẲNG .lrcat (`thong_so_catalog`, khi buổi đã có lần ghi) để nhận sửa tay / đặt lại, bản xuất cũ hơn lần
+  ghi thì số catalog đè -> khoá bản xuất (`_xuat_khoa`) tới "Nạp lại".
+Kiểm: `test_dung_va_nhuong.py` (4 phần, App thật; thử ngược: gỡ sửa -> hộp kẹt "Đang xử lý ảnh…").
+
 ## Bảng chọn màu da đích (16/10, sau v95) — `chon_mau_da.py`
 
 User hỏi hai chấm cạnh nút "Màu da" là gì (trái = đích TRONG NHÀ, phải = NGOÀI TRỜI — mẫu "Lễ Ăn Hỏi" tạo

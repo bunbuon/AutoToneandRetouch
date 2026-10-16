@@ -92,7 +92,7 @@ NHOM = [
         "test_cap_nhat.py", "test_gop_y.py",
     ]),
     ("retouch", "Retouch & Xuất", [
-        "test_tram_retouch.py", "test_retouch_cwd.py", "test_retouch_luong.py", "test_dua_ra_som.py", "test_chat_luong_ra.py", "test_am_mau.py", "test_xem_goc_raw.py", "test_chuyen_cai_dat.py", "test_chon_mau_da.py",
+        "test_tram_retouch.py", "test_retouch_cwd.py", "test_retouch_luong.py", "test_dua_ra_som.py", "test_chat_luong_ra.py", "test_am_mau.py", "test_xem_goc_raw.py", "test_chuyen_cai_dat.py", "test_chon_mau_da.py", "test_dung_va_nhuong.py",
         "test_xuat_mot_thao_tac.py", "kiem_tim_tool.py", "kiem_retouch_095.py",
         "kiem_xem_truoc.py", "kiem_retouch_gui.py",
     ]),

@@ -375,7 +375,7 @@ class XuLyAnhMixin:
             cho = self._dang_cho_xuat()[0] if self.source_value() == "catalog" else ""
         except Exception:                                    # noqa: BLE001
             cho = ""
-        if cho and time.monotonic() - t0 < 20:
+        if cho and time.monotonic() - t0 < 20 and not self.cancel_flag:
             if not self.busy:
                 self._set_busy(True)
             hop = self._xl_hop()
@@ -412,6 +412,15 @@ class XuLyAnhMixin:
         pha = xl.get("pha")
         if pha == "do":
             self.do_cancel()
+            #  16/10: hộp báo NGAY là đã nhận lệnh (trước chỉ thanh trạng thái của cửa sổ chính
+            #  đổi chữ — hộp vẫn chạy đồng hồ như chưa bấm gì)
+            hop = xl.get("hop")
+            if hop is not None:
+                hop.buoc("do", "dang", "đang dừng…")
+                try:
+                    hop.btn_dung.configure(state="disabled")
+                except Exception:                            # noqa: BLE001
+                    pass
         elif pha == "truoc":
             xl["truoc_huy"] = True
         elif pha == "ap":
@@ -1137,6 +1146,30 @@ class XuLyAnhMixin:
                              "t0": time.monotonic(), "n": 0}
         self.after(1500, self._xem_lr_soi)
         return True
+
+    def _xem_lr_nhuong(self) -> None:
+        """Sắp nhờ Lightroom việc MỚI (xuất thông số / áp): thôi lượt lấy preview cho lưới đang
+        chạy ngầm (_xem_lr_bat_dau). Ảnh đã nhận giữ nguyên trên lưới.
+
+        #[[ 16/10 (user: "Sau mỗi lần phân tích mà muốn điều chỉnh thông số để phân tích lại thì
+        #   hay hiển thị thông báo plugin Lr đang không nhận. Vào Lr Reload Plugin thì lại được"):
+        #   vòng lặp plugin làm TUẦN TỰ (Init.lua) và chỉ ghi nhịp đầu mỗi vòng — lượt preview
+        #   ~500 ảnh (183–270 s trên DERMAL, plugin.log 16/10) giữ nó, yêu cầu xuất thông số của
+        #   lần phân tích mới nằm chờ, nhịp cũ > 30 s -> app báo "plugin KHÔNG chạy"; Reload =
+        #   vòng mới nhận ngay. Plugin có sẵn cờ dừng theo nhóm ảnh (DuyetCore.layPreview) và tự
+        #   xoá cờ khi bắt đầu lượt mới (xem_lr.yeu_cau cũng xoá) -> xin dừng luôn vô hại. ]]"""
+        import xem_lr
+        lt = getattr(self, "_xem_lr_luot", None)
+        self._xem_lr_luot = None
+        try:
+            if xem_lr.dang_cho():
+                xem_lr.rut_yeu_cau()
+            elif lt is not None or xem_lr.tien_do().get("trang_thai") == "dang_chay":
+                xem_lr.xin_dung()
+        except OSError:
+            pass
+        if lt is not None:
+            self.after(15000, lambda: xem_lr.don_tam(lt["ma"]))
 
     def _xem_lr_soi(self):
         import curve_da

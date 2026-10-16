@@ -339,7 +339,7 @@ def kiem_giao_dien(td: Path, jobs: Path, x: Path, ax: list, bx: Path) -> list:
         g.export = {}
         for ten in ("folder", "_doc_xuat", "_dem_khop", "_nhan_catalog", "_xin_xuat_nen",
                     "_kq_cua_thu_muc", "_dang_cho_xuat", "source_value", "xoa_du_lieu_buoi",
-                    "_xem_anh_thieu"):
+                    "_xem_anh_thieu", "_xem_lr_nhuong"):
             setattr(g, ten, types.MethodType(getattr(gui.App, ten), g))
         g.v_source = types.SimpleNamespace(get=lambda: dict((v, k) for k, v in gui.SOURCES)["catalog"])
         return g

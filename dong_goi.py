@@ -97,7 +97,7 @@ LOAI_TRU = [
     "test_mau_mot_luot.py", "test_mot_luot_ui.py", "test_hoc_mau_lr.py",
     #  15/10: hoc_mau_lr VÀO gói (học màu Lightroom từ app — hoc_mau_ui); bài kiểm thì không
     "test_kiem_mot_luot.py", "kiem_mot_luot.py", "test_mask_xem.py",
-    "test_hoc_mau_ui.py", "test_wb_may.py", "test_chuyen_cai_dat.py", "test_xem_goc_raw.py", "test_chon_mau_da.py",
+    "test_hoc_mau_ui.py", "test_wb_may.py", "test_chuyen_cai_dat.py", "test_xem_goc_raw.py", "test_chon_mau_da.py", "test_dung_va_nhuong.py",
     "test_dong_bo_cum.py", "test_nguoi_sua_lich_su.py", "test_chu_the.py",
     #[[ Cong cu phat hanh — khong phai thu nguoi dung chay. tao_ban_cap_nhat.py
     #   dung chung bao_mat.MA_HOA de dong ban OTA; khong co bi mat nhung la rac
