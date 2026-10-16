@@ -6952,7 +6952,11 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                                   else "Không đo được ảnh nào.")
             return
         self._xuat_khoa = False             # lần tính đầu: đọc bản xuất mới nhất
-        self.refresh_plan()
+        #  16/10: số đo preview Lightroom của lượt trước (chuỗi một lượt) đã cũ — Xử lý ảnh đo
+        #  lại; bỏ đi để lần tính này nhẹ và ĐỒNG BỘ (_xl_sau_do dùng kết quả ngay sau đây)
+        for r in items:
+            r.pop("lr_truoc", None)
+        self.refresh_plan(nen=False)
         self._xuat_khoa = True              # rồi đứng yên tới khi bấm “Nạp lại catalog”
         self._nut_catalog()
         #  15/10: nhớ lệch WB As Shot theo máy (wb_may.json) — chỉ nguồn catalog (có As Shot
@@ -6991,9 +6995,20 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                         str(self.lbl_status.cget("foreground")))
         self._td_cau_luot = ""
 
-    def refresh_plan(self):
-        """Tính lại delta từ số đo có sẵn (không quét lại ảnh) và vẽ bảng."""
+    def refresh_plan(self, nen: bool | None = None):
+        """Tính lại delta từ số đo có sẵn (không quét lại ảnh) và vẽ bảng.
+
+        nen None = tự chọn: kế hoạch sẽ chạy chuỗi một lượt (nặng — _plan_nang) hoặc đang có
+        lượt tính nền thì tính ở LUỒNG NỀN (refresh_plan_nen), bảng vẽ lại khi xong. False =
+        bắt buộc tính ngay (do_apply cần số mới trước khi ghi)."""
         if not self.items or self.busy:
+            return
+        if nen is None:
+            nen = getattr(self, "_plan_dang", False) or self._plan_nang()
+        if nen:
+            self.refresh_plan_nen(lambda loi: self.status(
+                "Lỗi khi tính lại kế hoạch: " + str(loi).strip().splitlines()[-1], gd.MAU["loi"])
+                if loi else None)
             return
         self.cfg = self.read_cfg()
         #[[ Doc lai ban xuat NGAY TRUOC KHI TINH.
@@ -7010,11 +7025,84 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         if self.source_value() == "catalog" and not getattr(self, "_xuat_khoa", False) \
                 and self._doc_xuat():
             self._nhan_catalog()
-        at.plan(self.items, self.cfg, self.folder(), getattr(self, "export", {}),
-                ban_xuat=self._file_xuat() if self.source_value() == "catalog" else None)
+        self._plan_args = (self.folder(), getattr(self, "export", {}),
+                           self._file_xuat() if self.source_value() == "catalog" else None)
+        self._plan_tinh()
+        self._plan_ve()
+
+    def _plan_nang(self) -> bool:
+        """Kế hoạch sẽ chạy chuỗi màu da MỘT LƯỢT (ảnh có số đo trước + công tắc bật) — nặng."""
+        try:
+            import mau_mot_luot as ml
+            return bool(ml.bat(self.read_cfg()) and any(r.get("lr_truoc") for r in self.items or []))
+        except Exception:                                    # noqa: BLE001
+            return False
+
+    def _plan_tinh(self):
+        """Phần TÍNH của refresh_plan (at.plan) — không đụng Tk, chạy được ở luồng nền."""
+        folder, export, ban_xuat = self._plan_args
+        at.plan(self.items, self.cfg, folder, export, ban_xuat=ban_xuat)
+
+    def _plan_ve(self):
         self._ap_chon_tay()
         self._fill_table()
         self._lam_moi_anh_lon()
+
+    def refresh_plan_nen(self, xong):
+        """Như refresh_plan nhưng phần TÍNH ở LUỒNG NỀN; vẽ + xong(lỗi | None) ở luồng giao diện.
+
+        #[[ 16/10 (user: "tool sau khi phân tích đã bị treo" — Not Responding ~50 giây, DERMAL
+        #   531 ảnh): tính lại sau khi đo da trên preview Lightroom chạy chuỗi một lượt (mô hình
+        #   màu Lightroom từng ảnh) — trên luồng giao diện là cửa sổ đứng hình, Windows báo treo. ]]"""
+        #  một lượt tính nền một lúc: yêu cầu tới trong lúc đang tính -> tính lại MỘT lần nữa
+        #  (thiết lập mới nhất) khi xong, rồi mới gọi mọi xong() — không hai luồng cùng sửa items
+        self._plan_cb = list(getattr(self, "_plan_cb", [])) + [xong]
+        if getattr(self, "_plan_dang", False):
+            self._plan_lai = True
+            return
+        self._plan_bat_dau_nen()
+
+    def _plan_bat_dau_nen(self):
+        if not self.items or self.busy:
+            cbs, self._plan_cb = list(getattr(self, "_plan_cb", [])), []
+            for cb in cbs:
+                cb(None)
+            return
+        self._plan_dang, self._plan_lai = True, False
+        self.cfg = self.read_cfg()
+        if self.source_value() == "catalog" and not getattr(self, "_xuat_khoa", False) \
+                and self._doc_xuat():
+            self._nhan_catalog()
+        self._plan_args = (self.folder(), getattr(self, "export", {}),
+                           self._file_xuat() if self.source_value() == "catalog" else None)
+        kq: dict = {}
+
+        def chay():
+            try:
+                self._plan_tinh()
+            except Exception:                                # noqa: BLE001
+                kq["loi"] = traceback.format_exc()
+            kq["het"] = True
+
+        threading.Thread(target=chay, daemon=True, name="tinh_ke_hoach").start()
+
+        def cho():
+            if not kq.get("het"):
+                self.after(150, cho)
+                return
+            self._plan_dang = False
+            if getattr(self, "_plan_lai", False) and not kq.get("loi"):
+                self._plan_bat_dau_nen()
+                return
+            cbs, self._plan_cb = list(getattr(self, "_plan_cb", [])), []
+            if not kq.get("loi"):
+                try:
+                    self._plan_ve()
+                except Exception:                            # noqa: BLE001
+                    kq["loi"] = traceback.format_exc()
+            for cb in cbs:
+                cb(kq.get("loi"))
+        cho()
 
     def _mp_cua(self, r, kieu: str = "tuyet_doi"):
         """Thông số mô phỏng (ev, wb) của một ảnh đã tính — None nếu chưa có / không đổi.
@@ -7428,12 +7516,19 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         root = self.folder()
         if not root:
             return
+        #  16/10: đang tính lại kế hoạch ở luồng nền (refresh_plan_nen) -> chờ xong rồi mới ghi
+        if getattr(self, "_plan_dang", False):
+            if tu_dong:
+                self.after(300, lambda: self.do_apply(hoi=hoi, tu_dong=tu_dong))
+            else:
+                self.status("Đang tính lại kế hoạch — chờ vài giây rồi bấm lại.", gd.MAU["canh"])
+            return
         #[[ 9/10: HSL mau da cuoi quyet tren anh duyet MOI NHAT (at.hsl_da_cuoi) —
         #   tinh lai ke hoach ngay truoc khi ghi, dung de ghi theo lan tinh cu
         #   (truoc khi Duyet nhanh xong) ma bo sot HSL / dung so do cu. ]]
         if (self.v_hsl_da.get() and self.cfg.get("source") == "catalog"
                 and self.cfg.get("loai_buoi") == "cuoi"):
-            self.refresh_plan()
+            self.refresh_plan(nen=False)
         #[[ 3/10: anh KHONG co trong ban xuat Lightroom thi tool khong biet thong
         #   so hien tai cua no -> write_lr_job bo qua (xem at.attach_catalog_settings).
         #   Ca buoi deu ngoai ban xuat thi dung han o day, noi ro — dung de nguoi

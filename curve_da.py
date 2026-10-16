@@ -672,16 +672,13 @@ def du_dieu_kien(r: dict) -> str:
 
 
 def chon_anh(items: list, cfg: dict) -> list:
-    """Ảnh cần dựng ở lượt 2. Chỉ bật curve da: ảnh có mặt (hoặc cùng loạt với ảnh có
-    mặt — tấm không mặt trong loạt theo loạt)."""
-    ds = [r for r in items if not du_dieu_kien(r)]
-    if cfg.get("curve_chay"):
-        return ds
-    co_mat = {id(r) for r in ds if r.get("meter_boxes")}
-    for loat in at.chia_loat(ds, cfg) if ds else []:
-        if any(id(r) in co_mat for r in loat):
-            co_mat |= {id(r) for r in loat}
-    return [r for r in ds if id(r) in co_mat]
+    """Ảnh cần dựng ở lượt 2: CHỈ ảnh có mặt người.
+
+    #[[ 16/10 (user: "lượt đầu tiên chạy WB vs Tone tôi thấy các phần ảnh không có người này
+    #   đã đổi. Ở bước 2 chạy Curve nếu ảnh không có người thì sẽ bỏ qua k đưa vào phân tích"):
+    #   trước đây bật "nén vùng cháy" là dựng / chỉnh CẢ ảnh không người, và tấm không mặt trong
+    #   loạt có mặt theo curve của loạt. Ảnh không người: lượt 1 (WB / Tone) là xong. ]]"""
+    return [r for r in items if not du_dieu_kien(r) and r.get("meter_boxes")]
 
 
 def ket_thuc(items: list, do_map: dict, cfg: dict) -> dict:

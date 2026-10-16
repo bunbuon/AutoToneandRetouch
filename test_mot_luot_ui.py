@@ -185,11 +185,13 @@ def main() -> int:
         do_truoc.chay = chay_gia
 
         def tinh_lai():
-            ke_hoach.append(1)
+            ke_hoach.append(threading.current_thread().name)
             for x in app.items or []:
                 if x.get("lr_truoc"):
                     x["mot_luot"] = True
         app.refresh_plan = tinh_lai
+        app._plan_tinh = tinh_lai          # 16/10: tính lại sau đo trước chạy ở luồng nền
+        app._plan_ve = lambda: None        # (refresh_plan giả trước đây không vẽ bảng)
         app.items = items
         hop = mo_luot(items)
         ap_goi.clear()
@@ -198,6 +200,22 @@ def main() -> int:
              and "preview" in str(tk.Label.cget(hop.hang["do"][2], "text")), str(app._xl["pha"]))
         ktra("…xong: tính lại kế hoạch rồi gửi Áp", cho(lambda: bool(ap_goi)) and ke_hoach
              and app._xl["pha"] == "ap" and app._xl.get("n_mot_luot") == 1, f"{app._xl['pha']} {ke_hoach}")
+        ktra("…tính lại kế hoạch ở LUỒNG NỀN (16/10: trên luồng giao diện Windows báo treo)",
+             ke_hoach and ke_hoach[-1] == "tinh_ke_hoach", str(ke_hoach))
+        #  hai yêu cầu chồng nhau: lần hai chờ lần đầu xong rồi tính MỘT lần nữa, cả hai được báo
+        cham = []
+
+        def tinh_cham():
+            cham.append(threading.current_thread().name)
+            time.sleep(0.4)
+        app._plan_tinh = tinh_cham
+        bao = []
+        app.refresh_plan_nen(lambda loi: bao.append(("a", loi)))
+        app.refresh_plan_nen(lambda loi: bao.append(("b", loi)))
+        ktra("hai lần tính nền chồng nhau -> tính 2 lần nối tiếp, mỗi xong() gọi đúng một lần",
+             cho(lambda: len(bao) == 2, 10) and len(cham) == 2 and sorted(x[0] for x in bao) == ["a", "b"]
+             and not getattr(app, "_plan_dang", False), f"{cham} {bao}")
+        app._plan_tinh = tinh_lai
         ktra("…bước Đo ghi số ảnh đo trên preview (từ cache)",
              "cache" in str(tk.Label.cget(hop.hang["do"][2], "text")), str(tk.Label.cget(hop.hang["do"][2], "text")))
         hop.destroy()

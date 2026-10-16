@@ -1463,6 +1463,18 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## v95 (16/10): hết "treo" sau đo trước · bước 2 bỏ ảnh không người
+
+- User: "tool sau khi phân tích đã bị treo" (Not Responding ở "Đo da trên preview Lightroom 269/272",
+  DERMAL 531 ảnh, một lượt BẬT). Không treo hẳn: `_xl_soi_truoc` gọi `refresh_plan()` trên LUỒNG GIAO DIỆN,
+  at.plan + chuỗi một lượt ~50 s -> Windows báo treo, rồi áp tiếp. Nay `refresh_plan` tách `_plan_tinh`
+  (không Tk) / `_plan_ve`; `refresh_plan_nen(xong)` tính ở luồng nền, xếp hàng (một lượt một lúc, yêu cầu
+  chen -> tính lại một lần nữa); `refresh_plan()` tự chuyển nền khi `_plan_nang` (ảnh có lr_truoc + công
+  tắc); `do_apply` chờ lượt nền xong; `_on_analyzed` bỏ lr_truoc cũ + tính đồng bộ.
+- User: "Ở bước 2 chạy Curve nếu ảnh không có người thì sẽ bỏ qua k đưa vào phân tích" -> `curve_da.chon_anh`
+  chỉ ảnh có mặt (kể cả khi bật nén vùng cháy; tấm không mặt trong loạt không theo loạt nữa); `ml_tat` cũng.
+Kiểm: `test_mot_luot_ui` (luồng nền, xếp hàng), `test_curve_da` §8, `kiem_moc_va_xuat`.
+
 ## WB lượt 2 theo da đo thật, HAI CHIỀU, mọi buổi (16/10) — `wb_da_luot2`, `wb_da_l2_bat` BẬT (bản đầu: ám vàng)
 
 User (DERMAL LOGIA RAW, mẫu "Lễ Vu Quy"): "vẫn đang bị vàng quá". Đáp án tay 4 cặp ảnh liền: CHỈ đổi

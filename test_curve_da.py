@@ -350,8 +350,12 @@ def muc8():
          and r1.get("curve_ghi"), str(r1.get("curve_ghi", {}).get(k)))
     ktra("tấm không mặt trong loạt: theo loạt", r3.get("curve_ghi", {}).get(k) == r1.get("curve_ghi", {}).get(k))
     ktra("tấm không mặt ngoài loạt: không curve kênh", not r4.get("curve_ghi"))
-    ktra("chon_anh: chỉ bật da -> bỏ tấm lẻ không mặt", [x["path"] for x in cd.chon_anh(ds, cfg)]
-         == [r1["path"], r2["path"], r3["path"]])
+    #  16/10 (user): "Ở bước 2 chạy Curve nếu ảnh không có người thì sẽ bỏ qua" — chỉ ảnh có
+    #  mặt vào lượt 2, kể cả tấm không mặt trong loạt và khi bật nén vùng cháy
+    ktra("chon_anh: chỉ ảnh có mặt (bỏ cả tấm không mặt trong loạt)", [x["path"] for x in cd.chon_anh(ds, cfg)]
+         == [r1["path"], r2["path"]])
+    ktra("chon_anh: bật nén vùng cháy vẫn bỏ ảnh không mặt",
+         [x["path"] for x in cd.chon_anh(ds, dict(cfg, curve_chay=True))] == [r1["path"], r2["path"]])
 
 
 def muc9():

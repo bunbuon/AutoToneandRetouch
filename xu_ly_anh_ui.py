@@ -570,8 +570,25 @@ class XuLyAnhMixin:
             self._xl_ket_thuc("dung", "Đã dừng — chưa áp gì vào Lightroom.")
             return
         kq = xl.get("truoc_kq") or {}
-        #  kế hoạch tính lại với số đo trước -> cảnh đủ số đo đi chuỗi một lượt
-        self.refresh_plan()
+        #  kế hoạch tính lại với số đo trước -> cảnh đủ số đo đi chuỗi một lượt. 16/10: ở LUỒNG
+        #  NỀN (refresh_plan_nen) — trên luồng giao diện từng đứng hình ~50 giây ("bị treo")
+        hop.buoc("do", "dang", "tính màu da theo số đo trên preview…")
+        hop.tien_do(0, 0, "Tính màu da theo số đo trên preview Lightroom…")
+        self.refresh_plan_nen(lambda loi: self._xl_sau_tinh_lai(xl, kq, loi))
+
+    def _xl_sau_tinh_lai(self, xl, kq, loi):
+        if xl is not getattr(self, "_xl", None) or xl.get("xong"):
+            return
+        hop = xl["hop"]
+        if loi:
+            hop.buoc("do", "loi", "lỗi khi tính màu da")
+            self._xl_ket_thuc("loi", "Lỗi khi tính màu da theo số đo trên preview:\n"
+                              + str(loi).strip().splitlines()[-1])
+            return
+        if xl.get("truoc_huy") or self.cancel_flag:
+            hop.buoc("do", "loi", "đã dừng")
+            self._xl_ket_thuc("dung", "Đã dừng — chưa áp gì vào Lightroom.")
+            return
         n_ml = sum(1 for r in self.items or [] if r.get("mot_luot"))
         xl["n_mot_luot"] = n_ml
         chu = f"{gd.so_vn(len(self.items or []))} ảnh"
@@ -703,7 +720,8 @@ class XuLyAnhMixin:
         ds += [r for r in at.chon_dai_dien_da(xl["da_tat"], cfg) if id(r) not in co_ds]
         xl["ml_ds"], xl["ml_mau"] = ml_ds, {id(r) for r in mau}
         #  14/10: lượt 2 theo cụm cùng khung tới cả ảnh một lượt KHÔNG đo (đo trước 2 ảnh / loạt)
-        xl["ml_tat"] = [r for r in ghi if r.get("mot_luot")]
+        #  16/10: ảnh không có người không vào lượt 2 (user) — kể cả theo loạt của chuỗi một lượt
+        xl["ml_tat"] = [r for r in ghi if r.get("mot_luot") and r.get("meter_boxes")]
         if not ds:
             xl["curve_kq"] = {"bo": "khong-anh"}
             self._xl_denoise()

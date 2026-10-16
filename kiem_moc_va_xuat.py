@@ -187,13 +187,16 @@ def main() -> int:
          "CANH_BAO_XUAT" in gui,
          "chốt tự tắt một bước lọc mà im lặng thì không ai biết")
     cay_gui = ast.parse(gui)
+    #  16/10: refresh_plan tách phần tính (_plan_tinh, chạy được ở luồng nền) — file bản xuất
+    #  chuẩn bị ở luồng giao diện vào self._plan_args rồi truyền vào at.plan(ban_xuat=...)
+    goi_plan = [n for n in ast.walk(cay_gui) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "plan" and isinstance(n.func.value, ast.Name) and n.func.value.id == "at"]
+    args_xuat = any(isinstance(n, ast.Assign) and any("_plan_args" in ast.unparse(t) for t in n.targets)
+                    and "_file_xuat" in ast.unparse(n.value) for n in ast.walk(cay_gui))
     ktra("giao diện gọi at.plan() kèm file bản xuất đang dùng",
-         any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-             and n.func.attr == "plan" and isinstance(n.func.value, ast.Name)
-             and n.func.value.id == "at"
-             and any(k.arg == "ban_xuat" and "_file_xuat" in ast.unparse(k.value)
-                     for k in n.keywords)
-             for n in ast.walk(cay_gui)),
+         any(any(k.arg == "ban_xuat" and ("_file_xuat" in ast.unparse(k.value)
+                                          or (args_xuat and ast.unparse(k.value) == "ban_xuat"))
+                 for k in n.keywords) for n in goi_plan),
          "self._file_xuat() — file mà self.export đọc ra")
 
     ws = (goc / "autotone.py").read_text(encoding="utf-8")
