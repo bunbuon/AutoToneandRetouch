@@ -2383,3 +2383,35 @@ TU_DIEN.update({
     'Lấp vùng tóc thưa / hói.': 'Fills thinning / bald hair areas.',
     'Mặc định không chạy cho nhóm này — bật “riêng” để chạy.': 'Off by default for this group — turn on “custom” to run it.',
 })
+
+#  16/10 (v96): bảng chọn màu da đích (chon_mau_da) — chú thích hai chấm + hộp chọn màu
+TU_DIEN.update({
+    'Màu da trong nhà': 'Indoor skin tone',
+    'Màu da ngoài trời': 'Outdoor skin tone',
+    'Màu da tự chọn': 'Custom skin tone',
+    'Mẫu “{}”': 'Sample “{}”',
+    'Mẫu mặc định': 'Default sample',
+    'Lightroom: R {} · G {} · B {} %': 'Lightroom: R {} · G {} · B {} %',
+    'Bấm để chọn màu.': 'Click to pick a color.',
+    'Mẫu mặc định — lưu thành mẫu mới': 'Default sample — saved as a new sample',
+    'Mới': 'New',
+    'Hiện tại': 'Current',
+    'Bấm để trả về màu hiện tại.': 'Click to go back to the current color.',
+    'Màu này quyết sắc và độ đậm của da; độ sáng da mặt vẫn theo Bù sáng.':
+        'This color sets skin hue and saturation; face brightness still follows the Exposure setting.',
+    'Tên mẫu mới': 'New sample name',
+    'Lưu làm màu đích': 'Save as target',
+    'Đã lưu màu da trong nhà vào mẫu “{}”.': 'Saved the indoor skin tone to sample “{}”.',
+    'Đã lưu màu da ngoài trời vào mẫu “{}”.': 'Saved the outdoor skin tone to sample “{}”.',
+    #  bút lấy màu
+    'Lấy màu': 'Pick color',
+    'Bảng chọn màu cần bản cài mới hơn.\n({})': 'The color picker needs a newer installer.\n({})',
+    'Bút lấy màu': 'Eyedropper',
+    'Bút lấy màu: chấm vào bất kỳ đâu trên màn hình (ảnh đang mở, Lightroom…) để lấy đúng màu điểm đó. Esc để huỷ.':
+        'Eyedropper: click anywhere on the screen (an open photo, Lightroom…) to pick the exact color of that point. Esc to cancel.',
+    'Bấm để lấy màu · Esc để huỷ': 'Click to pick · Esc to cancel',
+    'Ngoài vùng chụp': 'Outside the captured screen',
+    'Không chụp được màn hình: {}': 'Could not capture the screen: {}',
+    'Cần cho phép ghi màn hình: System Settings › Privacy & Security › Screen Recording → bật Tone&Retouch, rồi mở lại app.':
+        'Screen recording permission is needed: System Settings › Privacy & Security › Screen Recording → turn on Tone&Retouch, then reopen the app.',
+})

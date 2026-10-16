@@ -494,17 +494,79 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
             out["ngoai_mn"] = list(m.get("ngoai_mn") or m["trong_mn"])
         return out
 
-    def _ve_mau_da(self):
-        cv = getattr(self, "cv_mau_da", None)
-        if cv is None:
-            return
+    def _dich_hien(self) -> tuple:
+        """(trong, ngoài) sRGB 0–255 của hai chấm = đích màu da tool đang nhắm: mẫu có tên;
+        "Mặc định" thì đích mặc định THEO thiết lập (bật da trắng hồng / loại buổi — đúng
+        at.dich_mac_dinh mà read_cfg dùng; trước 16/10 chấm luôn vẽ đích thường)."""
         md = self._mau_da_dang_chon()
-        t, n = (md["trong"], md["ngoai"]) if md else at.dich_da(dict(at.DEFAULTS))
-        cv.delete("all")
-        for i, c in enumerate((t, n)):
-            x = 8 + i * 22
-            cv.create_oval(x - 7, 1, x + 7, 15, outline=gd.MAU["vien"],
+        if md:
+            return list(md["trong"]), list(md["ngoai"])
+        try:
+            cfg = dict(at.DEFAULTS, grade=bool(self.v_grade.get()),
+                       loai_buoi=dict(LOAI_BUOI).get(self.v_loai_buoi.get(), "cuoi"))
+        except (AttributeError, tk.TclError):
+            cfg = dict(at.DEFAULTS)
+        md = at.dich_mac_dinh(cfg)
+        t, n = (md["trong"], md["ngoai"]) if md else at.dich_da_cuoi(cfg)
+        return list(t), list(n)
+
+    def _ve_mau_da(self):
+        cvs = getattr(self, "cv_mau_da", None)
+        if not cvs:
+            return
+        #  16/10: bản cập nhật (OTA) chạy trên gói cài cũ — thiếu gì thì chấm vẫn vẽ, chỉ mất
+        #  chú thích; KHÔNG để lỗi import làm hỏng việc dựng giao diện (app không mở được)
+        try:
+            import chon_mau_da as cmd
+        except Exception:                                    # noqa: BLE001
+            cmd = None
+        ten = self.v_mau_da.get() if self._mau_da_dang_chon() else None
+        for khe, c in zip(("trong", "ngoai"), self._dich_hien()):
+            cv = cvs[khe]
+            cv.delete("all")
+            cv.create_oval(3, 1, 17, 15, outline=gd.MAU["vien"],
                            fill="#%02x%02x%02x" % tuple(max(0, min(255, int(v))) for v in c))
+            try:
+                if cmd is not None:
+                    self._gy_mau_da[khe].dat(cmd.chu_cham(khe, c, ten))
+            except Exception:                                # noqa: BLE001
+                pass
+
+    def _chon_mau_da(self, khe: str):
+        """Bấm một chấm màu da -> bảng chọn màu (chon_mau_da), mở sẵn ở màu đang hiện. Lưu ->
+        màu đó là đích của khe: mẫu có tên thì sửa mẫu; "Mặc định" thành mẫu mới, chọn luôn
+        cho buổi."""
+        try:
+            import chon_mau_da as cmd
+        except Exception as ex:                              # noqa: BLE001
+            messagebox.showinfo("Màu da đích", f"Bảng chọn màu cần bản cài mới hơn.\n({ex})",
+                                parent=self)
+            return
+        hop = getattr(self, "_hop_mau_da", None)
+        try:
+            if hop is not None and hop.winfo_exists():
+                hop.lift()
+                return
+        except tk.TclError:
+            pass
+        ten = self.v_mau_da.get() if self._mau_da_dang_chon() else None
+        goc = self._dich_hien()
+
+        def xong(rgb, ten_moi):
+            d = self._doc_mau_da()
+            ten_ghi = cmd.cap_nhat_mau(d, ten, khe, rgb, goc, ten_moi or cmd.TEN_MOI,
+                                       cam=(MAU_DA_MAC_DINH,))
+            self._ghi_mau_da(d)
+            self.v_mau_da.set(ten_ghi)
+            self._doi_mau_da()
+            self.status((f"Đã lưu màu da trong nhà vào mẫu “{ten_ghi}”." if khe == "trong" else
+                         f"Đã lưu màu da ngoài trời vào mẫu “{ten_ghi}”."), gd.MAU["xong"])
+
+        self._hop_mau_da = cmd.HopChonMauDa(
+            self, goc[0 if khe == "trong" else 1], khe, ten_mau=ten,
+            ten_moi=None if ten else cmd.ten_trong(self._doc_mau_da(), cmd.TEN_MOI,
+                                                   cam=(MAU_DA_MAC_DINH,)),
+            gan=self.cv_mau_da[khe], xong=xong)
 
     def _dung_menu_mau_da(self):
         """Menu "Màu da ▾" dựng lại mỗi lần mở: các mẫu (chọn một) · tạo · xoá."""
@@ -2665,9 +2727,19 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                                    postcommand=self._dung_menu_mau_da)
         self.mb_mau_da["menu"] = self.menu_mau_da
         self.mb_mau_da.pack(side="right")
-        self.cv_mau_da = tk.Canvas(dong_wb, width=40, height=16, highlightthickness=0,
-                                   bg=gd.MAU["nen"])
-        self.cv_mau_da.pack(side="right", padx=(0, 4))
+        #[[ 16/10 user: "Khi di chuột vào cần hiển thị là màu da của phần nào ... khi bấm vào
+        #   chọn hãy mở bảng màu ... chọn xong thì sẽ lưu màu da đó làm màu đích". HAI ô (trái
+        #   trong nhà · phải ngoài trời), mỗi ô một chú thích; bấm -> chon_mau_da. ]]
+        o_cham = tk.Frame(dong_wb, background=gd.MAU["nen"])
+        o_cham.pack(side="right", padx=(0, 4))
+        self.cv_mau_da, self._gy_mau_da = {}, {}
+        for khe in ("trong", "ngoai"):
+            cv = tk.Canvas(o_cham, width=20, height=16, highlightthickness=0,
+                           bg=gd.MAU["nen"], cursor="hand2")
+            cv.pack(side="left")
+            cv.bind("<Button-1>", lambda _e, k=khe: self._chon_mau_da(k))
+            self.cv_mau_da[khe] = cv
+            self._gy_mau_da[khe] = gd.GoiY(cv, "")
         hoi(dong_wb, "Màu da mà tool đưa về. “Tạo từ ảnh đã sửa…” để lấy màu da theo gu của "
                      "bạn."
             ).pack(side="right", padx=(0, 6))
@@ -2831,6 +2903,9 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                   self.v_ap_loai, self.v_denoise, self.v_denoise_iso,
                   self.v_curve_da, self.v_curve_chay, self.v_mot_luot):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
+        #  16/10: chấm màu da "Mặc định" theo da trắng hồng / loại buổi (_dich_hien)
+        for b in (self.v_grade, self.v_loai_buoi):
+            b.trace_add("write", lambda *_a: self.after_idle(self._ve_mau_da))
         self._tom_tat_nhom()
 
         #[[ BE NGANG CO DINH — mo / dong nhom KHONG lam cot doi be ngang.

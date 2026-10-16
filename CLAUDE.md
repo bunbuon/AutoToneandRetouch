@@ -1463,6 +1463,33 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## Bảng chọn màu da đích (16/10, sau v95) — `chon_mau_da.py`
+
+User hỏi hai chấm cạnh nút "Màu da" là gì (trái = đích TRONG NHÀ, phải = NGOÀI TRỜI — mẫu "Lễ Ăn Hỏi" tạo
+từ 1 ảnh ngoài trời nên hai khe cùng màu), rồi: "Khi di chuột vào cần hiển thị là màu da của phần nào ... bấm
+vào ... mở bảng màu kiểu [Photoshop], mặc định chọn vào màu da đang hiển thị ... chọn xong lưu làm màu đích".
+- Hai `tk.Canvas` riêng (`cv_mau_da = {"trong", "ngoai"}`), mỗi chấm một `gd.GoiY` (khe · mẫu · R G B %
+  Lightroom · "Bấm để chọn màu"), bấm -> `_chon_mau_da(khe)` -> `HopChonMauDa` (ô vuông bão hoà × sáng HSV +
+  thanh sắc độ trên 360° -> dưới 0°, ô Mới / Hiện tại, gõ R G B % Lightroom Melissa, ảnh qua PNG — không
+  ImageTk vì Mac). Một hộp một lúc (`_hop_mau_da`).
+- `cap_nhat_mau`: mẫu có tên -> chỉ đổi khe đó (khe kia ghi rõ ra: mẫu cũ thiếu "ngoai" thì ngoài trời
+  từng đi theo trong nhà), `*_mn` nhân đúng tỉ lệ tuyến tính, `trang` giữ, dấu `sua_tay`; "Mặc định" -> mẫu
+  MỚI (`TEN_MOI` "Màu da tự chọn", không đè mẫu trùng tên, `tu_mac_dinh`), app chọn luôn cho buổi.
+- `_dich_hien`: chấm "Mặc định" nay vẽ ĐÚNG đích read_cfg dùng (`dich_mac_dinh` theo da trắng hồng / loại
+  buổi; trước vẽ `dich_da(DEFAULTS)` — sai khi bật da trắng hồng: 227/184/185 thay vì 246/194/181); trace
+  `v_grade` / `v_loai_buoi` vẽ lại.
+- Độ sáng màu chọn CHỈ dùng ở một lượt (L_t, còn hạ `da_dich_L_bu`); đường thường lấy hue + q (kéo dọc ô
+  vuông giữ cả hai — test §2) -> câu ghi chú trong hộp "độ sáng da mặt vẫn theo Bù sáng".
+- **Bút lấy màu** (user: "bấm bút và chấm vào bất kỳ đâu trên ảnh sẽ lấy đc ra đúng mã màu"): nút "Lấy màu"
+  (icon `hut_mau`) -> hộp ẩn 250 ms -> `chup_man_hinh` MỘT lần (Windows `ImageGrab.grab(all_screens)` + màn ảo
+  GetSystemMetrics 76–79; macOS màn chính, hồ sơ màu màn -> sRGB qua ImageCms, hỏi quyền Ghi màn hình
+  `CGPreflight/RequestScreenCaptureAccess` — thiếu quyền screencapture chỉ ra hình nền, không lỗi) -> `ButLayMau`:
+  lớp phủ alpha 0.01 (mac 0.05) bắt chuột + kính lúp 13×13×9 theo con trỏ; bấm trái = đúng 1 điểm ảnh
+  (`diem_anh` quy theo TỈ LỆ ảnh / vùng Tk — Windows không khai DPI + Retina đều đúng), bấm phải / Esc huỷ.
+  Ảnh chụp chỉ trong bộ nhớ, bỏ ngay khi xong. Windows KHÔNG đổi hồ sơ màn (app không quản lý màu thì số
+  khung hình = số file). Bài kiểm dùng ảnh chụp GIẢ (thay `cmd.chup_man_hinh`) — không chụp màn hình thật.
+Kiểm: `test_chon_mau_da.py` (6 phần, App thật). Dịch: khối v96 cuối `ngon_ngu_en.py`.
+
 ## v95 (16/10): hết "treo" sau đo trước · bước 2 bỏ ảnh không người
 
 - User: "tool sau khi phân tích đã bị treo" (Not Responding ở "Đo da trên preview Lightroom 269/272",
