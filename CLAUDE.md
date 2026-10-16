@@ -1490,7 +1490,8 @@ vào ... mở bảng màu kiểu [Photoshop], mặc định chọn vào màu da 
   khung hình = số file). Bài kiểm dùng ảnh chụp GIẢ (thay `cmd.chup_man_hinh`) — không chụp màn hình thật.
 Kiểm: `test_chon_mau_da.py` (6 phần, App thật). Dịch: khối v96 cuối `ngon_ngu_en.py`.
 Phát hành v96 (2026.10.16.3, 16/10, user: "push lên để bản mới có thể update được"): commit c278b0e, Mac arm
-38858853027, OTA app-latest = win + mac-arm64 (bỏ asset 13.x; KHÔNG có mac-x86_64 -> máy Intel giữ bản cũ).
+38858853027, OTA app-latest = win + mac-arm64 (bỏ asset 13.x); user gọi thêm Intel: run 38871219497
+(GÓI ĐẠT + XEM TRƯỚC ĐẠT + OTA ĐẠT, ~38 phút) -> latest.json đủ 3 khối win / mac-arm64 / mac-x86_64.
 Thử OTA trên GÓI CŨ: đổi tên dist/AutoTone -> dist/AutoTone_v95 trước khi build, `kiem_ota.py dist/AutoTone_v95
 <zip>` (OTA ĐẠT); kênh trước đó là 13.4 (v86) nên máy v86–v95 đều nhận — launcher không có đường lui khi
 import lỗi, nên import module mới trong autotone_gui bọc try. Đầu–cuối: cap_nhat.kiem_tra/tai từ URL thật.
