@@ -1463,6 +1463,198 @@ Kiểm: `test_hoc_mau_lr` §6, `test_hoc_mau_ui`, `test_mo_hinh_lr` §6b, `test_
 chạy riêng đọc `preset_xem.json` trong thư mục mã nguồn (tên preset dài -> "1 chỗ bị cắt"); qua
 kiem_toan_bo (dữ liệu tạm) thì đạt.
 
+## v98 (17/10): cô dâu là chủ thể · phạm vi chỉnh WB / Exposure · 3 mẫu da gợi ý · Auto chính thức
+
+- **Chọn mặt đo / mask** (`at.gan_chu_the`, `at.mat_net`, DEFAULTS `co_dau_*`, `mat_out_net_ti`,
+  `mat_giua_r`). User: "Da của chú rể lúc nào cũng sẽ sạm hơn da của cô dâu… Ưu tiên nhân vật chính
+  xuất hiện nhiều (đám cưới: cô dâu số 1) -> chủ thể được bắt nét trong điểm nét -> chủ thể ở vùng
+  giữa ảnh có da highlight thừa nhiều. Chủ thể out nét mặc định loại". Thứ tự: (0) loại mặt out nét
+  (`sharp` < 0.6 × mặt AF / mặt tin chắc nét nhất; mặt AF không bao giờ loại) -> (1) nhân vật chính
+  (top 6 người SFace; `loai_buoi` "cuoi": NỮ nhiều ảnh nhất lên hạng 1) — đổi cả phép đo mặt -> (2)
+  không có: mặt AF -> (3) mặt vùng giữa có p95 da cao nhất; (2)(3) chỉ chọn trong `meter_boxes` của
+  measure, chỉ đổi khung / màu da / p95 (mask), phép đo sáng cũ giữ. `r["mat_mask"]` = cách chọn.
+  Giới tính: `models/genderage.onnx` (insightface buffalo_l, 1.3 MB, cv2.dnn ~1 ms/mặt,
+  `at.gioi_tinh_mat`) chạy trong `dac_trung_mat` -> `mat_dt[i]["nu"]`, `["tuoi"]`; `nhom_nguoi` lấy
+  trung bình theo người. Bản phân tích cũ (không "nu") -> không nhận cô dâu tới khi phân tích lại.
+  TestAnhCuoi: người 369 ảnh = chú rể (nữ 0.00, ~37t), cô dâu 257 ảnh (nữ 0.95, ~26t); 243 ảnh có
+  cả hai, da cô dâu sáng hơn +0.67 EV — trước đây cả 243 đo theo chú rể. Kiểm: `test_chu_the` §5–6.
+- **Phạm vi chỉnh** (`at.PHAM_VI`, `pham_vi` / `moc_hien_tai` / `chot_pham_vi`, ô "Phạm vi chỉnh" —
+  kv `pham_vi`): "Đầy đủ" | "WB + Exposure" | "Chỉ WB" | "Chỉ Exposure". Khác Đầy đủ: đường Auto
+  nhưng KHÔNG bấm Auto (`xl["khong_auto"]`, `auto_kq.bo = "khong-auto"`), mốc `lr_auto` = `crs_hien`
+  (số Lightroom hiện tại, cả WB), chuỗi một lượt chỉ chạy bước được chọn (trần Exposure ±
+  `pham_vi_ev_tran` 1.5; duyệt lại `duyet_wb` / `duyet_ev`), chốt cuối trả ô ngoài phạm vi về số
+  hiện tại, `write_lr_job` để TRỐNG mọi ô khác (`_O_PHAM_VI`) — plugin không đụng. Không Curve / HSL
+  / CG / Denoise. Kiểm: `test_pham_vi`, `test_mau_mot_luot` §16, `test_quy_trinh_auto` (luồng).
+- **3 mẫu màu da gợi ý** (`at.MAU_DA_GOI_Y`, gui `MAU_DA_GOI_Y`): Cưới (trắng hồng trong trẻo, OkLab
+  L 0.845 / hue 40° / đậm/L 0.058), Sự kiện (tự nhiên ấm nhẹ, 0.81 / 48° / 0.066), Kỷ yếu (sáng tươi
+  hồng hào, 0.85 / 42° / 0.064); ngoài trời +4° / +0.004 / −0.01; có đích vùng trắng. Căn cứ + nguồn ở
+  chú thích trên MAU_DA_GOI_Y. Không nằm trong `mau_da.json`, không xoá được; sửa chấm màu -> mẫu riêng
+  mới. Buổi chưa chọn mẫu (lần trước Mặc định / gợi ý) -> gợi ý theo loại buổi; đổi loại buổi khi
+  đang dùng gợi ý -> gợi ý mới. Kiểm: `test_mau_da_goi_y`.
+- **Giới hạn chỉnh** ẩn cả nhóm, số cố định `GIOI_HAN_CO_DINH` (Dìm / Kéo tối đa 5 EV, can thiệp ×1).
+- **Quy trình Auto Lightroom chính thức**: bỏ "(thử nghiệm)", mặc định BẬT, khoá kv mới
+  `quy_trinh_auto_chinh` (khoá cũ `quy_trinh_auto` ghi False hồi thử nghiệm, không mang sang).
+
+## Quy trình Auto Lightroom (16/10; chính thức từ 17/10 — xem mục v98) — `auto_lr.py`, `AutoCore.lua`, `at.giu_auto`, `at.tone_da_luot2`
+
+User: "Khách hàng Import 1 bộ ảnh vào Lightroom -> Chọn preset của họ -> Xuất thông số cho AutoTone ... Bật chế độ
+Auto của phần Basic của tất cả các ảnh -> Đo các thông số hiện tại trên vùng da ... -> WB -> Tone -> Curve RGB ->
+Áp lại LR -> Kiểm tra lại ... Nếu chưa thì xử lý WB -> Tone -> áp lại LR". Chọn: công tắc riêng (Tone ›
+"Quy trình Auto Lightroom (thử nghiệm)", kv `quy_trinh_auto`), GIỮ tông Auto, tối đa 2 vòng kiểm.
+- `AutoCore.lua` (khung DenoiseCore): request_auto.txt (#ma + đường dẫn; app gửi ảnh CÓ MẶT trước) ->
+  auto_anh.tsv (#ma, path + Exposure/Contrast/HL/SH/Whites/Blacks/Vibrance/Saturation/Temp/Tint/WB),
+  auto_tiendo.txt, ketqua_auto.txt (+ cach gom/develop/gom+develop, giay); dung_auto.txt (ma) dừng. Chỉ khi
+  autoApply. Nhịp khai "auto1". OTA không mang Lua -> bộ cài đầy đủ.
+- 16/10 tối, CÁCH GOM (user: "để LR bấm Auto từng ảnh ntn rất lâu"). Đo thật cách cũ (TEST 693 ảnh, Develop
+  chọn từng ảnh + `LrDevelopController.setAutoTone()`): 366 ảnh / 939 s = 2,57 s/ảnh, Auto Sync không ăn —
+  user bấm Dừng ở 367/693. Đọc ra từ LibraryToolkit.dll (LrPhoto) + Library.lrmodule (SdkOperations):
+  `photo:applyDevelopSettings(settings, historyName, flattenAutoNow)` — settings có `AutoTone = true` +
+  flattenAutoNow -> openNegative(kSuggestedMinimumSizeForAutoSettings) + autoToneKeysForSettings +
+  flattenAutoValues -> ghi SỐ Auto; nút Auto của Develop (`_updateAutoValues`) gọi đúng hai hàm đó, cùng khoá.
+  Plugin: mỗi lô một withWriteAccessDo (bước History "AutoTone: Auto"), cỡ lô tự chỉnh ~LO_GIAY 4 s (trần 40,
+  nghỉ 0.1 s); lô hỏng làm lại từng ảnh; không vào Develop / không đổi ảnh chọn. ẢNH THỬ đi lẻ kèm số CANH
+  Whites −100 / Blacks +100: Auto ghi đè = gom được (kể cả ảnh Auto từ trước — không có canh thì 366 ảnh đã
+  Auto của TEST trông như "không ăn"); canh còn / cờ AutoTone treo -> trả lại hai ô, về cách cũ (Develop từng
+  ảnh). PV2010 không canh -> thử tới LO_THU 5 ảnh. CHƯA thử Lightroom thật — tốc độ chưa đo. Bảng Auto cách
+  Develop của 366 ảnh TEST lưu ở scratchpad phiên c9ae9ebb (auto_anh_develop_20261016_193336.tsv) để so.
+- LỊCH SỬ GHI (16/10): số Auto plugin ghi KHÔNG nằm trong job của tool -> lượt sau `danh_dau_nguoi_sua` nhận
+  "sửa tay" và LOẠI ảnh khỏi lượt (dừng giữa chừng: 366 ảnh). App nhận bảng Auto (xong / dừng) ->
+  `auto_lr.ghi_lich_su` ghi `ghi_auto_<giờ>_<buổi>.done` (path + 8 ô tông Auto, không WB); `_lich_su_ghi` gộp
+  như job @curve, xếp theo GIỜ trong tên (`_thu_tu_ghi`). Tên cố ý KHÔNG theo mẫu apply_*.done (last_applied,
+  tổng kết, gop_y quét apply_*.done). Bản ghi cho 366 ảnh TEST (19:49:24) đã tạo tay từ bảng đã lưu.
+- read_cfg (nguồn catalog + công tắc): quy_trinh_auto, mau_mot_luot, curve_da BẬT; hsl_da_cuoi / grade /
+  curve (đường S) TẮT. Luồng xu_ly_anh_ui: phân tích -> `_xl_auto` (gửi self.items) -> `_xl_soi_auto` (chờ
+  ≤ 90 s được nhận; xong -> r["lr_auto"] từ bảng) -> `_xl_bat_truoc` (đo da trên preview SAU Auto) -> tính
+  lại -> áp; không đo được -> refresh_plan_nen -> áp. Dừng ở pha auto: chưa nhận thì rút, nhận rồi xin dừng.
+  16/10 (user: "Ẩn Auto Lightroom đi đưa vào phân tích"): hộp Xử lý ảnh KHÔNG có dòng Auto riêng (bỏ
+  BUOC_AUTO) — Auto + đo da sau Auto chạy dưới dòng "Phân tích ảnh" (xl["do_chu"]), dòng đó xong khi
+  Auto xong; thanh tiến độ "Lightroom bấm Auto x / y ảnh · còn ~…" (tính từ lúc plugin báo tiến độ).
+- plan(): sau compute_values, trước chinh_mau_da -> `giu_auto`: crs + mốc atn của Exposure/HL/SH/Contrast/
+  Whites/Blacks = số Auto, chỉnh tự động của tool = 0, GIỮ bù người dùng (Bù sáng (ảnh có mặt) / K / Tint cả
+  buổi), new_Contrast/Whites/Blacks = Auto. `danh_dau_nguoi_sua` bỏ qua ảnh có lr_auto. Chuỗi một lượt khi
+  quy_trinh_auto: WB (theo da / vùng trắng) -> TONE (sang_dich, cho TĂNG ≤ auto_ev_sang_len 0.3; không
+  chay_lr, không Luminance) -> CURVE R/G/B (cuối); HSL / CG về preset; không nén cháy.
+- Vòng kiểm (`_xl_curve_luong`): wb_da_luot2 (Temp + Tint) + `tone_da_luot2` (ΔEV = 0.7 × 3·log2(L_đích/L),
+  < 0.1 giữ, trần +0.3 / −0.6, theo loạt; cột Exposure2012 trong job @curve); không curve / soát HSL. Áp
+  xong -> `_xl_auto_vong_tiep`: số mới vào r (new_temp/new_tint/new_exposure), còn vòng thì `_xl_curve` lại
+  (auto_vong_kiem 2). Tổng kết: "Quy trình Auto: Lightroom bấm Auto N ảnh trong <thời gian> · kiểm màu da V vòng".
+Kiểm: `test_quy_trinh_auto.py` (lõi + luồng), `kiem_plugin_lua51` §8d (AutoCore trên SDK giả),
+`test_mau_mot_luot` §14 (thứ tự chuỗi khi Auto).
+
+## Đích SÁNG của da: Mặc định ngoài trời + bù sáng (16/10 khuya, TestAnhCuoi) — `curve_da.dich_cua`
+
+User: "Dù tôi đã chọn bù Exposure +0.3 nhưng tất cả các bức ảnh vẫn tối hơn tới 0.5ev, vấn đề này có phải do không
+export ảnh preview để đo được da?" — KHÔNG phải: job − Auto trung vị −0.36 / −0.44 EV (nhiều ảnh −1.1 = chạm trần
+sang_dich −0.6 + duyet_lai −0.6), tức chuỗi DỰ ĐOÁN đúng chiều nhưng ĐÍCH sai: buổi dùng mẫu "Mặc định", ảnh nắng
+(EV ~12) -> khe ngoài trời = da RÁM [166,123,105] L 0.621, − da_dich_L_bu 0.09 -> 0.531 (−2.1 EV so với "Lễ Vu
+Quy" ngoài trời). Đo thật 87 ảnh (preview LR sau lượt): da ở Auto+0.3 L 0.702; đích trắng hồng −0.09 = 0.731,
+có bù +0.3 = 0.783 (+0.47 EV — khớp "tối hơn 0.5 EV"). Sửa dich_cua: mẫu Mặc định (mac_dinh) ngoài trời lấy ĐỘ
+SÁNG của khe trong nhà (giữ hue / độ đậm da rám); bù sáng cả buổi nhân L đích 2^(bù/3) (trước đây bước Tone /
+duyệt lại kéo da về đích và XOÁ phần bù; đường thường bù đi vào Exposure VÀ đích nên curve không chống). Mẫu có
+tên giữ độ sáng của mình. Kiểm: test_quy_trinh_auto §1c. Script đo: scratchpad do_sang_da_that.py.
+
+## Quy trình Auto dựng lại: Auto sớm + không xuất preview + duyệt lại bằng dự đoán (16/10 tối)
+
+User: "Khi bắt đầu bấm phân tích: Add Auto ở Basic cho tất cả các ảnh -> xuất thông số cho Lightroom 1 lần -> Đo
+da -> căn chỉnh WB và Exposure -> Căn chỉnh Tone Curve RGB nếu bật -> Duyệt lại 1 lần ảnh nào da chủ thể chưa đúng
+da đích thì chỉ sửa lại các ảnh đó -> Áp lightroom. Việc xuất ảnh preview như hiện tại sẽ rất mất thời gian".
+Lượt TestAnhCuoi cũ (512 ảnh): Auto 176 s, do_truoc xuất 122 s, 2 vòng kiểm ~100 s mỗi vòng, xem_lr 172 s (ngầm).
+- `_xl_bat_dau(…, anh=)` -> `_xl_auto_som` (luồng nền, SONG SONG phân tích): `do_truoc.chup_cache` đọc catalog
+  một lần + CHÉP preview còn mới (trạng thái TRƯỚC Auto — Auto đổi digest là preview hết mới) sang
+  do_truoc_tam/<ma>c; bỏ ảnh sửa tay (buoi_dat_lai / danh_dau_nguoi_sua trên catalog đọc thẳng); gửi lệnh Auto.
+  `_xl_soi_auto` chạy cả lúc phân tích; `_xl_sau_do`: Auto chưa xong -> pha "auto" ("chờ Lightroom bấm Auto
+  xong…"), xong rồi -> `_xl_sau_auto`. Không có danh sách sớm (bài kiểm) thì `_xl_auto` gửi muộn như cũ.
+- `_xl_sau_auto`: lr_auto -> `_xl_bat_truoc` đo MỌI ảnh có mặt trên bản chụp (`do_truoc.chay(chup=,
+  khong_xuat=True)`, nguồn "chup", st = số trước Auto; ảnh thiếu preview KHÔNG nhờ plugin dựng) -> kế hoạch:
+  giu_auto -> chuỗi một lượt WB -> Tone -> Curve R/G/B (THEO Ô — read_cfg thôi ép curve_da) ->
+  `mau_mot_luot.duyet_lai` (sau dong_bo_cum + can_sang_cum, trước dự đoán cuối) -> áp MỘT lần.
+  `_xl_job` / `_xl_curve`: auto không hoàn thiện, không vòng kiểm (đã xoá `_xl_auto_vong_tiep`).
+- `duyet_lai` (dự đoán bằng mô hình, ~200 điểm da / ảnh): theo CỤM CÙNG KHUNG, cụm có ảnh ngoài vùng ổn (da_on_L
+  / hue / chroma) -> lưới ΔWB (mired ±40 bước 10 rồi mịn, Tint ±10) rồi ΔExposure (−0.6…+0.3), một bộ chung cả
+  cụm; ảnh neo vùng trắng: vùng trắng dự đoán không ra xa khoảng đích hơn trước; ánh sáng ngày không neo: lạnh ≤
+  150 K, Tint ±3; nhận khi tổng lệch giảm ≥ 20% (auto_duyet_*). Lightroom giả (test_mau_mot_luot §15): 401 -> 276.
+- GIỚI HẠN: mô hình KHÔNG có Contrast / Whites / Blacks / Vibrance / Saturation -> phần Auto đổi các ô đó không vào
+  dự đoán; ảnh không có preview mới / máy chưa học màu -> chỉ Auto + WB vùng trắng (tổng kết "⚠ N ảnh chưa có
+  preview … Build Standard-Sized Previews"). xem_lr (ngầm, sau lượt) giữ — nó làm cache mới cho lượt sau.
+- Dừng lúc phân tích cũng rút / xin dừng Auto; lượt kết thúc khi Auto còn chạy -> `_xl_auto_ghi_sau` đợi rồi
+  ghi_lich_su. `_xl_ket_thuc` dọn bản chụp (don_chup).
+Kiểm: test_quy_trinh_auto §4 (Auto sớm, bỏ ảnh sửa tay, chờ / không chờ, không vòng kiểm), test_do_truoc §6b,
+test_mau_mot_luot §15.
+
+## Hộp Xử lý ảnh gọn ở bản đóng gói (16/10 tối) — `xu_ly_anh_ui.HopXuLy.GON`
+
+User: "các thông báo khi chạy phân tích trên hộp thoại chỉ cần hiện chữ đang chạy là được r. K cần show ra là
+đang chạy cái gì ở phía bản đóng gói cài cuối". `HopXuLy.gon` = `dd.dong_goi()` (GON lớp ép được — bài kiểm):
+`buoc(…, "dang", …)` -> "đang chạy…" (giữ "đang dừng…"), `tien_do` -> dòng chữ trống (thanh + đồng hồ vẫn chạy),
+`buoc(…, "xong", …)` -> phần trước " · " ("693 ảnh"); "loi" / "bo" giữ đủ chữ (khách cần biết để xử lý). Lọc
+ngay trong lớp nên mọi chỗ gọi (Xử lý ảnh, Học màu) cùng gọn; bản dev giữ chi tiết. Kiểm: `test_quy_trinh_auto` §4.
+
+## Quy trình Auto: giữ tông Auto + chốt vùng trắng ở lượt kiểm (16/10 tối, TestAnhCuoi)
+
+User (ảnh cưới NGOÀI TRỜI nắng, áo dài trắng, Sigma 24-70, 1/400 f/3.5 ISO 100): "Kiểm tra lại bước ảnh ngoài
+trời và trong nhà. hiện nhiều bức ngoài trời đang bị xanh do giảm WB. Sửa lại sau khi chạy Auto thì giữ nguyên
+Highlight và Shadow của Auto chỉ chỉnh lại Exposure và WB". Cách gom Auto chạy thật: 512 ảnh / 176 s (0.34 s/ảnh).
+- HL / SH bị đổi: `dong_bo_cum` (cụm cùng khung) chép `_CUM_TONE` của ảnh đại diện sang cả cụm — 320 / 512 ảnh đổi
+  Highlights, 337 đổi Shadows (LGK08674 Auto −76/49 -> −78/41). Nay: ảnh có lr_auto KHÔNG nhận tông đại diện +
+  `giu_tong_auto` chốt CUỐI plan() (HL / SH / Contrast / Whites / Blacks = số Auto của chính ảnh).
+- XANH: không phải nhãn trong / ngoài sai (EV100 ~12 -> ánh sáng ngày đúng; Places365 xếp cổng hoa "florist_shop/
+  indoor" -> đích da trong nhà, nhưng đổi luật p_trong sẽ đổi 2709 — giữ). Gốc: mẫu "Lễ Vu Quy" (4 ảnh ngoài trời)
+  khe ngoài [237,199,190] hồng -> lượt kiểm WB theo da (wb_da_luot2, trần 1500 K/vòng, Auto 2 vòng) kéo lạnh
+  trung vị −588 K ảnh ngoài trời (LGK08670 5550 -> 4261 -> 3863, Tint 22 -> 3) SAU KHI chuỗi vừa chỉnh WB theo
+  VÙNG TRẮNG +300 K / +6 (chạm trần). Đo preview LR cuối: vùng trung tính log2 B/R +0.16 (88/96 ảnh ngoài trời).
+- CHỐT VÙNG TRẮNG (wb_da_l2_trang*): chuỗi gắn r["wb_neo_trang"] cho ảnh có WB theo vùng trắng (giu / chinh);
+  lượt kiểm đo vùng trắng MỘT lần trên ảnh dựng ở WB neo (`_trang_lin_l2`, L 0.62–0.96, chroma < 0.025) ->
+  r["trang_l2_ref"], vòng sau quy đổi Bradford (`_K_bien_trang` / `_ti_bien_trang`): Temperature không đẩy OkLab b
+  ra ngoài [đích −0.006, đích +0.015], Tint không đẩy a quá ±0.006 (đích = mẫu "trang", không có: trung tính);
+  trắng đã lệch -> kéo về biên ≤ 500 K / 5 Tint. VÌ SAO đo một lần: đo lại trên ảnh đã ám chọn nhầm "trắng"
+  (áo trắng xanh vượt chroma 0.025 bị loại, vật hơi ấm thành "trung tính") — kiểm trên preview cuối ra b ≈ đích.
+  Ảnh KHÔNG neo mà ánh sáng ngày mạnh (`_ngay_manh`: EV100 ≥ 11, flash không nổ): lạnh ≤ 150 K, Tint ±3 / lượt.
+  r["wb_l2_chan"] + ghi chú "wb-trang-luot2:am|lanh"; tổng kết (chi tiết) "Vùng trắng (áo trắng) giữ đúng màu".
+- Mô phỏng (preview LR cuối quy đổi cả tấm về WB job chính, đo lại): ngoài trời mã cũ −408 K (103 ảnh ≥ 300 K
+  lạnh) -> mới 0 K (41); LGK08670 5550 giữ, 08672 5418, 08674 5179. Script: scratchpad mo_phong_wb_trang.py.
+- `buoi_dat_lai` (nhận đặt lại cả buổi) nay đọc thêm `lan_ghi_cuoi` (job @curve + bản ghi ghi_auto_*): TEST
+  20:24 Synchronize Settings sau lượt Auto (dev chỉ có bản ghi Auto, chưa job chính) -> lượt 20:28 bỏ 366 ảnh
+  "sửa tay" (đọc History catalog). Nay đồng bộ cả loạt về một bộ số -> "dat-lai".
+Kiểm: `test_am_mau` §8, `test_quy_trinh_auto` §1b, `test_mau_mot_luot` (cờ neo), `test_quy_trinh_auto` §2 (đặt lại sau Auto).
+
+## Thứ tự chuỗi màu da mới + lượt kiểm WB có Tint (16/10, sau v97)
+
+User (buổi G:/TestAnhTimmy/TEST — sự kiện, A7 IV, flash, đèn sân khấu xanh; chế độ một lượt BẬT): "Tone
+Curve làm bức ảnh tăng contrast cao quá ... da bị xanh quá. Thử đổi lại quy trình: Tone Curve nếu được
+bật thì sẽ chạy đầu tiên -> WB -> Tone - Check 1 lượt xem lại màu da đã đúng đích chưa". Chọn: Tone Curve
+= CHỈ phần tông; lượt kiểm chỉnh WB Temp + Tint; tắt đường S parametric; đích = mẫu từ ảnh user sửa.
+- Số đo (`soi_test_timmy.py`, chỉ đọc): ảnh tool da R G B % 59,4/50,0/52,4 (B/G 1,05) — đích Mặc định
+  81,7/74,1/72,8 (B/G 0,98), user sửa tay 64,9/58,2/55,8 (B/G 0,96). Lỗi chính: tool KHÔNG tới chính đích
+  của nó — bước WB của chuỗi chỉ chạy khi mẫu có vùng trắng (Mặc định không có), lượt kiểm chỉ xét
+  log2 B/R (gần đích) trong khi lệch thật ở trục Tint (G thiếu, da tím). User sửa: Temp +370…780 K,
+  Tint −6/−7, HSL Cam về preset, bỏ đường S (Darks −6 / Lights +6), Highlights −29 -> +16.
+- `mau_mot_luot.chuoi` thứ tự mới: 1 TONE CURVE (`_buoc_curve(da=False, chay=True)` — chỉ nén cháy, nền
+  cho mọi bước sau: `thong_so_tone` mang `curve_ghi_mot_luot`) -> 2 WB (mẫu có vùng trắng: vùng trắng như
+  cũ; không: `wb_da_buoc` — Jacobi (hue, log q) theo (K, Tint) từ mô hình, trung vị mỗi cụm, kéo 0,5 / Tint
+  0,3, trần ±1000 K / ±10) -> 3 TONE (sang_dich, chay_lr) + 3a Luminance -> 4 HSL -> 5 CURVE R/G/B
+  (`_buoc_curve(da=True, chay=False)`, curve mốc tạm = curve bước 1 -> giữ phần nén, không kéo sáng) -> 6 CG.
+  Hệ quả: da đã cháy trước Tone thì luật "da sáng -> không nén" chặn nén (Tone lo phần sáng).
+- Mô hình ILCE-7M4 phản ứng WB mạnh hơn ảnh thật (đổi WB 09415 về số tool: mô hình −24° hue, ảnh liền kề
+  thật −13,5° — cặp không sạch, khung khác) -> kéo nửa; lượt kiểm trên ảnh THẬT sửa nốt.
+- `wb_da_luot2` + Tint: `_giai_wb_da` (Bradford) cho Tint đích, lệch ≥ `wb_da_l2_nguong_tint` 4 -> kéo
+  `wb_da_l2_manh_tint` 0,3, trần ±10; `r["wb_l2_da"]` = có chỉnh (lọc khỏi curve lượt 2, đếm tổng kết).
+  Mô phỏng TEST với mẫu từ ảnh sửa: TIM09416 4790/17 -> 5063/3 (user ảnh liền kề 5157/10); với đích Mặc
+  định thì LẠNH đi (sai chiều) -> đích phải đúng gu (mẫu).
+- `DEFAULTS["curve"]` + `v_curve` mặc định TẮT (đường S tự động).
+- Mẫu đề xuất từ 3 ảnh user sửa màu (TIM09024, 09413, 09415; bỏ ảnh chỉ có bước Export): sRGB 237/186/182
+  = Lightroom % 84,1/75,2/72,0 — user tự nhập bằng bảng chọn màu.
+- 16/10 tối (user: "nếu Tone Curve RGB được bật thì sẽ reset Tone Curve RGB của preset mặc định đi. Sau đó
+  sẽ tinh chỉnh lại phần đó đầu tiên rồi mới chạy tới Tone Curve -> WB - Tone"): `at.dat_lai_rgb` (plan() ngay
+  sau attach_catalog_settings) — ô Curve R/G/B (curve_da) bật + catalog: ảnh CÓ MẶT, curve_tt moc/tool -> mốc
+  = preset với R/G/B THẲNG (`moc_rgb_thang`), job lượt 1 ghi nó (`curve_reset`); không mặt / 1 sao / đen trắng /
+  curve người sửa: không đụng. `trang_thai_curve`: catalog = preset R/G/B thẳng -> "tool" (tắt ô thì trả preset).
+  Chuỗi một lượt: 1 CURVE R/G/B (từ nền thẳng, không kéo sáng) -> 1b TONE CURVE (nén ghép lên) -> 2 WB -> 3 TONE ->
+  4 HSL -> 5 CG; bỏ curve R/G/B cuối. Curve R/G/B (cả lượt kiểm `soat`) giờ THEO Ô (`mot_luot_curve_da` False;
+  trước luôn chạy). Ô bật: curve đưa da về đích trước -> WB theo da thường giữ (chỉ lượt kiểm thật chỉnh WB).
+  Hai lượt: curve R/G/B vẫn ở lượt 2 (cần ảnh Lightroom dựng) nhưng đo trên ảnh đã xoá R/G/B preset.
+Kiểm: `test_mau_mot_luot` §13 (thứ tự, WB theo da, nén giữ trong curve cuối; thử ngược: bỏ đổi mốc -> đỏ),
+§10 tách WB khỏi cảnh soát HSL (`cfg10b`), `test_am_mau` §7 (Tint: chiều, ngưỡng, trần, tắt cờ, cả hai).
+
 ## Dừng giữa lượt đo · plugin BẬN chứ không phải "không chạy" (16/10, sau v96)
 
 - User: "bấm dừng thì không thấy dừng". `do_cancel()` tắt `self.chuoi` -> `_on_analyzed` chỉ gọi

@@ -215,6 +215,10 @@ def main() -> int:
     at.analyze = analyze_gia
     try:
         app = ag.App(root)
+        #  17/10: Quy trình Auto mặc định BẬT, mẫu da tự chọn gợi ý theo loại buổi — bài này kiểm
+        #  luồng thường với mẫu "Mặc định"
+        app.v_auto_lr.set(False)
+        app.v_mau_da.set(ag.MAU_DA_MAC_DINH)
         app.grid(row=0, column=0, sticky="nsew")
 
         def vong(n=4):
@@ -286,6 +290,11 @@ def main() -> int:
         app.v_bu_tint.set("-3")
         c = app.read_cfg()
         ktra("ô Bù K / Tint vào read_cfg", c["bu_k_ca_buoi"] == 150 and c["bu_tint_ca_buoi"] == -3)
+        #  17/10: buổi mới chưa chọn mẫu -> mẫu GỢI Ý theo loại buổi (test_mau_da_goi_y)
+        ktra("mở buổi mới -> ô Màu da đích là mẫu gợi ý", app.v_mau_da.get() in ag.MAU_DA_GOI_Y,
+             app.v_mau_da.get())
+        app.v_mau_da.set(ag.MAU_DA_MAC_DINH)
+        c = app.read_cfg()
         #  16/10 (user chọn "Mặc định cũng là đích"): mẫu Mặc định = đích mặc định (trừ Kỷ yếu)
         ktra("màu da mặc định -> mau_da_dich = đích mặc định (mac_dinh)",
              (c["mau_da_dich"] or {}).get("mac_dinh") is True

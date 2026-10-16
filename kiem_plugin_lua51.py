@@ -591,6 +591,218 @@ src_init = (GOC / "Init.lua").read_text(encoding="utf-8")
 ktra("Init.lua goi DanhSach.runTheoDoi + Denoise.runRequest (Denoise chi khi autoApply)",
      "DanhSach.runTheoDoi" in src_init and "Denoise and prefs.autoApply" in src_init)
 
+# ---- 8d. AutoCore (16/10): Auto (bảng Basic) cho cả buổi — "Quy trình Auto"
+#  16/10 tối: CÁCH GOM — photo:applyDevelopSettings({AutoTone = true}, tên, true) theo lô, không vào
+#  Develop; thử không ăn -> cách cũ (chọn từng ảnh trong Develop + setAutoTone).
+#  Catalog giả ghi lệnh như NHẬT KÝ của Lightroom: áp khi giao dịch xong, giao dịch lỗi thì huỷ cả lô.
+import auto_lr  # noqa: E402
+L.execute("""
+AU = { st = {}, chon = nil, module = "library", vao = {}, goi = 0, kieu = "tinh", gd = 0, lo = {},
+       ten = {}, cho = {}, loiLoTo = false }
+function AU.daAuto() for i = 21, 23 do AU.auto1(i) end end
+local function auto1(i) local s = AU.st[i]; s.Exposure2012 = -0.37; s.Contrast2012 = 7; s.Highlights2012 = -32
+  s.Shadows2012 = 40; s.Whites2012 = 45; s.Blacks2012 = -27; s.Vibrance = 14; s.AutoTone = nil end
+AU.auto1 = auto1
+local function apDung(op)
+  local st = AU.st[op.i]
+  for k, v in pairs(op.s) do if k ~= "AutoTone" then st[k] = v end end     -- khoá thường: ghi như LR
+  if op.s.AutoTone == false then st.AutoTone = nil
+  elseif AU.kieu == "tinh" and op.s.AutoTone and op.phang then auto1(op.i)
+  elseif AU.kieu == "co" and op.s.AutoTone then st.AutoTone = true end
+end
+local function anh(i, p) return { localIdentifier = i, p = p,
+    getDevelopSettings = function(self) local t = {} for k, v in pairs(AU.st[i] or {}) do t[k] = v end return t end,
+    applyDevelopSettings = function(self, s, ten, phang)
+      AU.ten[#AU.ten + 1] = ten; AU.cho[#AU.cho + 1] = { i = i, s = s, phang = phang } end,
+    getRawMetadata = function(self, k) if k == "path" then return self.p end end } end
+AU.ds = { ["G:/C/B1.ARW"] = anh(21, "G:/C/B1.ARW"), ["G:/C/B2.ARW"] = anh(22, "G:/C/B2.ARW"),
+          ["G:/C/B3.ARW"] = anh(23, "G:/C/B3.ARW") }
+function AU.datLai(kieu, pv)
+  for i = 21, 23 do AU.st[i] = { Exposure2012 = 0.5, Contrast2012 = 5, Highlights2012 = -29, Shadows2012 = 16,
+      Whites2012 = -25, Blacks2012 = -18, Vibrance = 0, Saturation = 0, Temperature = 5000, Tint = 10,
+      WhiteBalance = "Custom", ProcessVersion = pv or "15.4" } end
+  AU.goi = 0; AU.vao = {}; AU.module = "library"; AU.kieu = kieu or "tinh"; AU.gd = 0; AU.lo = {}
+  AU.ten = {}; AU.cho = {}; AU.loiLoTo = false
+end
+AU.datLai()
+DC_AU = { setAutoTone = function() AU.goi = AU.goi + 1; auto1(AU.chon.localIdentifier)
+    if AU.khiBam then AU.khiBam() end end }
+AV_AU = { getCurrentModuleName = function() return AU.module end,
+          switchToModule = function(m) AU.module = m; AU.vao[#AU.vao + 1] = m end }
+local cat = { findPhotoByPath = function(self, p) return AU.ds[p] end,
+              setSelectedPhotos = function(self, a, ds) AU.chon = a end,
+              getTargetPhoto = function(self) return AU.chon end,
+              getTargetPhotos = function(self) return {} end,
+              withWriteAccessDo = function(self, ten, fn, opt)
+                  AU.gd = AU.gd + 1; AU.cho = {}
+                  fn()
+                  local ops = AU.cho; AU.cho = {}
+                  AU.lo[#AU.lo + 1] = #ops
+                  if AU.loiLoTo and #ops > 1 then error("giao dich het gio") end
+                  for _, op in ipairs(ops) do apDung(op) end
+                  if AU.khiGd then AU.khiGd() end end }
+local LrApplication = import("LrApplication")
+LrApplication.activeCatalog = function() return cat end
+local cu_au = import
+function import(n)
+  if n == "LrDevelopController" then return DC_AU end
+  if n == "LrApplicationView" then return AV_AU end
+  return cu_au(n)
+end
+""")
+AUc = L.eval('require("AutoCore")')
+AUc.CHO_THU = 0
+AUc.CHO_MOI_ANH = 0
+GA = L.globals().AU
+
+
+def ds_lua(t):
+    n = L.eval("function(t) return #t end")(t)
+    return [t[i] for i in range(1, n + 1)]
+
+
+ma_a, ds_a = AUc.phanTich("#ma=a1\nG:/C/B1.ARW\n\n G:/C/B2.ARW \n#x\n")
+ktra("AutoCore.phanTich: mã + danh sách (bỏ dòng trống / chú thích)",
+     ma_a == "a1" and [ds_a[i] for i in range(1, len(ds_a) + 1)] == ["G:/C/B1.ARW", "G:/C/B2.ARW"])
+ktra("AutoCore.coHam: thiếu setAutoTone -> false, có -> true",
+     AUc.coHam(L.eval("{}")) is False and AUc.coHam(L.eval("DC_AU")) is True)
+ktra("AutoCore.daDoi: một ô tông đổi -> true; như nhau -> false",
+     AUc.daDoi(L.eval("{ Exposure2012 = 0.5 }"), L.eval("{ Exposure2012 = 0.2 }")) is True
+     and AUc.daDoi(L.eval("{ Exposure2012 = 0.5, Contrast2012 = 3 }"),
+                   L.eval("{ Exposure2012 = 0.5, Contrast2012 = 3 }")) is False)
+ktra("AutoCore.xinDung: đúng mã -> true, mã khác -> false",
+     AUc.xinDung("ma=a5\n", "a5") is True and AUc.xinDung("ma=a5\n", "a6") is False)
+ktra("AutoCore.conCo: còn cờ AutoTone (chưa tính) -> true; không cờ -> false",
+     AUc.conCo(L.eval("{ AutoTone = true }")) is True and AUc.conCo(L.eval("{ Exposure2012 = 1 }")) is False)
+ktra("AutoCore.coCanh: bản xử lý 2012+ có Whites/Blacks -> true; PV2010 '5.7' / thiếu ô -> false",
+     AUc.coCanh(L.eval('{ Whites2012 = 3, Blacks2012 = -2, ProcessVersion = "15.4" }')) is True
+     and AUc.coCanh(L.eval('{ Whites2012 = 3, Blacks2012 = -2, ProcessVersion = "5.7" }')) is False
+     and AUc.coCanh(L.eval('{ Exposure2012 = 1 }')) is False)
+ktra("AutoCore.conCanh: còn đúng hai số canh -> true; Auto ghi đè một ô -> false",
+     AUc.conCanh(L.eval("{ Whites2012 = -100, Blacks2012 = 100 }")) is True
+     and AUc.conCanh(L.eval("{ Whites2012 = 45, Blacks2012 = 100 }")) is False)
+ktra("AutoCore.coLo: lô 1 ảnh 0,5 giây -> 8 ảnh (~4 giây); không tốn giờ -> trần 40; 60 giây -> 1",
+     AUc.coLo(1, 0.5) == 8 and AUc.coLo(10, 0) == 40 and AUc.coLo(5, 60) == 1,
+     f"{AUc.coLo(1, 0.5)} · {AUc.coLo(10, 0)} · {AUc.coLo(5, 60)}")
+
+# gom được: ảnh thử đi lẻ, rồi cả phần còn lại một giao dịch
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW", "G:/C/KHONG.ARW"], "a2", job_dir=jobs)
+ktra("auto_lr.tien_do: trước khi plugin nhận -> chờ, chưa có kết quả",
+     auto_lr.tien_do("a2", job_dir=jobs)["cho"] is True and auto_lr.tien_do("a2", job_dir=jobs)["ket_qua"] is None)
+AUc.runRequest()
+td_a = auto_lr.tien_do("a2", job_dir=jobs)
+kq_a = td_a["ket_qua"] or {}
+bg_a = auto_lr.bang("a2", job_dir=jobs)
+ktra("GOM: Auto 3 ảnh qua applyDevelopSettings (cach=gom, lo=1), 1 ảnh không có trong catalog",
+     kq_a.get("bat") == "3" and kq_a.get("khong_thay") == "1" and kq_a.get("cach") == "gom"
+     and kq_a.get("lo") == "1" and kq_a.get("giay") is not None, str(kq_a))
+ktra("…ảnh thử ĐI LẺ (1 ảnh) rồi 2 ảnh còn lại MỘT giao dịch; mọi lệnh có AutoTone + flattenAutoNow",
+     ds_lua(GA.lo) == [1, 2] and GA.gd == 2, str(ds_lua(GA.lo)))
+ktra("…số canh của ảnh thử bị Auto ghi đè (không còn Whites −100 / Blacks +100 ở ảnh nào)",
+     all(v.get("Whites2012") == 45 and v.get("Blacks2012") == -27 for v in bg_a.values()))
+ktra("…bước History 'AutoTone: Auto'", set(ds_lua(GA.ten)) == {"AutoTone: Auto"}, str(ds_lua(GA.ten)))
+ktra("…KHÔNG vào Develop, không bấm setAutoTone, không đổi ảnh đang chọn",
+     GA.vao[1] is None and GA.goi == 0 and GA.module == "library" and GA.chon is None,
+     f"{GA.vao[1]} · goi={GA.goi} · {GA.module}")
+ktra("…bảng auto_anh.tsv: thông số SAU Auto của đúng 3 ảnh (app làm mốc mới)",
+     len(bg_a) == 3 and all(v.get("Exposure2012") == -0.37 and v.get("Shadows2012") == 40
+                            and v.get("Vibrance") == 14 and v.get("WhiteBalance") == "Custom"
+                            for v in bg_a.values()), str(list(bg_a.values())[:1]))
+ktra("…tiến độ 3/3; yêu cầu đã nhận", td_a["xong"] == 3 and td_a["tong"] == 3 and td_a["cho"] is False,
+     str(td_a))
+ktra("auto_lr.bang: mã lượt khác -> rỗng", auto_lr.bang("a-khac", job_dir=jobs) == {})
+
+# ảnh ĐÃ Auto từ trước (Auto lại ra đúng số đang có) — canh giúp không về cách cũ oan
+L.execute("AU.datLai(); AU.daAuto()")
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a10", job_dir=jobs)
+AUc.runRequest()
+kq10 = auto_lr.tien_do("a10", job_dir=jobs)["ket_qua"] or {}
+bg10 = auto_lr.bang("a10", job_dir=jobs)
+ktra("Ảnh đã Auto từ trước: vẫn GOM (canh bị ghi đè), không đổi 3, không Develop, bảng đủ 3 số Auto",
+     kq10.get("cach") == "gom" and kq10.get("khong_doi") == "3" and kq10.get("bat") == "0" and GA.goi == 0
+     and len(bg10) == 3 and all(v.get("Whites2012") == 45 for v in bg10.values()), f"{kq10} · goi={GA.goi}")
+
+# lô to hỏng (Lightroom huỷ cả lô) -> làm lại từng ảnh
+L.execute("AU.datLai(); AU.loiLoTo = true")
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a3", job_dir=jobs)
+AUc.runRequest()
+kq3 = auto_lr.tien_do("a3", job_dir=jobs)["ket_qua"] or {}
+ktra("GOM: lô 2 ảnh hỏng -> làm lại từng ảnh, vẫn đủ 3 ảnh, không cần Develop",
+     kq3.get("bat") == "3" and kq3.get("cach") == "gom" and ds_lua(GA.lo) == [1, 2, 1, 1]
+     and GA.goi == 0 and len(auto_lr.bang("a3", job_dir=jobs)) == 3, f"{kq3} · {ds_lua(GA.lo)}")
+
+# Lightroom nhận lệnh mà để nguyên cờ AutoTone (không tính) -> cách cũ ngay sau ảnh thử đầu
+L.execute('AU.datLai("co")')
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a7", job_dir=jobs)
+AUc.runRequest()
+kq7 = auto_lr.tien_do("a7", job_dir=jobs)["ket_qua"] or {}
+ktra("Còn cờ AutoTone (chưa tính) -> bỏ cách gom sau 1 ảnh thử (+1 giao dịch trả lại), Develop: bấm 3",
+     GA.gd == 2 and "AutoTone: trả lại" in ds_lua(GA.ten) and GA.goi == 3 and kq7.get("bat") == "3" and kq7.get("cach") == "develop"
+     and not kq7.get("lo"), f"gd={GA.gd} goi={GA.goi} · {kq7}")
+ktra("…vào Develop rồi trả module cũ (library)", GA.vao[1] == "develop" and GA.module == "library",
+     f"{GA.vao[1]} · {GA.module}")
+
+# Lightroom bỏ qua AutoTone (ghi khoá thường): ảnh thử có canh -> canh còn nguyên -> trả lại, cách cũ
+L.execute('AU.datLai("bo")')
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a11", job_dir=jobs)
+AUc.runRequest()
+kq11 = auto_lr.tien_do("a11", job_dir=jobs)["ket_qua"] or {}
+ktra("Bỏ qua AutoTone: canh còn nguyên -> 1 thử + 1 trả lại, rồi Develop cả 3 (số Auto thật)",
+     GA.gd == 2 and GA.goi == 3 and kq11.get("cach") == "develop" and kq11.get("bat") == "3"
+     and all(v.get("Whites2012") == 45 for v in auto_lr.bang("a11", job_dir=jobs).values()),
+     f"gd={GA.gd} goi={GA.goi} · {kq11}")
+
+# ảnh PV2010 (không dùng canh), Lightroom bỏ qua lệnh: thử LO_THU ảnh rồi về cách cũ
+L.execute('AU.datLai("bo", "5.7")')
+AUc.LO_THU = 2
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a8", job_dir=jobs)
+AUc.runRequest()
+AUc.LO_THU = 5
+kq8 = auto_lr.tien_do("a8", job_dir=jobs)["ket_qua"] or {}
+bg8 = auto_lr.bang("a8", job_dir=jobs)
+ktra("Không ảnh thử nào đổi (LO_THU 2) -> chỉ 2 giao dịch thử, rồi Develop cả 3 ảnh",
+     GA.gd == 2 and GA.goi == 3 and kq8.get("bat") == "3" and kq8.get("cach") == "develop"
+     and len(bg8) == 3 and all(v.get("Exposure2012") == -0.37 for v in bg8.values()),
+     f"gd={GA.gd} goi={GA.goi} · {kq8}")
+
+# Dừng — cách gom: app xin dừng sau giao dịch đầu
+L.execute("AU.datLai()")
+GA.khiGd = lambda: auto_lr.xin_dung("a9", job_dir=jobs)
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a9", job_dir=jobs)
+AUc.runRequest()
+GA.khiGd = None
+kq9 = auto_lr.tien_do("a9", job_dir=jobs)["ket_qua"] or {}
+ktra("Dừng (gom): dừng sau lô đang làm (dung=1, Auto 1 ảnh), không vào Develop, xoá file dừng",
+     kq9.get("dung") == "1" and kq9.get("bat") == "1" and GA.gd == 1 and GA.vao[1] is None
+     and not (jobs / auto_lr.TEN_DUNG).exists(), f"{kq9} · gd={GA.gd}")
+
+# Dừng — cách cũ (Develop)
+L.execute('AU.datLai("bo")')
+GA.khiBam = lambda: auto_lr.xin_dung("a4", job_dir=jobs)
+auto_lr.yeu_cau(["G:/C/B1.ARW", "G:/C/B2.ARW", "G:/C/B3.ARW"], "a4", job_dir=jobs)
+AUc.runRequest()
+GA.khiBam = None
+kq4 = auto_lr.tien_do("a4", job_dir=jobs)["ket_qua"] or {}
+ktra("Dừng (Develop): app xin dừng -> plugin dừng ngay (dung=1), vẫn trả module cũ, xoá file dừng",
+     kq4.get("dung") == "1" and GA.module == "library" and not (jobs / auto_lr.TEN_DUNG).exists(), str(kq4))
+auto_lr.yeu_cau(["G:/C/B1.ARW"], "a5", job_dir=jobs)
+ktra("auto_lr.rut_yeu_cau: plugin chưa nhận -> rút được", auto_lr.rut_yeu_cau(job_dir=jobs)
+     and not auto_lr.dang_cho(job_dir=jobs))
+
+# Lightroom không tính Auto qua SDK và không có setAutoTone
+L.execute('AU.datLai("bo"); DC_AU.setAutoTone = nil')
+auto_lr.yeu_cau(["G:/C/B1.ARW"], "a6", job_dir=jobs)
+AUc.runRequest()
+ktra("Lightroom không gom được + không có setAutoTone -> ly_do lightroom-chua-ho-tro",
+     (auto_lr.tien_do("a6", job_dir=jobs)["ket_qua"] or {}).get("ly_do") == "lightroom-chua-ho-tro")
+ktra("…ảnh thử được trả Whites / Blacks về số cũ (−25 / −18), không kẹt số canh",
+     GA.st[21]["Whites2012"] == -25 and GA.st[21]["Blacks2012"] == -18,
+     f"{GA.st[21]['Whites2012']} / {GA.st[21]['Blacks2012']}")
+src_init2 = (GOC / "Init.lua").read_text(encoding="utf-8")
+src_core = (GOC / "AutoToneCore.lua").read_text(encoding="utf-8")
+ktra("Init.lua gọi AutoLr.runRequest chỉ khi autoApply; nhịp khai 'auto1'",
+     "AutoLr and prefs.autoApply" in src_init2 and "auto1" in src_core)
+
 # ---- 9. SaoCore (14/10): app chấm sao -> rating trong Lightroom
 L.execute('''
 SAO = { ghi = {}, tu_choi_0 = false, lan = 0, ten = nil }

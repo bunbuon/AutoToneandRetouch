@@ -72,7 +72,8 @@ def chay(items, thu_muc: Path, **kw) -> dict:
     its = copy.deepcopy(items)
     exp = {at.khoa_duong_dan(r["path"]): dict(PRESET_TRONG) for r in its}
     cfg = dict(at.DEFAULTS, source="catalog", bo_qua_nguoi_sua=False, burst=False,
-               blink=False, wb="skin", bu_sang_ca_buoi=0.0, max_ev_up=1.0)
+               blink=False, wb="skin", bu_sang_ca_buoi=0.0, max_ev_up=1.0,
+               curve=True)   # 16/10: curve parametric mặc định TẮT — bài kiểm cơ chế khi bật
     cfg.update(kw)
     with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
         at.plan(its, cfg, thu_muc, exp)

@@ -37,6 +37,8 @@ import autotone as at
 #[[ 14/10 (user: "vẫn giữ áp 2 lần để lấy được thông số của lần 1. Nhưng sẽ không hiển
 #   thị ra bên ngoài"): lượt 2 (curve da mặt / vùng cháy) chạy NGẦM trong bước "Áp vào
 #   Lightroom" — bước đó chỉ xong khi lượt 2 xong; không còn dòng Curve riêng. ]]
+#  16/10 (user: "Ẩn Auto Lightroom đi đưa vào phân tích"): quy trình Auto Lightroom KHÔNG có dòng
+#  riêng — Lightroom bấm Auto (+ đo da sau Auto) chạy trong "Phân tích ảnh", bước đó xong khi Auto xong
 BUOC = (("do", "Phân tích ảnh"), ("ap", "Áp vào Lightroom"),
         ("denoise", "Denoise ảnh ISO cao"))
 #  chờ yêu cầu Denoise được nhận tối đa bấy nhiêu giây (plugin cũ / Lightroom tắt)
@@ -114,6 +116,12 @@ def cau_thoi_gian(kh: dict) -> str:
 class HopXuLy(tk.Toplevel):
     """Cửa sổ tiến trình của MỘT lượt Xử lý ảnh."""
 
+    #: 16/10 (user: "các thông báo khi chạy phân tích trên hộp thoại chỉ cần hiện chữ đang chạy
+    #: là được. K cần show ra là đang chạy cái gì ở phía bản đóng gói cài cuối"): bản ĐÓNG GÓI —
+    #: bước đang chạy chỉ "đang chạy…" (giữ "đang dừng…"), dòng dưới thanh tiến độ để trống, bước
+    #: xong chỉ phần đầu ("693 ảnh"); lỗi / bỏ qua vẫn đủ chữ. None = theo dd.dong_goi().
+    GON: bool | None = None
+
     def __init__(self, app, co_denoise: bool, khi_dung, co_curve: bool = False,
                  buoc: tuple | None = None, tieu_de: str = "Xử lý ảnh",
                  dang: str = "Đang xử lý ảnh…"):
@@ -121,6 +129,8 @@ class HopXuLy(tk.Toplevel):
         super().__init__(app.winfo_toplevel())
         m = gd.MAU
         self.app = app
+        import duong_dan as dd
+        self.gon = dd.dong_goi() if HopXuLy.GON is None else bool(HopXuLy.GON)
         self._khi_dung = khi_dung
         self.title(tieu_de)
         self.transient(app.winfo_toplevel())
@@ -234,11 +244,22 @@ class HopXuLy(tk.Toplevel):
             cv.create_oval(cx - r, cy - r, cx + r, cy + r, outline=m["mo3"], width=1.5)
             l.configure(foreground=m["mo"])
 
+    def _chu_gon(self, tt: str, chi_tiet: str) -> str:
+        """Chữ của một bước ở bản đóng gói (GON): không nói đang chạy việc gì."""
+        if not self.gon:
+            return chi_tiet
+        if tt == "dang":
+            return chi_tiet if chi_tiet.startswith("đang dừng") else "đang chạy…"
+        if tt == "xong":
+            return chi_tiet.split(" · ")[0]
+        return chi_tiet
+
     def buoc(self, ma: str, tt: str, chi_tiet: str = ""):
         """Đặt trạng thái một bước: cho / dang / xong / loi / bo (bỏ qua)."""
         if ma not in self.hang:
             return
         self.tt[ma] = tt                    # trạng thái hiện tại của bước (bài kiểm đọc)
+        chi_tiet = self._chu_gon(tt, chi_tiet)
         try:
             self._ve_trang_thai(ma, tt)
             ct = self.hang[ma][2]
@@ -253,6 +274,9 @@ class HopXuLy(tk.Toplevel):
     def tien_do(self, xong, tong, chu: str = ""):
         try:
             self.thanh.dat(xong, tong)
+            if self.gon:                    # bản đóng gói: chữ "đang chạy…" đã ở dòng bước
+                self.lbl_td.configure(text="")
+                return
             self.lbl_td.configure(text=chu or (f"{gd.so_vn(xong)} / {gd.so_vn(tong)} ảnh"
                                                if tong else ""))
         except tk.TclError:
@@ -344,12 +368,17 @@ class XuLyAnhMixin:
         self._xl = {"t0": time.monotonic(), "pha": "", "hop": None, "xong": False}
         self.start_analyze(chuoi=True, dung_kho=True)
 
-    def _xl_bat_dau(self, so_do: int, so_kho: int, tong: int):
-        """start_analyze đã chốt danh sách ảnh: mở hộp tiến trình."""
+    def _xl_bat_dau(self, so_do: int, so_kho: int, tong: int, anh=None):
+        """start_analyze đã chốt danh sách ảnh: mở hộp tiến trình. anh (16/10 tối): đường dẫn
+        ảnh của lượt — quy trình Auto gửi lệnh Auto NGAY, song song với phân tích."""
         xl = getattr(self, "_xl", None)
         if xl is None:
             return
         cfg = self.read_cfg()
+        xl["auto"] = bool(cfg.get("quy_trinh_auto"))
+        #  17/10: phạm vi chỉnh chỉ WB / Exposure — đường Auto nhưng KHÔNG bấm Auto (at.moc_hien_tai)
+        xl["khong_auto"] = xl["auto"] and at.pham_vi(cfg) is not None
+        xl["pham_vi"] = str(cfg.get("pham_vi") or "day_du")
         xl.update(pha="do", so_do=so_do, so_kho=so_kho, tong=tong,
                   denoise=bool(cfg.get("denoise")), denoise_iso=int(cfg.get("denoise_iso") or 2000),
                   curve=bool((cfg.get("curve_da") or cfg.get("curve_chay"))
@@ -365,6 +394,8 @@ class XuLyAnhMixin:
             hop.tien_do(0, so_do)
         else:
             hop.buoc("do", "dang", f"{gd.so_vn(so_kho)} ảnh đã có kết quả — không đo lại")
+        if xl["auto"] and anh and self.source_value() == "catalog" and xl.get("auto_ma") is None:
+            self._xl_auto_som(anh)
         self._set_busy(self.busy)
 
     def _xl_cho_xuat_roi(self, ham, t0: float | None = None):
@@ -412,6 +443,7 @@ class XuLyAnhMixin:
         pha = xl.get("pha")
         if pha == "do":
             self.do_cancel()
+            self._xl_dung_auto(xl)                  # 16/10 tối: Auto đang chạy song song phân tích
             #  16/10: hộp báo NGAY là đã nhận lệnh (trước chỉ thanh trạng thái của cửa sổ chính
             #  đổi chữ — hộp vẫn chạy đồng hồ như chưa bấm gì)
             hop = xl.get("hop")
@@ -421,6 +453,15 @@ class XuLyAnhMixin:
                     hop.btn_dung.configure(state="disabled")
                 except Exception:                            # noqa: BLE001
                     pass
+        elif pha == "auto":
+            hop = xl.get("hop")
+            if self._xl_dung_auto(xl):
+                if hop is not None:
+                    hop.buoc("do", "loi", "đã dừng")
+                self._xl_ket_thuc("dung", "Đã dừng — chưa áp gì vào Lightroom." if xl.get("khong_auto")
+                                  else "Đã dừng — Lightroom chưa bấm Auto ảnh nào.")
+            elif hop is not None:
+                hop.buoc("do", "dang", "đang dừng…")
         elif pha == "truoc":
             xl["truoc_huy"] = True
         elif pha == "ap":
@@ -504,16 +545,251 @@ class XuLyAnhMixin:
                 "đóng hộp thoại đang mở trong Lightroom (hoặc mở lại Lightroom) để plugin "
                 "chạy lại, rồi bấm Xử lý ảnh." if n_sua else "Không còn ảnh nào để áp."))
             return False
-        hop.buoc("do", "xong", f"{gd.so_vn(len(items))} ảnh"
-                 + (f" · {gd.so_vn(len(self._do_hong))} ảnh không đo được"
-                    if getattr(self, "_do_hong", None) else ""))
+        xl["do_chu"] = (f"{gd.so_vn(len(items))} ảnh"
+                        + (f" · {gd.so_vn(len(self._do_hong))} ảnh không đo được"
+                           if getattr(self, "_do_hong", None) else ""))
         _moc(xl, "phan_tich")
+        #  quy trình Auto: bước Phân tích ảnh CHƯA xong — Lightroom bấm Auto nằm trong nó
+        if xl.get("auto") and not xl.get("auto_xong"):
+            xl.update(auto_items=items, auto_cfg=cfg)
+            if xl.get("auto_ma") is None and not xl.get("auto_kq"):
+                #  chưa gửi lúc bắt đầu (không có danh sách ảnh sớm) -> gửi bây giờ
+                if self._xl_auto(items, cfg):
+                    return True
+            elif xl.get("auto_ma") is not None:
+                if xl.get("auto_ket_thuc"):                 # Auto đã xong trong lúc phân tích
+                    self._xl_sau_auto()
+                    return True
+                xl["pha"] = "auto"
+                hop.buoc("do", "dang", "đọc preview Lightroom…" if xl.get("khong_auto")
+                         else "chờ Lightroom bấm Auto xong…")
+                return True
+        hop.buoc("do", "xong", xl["do_chu"])
         if self._xl_bat_truoc(items, cfg):
             return True
         xl["pha"] = "ap"
         hop.buoc("ap", "dang", "đang gửi…")
         self.after(60, lambda: self.do_apply(hoi=False, tu_dong=True))
         return True
+
+    # ------------------------------------------------------------ quy trình Auto (16/10)
+    #[[ 16/10 tối (user: "Khi bắt đầu bấm phân tích: Add Auto ở Basic cho tất cả các ảnh -> xuất
+    #   thông số cho Lightroom 1 lần -> Đo da -> căn chỉnh WB và Exposure -> Căn chỉnh Tone Curve
+    #   RGB nếu bật -> Duyệt lại 1 lần ảnh nào da chủ thể chưa đúng da đích thì chỉ sửa lại các
+    #   ảnh đó -> Áp lightroom. Việc xuất ảnh preview như hiện tại sẽ rất mất thời gian"):
+    #     1. lượt bắt đầu -> _xl_auto_som (SONG SONG phân tích): đọc catalog một lần, CHỤP preview
+    #        Lightroom còn mới (trạng thái TRƯỚC Auto — do_truoc.chup_cache, chép file, không
+    #        xuất), bỏ ảnh người dùng sửa tay, gửi lệnh Auto (cách gom ~0.34 s/ảnh)
+    #     2. phân tích + Auto xong -> _xl_sau_auto: số Auto vào ảnh -> đo da trên preview ĐÃ CHỤP
+    #        ("st" = thông số trước Auto; mô hình đoán sang số Auto + chỉnh của tool)
+    #     3. kế hoạch: giu_auto -> chuỗi một lượt WB -> Tone (Exposure) -> Curve R/G/B (khi bật ô)
+    #        -> DUYỆT LẠI một lần (mau_mot_luot.duyet_lai, dự đoán) -> áp MỘT lần; không còn
+    #        lượt kiểm dựng lại ảnh sau khi áp. ]]
+    def _xl_auto_som(self, anh) -> None:
+        import auto_lr
+        xl = self._xl
+        if not xl.get("khong_auto") and auto_lr.KHA_NANG not in at.plugin_kha_nang():
+            xl["auto_kq"] = {"bo": "plugin-cu"}            # tổng kết nói cần bộ cài đầy đủ
+            return
+        root = self.folder()
+        if root is None:
+            return
+        ma = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        xl.update(auto_ma=ma, t_auto=time.monotonic(), auto_huy=False, auto_ket_thuc=False)
+        threading.Thread(target=XuLyAnhMixin._xl_auto_som_luong,
+                         args=(xl, Path(str(root)), [str(x) for x in anh]), daemon=True).start()
+        self.after(1000, self._xl_soi_auto)
+
+    @staticmethod
+    def _xl_auto_som_luong(xl, root, anh) -> None:
+        """LUỒNG NỀN — không gọi Tk: chụp preview trước Auto, bỏ ảnh sửa tay, gửi lệnh Auto."""
+        import auto_lr
+        import do_truoc
+        import doc_cache_lr as dc
+        try:
+            khoa = {at.khoa_duong_dan(x): x for x in anh}
+            chup = do_truoc.chup_cache(root, chi=set(khoa))
+            xl["chup"] = chup
+            hang = chup.get("anh") or {}
+            #  ảnh người dùng đã sửa tay (khác số tool ghi lần trước, buổi không đặt lại) — không
+            #  bấm Auto lên công sửa của họ (plan() cũng bỏ chúng khỏi lượt)
+            sua: set = set()
+            try:
+                hien = {k: dc.dong_xuat(dc.thong_so(v.get("text"))) for k, v in hang.items()
+                        if v.get("text")}
+                ds_r = [{"path": v.get("path") or k} for k, v in hang.items()]
+                if hien and not at.buoi_dat_lai(ds_r, hien, root):
+                    at.danh_dau_nguoi_sua(ds_r, {}, root, hien=hien)
+                    sua = {at.khoa_duong_dan(r["path"]) for r in ds_r if r.get("nguoi_sua")}
+            except Exception:                                # noqa: BLE001
+                sua = set()
+            xl["auto_bo_sua"] = len(sua)
+            gui = [(hang.get(k) or {}).get("path") or x for k, x in khoa.items() if k not in sua]
+            if xl.get("auto_huy") or xl.get("xong"):
+                xl["auto_kq"] = {"bo": "dung"}
+                return
+            if xl.get("khong_auto"):                # chỉ WB / Exposure: chụp preview xong là đủ
+                xl["auto_kq"] = {"bo": "khong-auto"}
+                return
+            if not gui:
+                xl["auto_kq"] = {"bo": "khong-anh"}
+                return
+            auto_lr.yeu_cau(gui, xl["auto_ma"])
+            xl["auto_gui"] = len(gui)
+        except Exception as ex:                              # noqa: BLE001
+            xl["auto_kq"] = {"bo": "loi", "ly_do": str(ex)}
+
+    def _xl_auto(self, items, cfg) -> bool:
+        """Auto gửi MUỘN (không có danh sách ảnh lúc bắt đầu): gửi ngay sau phân tích rồi chờ.
+        False = không làm được (plugin cũ / không ảnh) — đi tiếp như thường."""
+        import auto_lr
+        xl, hop = self._xl, self._xl_hop()
+        if xl.get("khong_auto"):
+            #  chỉ WB / Exposure: không bấm Auto — chụp preview (luồng nền) rồi đi tiếp như Auto xong
+            anh = [r.get("lr_path") or r["path"] for r in self.items or []]
+            if not anh:
+                return False
+            self._xl_auto_som(anh)
+            xl.update(pha="auto", auto_items=items, auto_cfg=cfg)
+            if hop is not None:
+                hop.buoc("do", "dang", "đọc preview Lightroom…")
+            return True
+        if auto_lr.KHA_NANG not in at.plugin_kha_nang():
+            xl["auto_kq"] = {"bo": "plugin-cu"}          # tổng kết nói cần bộ cài đầy đủ
+            return False
+        #  ảnh có mặt lên trước — plugin THỬ cách gom trên vài ảnh đầu
+        anh = [r.get("lr_path") or r["path"]
+               for r in sorted(self.items or [], key=lambda r: not r.get("meter_boxes"))]
+        if not anh:
+            return False
+        ma = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        try:
+            auto_lr.yeu_cau(anh, ma)
+        except OSError as ex:
+            xl["auto_kq"] = {"bo": "loi", "ly_do": str(ex)}
+            return False
+        xl.update(pha="auto", auto_ma=ma, t_auto=time.monotonic(), auto_items=items, auto_cfg=cfg,
+                  auto_huy=False, auto_ket_thuc=False, auto_gui=len(anh))
+        if hop is not None:
+            hop.buoc("do", "dang", f"Lightroom đang bấm Auto cho {gd.so_vn(len(anh))} ảnh…")
+            hop.tien_do(0, len(anh), "Lightroom bấm Auto…")
+        self.after(1000, self._xl_soi_auto)
+        return True
+
+    def _xl_soi_auto(self):
+        """Theo dõi lệnh Auto — chạy cả TRONG lúc phân tích (gửi sớm). Xong -> ghi lịch sử; phân
+        tích cũng đã xong (pha "auto") thì đi tiếp _xl_sau_auto."""
+        import auto_lr
+        xl = getattr(self, "_xl", None)
+        if not xl or xl.get("xong") or xl.get("auto_ket_thuc") or not xl.get("auto_ma"):
+            return
+        hop = xl["hop"]
+        cho = xl.get("pha") == "auto"                       # phân tích xong, đang chờ Auto
+        kq = xl.get("auto_kq") if (xl.get("auto_kq") or {}).get("bo") else None
+        if kq is None:
+            td = auto_lr.tien_do(xl["auto_ma"])
+            kq = td.get("ket_qua")
+            if kq is None and td["cho"] and time.monotonic() - xl["t_auto"] > CHO_DENOISE:
+                auto_lr.rut_yeu_cau()
+                kq = {"bo": "khong-nhan"}
+            if kq is None:
+                if cho and td.get("tong"):
+                    x, t = td["xong"], td["tong"]
+                    #  còn bao lâu: tính từ lúc plugin BẮT ĐẦU báo tiến độ (không tính lúc chờ nhận)
+                    if "t_auto_dau" not in xl:
+                        xl["t_auto_dau"], xl["auto_x0"] = time.monotonic(), x
+                    da, lam = time.monotonic() - xl["t_auto_dau"], x - xl["auto_x0"]
+                    con = f" · còn ~{_thoi_gian(da / lam * (t - x))}" if lam > 0 and da > 3 and x < t else ""
+                    hop.tien_do(x, t, f"Lightroom bấm Auto {gd.so_vn(x)} / {gd.so_vn(t)} ảnh{con}")
+                self.after(1000, self._xl_soi_auto)
+                return
+        xl["auto_kq"] = kq
+        xl["auto_ket_thuc"] = True
+        if not kq.get("bo"):
+            #  số Auto plugin vừa ghi = tool ghi (lịch sử ghi): lượt sau không nhận nhầm là sửa tay
+            #  — kể cả khi dừng giữa chừng (TEST 16/10: dừng ở 367/693)
+            try:
+                auto_lr.ghi_lich_su(xl["auto_ma"], self.folder())
+            except (OSError, TypeError, ValueError):
+                pass
+        if cho:
+            self._xl_sau_auto()
+
+    def _xl_sau_auto(self):
+        """Phân tích + Auto đều xong -> số Auto vào ảnh -> đo da trên preview đã chụp -> tính -> áp."""
+        import auto_lr
+        xl, hop = self._xl, self._xl_hop()
+        if not xl or xl.get("xong") or hop is None:
+            return
+        kq = xl.get("auto_kq") or {}
+        if kq.get("ly_do") == "dung" or kq.get("bo") == "dung" or xl.get("auto_huy"):
+            hop.buoc("do", "loi", "đã dừng")
+            self._xl_ket_thuc("dung", "Đã dừng — chưa áp gì vào Lightroom." if kq.get("bo") else
+                              "Đã dừng — Lightroom đã bấm Auto cho một phần ảnh, chưa áp gì thêm.")
+            return
+        if kq.get("bo") == "khong-nhan":
+            hop.buoc("do", "loi", "Lightroom chưa nhận lệnh Auto")
+            self._xl_ket_thuc("loi", "Lightroom không nhận lệnh Auto — mở Lightroom (plugin bật "
+                                     "tự động áp) rồi bấm Xử lý ảnh lại.")
+            return
+        if kq.get("ly_do") == "lightroom-chua-ho-tro":
+            hop.buoc("do", "loi", "Lightroom chưa hỗ trợ")
+            self._xl_ket_thuc("loi", "Lightroom này chưa cho plugin bấm Auto — cập nhật Lightroom "
+                                     "Classic rồi thử lại.")
+            return
+        n = 0
+        if not kq.get("bo"):
+            bg = auto_lr.bang(xl["auto_ma"])
+            for r in self.items or []:
+                st = bg.get(at.khoa_duong_dan(r.get("lr_path") or r["path"]))
+                if st:
+                    r["lr_auto"] = st
+                    n += 1
+        xl.update(auto_xong=True, auto_n=n)
+        items, cfg = xl.get("auto_items") or self.items or [], xl.get("auto_cfg") or self.read_cfg()
+        #  đo da trên preview ĐÃ CHỤP trước Auto (không xuất) -> tính lại -> áp; không đo được
+        #  (máy chưa có mô hình / không preview) thì tính lại kế hoạch trên mốc Auto rồi áp
+        if self._xl_bat_truoc(items, cfg):
+            return
+        hop.buoc("do", "xong", xl.get("do_chu") or f"{gd.so_vn(len(items))} ảnh")
+        xl["pha"] = "ap"
+        hop.buoc("ap", "dang", "tính lại theo số Auto…")
+        self.refresh_plan_nen(lambda loi: self._xl_sau_auto_ap(xl, loi))
+
+    def _xl_sau_auto_ap(self, xl, loi):
+        if xl is not getattr(self, "_xl", None) or xl.get("xong"):
+            return
+        if loi:
+            self._xl_ket_thuc("loi", "Lỗi khi tính lại theo số Auto:\n"
+                              + str(loi).strip().splitlines()[-1])
+            return
+        self.do_apply(hoi=False, tu_dong=True)
+
+    def _xl_dung_auto(self, xl) -> bool:
+        """Dừng lệnh Auto đang gửi / đang chạy. True = Lightroom CHƯA nhận (rút được)."""
+        import auto_lr
+        if not xl.get("auto_ma") or xl.get("auto_ket_thuc"):
+            return False
+        xl["auto_huy"] = True
+        if xl.get("khong_auto"):                    # chỉ WB / Exposure: không có lệnh Auto nào
+            return True
+        if auto_lr.rut_yeu_cau():
+            return True
+        auto_lr.xin_dung(xl.get("auto_ma") or "")
+        return False
+
+    def _xl_auto_ghi_sau(self, ma: str, folder, lan: int = 0) -> None:
+        """Lượt đã kết thúc mà Lightroom còn bấm Auto (dừng giữa chừng): đợi kết quả rồi ghi lịch
+        sử ghi — không thì lượt sau coi các ảnh vừa Auto là ảnh sửa tay."""
+        import auto_lr
+        try:
+            if auto_lr.tien_do(ma).get("ket_qua") is not None:
+                auto_lr.ghi_lich_su(ma, folder)
+                return
+        except (OSError, TypeError, ValueError):
+            return
+        if lan < 150:
+            self.after(2000, lambda: self._xl_auto_ghi_sau(ma, folder, lan + 1))
 
     # ------------------------------------------------------------ chuỗi một lượt (14/10)
     def _xl_bat_truoc(self, items, cfg) -> bool:
@@ -549,12 +825,18 @@ class XuLyAnhMixin:
         hop.tien_do(0, max(1, len(mat)), "Đo da trên preview Lightroom…")
         root = self.folder()
 
+        #  16/10 tối, quy trình Auto: đo trên preview ĐÃ CHỤP trước Auto, đo MỌI ảnh có mặt (duyệt
+        #  lại từng ảnh), KHÔNG nhờ Lightroom dựng ảnh thiếu preview
+        auto = bool(xl.get("auto"))
+
         def chay():
             import do_truoc
             try:
                 xl["truoc_kq"] = do_truoc.chay(
-                    root, items, cfg, huy=lambda: bool(xl.get("truoc_huy") or self.cancel_flag),
-                    bao=lambda x, t, c: xl.__setitem__("truoc_td", (x, t, c)))
+                    root, items, dict(cfg, mot_luot_do_moi_loat=0) if auto else cfg,
+                    huy=lambda: bool(xl.get("truoc_huy") or self.cancel_flag),
+                    bao=lambda x, t, c: xl.__setitem__("truoc_td", (x, t, c)),
+                    chup=xl.get("chup") if auto else None, khong_xuat=auto)
             except Exception as ex:                          # noqa: BLE001
                 xl["truoc_kq"] = {"bo": "loi", "ly_do": str(ex)}
             xl["truoc_xong"] = True
@@ -675,7 +957,9 @@ class XuLyAnhMixin:
             ket = ("xong" if not bad else "loi",
                    f"Lightroom đã áp {gd.so_vn(xl.get('so_gui', 0))} ảnh"
                    + (f" · {len(bad)} ảnh chưa nhận đúng" if bad else " · kiểm chứng đủ"))
-            if xl.get("curve") or xl.get("n_mot_luot") or xl.get("n_am_mau") or xl.get("wb_da_can"):
+            #  16/10 tối: quy trình Auto áp MỘT lần (đã duyệt lại bằng dự đoán) — không hoàn thiện
+            if not xl.get("auto") and (xl.get("curve") or xl.get("n_mot_luot") or xl.get("n_am_mau")
+                                       or xl.get("wb_da_can")):
                 xl["ap_ket"] = ket                 # chốt khi lượt 2 (ngầm) xong — _xl_chot_ap
                 hop.buoc("ap", "dang", "Lightroom đã áp — đang hoàn thiện…")
             else:
@@ -698,7 +982,7 @@ class XuLyAnhMixin:
         import curve_da
         xl = self._xl
         hop = xl.get("hop")
-        if (not xl.get("curve") and not xl.get("n_mot_luot") and not xl.get("n_am_mau")
+        if xl.get("auto") or (not xl.get("curve") and not xl.get("n_mot_luot") and not xl.get("n_am_mau")
                 and not xl.get("wb_da_can")):
             self._xl_denoise()
             return
@@ -870,10 +1154,15 @@ class XuLyAnhMixin:
                 xl["am_mau_l2"] = at.wb_cuu_am_luot2(ds, do_map, cfg)
                 #  16/10: da đo thật vàng / xanh quá -> WB lạnh / ấm theo da, cả loạt (mọi buổi)
                 xl["wb_da_l2"] = at.wb_da_luot2(ds, do_map, cfg, tat_ca=xl.get("da_tat"))
+                #  16/10 quy trình Auto: vòng kiểm WB -> TONE (Exposure theo da đo thật)
+                auto = bool(cfg.get("quy_trinh_auto"))
+                if auto:
+                    xl["tone_l2"] = at.tone_da_luot2(ds, do_map, cfg, tat_ca=xl.get("da_tat"))
                 #  ảnh có WB lượt 2 (ám xanh / lệch da) KHÔNG giải curve — da đo dưới WB chưa hoàn
                 #  thiện, WB lượt 2 sửa; curve nữa là sửa hai lần
                 ds_cu = ([r for r in ds if id(r) not in mau_ids and not r.get("am_mau")
-                          and not r.get("lech_da")] if xl.get("curve") else [])
+                          and not r.get("lech_da") and not r.get("wb_l2_da")]
+                         if xl.get("curve") and not auto else [])
                 xl["curve_tt"] = curve_da.ket_thuc(ds_cu, {id(r): do_map[id(r)] for r in ds_cu
                                                            if id(r) in do_map}, cfg)
                 #  14/10: ảnh liên tiếp cùng khung -> cùng curve lượt 2
@@ -883,7 +1172,11 @@ class XuLyAnhMixin:
                 ghi_ds += [r for r in ds if r.get("wb_l2") and id(r) not in co_ghi]
                 co_ghi = {id(r) for r in ghi_ds}
                 ghi_ds += [r for r in xl.get("da_tat") or [] if r.get("wb_l2") and id(r) not in co_ghi]
-                if xl.get("ml_ds"):
+                co_ghi = {id(r) for r in ghi_ds}
+                ghi_ds += [r for r in list(ds) + list(xl.get("da_tat") or [])
+                           if r.get("tone_l2") is not None and id(r) not in co_ghi
+                           and not co_ghi.add(id(r))]
+                if xl.get("ml_ds") and not auto:
                     import mau_mot_luot as ml
                     xl["ml_soat"] = ml.soat(xl["ml_ds"], {k: do_map[k] for k in mau_ids
                                                          if k in do_map}, cfg,
@@ -1276,6 +1569,15 @@ class XuLyAnhMixin:
         self._xl_chot_ap()                  # dừng giữa lượt 2: bước Áp (lượt 1) vẫn đã xong
         xl["xong"] = True
         hop = xl.get("hop")
+        #  16/10 tối, quy trình Auto: dọn preview đã chụp; Lightroom còn đang bấm Auto (dừng giữa
+        #  chừng) -> đợi kết quả rồi ghi lịch sử ghi
+        try:
+            import do_truoc
+            do_truoc.don_chup(xl.get("chup"))
+        except Exception:                                    # noqa: BLE001
+            pass
+        if xl.get("auto_ma") and not xl.get("auto_ket_thuc") and not xl.get("khong_auto"):
+            self._xl_auto_ghi_sau(xl["auto_ma"], self.folder())
         _moc(xl, "het")
         giay = time.monotonic() - xl["t0"]
         kh = thoi_gian_khau(xl)
@@ -1285,12 +1587,51 @@ class XuLyAnhMixin:
             items = xl.get("items_ghi") or []
             n_loai = sum(1 for r in items if self._nhan_cua(r) == "loai")
             n_doi = sum(1 for r in items if r.get("delta_ev") or r.get("hl_adj") or r.get("sh_adj"))
-            dong.append(f"✓ {gd.so_vn(xl.get('so_gui', len(items)))} ảnh đã áp vào Lightroom "
+            dong.append(f"✓ {gd.so_vn(xl.get('so_gui', len(items)))} ảnh đã áp vào Lightroom."
+                        if self.cfg.get("source") == "catalog" and xl.get("pham_vi") == "wb" else
+                        f"✓ {gd.so_vn(xl.get('so_gui', len(items)))} ảnh đã áp vào Lightroom "
                         f"({gd.so_vn(n_doi)} ảnh đổi sáng)."
                         if self.cfg.get("source") == "catalog" else
                         f"✓ Đã ghi {gd.so_vn(xl.get('so_gui', len(items)))} file .xmp.")
             if xl.get("credit_cau"):
                 dong.append(f"· {xl['credit_cau']}.")          # 13/10: credit của lượt
+            if xl.get("auto_n"):
+                import duong_dan as dd
+                try:
+                    giay_a = int(float((xl.get("auto_kq") or {}).get("giay") or 0))
+                except ValueError:
+                    giay_a = 0
+                dong.append(f"· Quy trình Auto: Lightroom bấm Auto {gd.so_vn(xl['auto_n'])} ảnh"
+                            + (f" trong {_thoi_gian(giay_a)}" if giay_a > 0 else "") + ".")
+                #  không xuất preview: ảnh Lightroom chưa có preview còn mới thì chưa đo được da
+                n_kp = int((xl.get("truoc_kq") or {}).get("khong_co") or 0)
+                if n_kp:
+                    dong.append(f"⚠ {gd.so_vn(n_kp)} ảnh chưa có preview trong Lightroom nên chưa căn "
+                                "màu da — trong Lightroom: Library › Previews › Build Standard-Sized "
+                                "Previews rồi Xử lý ảnh lại.")
+                if not dd.dong_goi():
+                    if xl.get("auto_bo_sua"):
+                        dong.append(f"· Quy trình Auto: {gd.so_vn(xl['auto_bo_sua'])} ảnh bạn đã sửa "
+                                    "tay giữ nguyên (không bấm Auto).")
+                    dv = (((getattr(at, "MAU_DA", None) or {}).get("mot_luot") or {}).get("duyet")
+                          or {})
+                    if dv.get("xet"):
+                        dong.append(f"· Duyệt lại trước khi áp: {gd.so_vn(dv['xet'])} ảnh, "
+                                    f"{gd.so_vn(dv.get('lech', 0))} ảnh da chưa đúng đích -> chỉnh "
+                                    f"thêm {gd.so_vn(dv.get('sua', 0))} ảnh "
+                                    f"({gd.so_vn(dv.get('dat_sau', 0))} ảnh vào vùng ổn).")
+            elif xl.get("khong_auto"):
+                #  17/10: chỉ WB / Exposure
+                ten = {"wb_ev": "WB và Exposure", "wb": "WB", "ev": "Exposure"}.get(xl.get("pham_vi"), "")
+                dong.append(f"· Chỉ cân {ten} cho da về đích — các thông số khác giữ nguyên.")
+                n_kp = int((xl.get("truoc_kq") or {}).get("khong_co") or 0)
+                if n_kp:
+                    dong.append(f"⚠ {gd.so_vn(n_kp)} ảnh chưa có preview trong Lightroom nên chưa căn "
+                                "màu da — trong Lightroom: Library › Previews › Build Standard-Sized "
+                                "Previews rồi Xử lý ảnh lại.")
+            elif (xl.get("auto_kq") or {}).get("bo") == "plugin-cu":
+                dong.append("⚠ Quy trình Auto cần bộ cài đầy đủ (plugin Lightroom mới) — lần này "
+                            "chạy như thường.")
             if n_loai:
                 dong.append(f"· {gd.so_vn(n_loai)} ảnh Loại đã gắn 1★ trong Lightroom.")
             elif not self.read_cfg().get("ap_anh_loai", True):
@@ -1318,16 +1659,29 @@ class XuLyAnhMixin:
                 dong.append(f"· Chủ thể chính: {len(ct['nguoi'])} người xuất hiện nhiều nhất ("
                             + " · ".join(gd.so_vn(p["n_anh"]) for p in ct["nguoi"])
                             + f" ảnh) — đo sáng + màu da theo mặt họ ở {gd.so_vn(ct.get('anh', 0))} ảnh.")
+            #  17/10: buổi Cưới — cô dâu là chủ thể số 1 (da chú rể luôn sạm hơn)
+            if ct.get("co_dau"):
+                dong.append(f"· Cô dâu ({gd.so_vn(ct['co_dau']['n_anh'])} ảnh): mask da + đo sáng theo mặt "
+                            f"cô dâu ở {gd.so_vn((ct.get('dem') or {}).get('co-dau', 0))} ảnh.")
             bu = [r for r in xl.get("items_ghi") or [] if r.get("bu_cum_ev")]
             if bu and chi_tiet:
                 dong.append(f"· Ảnh liền nhau cùng khung: {gd.so_vn(len(bu))} ảnh ánh sáng thật lệch "
                             "(flash không kịp hồi…) được bù sáng riêng cho đều với cả loạt.")
             #  15/10: ảnh ám xanh nặng — WB chỉnh theo da (autotone.cuu_am_mau / wb_cuu_am_luot2)
-            av = [r for r in xl.get("items_ghi") or [] if r.get("lech_da") and r.get("wb_l2")]
+            av = [r for r in xl.get("items_ghi") or [] if r.get("wb_l2_da") and r.get("wb_l2")]
             if av and chi_tiet:
-                n_l = sum(1 for r in av if r["lech_da"] > 0)
+                n_l = sum(1 for r in av if "wb-da-luot2:lanh" in str(r.get("notes", "")))
+                n_a = sum(1 for r in av if "wb-da-luot2:am" in str(r.get("notes", "")))
+                n_t = sum(1 for r in av if "wb-da-luot2:tint" in str(r.get("notes", "")))
                 dong.append(f"· WB theo da đo trên ảnh Lightroom: {gd.so_vn(n_l)} ảnh da vàng -> lạnh đi, "
-                            f"{gd.so_vn(len(av) - n_l)} ảnh da xanh -> ấm lên.")
+                            f"{gd.so_vn(n_a)} ảnh da xanh -> ấm lên, {gd.so_vn(n_t)} ảnh chỉnh Tint.")
+            #  16/10 TestAnhCuoi: chốt vùng trắng (autotone.wb_da_luot2) — áo trắng không ngả xanh / vàng
+            ghi_ = xl.get("items_ghi") or []
+            n_ch = sum(1 for r in ghi_ if r.get("wb_l2_chan"))
+            n_tr = sum(1 for r in ghi_ if "wb-trang-luot2" in str(r.get("notes", "")))
+            if (n_ch or n_tr) and chi_tiet:
+                dong.append(f"· Vùng trắng (áo trắng) giữ đúng màu: {gd.so_vn(n_ch)} ảnh WB theo da dừng ở "
+                            f"giới hạn, {gd.so_vn(n_tr)} ảnh trắng đã lệch được kéo về.")
             am = [r for r in xl.get("items_ghi") or [] if r.get("am_mau")]
             if am and chi_tiet:
                 wbs = sorted({int(r["am_mau_wb"][0]) for r in am if r.get("am_mau_wb")})

@@ -424,7 +424,22 @@ def dich_cua(r: dict, cfg: dict, kieu: str) -> tuple:
         k = "ngoai_mn" if ngoai else "trong_mn"
         rgb = md.get(k) or md.get("trong_mn") or rgb
     bu = float(cfg.get("da_dich_L_bu", at.DEFAULTS.get("da_dich_L_bu", 0.0)) or 0.0)
-    return (ha_L_dich(rgb, bu) if bu else list(rgb)), ngoai
+    #[[ 16/10 khuya (TestAnhCuoi, cưới ngoài trời nắng — user: "Dù tôi đã chọn bù Exposure +0.3
+    #   nhưng tất cả các bức ảnh vẫn tối hơn tới 0.5ev"): đo thật trên ảnh Lightroom dựng — da ở
+    #   mức Auto + 0.3 có L 0.70, nhưng đích là khe NGOÀI TRỜI của mẫu "Mặc định" = da RÁM
+    #   [166,123,105] L 0.62 (−0.09 -> 0.53) -> chuỗi hạ Exposure tới −1.2 EV (job − Auto trung
+    #   vị −0.45, nhiều ảnh chạm trần −1.1). Da rám là đích MÀU (hue / độ đậm), không phải đích
+    #   SÁNG: mẫu Mặc định ngoài trời lấy độ sáng của khe trong nhà (da trắng hồng).
+    #   Bù sáng cả buổi (người dùng) dời độ sáng đích đúng bấy nhiêu EV (OkLab L ~ Y^(1/3)) —
+    #   trước đây bước Tone / duyệt lại kéo da về đích và XOÁ mất phần bù. ]]
+    L0 = float(at.mau_dich_lab(rgb)[0])
+    L_sang = L0
+    if ngoai and md.get("mac_dinh"):
+        trong_rgb = (md.get("trong_mn") if kieu == "mn" else None) or md.get("trong") or trong_t
+        L_sang = float(at.mau_dich_lab(trong_rgb)[0])
+    bu_ev = float(cfg.get("bu_sang_ca_buoi") or 0.0)
+    L_moi = (L_sang + bu) * 2.0 ** (bu_ev / 3.0)
+    return (ha_L_dich(rgb, L_moi - L0) if abs(L_moi - L0) > 1e-9 else list(rgb)), ngoai
 
 
 def ha_L_dich(rgb, bu: float) -> list:
@@ -823,19 +838,23 @@ def ghi_job(items: list, name: str, job_dir: Path | None = None) -> Path | None:
     hsl_k = [k for k in thu if any(k in (r.get("hsl_l2") or {}) for r in items)]
     #  15/10: ảnh ám xanh nặng — WB bổ sung đo trên ảnh Lightroom thật (at.wb_cuu_am_luot2)
     wb_k = ["Temperature", "Tint"] if any(r.get("wb_l2") for r in items) else []
+    #  16/10: quy trình Auto — vòng kiểm chỉnh Exposure theo da đo thật (at.tone_da_luot2)
+    ex_k = ["Exposure2012"] if any(r.get("tone_l2") is not None for r in items) else []
     rows = [[r.get("lr_path") or r["path"],
              *[str((r.get("curve_ghi") or {}).get(k) or "") for k in at.COT_CURVE],
              *[str(int(round(float(r["hsl_l2"][k])))) if k in (r.get("hsl_l2") or {}) else ""
                for k in hsl_k],
              *([str(int(r["wb_l2"][0])), str(int(r["wb_l2"][1]))] if r.get("wb_l2") else
-               [""] * len(wb_k))]
-            for r in items if r.get("curve_ghi") or r.get("hsl_l2") or r.get("wb_l2")]
+               [""] * len(wb_k)),
+             *([at.fmt_f(float(r["tone_l2"]))] if r.get("tone_l2") is not None else [""] * len(ex_k))]
+            for r in items if r.get("curve_ghi") or r.get("hsl_l2") or r.get("wb_l2")
+            or r.get("tone_l2") is not None]
     if not rows:
         return None
     d = Path(job_dir or at.LR_JOB_DIR)
     d.mkdir(parents=True, exist_ok=True)
     dest = d / f"apply_{datetime.now():%Y%m%d_%H%M%S}_{at.ten_job(name)}{at.HAU_TO_CURVE}.tsv"
-    lines = ["path\t" + "\t".join([*at.COT_CURVE, *hsl_k, *wb_k])] + ["\t".join(c) for c in rows]
+    lines = ["path\t" + "\t".join([*at.COT_CURVE, *hsl_k, *wb_k, *ex_k])] + ["\t".join(c) for c in rows]
     tmp = dest.with_suffix(".part")
     tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.replace(tmp, dest)

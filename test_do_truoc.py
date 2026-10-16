@@ -199,6 +199,33 @@ def main() -> int:
         th.join(2)
     ktra("mọi ảnh qua plugin, vẫn đo đủ 3", kq["do"] == 3 and kq["plugin"] == 3 and kq["cache"] == 0, str(kq))
 
+    print("6b. quy trình Auto (16/10 tối): CHỤP preview trước Auto, đo trên bản chụp, KHÔNG xuất")
+    import sqlite3
+    ch = dt.chup_cache(tam / "Buoi", catalog=cat)
+    k1 = at.khoa_duong_dan(str(tam / "Buoi" / "A1.ARW"))
+    k3 = at.khoa_duong_dan(str(tam / "Buoi" / "A3.ARW"))
+    ktra("chup_cache: chép mọi preview còn mới (5 ảnh — A3 preview cũ thì không), giữ 'st' lúc chụp + đường dẫn",
+         all(Path(v["tep"]).exists() for v in ch["pv"].values()) and len(ch["pv"]) == 5 and k3 not in ch["pv"]
+         and ch["pv"][k1]["st"].get("Exposure2012") == "0.1" and len(ch["anh"]) == 6
+         and ch["anh"][k1]["path"].lower().endswith("a1.arw"), str(list(ch["pv"]))[:120])
+    con_ = sqlite3.connect(cat)                         # Lightroom bấm Auto: số + digest đổi
+    con_.execute("update Adobe_imageDevelopSettings set digest='dgauto', text=? where image=1001",
+                 ('s = { Exposure2012 = 0.9, WhiteBalance = "Custom", Temperature = 5001, Tint = 3 }',))
+    con_.commit()
+    con_.close()
+    for x in items:
+        x.pop("lr_truoc", None)
+    kq = dt.chay(tam / "Buoi", items, dict(at.DEFAULTS, mot_luot_do_moi_loat=0), job_dir=jobs, catalog=cat,
+                 chup=ch, khong_xuat=True)
+    ktra("đo trên BẢN CHỤP (nguồn 'chup', st = số TRƯỚC Auto) dù catalog đã đổi",
+         r["A1"].get("lr_truoc", {}).get("nguon") == "chup"
+         and (r["A1"]["lr_truoc"].get("st") or {}).get("Exposure2012") == "0.1" and kq["do"] == 2, str(kq))
+    ktra("…ảnh thiếu preview KHÔNG nhờ Lightroom dựng (không yêu cầu), nói rõ lý do",
+         not (jobs / dt.TEN_YEU_CAU).exists() and "lr_truoc" not in r["A3"] and kq["plugin"] == 0
+         and "không xuất" in kq["ly_do"], str(kq))
+    dt.don_chup(ch)
+    ktra("don_chup: xoá thư mục tạm của bản chụp", not Path(ch["thu_muc"]).exists())
+
     print("7. lấy mẫu theo loạt (14/10: trong loạt da lệch ~3% — đo tối đa 2 ảnh mỗi loạt)")
     from datetime import timedelta
     t0_ = T.anh("x")["dt_obj"]

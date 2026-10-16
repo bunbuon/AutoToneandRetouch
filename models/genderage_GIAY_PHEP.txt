@@ -1,0 +1,8 @@
+genderage.onnx
+
+insightface buffalo_l — mô hình giới tính / tuổi (genderage), Jia Guo và cộng sự,
+https://github.com/deepinsight/insightface (mã MIT; bộ mô hình buffalo_l công bố cho nghiên cứu
+phi thương mại — cùng bộ mô hình mà phần Retouch của app đã kèm trong mo_hinh/insightface).
+
+Tone&Retouch dùng nguyên file (sha256 bên dưới), chạy bằng cv2.dnn để nhận cô dâu (autotone.gan_chu_the).
+4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb *models/genderage.onnx

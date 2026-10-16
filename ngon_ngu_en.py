@@ -2429,3 +2429,75 @@ TU_DIEN.update({
     'dựng xem preset': 'rendering preset previews',
     'học màu Lightroom': 'learning Lightroom color',
 })
+
+#  16/10 (v98): lượt kiểm WB theo da có Tint + thứ tự chuỗi một lượt
+TU_DIEN.update({
+    '· WB theo da đo trên ảnh Lightroom: {} ảnh da vàng -> lạnh đi, {} ảnh da xanh -> ấm lên, {} ảnh chỉnh Tint.':
+        '· WB by skin measured on Lightroom photos: {} photos with yellow skin -> cooler, {} with blue skin -> warmer, {} with Tint adjusted.',
+})
+
+#  16/10 (v99): Quy trình Auto Lightroom (thử nghiệm)
+TU_DIEN.update({
+    'Quy trình Auto Lightroom (thử nghiệm)': 'Lightroom Auto workflow (experimental)',
+    'Lightroom bấm Auto cho ảnh trước, rồi tool chỉnh WB, Exposure, Curve R/G/B cho da về đích và kiểm lại tối đa 2 vòng. Cần bộ cài đầy đủ (plugin mới).': 'Lightroom applies Auto to the photos first, then the tool adjusts WB, Exposure and the R/G/B curve to bring skin to the target and re-checks up to 2 rounds. Needs the full installer (new plugin).',
+    'Auto Lightroom': 'Lightroom Auto',
+    'Lightroom đang bấm Auto cho {} ảnh…': 'Lightroom is applying Auto to {} photos…',
+    'Auto Lightroom…': 'Lightroom Auto…',
+    'Lightroom bấm Auto…': 'Lightroom applying Auto…',
+    'đang chạy…': 'running…',
+    'Lightroom bấm Auto cho cả buổi, rồi tool chỉnh WB, Exposure (và Curve R/G/B khi bật) cho da về đích, áp một lần. Cần bộ cài đầy đủ (plugin mới).':
+        'Lightroom applies Auto to the whole session, then the tool adjusts WB, Exposure (and the R/G/B curve when on) to bring skin to the target, applying once. Needs the full installer (new plugin).',
+    'chờ Lightroom bấm Auto xong…': 'waiting for Lightroom Auto to finish…',
+    '⚠ {} ảnh chưa có preview trong Lightroom nên chưa căn màu da — trong Lightroom: Library › Previews › Build Standard-Sized Previews rồi Xử lý ảnh lại.':
+        '⚠ {} photos have no Lightroom preview yet, so skin tone was not matched — in Lightroom: Library › Previews › Build Standard-Sized Previews, then Process photos again.',
+    '· Quy trình Auto: Lightroom bấm Auto {} ảnh trong {}.': '· Auto workflow: Lightroom applied Auto to {} photos in {}.',
+    '· Quy trình Auto: Lightroom bấm Auto {} ảnh.': '· Auto workflow: Lightroom applied Auto to {} photos.',
+    '· Quy trình Auto: {} ảnh bạn đã sửa tay giữ nguyên (không bấm Auto).':
+        '· Auto workflow: {} photos you edited by hand were kept (no Auto).',
+    '· Duyệt lại trước khi áp: {} ảnh, {} ảnh da chưa đúng đích -> chỉnh thêm {} ảnh ({} ảnh vào vùng ổn).':
+        '· Review before applying: {} photos, {} with skin off target -> {} adjusted further ({} now within range).',
+    '· Vùng trắng (áo trắng) giữ đúng màu: {} ảnh WB theo da dừng ở giới hạn, {} ảnh trắng đã lệch được kéo về.':
+        '· Whites (white clothing) kept true: skin-based WB stopped at the limit on {} photos, {} photos with off whites pulled back.',
+    'Lightroom bấm Auto {} / {} ảnh': 'Lightroom applying Auto {} / {} photos',
+    'Auto Lightroom {} / {} ảnh': 'Lightroom Auto {} / {} photos',
+    'plugin Lightroom cũ — cần bộ cài đầy đủ': 'old Lightroom plugin — full installer needed',
+    'Lightroom chưa nhận lệnh Auto': 'Lightroom has not taken the Auto request',
+    'Lightroom không nhận lệnh Auto — mở Lightroom (plugin bật tự động áp) rồi bấm Xử lý ảnh lại.': 'Lightroom did not take the Auto request — open Lightroom (plugin auto-apply on) and press Process photos again.',
+    'Đã dừng — Lightroom đã bấm Auto cho một phần ảnh, chưa áp gì thêm.': 'Stopped — Lightroom applied Auto to some photos; nothing else was applied.',
+    'Lightroom chưa hỗ trợ': 'Lightroom does not support it',
+    'Lightroom này chưa cho plugin bấm Auto — cập nhật Lightroom Classic rồi thử lại.': 'This Lightroom does not let the plugin apply Auto — update Lightroom Classic and try again.',
+    'tính lại theo số Auto…': 'recalculating from the Auto values…',
+    'Lỗi khi tính lại theo số Auto:\n{}': 'Error recalculating from the Auto values:\n{}',
+    'kiểm lại màu da — vòng {}…': 're-checking skin tone — round {}…',
+    'Đã dừng — Lightroom chưa bấm Auto ảnh nào.': 'Stopped — Lightroom has not applied Auto to any photo.',
+    '· Quy trình Auto: Lightroom bấm Auto {} ảnh · kiểm màu da {} vòng.': '· Auto workflow: Lightroom applied Auto to {} photos · skin tone checked in {} rounds.',
+    '· Quy trình Auto: Lightroom bấm Auto {} ảnh trong {} · kiểm màu da {} vòng.': '· Auto workflow: Lightroom applied Auto to {} photos in {} · skin tone checked in {} rounds.',
+    '⚠ Quy trình Auto cần bộ cài đầy đủ (plugin Lightroom mới) — lần này chạy như thường.': '⚠ The Auto workflow needs the full installer (new Lightroom plugin) — this run used the normal workflow.',
+    'bấm Auto Lightroom': 'applying Lightroom Auto',
+})
+#  17/10: cô dâu là chủ thể chính · phạm vi chỉnh (chỉ WB / Exposure) · mẫu màu da gợi ý ·
+#  Quy trình Auto chính thức
+TU_DIEN.update({
+    'Quy trình Auto Lightroom': 'Lightroom Auto workflow',
+    'Auto Lightroom': 'Lightroom Auto',
+    'Phạm vi chỉnh': 'Adjustment scope',
+    'Đầy đủ': 'Full',
+    'WB + Exposure': 'WB + Exposure',
+    'Chỉ WB': 'WB only',
+    'Chỉ Exposure': 'Exposure only',
+    'Đầy đủ: chạy cả quy trình. Chọn WB / Exposure: tool chỉ cân lại các thông số đó cho da về đích, mọi thông số khác giữ nguyên.':
+        'Full: run the whole workflow. Pick WB / Exposure: the tool only rebalances those settings to bring skin to the target; everything else stays as is.',
+    'đọc preview Lightroom…': 'reading Lightroom previews…',
+    'Đã dừng — chưa áp gì vào Lightroom.': 'Stopped — nothing was applied to Lightroom.',
+    'WB và Exposure': 'WB and Exposure',
+    '· Chỉ cân {} cho da về đích — các thông số khác giữ nguyên.':
+        '· Only {} rebalanced to bring skin to the target — all other settings kept.',
+    '· Cô dâu ({} ảnh): mask da + đo sáng theo mặt cô dâu ở {} ảnh.':
+        '· Bride ({} photos): skin mask + metering on the bride’s face in {} photos.',
+    'Gợi ý · Cưới': 'Suggested · Wedding',
+    'Gợi ý · Sự kiện': 'Suggested · Event',
+    'Gợi ý · Kỷ yếu': 'Suggested · Yearbook',
+    'trắng hồng trong trẻo': 'fair, rosy and clear',
+    'tự nhiên, ấm nhẹ': 'natural, slightly warm',
+    'sáng, tươi, hồng hào': 'bright, fresh, rosy',
+})

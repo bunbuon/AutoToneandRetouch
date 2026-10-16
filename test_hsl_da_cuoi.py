@@ -337,6 +337,10 @@ def main() -> int:
                                   "goi": "1 năm", "may": "TEST01", "het_han": False, "ly_do": ""}
             gd.dat_theme(root)
             app = ag.App(root)
+            #  17/10: Quy trình Auto mặc định BẬT, mẫu da tự chọn gợi ý theo loại buổi — bài này kiểm
+            #  luồng thường với mẫu "Mặc định"
+            app.v_auto_lr.set(False)
+            app.v_mau_da.set(ag.MAU_DA_MAC_DINH)
             ktra("giao dien: o 'Tu chinh HSL mau da' mac dinh TAT",
                  app.v_hsl_da.get() is False and app.read_cfg().get("hsl_da_cuoi") is False)
             app.v_hsl_da.set(True)

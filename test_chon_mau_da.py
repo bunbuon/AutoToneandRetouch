@@ -288,6 +288,10 @@ def phan_app(root):
     root.geometry("1500x900+0+0")
     gd.dat_theme(root)
     app = ag.App(root)
+    #  17/10: Quy trình Auto mặc định BẬT, mẫu da tự chọn gợi ý theo loại buổi — bài này kiểm
+    #  luồng thường với mẫu "Mặc định"
+    app.v_auto_lr.set(False)
+    app.v_mau_da.set(ag.MAU_DA_MAC_DINH)
     app.grid(row=0, column=0, sticky="nsew")
 
     def vong(k=4):

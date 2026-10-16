@@ -144,6 +144,16 @@ elseif type(HocMau.runRequest) ~= "function" then
     HocMau = nil
 end
 
+--[[ AutoCore (16/10): bấm Auto (bảng Basic) cho các ảnh — "Quy trình Auto Lightroom (thử
+     nghiệm)". Yêu cầu RIÊNG app gửi trước khi tính / áp. Nạp riêng, cùng lý do các module trên. ]]
+local okAU, AutoLr = pcall(require, "AutoCore")
+if not okAU then
+    rawLog("khong nap duoc AutoCore -> " .. tostring(AutoLr))
+    AutoLr = nil
+elseif type(AutoLr.runRequest) ~= "function" then
+    AutoLr = nil
+end
+
 --[[ 2 giây (trước 5): mỗi vòng chỉ là vài lệnh kiểm file có tồn tại không. App
      nhờ xuất thì người dùng đang ngồi chờ — 5 giây là quá nửa thời gian chờ. ]]
 local POLL_SECONDS = 2
@@ -282,6 +292,11 @@ LrTasks.startAsyncTask(function()
         if HocMau then
             local _, errHM = Core.try("autoHocMau", HocMau.runRequest)
             if errHM then Core.log("LOI hoc mau: " .. tostring(errHM)) end
+        end
+        --  16/10: Auto (bảng Basic) — ĐỔI ảnh nên như Denoise chỉ chạy khi autoApply bật
+        if AutoLr and prefs.autoApply then
+            local _, errAU = Core.try("autoAutoLr", AutoLr.runRequest)
+            if errAU then Core.log("LOI auto: " .. tostring(errAU)) end
         end
         if Denoise and prefs.autoApply then
             local _, errDN = Core.try("autoDenoise", Denoise.runRequest)

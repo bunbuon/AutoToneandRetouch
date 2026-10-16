@@ -138,11 +138,66 @@ def rut_yeu_cau(job_dir: Path | None = None) -> None:
         pass
 
 
+def chup_cache(folder, catalog=None, chi=None) -> dict:
+    """CHỤP LẠI preview còn mới trong cache Lightroom của buổi NGAY LÚC NÀY (16/10 tối — quy trình
+    Auto: chụp TRƯỚC khi Lightroom bấm Auto, lúc digest còn khớp; Auto xong preview cũ hết mới)
+    -> chép file sang thư mục tạm (Lightroom có thể dựng lại / xoá bản cũ), KHÔNG xuất gì.
+    chi: tập khoá đường dẫn cần (None = cả buổi).
+    -> {"ma", "thu_muc", "anh": {khoá: dòng catalog (path, text, digest...)},
+        "pv": {khoá: {"tep", "xoay", "st", "digest"}}}"""
+    import doc_cache_lr as dc
+    import duong_dan as dd
+    ma = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3] + "c"
+    ra = {"ma": ma, "thu_muc": None, "anh": {}, "pv": {}}
+    if catalog is None:
+        import catalog_lr
+        catalog = catalog_lr.duong_catalog()
+    if catalog is None:
+        return ra
+    con = dc.mo_catalog(catalog)
+    if con is None:
+        return ra
+    try:
+        anh = dc.anh_buoi(con, folder, gom_con=True)
+    finally:
+        con.close()
+    if chi is not None:
+        anh = {k: v for k, v in anh.items() if k in chi}
+    ra["anh"] = anh
+    pv = dc.preview_moi(catalog, anh, CANH, UU_TIEN) if anh else {}
+    if not pv:
+        return ra
+    thu = dd.goc_du_lieu() / "do_truoc_tam" / ma
+    thu.mkdir(parents=True, exist_ok=True)
+    ra["thu_muc"] = str(thu)
+    for i, (k, v) in enumerate(pv.items()):
+        dich = thu / f"{i:05d}_{Path(v['tep']).name}"
+        try:
+            shutil.copyfile(v["tep"], dich)
+        except OSError:
+            continue
+        a = anh[k]
+        ra["pv"][k] = {"tep": str(dich), "xoay": v["xoay"], "digest": a.get("digest"),
+                       "st": dc.dong_xuat(dc.thong_so(a.get("text")))}
+    return ra
+
+
+def don_chup(chup: dict | None) -> None:
+    """Xoá thư mục tạm của chup_cache."""
+    if chup and chup.get("thu_muc"):
+        shutil.rmtree(chup["thu_muc"], ignore_errors=True)
+
+
 def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | None = None,
-         catalog=None, cho_nhan: float = 60.0, cho_toi_da: float = 1800.0) -> dict:
+         catalog=None, cho_nhan: float = 60.0, cho_toi_da: float = 1800.0,
+         chup: dict | None = None, khong_xuat: bool = False) -> dict:
     """Đo trước cho cả buổi (CHẶN — chạy ở luồng nền). huy() -> True thì dừng; bao(xong,
     tong, chu) báo tiến độ. Gắn r["lr_truoc"]; trả tóm tắt
-    {"tong", "cache", "plugin", "do", "loi", "khong_co", "giay", "ly_do"}."""
+    {"tong", "cache", "plugin", "do", "loi", "khong_co", "giay", "ly_do"}.
+
+    16/10 tối (quy trình Auto — user: "Việc xuất ảnh preview như hiện tại sẽ rất mất thời
+    gian"): chup = bản chup_cache chụp TRƯỚC Auto (đo trên đó, "st" = thông số lúc chụp);
+    khong_xuat = ảnh thiếu preview KHÔNG nhờ plugin dựng."""
     import curve_da
     import doc_cache_lr as dc
     t0 = time.monotonic()
@@ -162,19 +217,23 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
           "giay": 0.0, "ly_do": ""}
     if not ds:
         return kq
-    #  1. thông số + preview còn mới trong cache của Lightroom
-    if catalog is None:
-        import catalog_lr
-        catalog = catalog_lr.duong_catalog()
-    anh = {}
-    if catalog is not None:
-        con = dc.mo_catalog(catalog)
-        if con is not None:
-            try:
-                anh = dc.anh_buoi(con, folder, gom_con=True)
-            finally:
-                con.close()
-    pv = dc.preview_moi(catalog, {k: anh[k] for k in theo if k in anh}, CANH, UU_TIEN) if anh else {}
+    #  1. thông số + preview còn mới trong cache của Lightroom (hoặc bản đã chụp trước Auto)
+    if chup is not None:
+        anh = dict(chup.get("anh") or {})
+        pv = {k: v for k, v in (chup.get("pv") or {}).items() if k in theo}
+    else:
+        if catalog is None:
+            import catalog_lr
+            catalog = catalog_lr.duong_catalog()
+        anh = {}
+        if catalog is not None:
+            con = dc.mo_catalog(catalog)
+            if con is not None:
+                try:
+                    anh = dc.anh_buoi(con, folder, gom_con=True)
+                finally:
+                    con.close()
+        pv = dc.preview_moi(catalog, {k: anh[k] for k in theo if k in anh}, CANH, UU_TIEN) if anh else {}
     cfg_do = dict(cfg, _toi_da=TOI_DA)
     #  máy rảnh (Lightroom chưa phải dựng gì) -> nhiều tiến trình hơn lượt 2
     n = max(1, min(8, (os.cpu_count() or 4) // 3))
@@ -182,9 +241,12 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
     meta: dict = {}
     for k, r in theo.items():
         if k in pv:
-            a = anh[k]
-            meta[k] = {"nguon": "cache", "digest": a.get("digest"),
-                       "st": dc.dong_xuat(dc.thong_so(a.get("text")))}
+            if chup is not None:
+                meta[k] = {"nguon": "chup", "digest": pv[k].get("digest"), "st": pv[k].get("st")}
+            else:
+                a = anh[k]
+                meta[k] = {"nguon": "cache", "digest": a.get("digest"),
+                           "st": dc.dong_xuat(dc.thong_so(a.get("text")))}
             bo.gui(k, r, pv[k]["tep"], pv[k]["xoay"])
     kq["cache"] = len(meta)
     ket: dict = {}
@@ -198,7 +260,9 @@ def chay(folder, items: list, cfg: dict, huy=None, bao=None, job_dir: Path | Non
     thieu = [r for k, r in theo.items() if k not in pv]
     ma = ""
     td: dict = {}
-    if thieu and KHA_NANG in at.plugin_kha_nang(job_dir) and not huy():
+    if thieu and khong_xuat:
+        kq["ly_do"] = "không có preview Lightroom sẵn (không xuất)"
+    elif thieu and KHA_NANG in at.plugin_kha_nang(job_dir) and not huy():
         ma = datetime.now().strftime("%Y%m%d_%H%M%S") + "t"
         yeu_cau(folder, [r.get("lr_path") or r["path"] for r in thieu], ma, canh=UU_TIEN,
                 job_dir=job_dir)

@@ -129,7 +129,7 @@ mk, bu_dung = mat_na_da._du_phong(img, (50, 40, 100, 120, 0.9, None))
 ktra("mặt nạ dự phòng: có điểm da trên mặt ám xanh, báo đã bù", int(mk.sum()) >= mat_na_da.DIEM_DA_TOI_THIEU and bu_dung,
      f"{int(mk.sum())} điểm")
 
-print("7. WB lượt 2 theo da đo thật — HAI CHIỀU, mọi buổi (16/10, DERMAL LOGIA RAW)")
+print("7. WB lượt 2 theo da đo thật — HAI CHIỀU, mọi buổi (16/10, DERMAL LOGIA RAW) + Tint (TEST)")
 #  da dựng ở WB đã áp 5012 K trong khi WB "đúng" là 3700 K -> da vàng
 VANG_THAT = (3700.0, 16.0)
 #  ảnh TRONG NHÀ -> đích trong nhà (da trắng hồng), không phải REF (đích ngoài trời của mục 1–6)
@@ -200,6 +200,28 @@ tr = anh_l2("T", 0)
 at.wb_da_luot2([tr], {id(tr): do_l2(tr, that=(2600.0, 16.0))}, dict(CV, wb_da_l2_tran_K=800.0))
 ktra("kẹp trần wb_da_l2_tran_K quanh WB đã áp", tr.get("wb_l2") and tr["wb_l2"][0] >= 5012 - 800,
      str(tr.get("wb_l2")))
+#  16/10 (buổi TEST — da tím: G thiếu so với cả R lẫn B, B/R gần đích): lượt kiểm chỉnh cả TINT
+#  — kéo wb_da_l2_manh_tint (0.3) quãng tới Tint đưa da về đích, lệch ≥ 4 mới chỉnh, trần ±10
+tim = anh_l2("TIM", 0)
+at.wb_da_luot2([tim], {id(tim): do_l2(tim, that=(5012.0, 40.0))}, CV)
+ktra("da tím (Tint thật 40 vs áp 16, Temp đúng) -> Tint kéo về phía 40 đúng 0.3 quãng, GIỮ Temp",
+     tim.get("wb_l2") and abs(tim["wb_l2"][0] - 5012) <= 60 and 16 + 4 <= tim["wb_l2"][1] <= 16 + 10
+     and tim.get("wb_l2_da") and "wb-da-luot2:tint" in tim["notes"], str(tim.get("wb_l2")))
+gan_t = anh_l2("GT", 0)
+at.wb_da_luot2([gan_t], {id(gan_t): do_l2(gan_t, that=(5012.0, 19.0))}, CV)
+ktra("Tint lệch < 4 -> không đổi", not gan_t.get("wb_l2"), str(gan_t.get("wb_l2")))
+xa_t = anh_l2("XT", 0)
+at.wb_da_luot2([xa_t], {id(xa_t): do_l2(xa_t, that=(5012.0, 120.0))}, CV)
+ktra("Tint lệch rất xa -> chạm trần ±10 quanh Tint đã áp", xa_t.get("wb_l2") and xa_t["wb_l2"][1] == 26,
+     str(xa_t.get("wb_l2")))
+tat_t = anh_l2("TT", 0)
+at.wb_da_luot2([tat_t], {id(tat_t): do_l2(tat_t, that=(5012.0, 40.0))}, dict(CV, wb_da_l2_tint=False))
+ktra("tắt wb_da_l2_tint -> giữ Tint (như trước 16/10)", not tat_t.get("wb_l2"), str(tat_t.get("wb_l2")))
+ca_hai = anh_l2("CH", 0)
+at.wb_da_luot2([ca_hai], {id(ca_hai): do_l2(ca_hai, that=(3700.0, 40.0))}, CV)
+ktra("vàng + tím -> Temp lạnh đi VÀ Tint chỉnh trong cùng một lần",
+     ca_hai.get("wb_l2") and ca_hai["wb_l2"][0] < 5012 - 300 and ca_hai["wb_l2"][1] > 16 + 3
+     and "wb-da-luot2:lanh" in ca_hai["notes"] and "wb-da-luot2:tint" in ca_hai["notes"], str(ca_hai.get("wb_l2")))
 am_x = anh_l2("A", 0, am_mau=1.6, wb_l2=(9000, 30))
 at.wb_da_luot2([am_x], {id(am_x): do_l2(am_x)}, CV, tat_ca=[am_x])
 ktra("ảnh ám xanh nặng giữ WB lượt 2 của nó (không bị xoá / đè)", am_x.get("wb_l2") == (9000, 30))
@@ -212,6 +234,68 @@ ktra("wb_da_can: WB Không đụng tới / grey-world / nguồn xmp -> không; K
      at.wb_da_can(CV) and at.wb_da_can(dict(CV, loai_buoi="ky_yeu"))
      and not at.wb_da_can(dict(CV, wb="off")) and not at.wb_da_can(dict(CV, wb="grey"))
      and not at.wb_da_can(dict(CV, source="sidecar")))
+
+print("8. Chốt VÙNG TRẮNG ở lượt kiểm (16/10 TestAnhCuoi — ảnh ngoài trời XANH vì WB theo da)")
+XAM = np.full(3, 0.75)                     # vật trung tính sáng (áo trắng) — L OkLab ~0.91
+
+
+def do_l2w(r, that=VANG_THAT, trang_that=None):
+    """như do_l2 + VÙNG TRẮNG: vật trung tính ĐÚNG ở WB `trang_that` (mặc định WB đã áp), dựng ở
+    WB đã áp của ảnh."""
+    do = do_l2(r, that)
+    wb_ap = (float(r["new_temp"]), float(r["new_tint"]))
+    w = at.doi_wb(XAM, trang_that or wb_ap, wb_ap)
+    do["trung"] = cl.srgb_sang_mien(np.tile(at.linear_to_srgb(np.clip(w, 0, 1)), (300, 1)), "melissa")
+    return do
+
+
+WB_AP = (5012.0, 16.0)
+k_bien = at._K_bien_trang(XAM + at.EPS, WB_AP, 0.0 - CV["wb_da_l2_trang_xanh"])
+neo = anh_l2("NEO", 0, wb_neo_trang=True)
+at.wb_da_luot2([neo], {id(neo): do_l2w(neo)}, CV)
+ktra("ảnh NEO WB theo vùng trắng, da VÀNG, trắng đúng -> kéo lạnh DỪNG ở biên vùng trắng",
+     neo.get("wb_l2_chan") == "chan-lanh" and 5012 - 300 < k_bien < 5012
+     and (not neo.get("wb_l2") or neo["wb_l2"][0] >= k_bien - 5), f"{neo.get('wb_l2')} · biên {k_bien:.0f}")
+ktra("…lưu vùng trắng MỐC (đo một lần, kèm WB lúc đo)",
+     neo.get("trang_l2_ref") is not None and tuple(neo["trang_l2_ref"][1]) == WB_AP, str(neo.get("trang_l2_ref")))
+#  vòng 2: ảnh dựng đã ám (điểm "trắng" đo lại sẽ sai) — dùng MỐC, không đo lại
+neo["new_temp"] = float((neo.get("wb_l2") or WB_AP)[0])
+do2 = do_l2w(neo)
+do2["trung"] = do2["trung"][:10]                          # đo lại không được (ít điểm)
+at.wb_da_luot2([neo], {id(neo): do2}, CV)
+ktra("…vòng 2 dùng lại MỐC: vẫn không lạnh quá biên",
+     not neo.get("wb_l2") or neo["wb_l2"][0] >= k_bien - 5, str(neo.get("wb_l2")))
+khong_neo = anh_l2("KN", 0)
+at.wb_da_luot2([khong_neo], {id(khong_neo): do_l2w(khong_neo)}, CV)
+ktra("ảnh KHÔNG neo, trong nhà / flash nổ -> như cũ: kéo lạnh theo da (> 300 K)",
+     khong_neo.get("wb_l2") and khong_neo["wb_l2"][0] < 5012 - 300 and not khong_neo.get("wb_l2_chan"),
+     str(khong_neo.get("wb_l2")))
+ngay = anh_l2("NG", 0, flash=16, fnumber=3.5, exposure_time=1 / 400, iso=100)
+at.wb_da_luot2([ngay], {id(ngay): do_l2w(ngay)}, CV)
+ktra("ảnh ÁNH SÁNG NGÀY mạnh (EV100 ≥ 11, flash không nổ), không neo -> kéo lạnh ≤ 150 K",
+     ngay.get("wb_l2") and ngay["wb_l2"][0] >= 5012 - 150 and ngay.get("wb_l2_chan") == "chan-lanh-ngay"
+     and at._ngay_manh(ngay, CV) and not at._ngay_manh(khong_neo, CV), str(ngay.get("wb_l2")))
+xanh_tr = anh_l2("XT2", 0, wb_neo_trang=True)
+at.wb_da_luot2([xanh_tr], {id(xanh_tr): do_l2w(xanh_tr, that=WB_AP, trang_that=(5800.0, 16.0))}, CV)
+ktra("ảnh neo, da ĐÚNG mà vùng trắng đã XANH (trắng thật ở 5800 K) -> ấm lên về biên, ≤ 500 K",
+     xanh_tr.get("wb_l2") and 5012 < xanh_tr["wb_l2"][0] <= 5012 + 500
+     and "wb-trang-luot2:am" in xanh_tr["notes"], str(xanh_tr.get("wb_l2")))
+tim_n = anh_l2("TIMN", 0, wb_neo_trang=True)
+tim_k = anh_l2("TIMK", 0)
+at.wb_da_luot2([tim_n], {id(tim_n): do_l2w(tim_n, that=(5012.0, 120.0))}, CV)
+at.wb_da_luot2([tim_k], {id(tim_k): do_l2w(tim_k, that=(5012.0, 120.0))}, CV)
+ti_n = (tim_n.get("wb_l2") or WB_AP)[1]
+ti_k = (tim_k.get("wb_l2") or WB_AP)[1]
+#  da lệch Tint xa thì phép giải dời cả Temperature (bị chặn ở biên b) -> biên Tint tính ở K đã chốt
+ti_bien = at._ti_bien_trang(XAM + at.EPS, WB_AP, float((tim_n.get("wb_l2") or WB_AP)[0]),
+                            CV["wb_da_l2_trang_tint"])
+ktra("ảnh neo: Tint theo da dừng ở biên vùng trắng (OkLab a ≤ +0.006 ở K đã chốt), không neo chạm trần +10",
+     ti_k == 26 and 16 < ti_n <= round(ti_bien) and ti_n < ti_k
+     and tim_n.get("wb_l2_chan") in ("chan-lanh", "chan-tint"), f"neo {ti_n} · không neo {ti_k} · biên {ti_bien:.1f}")
+tat_c = anh_l2("TC", 0, wb_neo_trang=True)
+at.wb_da_luot2([tat_c], {id(tat_c): do_l2w(tat_c)}, dict(CV, wb_da_l2_trang=False))
+ktra("tắt wb_da_l2_trang -> như trước 16/10 (kéo lạnh theo da)",
+     tat_c.get("wb_l2") and tat_c["wb_l2"][0] < 5012 - 300, str(tat_c.get("wb_l2")))
 
 print()
 print("TẤT CẢ ĐẠT" if not LOI else f"{len(LOI)} LỖI: " + "; ".join(LOI))

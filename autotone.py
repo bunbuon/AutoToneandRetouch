@@ -1063,6 +1063,9 @@ FACE_MODEL = dd.tai_nguyen("models", "face_detection_yunet_2023mar.onnx")
 #  15/10: nhận diện NGƯỜI (đặc trưng mặt 128 số) — OpenCV SFace, Apache-2.0, 38 MB, ~5 ms / mặt
 #  CPU; căn mặt bằng chính 5 điểm mốc YuNet. Xem gan_chu_the.
 SFACE_MODEL = dd.tai_nguyen("models", "face_recognition_sface_2021dec.onnx")
+#  17/10: GIỚI TÍNH mặt (nhận cô dâu — gan_chu_the) — insightface buffalo_l genderage, 1.3 MB,
+#  cv2.dnn ~1 ms / mặt. Xem models/genderage_GIAY_PHEP.txt.
+GIOI_MODEL = dd.tai_nguyen("models", "genderage.onnx")
 _DETECTOR = None          # nạp một lần cho mỗi tiến trình
 
 #[[ NHẬN CẢNH TRONG NHÀ / NGOÀI TRỜI (12/10) — Places365 ResNet18 (Zhou et al., MIT CSAIL;
@@ -1312,8 +1315,44 @@ def dac_trung_mat(im: Image.Image, faces: list, toi_da: int = 16, canh_min: floa
         if not n > 0:
             continue
         q = np.clip(np.round(np.asarray(e, dtype=np.float64) / n * 127.0), -127, 127).astype(np.int8)
-        out.append({"box": (float(f[0]), float(f[1]), float(f[2]), float(f[3])), "dt": q.tobytes().hex()})
+        m = {"box": (float(f[0]), float(f[1]), float(f[2]), float(f[3])), "dt": q.tobytes().hex()}
+        g = gioi_tinh_mat(a, m["box"])
+        if g is not None:
+            m["nu"], m["tuoi"] = round(g[0], 3), round(g[1], 1)
+        out.append(m)
     return out
+
+
+_GIOI = None
+
+
+def gioi_tinh_mat(a_bgr: np.ndarray, box) -> tuple | None:
+    """(xác suất NỮ 0..1, tuổi ước) của một mặt — insightface genderage (buffalo_l): ô vuông
+    1.5 × cạnh dài quanh tâm khung, 96 px, RGB 0–255 (đúng Attribute.get của insightface).
+    None khi thiếu mô hình / OpenCV. Một mặt lẻ có thể sai — gan_chu_the lấy trung bình theo
+    NGƯỜI (cả buổi)."""
+    global _GIOI
+    if _GIOI is None:
+        try:
+            import cv2
+            _GIOI = cv2.dnn.readNetFromONNX(str(GIOI_MODEL)) if GIOI_MODEL.is_file() else False
+        except Exception:                                    # noqa: BLE001
+            _GIOI = False
+    if not _GIOI:
+        return None
+    try:
+        import cv2
+        x, y, w, h = (float(v) for v in box[:4])
+        s = 96.0 / (max(w, h) * 1.5)
+        M = np.array([[s, 0.0, 48.0 - (x + w / 2.0) * s], [0.0, s, 48.0 - (y + h / 2.0) * s]],
+                     dtype=np.float32)
+        o = cv2.warpAffine(a_bgr, M, (96, 96), borderValue=0.0)
+        _GIOI.setInput(cv2.dnn.blobFromImage(o, 1.0, (96, 96), (0.0, 0.0, 0.0), swapRB=True))
+        p = _GIOI.forward().ravel()
+    except Exception:                                        # noqa: BLE001
+        return None
+    e = np.exp(p[:2] - float(p[:2].max()))
+    return float(e[0] / e.sum()), float(p[2] * 100.0)
 
 
 def detect_faces(im: Image.Image, score: float = 0.5, tho: bool = False) -> list:
@@ -3673,7 +3712,9 @@ DEFAULTS = {
     #   nen nham dung vung can sua — vd ha rieng man LED chay sang ma khong dim
     #   mat nguoi dung truoc no.
     #]]
-    "curve": True,            # bat/tat toan bo phan curve
+    #  16/10 (user: "Tone Curve làm bức ảnh tăng contrast cao quá" — buổi TEST, đường S Darks −6 /
+    #  Lights +6 bị user bỏ khi sửa tay): mặc định TẮT; ai cần thì bật ô "Tự chỉnh Curve (parametric)"
+    "curve": False,           # bat/tat toan bo phan curve (parametric)
     #[[ Nguong hieu chinh theo do that tren 150 anh su kien:
     #     chay%: p10=0.5  p50=12.5  p75=26  p90=33  p99=40
     #     toi% : p50=0    p90=0.01  p99=8.3
@@ -3756,7 +3797,22 @@ DEFAULTS = {
     "chu_the_co_min": 0.5,          # mặt chủ thể nhỏ hơn 0.5× mặt chủ thể to nhất ảnh -> người kế
     "chu_the_co_tv": 0.7,           # người thường đứng sau / ảnh in trên phông (mặt nhỏ) không làm chủ thể
     "chu_the_diem_tv": 0.88,
-    "cum_bu_anh_sang": True,        # tấm có ánh sáng THẬT lệch (flash hụt…) -> bù Exposure riêng, xem _bu_anh_sang_cum
+    #[[ 17/10 user: "Da của chú rể lúc nào cũng sẽ sạm hơn da của cô dâu. Nên với Cưới thì cần
+    #   lấy mặt của cô dâu để làm nhân vật chính và mask da theo mặt cô dâu" + thứ tự chọn mặt
+    #   mask: nhân vật chính (cưới: cô dâu số 1) -> mặt ở điểm lấy nét -> mặt vùng giữa ảnh có
+    #   da sáng thừa nhiều; mặt out nét loại. TestAnhCuoi: người nhiều ảnh nhất (369) là chú
+    #   rể (nữ 0.00, ~37 tuổi), cô dâu 257 ảnh (nữ 0.95, ~26 tuổi); 243 ảnh có cả hai: da cô
+    #   dâu sáng hơn +0.67 EV (trung vị), AF trên cô dâu 172 ảnh — vậy mà gan_chu_the cũ chọn
+    #   chú rể. ]]
+    "co_dau_chinh": True,           # loai_buoi "cuoi": cô dâu (nữ nhiều ảnh nhất) là chủ thể số 1
+    "co_dau_nu": 0.6,               # trung bình xác suất nữ (genderage) của người đó
+    "co_dau_co_tv": 0.6,            # cỡ mặt trung vị (so mặt to nhất ảnh) tối thiểu — nới hơn chu_the_co_tv
+    #   Mặt out nét: điểm nét < 0.6 × mặt ở điểm AF (không có AF: mặt nét nhất trong các mặt
+    #   tin chắc, cỡ ≥ 0.5× mặt to nhất). TestAnhCuoi: mặt khác so với mặt AF p5 0.49 / p10 0.57
+    #   / trung vị 0.94. 0 = tắt.
+    "mat_out_net_ti": 0.6,
+    "mat_giua_r": 0.5,              # "vùng giữa": tâm mặt cách tâm khung ≤ 0.5 nửa đường chéo
+    "cum_bu_anh_sang": True,       # tấm có ánh sáng THẬT lệch (flash hụt…) -> bù Exposure riêng, xem _bu_anh_sang_cum
     "cum_bu_nguong": 0.15,          # mặt lệch trung vị cụm dưới mức này = nhiễu đo, không bù
     "cum_bu_khung_ti": 0.25,        # ... chỉ khi khung lệch cùng chiều ≥ 0.25× mặt (không: đổi mặt đo / biểu cảm)
     "cum_bu_he_so": 0.5,            # EV bù / EV mặt lệch trên preview máy (đo 2709: ~0.58)
@@ -4053,6 +4109,56 @@ DEFAULTS = {
     #   ... Nếu đo thấy da vàng quá thì phải giảm và ngược lại" -> hai chiều (da xanh / lạnh quá
     #   thì ấm lên), mọi loại buổi (cả Kỷ yếu), trong nhà lẫn ngoài trời. ]]
     "wb_da_l2_bat": True, "wb_da_l2_nguong": 0.3, "wb_da_l2_manh": 0.6, "wb_da_l2_tran_K": 1500.0,
+    #[[ 16/10 (buổi G:/TestAnhTimmy/TEST — sự kiện, flash, đèn sân khấu xanh; user chọn "lượt kiểm
+    #   đo da thật trên Lightroom và chỉnh WB Temp + Tint"): da ra B/G 1,05 (đích 0,98) — G thiếu so
+    #   với CẢ R lẫn B (tím) — log2 B/R gần đích nên lượt kiểm chỉ-Temperature bỏ qua. User sửa tay
+    #   Tint 14 -> 8, 17 -> 10 (buổi DERMAL không đổi Tint) -> Tint kéo NHẸ: 0.3 quãng tới Tint đưa
+    #   da về đích (Bradford, _giai_wb_da), lệch ≥ 4 mới chỉnh, trần ±10 quanh Tint đã áp. ]]
+    "wb_da_l2_tint": True, "wb_da_l2_nguong_tint": 4.0, "wb_da_l2_manh_tint": 0.3,
+    "wb_da_l2_tran_tint": 10.0,
+    #[[ 16/10 TestAnhCuoi (cưới NGOÀI TRỜI, nắng, áo dài trắng — user: "nhiều bức ngoài trời đang
+    #   bị xanh do giảm WB"): mẫu da "Lễ Vu Quy" khe ngoài trời hồng [237,199,190] -> lượt kiểm theo
+    #   da kéo lạnh trung vị −800 K (quy trình Auto 2 vòng: 5550 -> 4261 -> 3863 K) trong khi chuỗi
+    #   vừa chỉnh WB theo VÙNG TRẮNG +300 K (chạm trần); vùng trắng ảnh cuối log2 B/R +0.16 (88/96
+    #   ảnh ngoài trời ngả xanh). CHỐT VÙNG TRẮNG (ảnh chuỗi một lượt đã NEO WB theo vùng trắng của
+    #   mẫu): vùng trắng đo MỘT lần trên ảnh dựng ở WB neo (L 0.62–0.96, chroma < 0.025 như
+    #   mau_mot_luot._trang), vòng sau quy đổi theo WB -> Temperature không đẩy OkLab b vùng trắng xanh
+    #   hơn đích trắng quá wb_da_l2_trang_xanh / ấm hơn quá wb_da_l2_trang_am, Tint không đẩy a quá
+    #   ±wb_da_l2_trang_tint; trắng đã ra ngoài thì kéo về biên ≤ wb_da_l2_trang_tran_K / _tint. ]]
+    "wb_da_l2_trang": True, "wb_da_l2_trang_xanh": 0.006, "wb_da_l2_trang_am": 0.015,
+    "wb_da_l2_trang_tran_K": 500.0, "wb_da_l2_trang_tint": 0.006, "wb_da_l2_trang_tran_tint": 5.0,
+    #  ảnh ÁNH SÁNG NGÀY mạnh (EV100 ≥ wb_da_l2_ngay_ev, flash không nổ) mà chuỗi KHÔNG neo được WB
+    #  theo vùng trắng (mẫu không có vùng trắng / ít điểm trắng): kéo lạnh ≤ 150 K, Tint ≤ ±3 mỗi lượt
+    "wb_da_l2_ngay_ev": 11.0, "wb_da_l2_ngay_lanh_K": 150.0, "wb_da_l2_ngay_tint": 3.0,
+    #[[ 16/10 chuỗi một lượt, bước WB THEO DA (mau_mot_luot.wb_da_buoc — mẫu không có vùng trắng):
+    #   mô hình Lightroom ILCE-7M4 phản ứng WB mạnh gần gấp đôi ảnh thật (buổi TEST) -> kéo nửa
+    #   quãng (Tint 0.3), trần ±1000 K / ±10; lượt kiểm sau khi áp sửa nốt trên ảnh thật. ]]
+    "mot_luot_wb_da": True, "mot_luot_wb_da_phan": 0.5, "mot_luot_wb_da_phan_tint": 0.3,
+    #  16/10: curve R/G/B của chuỗi một lượt (và lượt kiểm của nó) theo Ô "Curve R/G/B" (curve_da)
+    #  — trước đây luôn chạy; user: "nếu Tone Curve RGB được bật thì ..."
+    "mot_luot_curve_da": False,
+    #[[ 16/10 QUY TRÌNH AUTO LIGHTROOM (thử nghiệm — auto_lr.py / AutoCore.lua): Lightroom bấm
+    #   Auto (bảng Basic) -> số Auto là MỐC (giu_auto: tool giữ tông Auto, chỉ đổi WB, Exposure,
+    #   Curve R/G/B khi bật ô) -> chuỗi một lượt WB -> Tone -> Curve R/G/B. 16/10 tối: Auto gửi
+    #   NGAY khi lượt bắt đầu (song song phân tích), đo da trên preview Lightroom CHỤP trước Auto
+    #   (không xuất preview), DUYỆT LẠI một lần bằng dự đoán (mau_mot_luot.duyet_lai — trần
+    #   auto_duyet_*), áp MỘT lần; bỏ vòng kiểm dựng lại ảnh sau khi áp. ]]
+    "quy_trinh_auto": False,
+    "auto_duyet_lai": True, "auto_duyet_ev_len": 0.3, "auto_duyet_ev_xuong": 0.6,
+    "auto_duyet_mired": 40.0, "auto_duyet_tint": 10.0,
+    "auto_ev_sang_len": 0.3,        # chuỗi: Exposure được TĂNG tối đa (da tối hơn đích)
+    #[[ 17/10 PHẠM VI CHỈNH (user: "Thêm option khi người dùng chỉ muốn chạy cân WB và Exposure
+    #   or 1 trong 2. Khi đó sẽ chỉ xử lý cân lại WB và Exposure để da đạt được đích"):
+    #   "day_du" = quy trình đầy đủ; "wb_ev" / "wb" / "ev" = KHÔNG bấm Auto, mốc = thông số
+    #   Lightroom HIỆN TẠI của ảnh (moc_hien_tai), chuỗi một lượt chỉ chỉnh các ô được chọn, job
+    #   chỉ ghi các ô đó (ô khác để trống = plugin không đụng). Không có Auto làm nền nên trần
+    #   Exposure của chuỗi / duyệt lại rộng hơn (pham_vi_ev_tran mỗi chiều). ]]
+    "pham_vi": "day_du",
+    "pham_vi_ev_tran": 1.5,
+    "tone_da_l2_manh": 0.7,        # vòng kiểm: kéo bấy nhiêu phần quãng EV tới L đích
+    "tone_da_l2_len": 0.3, "tone_da_l2_xuong": 0.6,   # trần tăng / giảm mỗi vòng (EV)
+    "tone_da_l2_nguong": 0.1,       # lệch < bấy nhiêu EV -> giữ
+    "mot_luot_wb_da_tran_K": 1000.0, "mot_luot_wb_da_tran_tint": 10.0,
     "am_mau_bat": True,
     "am_mau_mat_ev": 1.3,         # da (face_rgb) XANH hơn da đích ≥ chừng này stop (log2 B/R)
     "am_mau_khung": (0.3, 1.3),   # cả khung ám xanh VỪA (stop) — ám cực mạnh là đèn màu cố ý
@@ -4877,7 +4983,7 @@ def nhom_nguoi(items: list, cfg: dict) -> list:
                 b = tuple(float(x) for x in m["box"][:4])
                 f = _mat_cua_box(r.get("face_debug"), b)
                 mat.append((i, b, v / n, b[2] * b[3], b[2] / max(rong, 1e-9),
-                            float(f.get("score") or 0.0) if f else 0.0))
+                            float(f.get("score") or 0.0) if f else 0.0, m.get("nu")))
     if not mat:
         return []
     mat.sort(key=lambda x: -x[3])
@@ -4901,7 +5007,8 @@ def nhom_nguoi(items: list, cfg: dict) -> list:
     so_mat: dict = {}
     co: dict = {}
     diem: dict = {}
-    for (i, b, _v, _a, c, d), g in zip(mat, gan):
+    nu: dict = {}
+    for (i, b, _v, _a, c, d, x), g in zip(mat, gan):
         if g < 0:
             continue
         items[i].setdefault("_nguoi", []).append((b, int(g)))
@@ -4909,8 +5016,11 @@ def nhom_nguoi(items: list, cfg: dict) -> list:
         so_mat[int(g)] = so_mat.get(int(g), 0) + 1
         co.setdefault(int(g), []).append(c)
         diem.setdefault(int(g), []).append(d)
+        if x is not None:
+            nu.setdefault(int(g), []).append(float(x))
     return sorted(({"id": g, "n_anh": len(a), "n_mat": so_mat[g], "co": float(np.median(co[g])),
-                    "diem": float(np.median(diem[g]))} for g, a in anh.items()),
+                    "diem": float(np.median(diem[g])),
+                    "nu": float(np.mean(nu[g])) if nu.get(g) else None} for g, a in anh.items()),
                   key=lambda p: -p["n_anh"])
 
 
@@ -4922,11 +5032,51 @@ def _mat_cua_box(fd: list, box) -> dict | None:
     return None
 
 
+def mat_net(fd: list, cfg: dict) -> list:
+    """Các mặt dùng được của một ảnh (face_debug: có số đo, điểm YuNet ≥ mat_sang_nhat_diem) TRỪ
+    mặt OUT NÉT: điểm nét < mat_out_net_ti × mặt mốc — mặt ở điểm AF; không có AF thì mặt nét
+    nhất trong các mặt tin chắc (điểm ≥ big_low_floor, cỡ ≥ 0.5× mặt tin chắc to nhất — mặt vụn
+    nét giả không đặt mốc, xem 14/10 trong measure). Mặt ở điểm AF không bao giờ bị loại;
+    không loại hết."""
+    diem = float(cfg.get("mat_sang_nhat_diem", 0.6) or 0.0)
+    ung = [f for f in fd or [] if f.get("ev") is not None and f.get("box")
+           and float(f.get("score") or 0.0) >= diem]
+    ti = float(cfg.get("mat_out_net_ti", 0.6) or 0.0)
+    if ti <= 0 or len(ung) < 2:
+        return ung
+    af = [f for f in ung if f.get("on_af")]
+    if af:
+        moc = max(float(f.get("sharp") or 0.0) for f in af)
+    else:
+        tin = [f for f in ung if float(f.get("score") or 0.0) >= float(cfg.get("big_low_floor", 0.7))]
+        if not tin:
+            return ung
+        rong = max(float(f["box"][2]) for f in tin)
+        moc = max(float(f.get("sharp") or 0.0) for f in tin if float(f["box"][2]) >= 0.5 * rong)
+    if moc <= 0:
+        return ung
+    return [f for f in ung if f.get("on_af") or float(f.get("sharp") or 0.0) >= ti * moc] or ung
+
+
+def _cach_tam(f: dict, wh) -> float:
+    """Khoảng cách tâm mặt -> tâm khung, chia nửa đường chéo (0 = giữa, 1 = góc)."""
+    try:
+        x, y, w, h = (float(v) for v in f["box"][:4])
+        W, H = float(wh[0]), float(wh[1])
+        return float(np.hypot((x + w / 2.0) / W - 0.5, (y + h / 2.0) / H - 0.5) / np.sqrt(0.5))
+    except (TypeError, ValueError, IndexError, ZeroDivisionError, KeyError):
+        return 1.0
+
+
 def gan_chu_the(items: list, cfg: dict) -> dict:
-    """CHỦ THỂ CHÍNH của buổi: chu_the_so_nguoi (6) người xuất hiện trong NHIỀU ẢNH nhất,
-    trọng số = số ảnh. Ảnh có ≥ 1 người trong số đó: đo sáng + cân màu da (meter_boxes,
-    face_rgb, face_p95, phép đo mặt — do_mat_chu_the) theo mặt người trọng số CAO NHẤT có mặt
-    trong ảnh. Gọi lại được (trả số gốc trước khi tính). -> CHU_THE.
+    """MẶT ĐO / MASK DA của từng ảnh. Thứ tự (user 17/10):
+      1. nhân vật CHÍNH của buổi — chu_the_so_nguoi (6) người xuất hiện trong NHIỀU ẢNH nhất;
+         buổi Cưới: CÔ DÂU (người nữ nhiều ảnh nhất, genderage) là số 1 — da chú rể luôn sạm hơn;
+      2. không có nhân vật chính: mặt ở ĐIỂM LẤY NÉT;
+      3. không có: mặt VÙNG GIỮA ảnh có da SÁNG THỪA nhiều nhất (p95 da);
+    mặt OUT NÉT bị loại trước mọi bước (mat_net). (1) đổi cả phép đo mặt (r["chu_the"] —
+    do_mat_chu_the); (2)(3) chỉ chọn trong các mặt measure đã đem đo, đổi khung đo / màu da /
+    p95 (mask), phép đo sáng cũ giữ nguyên. Gọi lại được (trả số gốc trước khi tính). -> CHU_THE.
 
     #[[ User 15/10: "Cần thêm cơ chế Detect chủ thể trong bức ảnh để nhận diện trong các bộ
     #   ảnh lấy ra được 5-6 người xuất hiện nhiều nhất và đặt trọng số cho nó. Khi 1 bức ảnh
@@ -4939,51 +5089,75 @@ def gan_chu_the(items: list, cfg: dict) -> dict:
     #     chu_the_co_tv) và rõ (trung vị điểm YuNet ≥ chu_the_diem_tv) — 2709: mặt cặp đôi
     #     trong ẢNH CƯỚI IN trên phông nền lọt vào 188 / 161 ảnh (cỡ 0.46 / 0.51, điểm 0.84 /
     #     0.87) — người thật làm chủ thể: cỡ 0.86–1.00, điểm 0.93;
-    #   - mặt dùng được: điểm YuNet ≥ mat_sang_nhat_diem, không nhỏ hơn chu_the_co_min ×
-    #     mặt chủ thể to nhất trong ảnh (người trọng số cao đứng xa, mờ thì sang người kế);
-    #   - buổi < chu_the_min_buoi ảnh có mặt: tắt (không đủ để biết ai là chủ thể). ]]"""
+    #   - mặt dùng được: điểm YuNet ≥ mat_sang_nhat_diem, không out nét, không nhỏ hơn
+    #     chu_the_co_min × mặt chủ thể to nhất trong ảnh (người hạng cao đứng xa thì sang người kế);
+    #   - buổi < chu_the_min_buoi ảnh có mặt: không có nhân vật chính (vẫn chọn theo 2, 3).
+    #   17/10: thêm cô dâu + 2 + 3 + loại out nét — xem chú thích co_dau_chinh ở DEFAULTS. ]]"""
     global CHU_THE
     for r in items:
         for k in ("meter_boxes", "face_rgb", "face_p95"):
             if k + "_goc" in r:
                 r[k] = r.pop(k + "_goc")
         r.pop("chu_the", None)
+        r.pop("mat_mask", None)
     CHU_THE = {}
     if not cfg.get("chu_the_chinh", True):
         return CHU_THE
     ds = [r for r in items if not r.get("bw")]
     co_mat = sum(1 for r in ds if r.get("mat_dt"))
-    if co_mat < int(cfg.get("chu_the_min_buoi", 20)):
-        return CHU_THE
-    nguoi = nhom_nguoi(ds, cfg)
-    toi_thieu = max(int(cfg.get("chu_the_min_anh", 5)),
-                    int(np.ceil(float(cfg.get("chu_the_min_ti", 0.03)) * co_mat)))
-    top = [p for p in nguoi if p["n_anh"] >= toi_thieu
-           and p["co"] >= float(cfg.get("chu_the_co_tv", 0.7))
-           and p["diem"] >= float(cfg.get("chu_the_diem_tv", 0.88))][:int(cfg.get("chu_the_so_nguoi", 6))]
-    if not top:
-        return CHU_THE
-    hang = {p["id"]: (i + 1, p["n_anh"]) for i, p in enumerate(top)}
-    diem = float(cfg.get("mat_sang_nhat_diem", 0.6) or 0.0)
+    top, co_dau = [], None
+    if co_mat >= int(cfg.get("chu_the_min_buoi", 20)):
+        nguoi = nhom_nguoi(ds, cfg)
+        toi_thieu = max(int(cfg.get("chu_the_min_anh", 5)),
+                        int(np.ceil(float(cfg.get("chu_the_min_ti", 0.03)) * co_mat)))
+        diem_tv = float(cfg.get("chu_the_diem_tv", 0.88))
+        so = int(cfg.get("chu_the_so_nguoi", 6))
+        top = [p for p in nguoi if p["n_anh"] >= toi_thieu and p["diem"] >= diem_tv
+               and p["co"] >= float(cfg.get("chu_the_co_tv", 0.7))][:so]
+        if cfg.get("loai_buoi") == "cuoi" and cfg.get("co_dau_chinh", True):
+            nu = [p for p in nguoi if p["n_anh"] >= toi_thieu and p["diem"] >= diem_tv
+                  and p["co"] >= float(cfg.get("co_dau_co_tv", 0.6))
+                  and p.get("nu") is not None and p["nu"] >= float(cfg.get("co_dau_nu", 0.6))]
+            if nu:
+                co_dau = nu[0]
+                top = [co_dau] + [p for p in top if p["id"] != co_dau["id"]][:max(0, so - 1)]
+    hang = {p["id"]: i + 1 for i, p in enumerate(top)}
     co_min = float(cfg.get("chu_the_co_min", 0.5))
-    n_dung = 0
+    r_giua = float(cfg.get("mat_giua_r", 0.5))
+    dem = {"co-dau": 0, "chu-the": 0, "af": 0, "giua-sang": 0}
     for r in ds:
-        ung = []
-        for box, pid in r.get("_nguoi") or []:
-            if pid not in hang:
-                continue
-            f = _mat_cua_box(r.get("face_debug"), box)
-            if f is None or f.get("ev") is None or float(f.get("score") or 0.0) < diem:
-                continue
-            ung.append((hang[pid], f))
-        if not ung:
+        net = mat_net(r.get("face_debug"), cfg)
+        if not net:
             continue
-        rong = max(float(f["box"][2]) for _h, f in ung)
-        ung = [u for u in ung if float(u[1]["box"][2]) >= co_min * rong]
-        ung.sort(key=lambda u: (-u[0][1], u[0][0]))
-        (rank, n), f = ung[0]
+        ung = []
+        for box, pid in (r.get("_nguoi") or []) if hang else []:
+            f = _mat_cua_box(net, box) if pid in hang else None
+            if f is not None:
+                ung.append((hang[pid], f))
+        if ung:
+            rong = max(float(f["box"][2]) for _h, f in ung)
+            ung = sorted((u for u in ung if float(u[1]["box"][2]) >= co_min * rong), key=lambda u: u[0])
+            rank, f = ung[0]
+            cach = "co-dau" if co_dau is not None and rank == 1 else "chu-the"
+            r["chu_the"] = {"hang": rank, "n_anh": top[rank - 1]["n_anh"], "box": tuple(
+                float(x) for x in f["box"][:4]), "ev": float(f["ev"]), "so": len(ung),
+                "co_dau": cach == "co-dau"}
+        else:
+            mb = r.get("meter_boxes") or []
+            uv = [f for f in net if any(_mat_cua_box([f], b[:4]) for b in mb)]
+            if not uv or (len(uv) == 1 and len(mb) == 1):
+                continue
+            af = [f for f in uv if f.get("on_af")]
+            if af:
+                f, cach = max(af, key=lambda f: float(f["box"][2])), "af"
+            else:
+                wh = r.get("preview_wh")
+                giua = [f for f in uv if _cach_tam(f, wh) <= r_giua]
+                f = (max(giua, key=lambda f: (float(f.get("p95") or 0.0), float(f.get("da_sang") or 0.0)))
+                     if giua else min(uv, key=lambda f: _cach_tam(f, wh)))
+                cach = "giua-sang"
         b = tuple(float(x) for x in f["box"][:4])
-        r["chu_the"] = {"hang": rank, "n_anh": n, "box": b, "ev": float(f["ev"]), "so": len(ung)}
+        r["mat_mask"] = cach
         r["meter_boxes_goc"] = r.get("meter_boxes")
         r["meter_boxes"] = [b + (float(f.get("score") or 1.0),)]
         if f.get("rgb"):
@@ -4992,11 +5166,13 @@ def gan_chu_the(items: list, cfg: dict) -> dict:
         if f.get("p95") is not None:
             r["face_p95_goc"] = r.get("face_p95")
             r["face_p95"] = float(f["p95"])
-        n_dung += 1
-    CHU_THE = {"nguoi": [{"hang": i + 1, "n_anh": p["n_anh"]} for i, p in enumerate(top)],
-               "anh": n_dung, "co_mat": co_mat}
+        dem[cach] += 1
+    CHU_THE = {"nguoi": [{"hang": i + 1, "n_anh": p["n_anh"], "co_dau": p is co_dau}
+                         for i, p in enumerate(top)],
+               "anh": dem["co-dau"] + dem["chu-the"], "co_mat": co_mat, "dem": dem,
+               "co_dau": None if co_dau is None else {"n_anh": co_dau["n_anh"],
+                                                      "nu": round(float(co_dau["nu"]), 2)}}
     return CHU_THE
-
 
 def do_mat_chu_the(items: list, cfg: dict) -> int:
     """Phép đo mặt = mặt CHỦ THỂ CHÍNH (gan_chu_the) — trước mọi bước sửa phép đo khác."""
@@ -5704,7 +5880,52 @@ def trang_thai_curve(moc: dict, cur: dict, tool_row: dict | None) -> str:
         return "moc"
     if tool_row is not None and curve_giong(cur, tool_row):
         return "tool"
+    #  16/10: tool xoá R/G/B của preset (dat_lai_rgb) mà chưa ghi curve nào lên -> vẫn là của tool
+    thang = moc_rgb_thang(moc)
+    if not curve_giong(moc, thang) and curve_giong(cur, thang):
+        return "tool"
     return "nguoi_sua"
+
+
+RGB_THANG = "0,0,255,255"
+
+
+def moc_rgb_thang(moc: dict) -> dict:
+    """Curve mốc với ba kênh R / G / B về THẲNG; curve tổng giữ của preset."""
+    out = dict(moc or {})
+    for k in COT_CURVE[2:]:
+        out[k] = RGB_THANG
+    out[COT_CURVE[0]] = out.get(COT_CURVE[0]) or "Custom"
+    return out
+
+
+def dat_lai_rgb(items: list, cfg: dict) -> int:
+    """Ô "Curve R/G/B" BẬT (curve_da, nguồn catalog): ảnh CÓ MẶT người mà curve đang ở mốc preset
+    hoặc curve tool -> mốc curve = preset với R/G/B THẲNG (moc_rgb_thang); job lượt 1 ghi nó
+    (curve_reset) -> xoá curve R/G/B của preset; curve da tính lại TỪ ĐÓ (chuỗi một lượt: bước
+    ĐẦU; hai lượt: lượt 2 đo trên ảnh đã xoá). Ảnh không mặt / đen trắng / 1 sao / curve người
+    dùng tự sửa: không đụng. -> số ảnh.
+
+    #[[ 16/10 (user: "nếu Tone Curve RGB được bật thì sẽ reset Tone Curve RGB của preset mặc định
+    #   đi. Sau đó sẽ tinh chỉnh lại phần đó đầu tiên rồi mới chạy tới Tone Curve -> WB - Tone").
+    #   Preset SAY (saymedia7v) mang R 136/134, G 125/122, B 127/127 — lệch màu nền trước khi tool
+    #   tính màu da. ]]"""
+    for r in items:
+        r.pop("curve_moc_preset", None)
+    if not cfg.get("curve_da") or cfg.get("source") != "catalog":
+        return 0
+    n = 0
+    for r in items:
+        if (r.get("bw") or int(r.get("rating") or 0) == 1 or not r.get("meter_boxes")
+                or r.get("ngoai_xuat") or r.get("curve_tt") not in ("moc", "tool")
+                or not co_cot_curve(r.get("curve_moc") or {})):
+            continue
+        moi = moc_rgb_thang(r["curve_moc"])
+        r["curve_moc_preset"] = dict(r["curve_moc"])
+        r["curve_moc"] = moi
+        r["curve_reset"] = dict(moi)
+        n += 1
+    return n
 
 
 def anh_da_hsl(folder: Path, job_dir: Path | None = None) -> set:
@@ -6366,6 +6587,92 @@ def _dich_da_lin_l2(r: dict, cfg: dict) -> np.ndarray:
     return _dich_da_lin(r, cfg)
 
 
+def _lab_lin(lin) -> np.ndarray:
+    """RGB tuyến tính sRGB (N×3) -> OkLab (N×3)."""
+    lms = np.cbrt(np.maximum(np.asarray(lin, dtype=np.float64) @ _OK_M1.T, 0.0))
+    return lms @ _OK_M2.T
+
+
+def _trang_lin_l2(do: dict) -> np.ndarray | None:
+    """RGB TUYẾN TÍNH trung vị VÙNG TRẮNG trên ảnh Lightroom dựng: điểm trung tính của do_anh
+    ("trung" — đã bỏ da / mặt / điểm cháy) có L OkLab 0.62–0.96 (như mau_mot_luot._trang).
+    None khi < 50 điểm."""
+    import curve_lr as _cl
+    tr = do.get("trung")
+    if tr is None or len(tr) < 50:
+        return None
+    lin = srgb_to_linear(np.clip(_cl.mien_sang_srgb(np.asarray(tr, dtype=np.float64),
+                                                     do.get("mien") or "melissa"), 0.0, 1.0))
+    L = _lab_lin(lin)[:, 0]
+    m = (L >= 0.62) & (L <= 0.96)
+    if int(m.sum()) < 50:
+        return None
+    return np.median(lin[m], axis=0) + EPS
+
+
+def _trang_dich(r: dict, cfg: dict) -> tuple[float, float]:
+    """OkLab (a, b) đích của vùng trắng: mẫu màu da có vùng trắng (mau_da_dich["trang"] — đo từ
+    ảnh người dùng đã sửa) -> khe trong / ngoài như chuỗi một lượt; không có -> (0, 0) trung tính."""
+    tr = (cfg.get("mau_da_dich") or {}).get("trang") or {}
+    v = tr.get("ngoai" if _nhan_da_ngoai(r, cfg) else "trong") or tr.get("trong")
+    try:
+        return float(v[0]), float(v[1])
+    except (TypeError, ValueError, IndexError):
+        return 0.0, 0.0
+
+
+def _lab_sau_wb(w, tu: tuple, sang: tuple) -> np.ndarray:
+    """OkLab của màu `w` (RGB tuyến tính, dựng ở WB `tu`) khi dựng ở WB `sang` (Bradford)."""
+    return _lab_lin(np.maximum(doi_wb(w, tu, sang), 1e-9)[None, :])[0]
+
+
+def _K_bien_trang(w, tu: tuple, b_bien: float) -> float:
+    """WB (K, giữ Tint của `tu`) để vùng trắng `w` (dựng ở WB `tu`) có OkLab b = b_bien. K nhỏ ->
+    ảnh lạnh -> b giảm. Ngoài 2000–12000 K thì trả biên."""
+    ti = float(tu[1])
+    m_lo, m_hi = 1e6 / 12000.0, 1e6 / 2000.0
+    if _lab_sau_wb(w, tu, (1e6 / m_lo, ti))[2] <= b_bien:
+        return 12000.0
+    if _lab_sau_wb(w, tu, (1e6 / m_hi, ti))[2] >= b_bien:
+        return 2000.0
+    for _ in range(32):
+        mid = 0.5 * (m_lo + m_hi)
+        if _lab_sau_wb(w, tu, (1e6 / mid, ti))[2] > b_bien:
+            m_lo = mid
+        else:
+            m_hi = mid
+    return 1e6 / (0.5 * (m_lo + m_hi))
+
+
+def _ti_bien_trang(w, tu: tuple, K: float, a_bien: float) -> float:
+    """Tint (Temperature = K) để vùng trắng `w` (dựng ở WB `tu`) có OkLab a = a_bien. Tint lớn ->
+    hồng (a tăng). Ngoài −150…150 thì trả biên."""
+    lo, hi = -150.0, 150.0
+    if _lab_sau_wb(w, tu, (K, lo))[1] >= a_bien:
+        return lo
+    if _lab_sau_wb(w, tu, (K, hi))[1] <= a_bien:
+        return hi
+    for _ in range(32):
+        mid = 0.5 * (lo + hi)
+        if _lab_sau_wb(w, tu, (K, mid))[1] < a_bien:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+def _ngay_manh(r: dict, cfg: dict) -> bool:
+    """Ảnh ăn ÁNH SÁNG NGÀY mạnh: EV100 ≥ wb_da_l2_ngay_ev và flash KHÔNG nổ (EXIF Flash bit 0) —
+    nắng / bóng râm ban ngày: WB đúng gần như cố định, da lệch đích không sửa bằng WB."""
+    ev = ev100(r)
+    if ev is None or ev < float(cfg.get("wb_da_l2_ngay_ev", 11.0)):
+        return False
+    try:
+        return not (int(r.get("flash") or 0) & 1)
+    except (TypeError, ValueError):
+        return False
+
+
 def wb_da_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None) -> int:
     """LƯỢT 2 — WB THEO DA ĐO THẬT, HAI CHIỀU: da trên ảnh Lightroom vừa dựng (ở WB vừa áp) lệch
     đích ≥ wb_da_l2_nguong stop (log2 B/R) -> vàng quá thì WB LẠNH đi, xanh / lạnh quá thì ẤM lên,
@@ -6373,11 +6680,19 @@ def wb_da_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None) -
     (trung vị các ảnh đo được, áp cả loạt trong tat_ca), không quá wb_da_l2_tran_K quanh WB đã
     áp. Ô "Ngoài trời buổi tối: giữ ấm" bật thì ảnh ngoài trời tối không bị kéo lạnh. Gắn
     r["wb_l2"] (curve_da.ghi_job ghi cùng job lượt 2) + r["lech_da"] (stop, dương = vàng).
+
+    16/10 (TestAnhCuoi — ảnh ngoài trời XANH): CHỐT VÙNG TRẮNG cho ảnh chuỗi một lượt đã neo WB
+    theo vùng trắng (r["wb_neo_trang"]) — Temperature / Tint không đẩy vùng trắng ra ngoài khoảng
+    quanh đích trắng của mẫu (trắng đã ra ngoài thì kéo về, ≤ wb_da_l2_trang_tran_K / _tint);
+    ảnh ÁNH SÁNG NGÀY mạnh không neo được (_ngay_manh) kéo lạnh ≤ wb_da_l2_ngay_lanh_K, Tint
+    ≤ ±wb_da_l2_ngay_tint mỗi lượt. Gắn r["wb_l2_chan"] khi chốt cản WB theo da.
     -> số ảnh."""
     import curve_lr as _cl
     tat_ca = list(tat_ca if tat_ca is not None else ds)
     for r in tat_ca:
         r.pop("lech_da", None)
+        r.pop("wb_l2_da", None)
+        r.pop("wb_l2_chan", None)
         if not r.get("am_mau"):
             r.pop("wb_l2", None)
     if not wb_da_can(cfg):
@@ -6397,34 +6712,322 @@ def wb_da_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None) -
         da = np.median(lin, axis=0) + EPS
         ref = _dich_da_lin_l2(r, cfg)
         ev = float(wb_cast(ref)[0] - wb_cast(da)[0])
-        t, _ti = _giai_wb_da(da, (float(r["new_temp"]), float(r.get("new_tint", 0))), ref)
-        giai[id(r)] = (ev, t)
+        t, ti = _giai_wb_da(da, (float(r["new_temp"]), float(r.get("new_tint", 0))), ref)
+        giai[id(r)] = (ev, t, ti)
     if not giai:
         return 0
     k = float(cfg.get("wb_da_l2_manh", 0.6))
     nguong = float(cfg.get("wb_da_l2_nguong", 0.3))
     tran = float(cfg.get("wb_da_l2_tran_K", 1500.0))
     giu_am = bool(cfg.get("wb_ngoai_toi", True))
+    tint_bat = bool(cfg.get("wb_da_l2_tint", True))
+    k_ti = float(cfg.get("wb_da_l2_manh_tint", 0.3))
+    nguong_ti = float(cfg.get("wb_da_l2_nguong_tint", 4.0))
+    tran_ti = float(cfg.get("wb_da_l2_tran_tint", 10.0))
+    #[[ 16/10 chốt VÙNG TRẮNG (DEFAULTS wb_da_l2_trang): vùng trắng đo MỘT lần, trên ảnh dựng ở WB
+    #   neo (trắng còn gần đích — phép đo "chroma < 0.025" tin được) -> r["trang_l2_ref"] = (RGB
+    #   tuyến tính, WB lúc đo); vòng sau quy đổi CHÍNH điểm đó theo WB (Bradford). Đo lại trên ảnh
+    #   đã ám là chọn nhầm "trắng": TestAnhCuoi ảnh cuối ám xanh mà điểm "trắng" đo ra b ≈ đích —
+    #   áo trắng thật đã vượt chroma 0.025 nên bị loại, vật hơi ấm lại thành "trung tính". ]]
+    trang_bat = bool(cfg.get("wb_da_l2_trang", True))
+    tol_x = float(cfg.get("wb_da_l2_trang_xanh", 0.006))
+    tol_v = float(cfg.get("wb_da_l2_trang_am", 0.015))
+    tol_ti = float(cfg.get("wb_da_l2_trang_tint", 0.006))
+    tran_tr = float(cfg.get("wb_da_l2_trang_tran_K", 500.0))
+    tran_tr_ti = float(cfg.get("wb_da_l2_trang_tran_tint", 5.0))
+    ngay_K = float(cfg.get("wb_da_l2_ngay_lanh_K", 150.0))
+    ngay_ti = float(cfg.get("wb_da_l2_ngay_tint", 3.0))
+    moc: dict = {}
+    if trang_bat:
+        for r in ds:
+            if not r.get("wb_neo_trang") or not wb_da_hop_le(r, cfg):
+                continue
+            ref = r.get("trang_l2_ref")
+            if ref is None:
+                do = do_map.get(id(r)) or {}
+                w = _trang_lin_l2(do) if do.get("ok", True) else None
+                if w is None:
+                    continue
+                ref = r["trang_l2_ref"] = ([float(x) for x in w],
+                                           (float(r["new_temp"]), float(r.get("new_tint", 0))))
+            moc[id(r)] = (np.asarray(ref[0], dtype=np.float64), tuple(float(x) for x in ref[1]),
+                          _trang_dich(r, cfg))
     n = 0
     for g in nhom_loat([r for r in tat_ca if wb_da_hop_le(r, cfg)], cfg):
         do_g = [giai[id(r)] for r in g if id(r) in giai]
         if not do_g:
             continue
         ev = float(np.median([x[0] for x in do_g]))
-        if abs(ev) < nguong:
-            continue
         m_dich = float(np.median([1e6 / x[1] for x in do_g]))
+        ti_dich = float(np.median([x[2] for x in do_g]))
+        mg = [moc[id(x)] for x in g if id(x) in moc]
+        if len(mg) > 15:                                  # đủ cho trung vị, đỡ tính
+            mg = [mg[i] for i in np.linspace(0, len(mg) - 1, 15).round().astype(int)]
+        k_min = k_max = None
+        if mg:
+            k_min = 1e6 / float(np.median([1e6 / _K_bien_trang(w, wb0, d[1] - tol_x) for w, wb0, d in mg]))
+            k_max = 1e6 / float(np.median([1e6 / _K_bien_trang(w, wb0, d[1] + tol_v) for w, wb0, d in mg]))
+        quyet = []
         for r in g:
-            if ev > 0 and giu_am and r.get("ngoai_toi"):
-                continue                        # ngoài trời buổi tối: giữ không khí ấm
-            tu = float(r["new_temp"])
-            m0 = 1e6 / tu
-            t_r = float(np.clip(1e6 / (m0 + k * (m_dich - m0)), tu - tran, tu + tran))
-            if abs(tu - t_r) <= 50.0 or (t_r < tu) != (ev > 0):
+            tu, ti0 = float(r["new_temp"]), float(r.get("new_tint", 0))
+            t_r = tu
+            #  ngoài trời buổi tối + ô "giữ ấm": không kéo LẠNH (Tint vẫn xét)
+            if abs(ev) >= nguong and not (ev > 0 and giu_am and r.get("ngoai_toi")):
+                m0 = 1e6 / tu
+                t_r = float(np.clip(1e6 / (m0 + k * (m_dich - m0)), tu - tran, tu + tran))
+                if abs(tu - t_r) <= 50.0 or (t_r < tu) != (ev > 0):
+                    t_r = tu
+            neo = bool(mg) and bool(r.get("wb_neo_trang"))
+            chu_tr = ""
+            if neo and k_min < k_max:
+                #  WB theo da không làm trắng XANH / VÀNG quá; trắng đã ra ngoài thì kéo về biên
+                if t_r < k_min:
+                    t_r, chu_tr = (k_min, "chan-lanh") if tu >= k_min else (min(k_min, tu + tran_tr), "am")
+                elif t_r > k_max and not (giu_am and r.get("ngoai_toi")):
+                    t_r, chu_tr = (k_max, "chan-am") if tu <= k_max else (max(k_max, tu - tran_tr), "lanh")
+            elif not neo and tu - t_r > ngay_K and _ngay_manh(r, cfg):
+                t_r, chu_tr = tu - ngay_K, "chan-lanh-ngay"
+            if abs(t_r - tu) <= 50.0:
+                t_r = tu
+            quyet.append((r, tu, ti0, t_r, neo, chu_tr))
+        #  biên Tint của vùng trắng tính MỘT lần cho loạt, ở Temperature trung vị vừa quyết
+        ti_lo = ti_hi = None
+        if mg and any(q[4] for q in quyet):
+            K_g = float(np.median([q[3] for q in quyet]))
+            ti_lo = float(np.median([_ti_bien_trang(w, wb0, K_g, d[0] - tol_ti) for w, wb0, d in mg]))
+            ti_hi = float(np.median([_ti_bien_trang(w, wb0, K_g, d[0] + tol_ti) for w, wb0, d in mg]))
+        for r, tu, ti0, t_r, neo, chu_tr in quyet:
+            ti_r = ti0
+            if tint_bat and abs(ti_dich - ti0) >= nguong_ti:
+                ti_r = float(np.clip(ti0 + k_ti * (ti_dich - ti0), ti0 - tran_ti, ti0 + tran_ti))
+            if neo and ti_lo is not None and ti_lo < ti_hi:
+                if ti_r < ti_lo:
+                    ti_r = ti_lo if ti0 >= ti_lo else min(ti_lo, ti0 + tran_tr_ti)
+                    chu_tr = chu_tr or ("chan-tint" if ti0 >= ti_lo else "tint")
+                elif ti_r > ti_hi:
+                    ti_r = ti_hi if ti0 <= ti_hi else max(ti_hi, ti0 - tran_tr_ti)
+                    chu_tr = chu_tr or ("chan-tint" if ti0 <= ti_hi else "tint")
+            elif not neo and abs(ti_r - ti0) > ngay_ti and _ngay_manh(r, cfg):
+                ti_r = float(np.clip(ti_r, ti0 - ngay_ti, ti0 + ngay_ti))
+                chu_tr = chu_tr or "chan-tint-ngay"
+            if abs(ti_r - ti0) < 1.0:
+                ti_r = ti0
+            if chu_tr.startswith("chan"):
+                r["wb_l2_chan"] = chu_tr                  # tổng kết: WB theo da bị chốt cản
+            if t_r == tu and ti_r == ti0:
                 continue
-            r["wb_l2"] = (int(round(t_r)), int(round(float(r.get("new_tint", 0)))))
+            r["wb_l2"] = (int(round(t_r)), int(round(ti_r)))
             r["lech_da"] = round(ev, 2)
-            _them_ghi_chu(r, "wb-da-luot2:" + ("lanh" if ev > 0 else "am"))
+            r["wb_l2_da"] = True                # có chỉnh WB theo da ở lượt 2 (Temp và / hoặc Tint)
+            if t_r != tu:
+                if chu_tr in ("am", "lanh"):
+                    _them_ghi_chu(r, "wb-trang-luot2:" + chu_tr)
+                else:
+                    _them_ghi_chu(r, "wb-da-luot2:" + ("lanh" if t_r < tu else "am")
+                                  + (f":{chu_tr}" if chu_tr else ""))
+            if ti_r != ti0:
+                _them_ghi_chu(r, f"wb-da-luot2:tint{ti_r - ti0:+.0f}")
+            n += 1
+    return n
+
+
+#: ô Lightroom Auto đặt mà tool GIỮ làm mốc (Exposure: tool chỉnh tiếp từ số Auto)
+O_AUTO_MOC = ("Exposure2012", "Highlights2012", "Shadows2012", "Contrast2012", "Whites2012",
+              "Blacks2012")
+
+
+def giu_auto(items: list, cfg: dict) -> int:
+    """QUY TRÌNH AUTO (16/10): ảnh có r["lr_auto"] (thông số Lightroom SAU khi bấm Auto — bảng
+    auto_anh.tsv của AutoCore) -> MỐC tông = số Auto: crs + dấu mốc (atn) của Exposure /
+    Highlights / Shadows / Contrast / Whites / Blacks = số Auto; mọi chỉnh tông / WB tự động của
+    tool về 0 (decide tính trên preset — không còn nghĩa); GIỮ phần người dùng tự đặt (Bù sáng /
+    K / Tint cả buổi). Rồi compute_values -> new_* = số Auto (+ bù người dùng). WB xuất phát =
+    WB đang có (preset / As Shot); chuỗi một lượt và vòng kiểm chỉnh WB, Exposure, Curve R/G/B.
+    -> số ảnh."""
+    n = 0
+    pv = pham_vi(cfg) or {"wb", "ev"}
+    bu_ev = float(cfg.get("bu_sang_ca_buoi") or 0.0) if "ev" in pv else 0.0
+    bu_k = float(cfg.get("bu_k_ca_buoi") or 0.0) if "wb" in pv else 0.0
+    bu_ti = float(cfg.get("bu_tint_ca_buoi") or 0.0) if "wb" in pv else 0.0
+    for r in items:
+        st = r.get("lr_auto")
+        if not st or r.get("bw"):
+            continue
+        crs, atn = dict(r.get("crs") or {}), dict(r.get("atn") or {})
+        #  17/10 phạm vi chỉnh: mốc = thông số HIỆN TẠI — cả WB (chỉ Exposure: WB phải đứng yên)
+        if r.get("lr_hien_tai") and get_f(st, "Temperature", 0.0) > 0:
+            for k in ("Temperature", "Tint"):
+                crs[k] = (str(int(round(get_f(st, k, 0.0)))) if k == "Temperature"
+                          else fmt_i(int(round(get_f(st, k, 0.0)))))
+                if k in ATN_FIELDS:
+                    atn[ATN_FIELDS[k]] = crs[k]
+            crs["WhiteBalance"] = str(st.get("WhiteBalance") or crs.get("WhiteBalance") or "Custom")
+        for k in O_AUTO_MOC:
+            v = st.get(k)
+            if v is None:
+                continue
+            crs[k] = fmt_f(float(v)) if k == "Exposure2012" else fmt_i(int(round(float(v))))
+            if k in ATN_FIELDS:
+                atn[ATN_FIELDS[k]] = crs[k]
+        r["crs"], r["atn"] = crs, atn
+        r.update(delta_ev=bu_ev if r.get("meter_boxes") else 0.0, hl_adj=0, sh_adj=0,
+                 temp_adj=bu_k, tint_adj=bu_ti, cv_hl=0, cv_lt=0, cv_dk=0, cv_sh=0)
+        for k in ("wb_bu", "am_mau", "am_mau_wb", "bu_cum_ev", "bu_cum_lr"):
+            r.pop(k, None)
+        compute_values(r, cfg, r["crs"], r["atn"])
+        for k in ("Contrast2012", "Whites2012", "Blacks2012"):
+            if st.get(k) is not None:
+                r["new_" + k] = int(round(float(st[k])))
+        _them_ghi_chu(r, "quy-trinh-auto")
+        n += 1
+    return n
+
+
+#: ô tông Lightroom Auto GIỮ NGUYÊN theo từng ảnh -> khoá new_* của tool
+_O_GIU_AUTO = {"Highlights2012": "new_highlights", "Shadows2012": "new_shadows",
+               "Contrast2012": "new_Contrast2012", "Whites2012": "new_Whites2012",
+               "Blacks2012": "new_Blacks2012"}
+
+
+def giu_tong_auto(items: list, cfg: dict) -> int:
+    """QUY TRÌNH AUTO — chốt cuối plan(): Highlights / Shadows / Contrast / Whites / Blacks = ĐÚNG
+    số Lightroom Auto của chính ảnh đó, bước nào trước đó đổi cũng trả lại. Tool chỉ chỉnh
+    Exposure + WB (+ Curve R/G/B). -> số ảnh phải trả lại.
+
+    #[[ 16/10 TestAnhCuoi (user: "sau khi chạy Auto thì giữ nguyên Highlight và Shadow của Auto
+    #   chỉ chỉnh lại Exposure và WB"): dong_bo_cum chép tông ảnh đại diện sang cả cụm cùng khung
+    #   — 320 / 512 ảnh đổi Highlights, 337 đổi Shadows (LGK08674 Auto −76 / 49 -> −78 / 41). ]]"""
+    if not (cfg.get("quy_trinh_auto") and cfg.get("source") == "catalog"):
+        return 0
+    n = 0
+    for r in items:
+        st = r.get("lr_auto")
+        if not st or r.get("bw"):
+            continue
+        doi = False
+        for o, k in _O_GIU_AUTO.items():
+            v = st.get(o)
+            if v is None:
+                continue
+            v = int(round(float(v)))
+            if r.get(k) != v:
+                r[k] = v
+                doi = True
+        if doi:
+            n += 1
+            _them_ghi_chu(r, "giu-tong-auto")
+    return n
+
+
+#: phạm vi chỉnh (cfg "pham_vi") -> nhóm ô tool được ghi; "day_du" = mọi thứ (None)
+PHAM_VI = {"day_du": None, "wb_ev": frozenset({"wb", "ev"}), "wb": frozenset({"wb"}),
+           "ev": frozenset({"ev"})}
+#: ô job của từng nhóm (write_lr_job để trống mọi ô khác)
+_O_PHAM_VI = {"ev": ("Exposure2012",), "wb": ("Temperature", "Tint")}
+
+
+def pham_vi(cfg: dict) -> frozenset | None:
+    """Nhóm ô được chỉnh khi người dùng chỉ muốn cân WB và / hoặc Exposure; None = đầy đủ."""
+    return PHAM_VI.get(str(cfg.get("pham_vi") or "day_du"))
+
+
+def moc_hien_tai(items: list, cfg: dict) -> int:
+    """PHẠM VI CHỈNH (17/10, chỉ WB / Exposure — không bấm Auto): mốc của quy trình Auto
+    (r["lr_auto"]) = thông số Lightroom HIỆN TẠI của ảnh (crs_hien — đọc thẳng catalog / bản
+    xuất), để giu_auto / chuỗi một lượt cân tiếp từ đúng cái đang thấy. -> số ảnh."""
+    if not pham_vi(cfg) or cfg.get("source") != "catalog":
+        return 0
+    import auto_lr
+    n = 0
+    for r in items:
+        hien = r.get("crs_hien") or {}
+        if r.get("bw") or not hien:
+            continue
+        r["lr_auto"] = {k: hien[k] for k in auto_lr.O if str(hien.get(k, "")).strip() != ""}
+        r["lr_hien_tai"] = True
+        n += 1
+    return n
+
+
+def chot_pham_vi(items: list, cfg: dict) -> int:
+    """PHẠM VI CHỈNH — chốt CUỐI plan(): ô ngoài phạm vi về đúng số hiện tại (mốc), bỏ mọi ghi
+    HSL / Color Grading / curve / tông; gắn r["pham_vi"] cho write_lr_job (chỉ ghi các ô được
+    chọn). -> số ảnh."""
+    pv = pham_vi(cfg)
+    if not pv or cfg.get("source") != "catalog":
+        for r in items:
+            r.pop("pham_vi", None)
+        return 0
+    for r in items:
+        r["pham_vi"] = tuple(sorted(pv))
+        if "ev" not in pv and r.get("old_exposure") is not None:
+            r["new_exposure"], r["delta_ev"] = r["old_exposure"], 0.0
+        if "wb" not in pv:
+            if r.get("old_temp") is not None:
+                r["new_temp"], r["new_tint"] = r.get("old_temp"), r.get("old_tint")
+            r["wb_ep_ghi"] = False
+        if r.get("old_highlights") is not None:
+            r["new_highlights"], r["hl_adj"] = r["old_highlights"], 0
+        if r.get("old_shadows") is not None:
+            r["new_shadows"], r["sh_adj"] = r["old_shadows"], 0
+        for k in ("gr_ghi", "hsl_ghi", "hsl_l_ghi", "curve_ghi_mot_luot", "curve_reset", "bw_tra_wb",
+                  "new_ParametricHighlights", "new_ParametricLights", "new_ParametricDarks",
+                  "new_ParametricShadows", "new_Contrast2012", "new_Whites2012", "new_Blacks2012"):
+            r.pop(k, None)
+    return len(items)
+
+
+def tone_da_luot2(ds: list, do_map: dict, cfg: dict, tat_ca: list | None = None) -> int:
+    """QUY TRÌNH AUTO — VÒNG KIỂM (16/10): độ sáng da đo THẬT trên ảnh Lightroom vừa dựng so với
+    L đích (curve_da.dich_cua — đích của chuỗi, đã hạ da_dich_L_bu) -> Exposure theo LOẠT
+    (trung vị), ΔEV = tone_da_l2_manh × 3·log2(L_đích / L) (OkLab L ~ Y^1/3), lệch < tone_da_l2
+    _nguong EV thì giữ, trần +tone_da_l2_len / −tone_da_l2_xuong mỗi vòng. Gắn r["tone_l2"] =
+    Exposure MỚI (curve_da.ghi_job ghi cột Exposure2012). -> số ảnh."""
+    import curve_da
+    tat_ca = list(tat_ca if tat_ca is not None else ds)
+    for r in tat_ca:
+        r.pop("tone_l2", None)
+    if not cfg.get("quy_trinh_auto"):
+        return 0
+    giai: dict = {}
+    for r in ds:
+        if r.get("bw") or not r.get("meter_boxes") or r.get("new_exposure") is None:
+            continue
+        do = do_map.get(id(r)) or {}
+        if not do.get("ok", True):
+            continue
+        kieu = "mn" if (((cfg.get("mau_da_dich") or {}).get("trong_mn"))
+                        and do.get("da_mn") is not None and do.get("mat_na") == "parse") else "cu"
+        P = do.get("da_mn") if kieu == "mn" else do.get("da_cu")
+        if P is None or len(P) < 50:
+            continue
+        L = float(curve_da.thong_ke(np.asarray(P, dtype=np.float64), do.get("mien") or "melissa")[0])
+        rgb, _ngoai = curve_da.dich_cua(r, cfg, kieu)
+        Lt = float(mau_dich_lab(rgb)[0])
+        if L <= 1e-3 or Lt <= 1e-3:
+            continue
+        giai[id(r)] = 3.0 * math.log2(Lt / L)
+    if not giai:
+        return 0
+    k = float(cfg.get("tone_da_l2_manh", 0.7))
+    nguong = float(cfg.get("tone_da_l2_nguong", 0.1))
+    len_, xuong = float(cfg.get("tone_da_l2_len", 0.3)), float(cfg.get("tone_da_l2_xuong", 0.6))
+    n = 0
+    for g in nhom_loat([r for r in tat_ca if r.get("meter_boxes") and not r.get("bw")], cfg):
+        do_g = [giai[id(r)] for r in g if id(r) in giai]
+        if not do_g:
+            continue
+        e = float(np.median(do_g))
+        if abs(e) < nguong:
+            continue
+        e = float(np.clip(k * e, -xuong, len_))
+        if abs(e) < 0.02:
+            continue
+        for r in g:
+            if r.get("new_exposure") is None:
+                continue
+            r["tone_l2"] = round(float(np.clip(float(r["new_exposure"]) + e, -5.0, 5.0)), 2)
+            _them_ghi_chu(r, f"tone-da-luot2:{e:+.2f}EV")
             n += 1
     return n
 
@@ -6782,6 +7385,37 @@ def dich_da(cfg: dict) -> tuple:
         trong = cfg.get("skin_ref_rgb_hong") or cfg["skin_ref_rgb"]
         return trong, cfg.get("skin_ref_rgb_hong_ngoai") or trong
     return cfg["skin_ref_rgb"], cfg.get("skin_ref_rgb_ngoai") or cfg["skin_ref_rgb"]
+
+
+#[[ 17/10 MẪU MÀU DA GỢI Ý theo loại buổi (user: "Tham khảo tư liệu để tạo ra 3 skill tone cho
+#   màu da của sự kiện, đám cưới, kỷ yếu phổ biến cho cả trong và ngoài nhà dành cho người Việt
+#   Nam được ưa chuộng nhất để recomment"). Căn cứ:
+#     - người Đông Á chấm mặt SÁNG hơn là đẹp hơn, hơi ĐỎ HỒNG / bớt vàng được ưa (Nhật: a* +18–30%,
+#       b* −5–9% tăng điểm mặt nữ — Frontiers Psychol. 2025, He et al. 2024); mặt nữ ưa tông DỊU, ít
+#       đậm (Color Res. Appl. 2026); da phụ nữ Hàn / Việt đo máy sáng hơn, ít đỏ / vàng hơn Thái /
+#       Indonesia (J Invest Dermatol 2025, 2.762 người);
+#     - ảnh cưới Việt chuộng kiểu Hàn: "nhẹ nhàng, tươi sáng, thiên về hồng và vàng nhạt", trong trẻo;
+#       ảnh sự kiện: trung hoà màu trước, ấm nhẹ, tự nhiên; mọi tông da nằm quanh MỘT đường hue giữa
+#       đỏ và vàng (vectorscope) — khác nhau chủ yếu ở độ đậm;
+#     - gu đo được của chính user: mẫu "baoquyen" (7 ảnh sửa) sRGB 237/196/180 = OkLab L 0.852, hue
+#       42.4°, đậm/L 0.061; "Lễ Vu Quy" L 0.80, hue 49–51°; vùng trắng hai mẫu a +0.007, b −0.004.
+#   Số (OkLab L, hue, đậm/L) trong -> ngoài trời (ngoài: ấm hơn +4°, đậm +0.004, tối hơn 0.01):
+#     Cưới    0.845 / 40° / 0.058 -> 0.835 / 44° / 0.062   trắng hồng trong trẻo, dịu
+#     Sự kiện 0.810 / 48° / 0.066 -> 0.800 / 51° / 0.070   tự nhiên, ấm nhẹ
+#     Kỷ yếu  0.850 / 42° / 0.064 -> 0.840 / 46° / 0.067   sáng, tươi, hồng hào
+#   "trang" = OkLab (a, b) vùng trắng đích (WB theo vùng trắng — chuỗi một lượt). Giao diện chọn
+#   sẵn mẫu theo loại buổi cho buổi chưa chọn mẫu riêng (autotone_gui._nho_mau_da). ]]
+MAU_DA_GOI_Y = {
+    "cuoi": {"ten": "Gợi ý · Cưới", "mo": "trắng hồng trong trẻo",
+             "trong": [234, 194, 180], "ngoai": [231, 191, 174],
+             "trang": {"trong": [0.006, -0.003], "ngoai": [0.006, -0.003]}},
+    "su_kien": {"ten": "Gợi ý · Sự kiện", "mo": "tự nhiên, ấm nhẹ",
+                "trong": [223, 183, 164], "ngoai": [220, 180, 158],
+                "trang": {"trong": [0.003, 0.0], "ngoai": [0.003, 0.0]}},
+    "ky_yeu": {"ten": "Gợi ý · Kỷ yếu", "mo": "sáng, tươi, hồng hào",
+               "trong": [238, 195, 178], "ngoai": [235, 192, 172],
+               "trang": {"trong": [0.005, -0.002], "ngoai": [0.005, -0.002]}},
+}
 
 
 def dich_mac_dinh(cfg: dict) -> dict | None:
@@ -7593,6 +8227,8 @@ def chinh_mau_da(items: list, cfg: dict, folder=None) -> dict:
         r.pop("curve_ghi_mot_luot", None)
         r.pop("du_doan_lr", None)
         r.pop("mot_luot", None)
+        r.pop("wb_neo_trang", None)          # 16/10: chuỗi một lượt gắn lại (WB theo vùng trắng)
+        r.pop("trang_l2_ref", None)          # vùng trắng mốc của lượt kiểm — đo lại lượt mới
     #  13/10: da chon MAU mau da -> chuoi mot dich (xem chuoi_mau_da_mau)
     if cfg.get("mau_da_chuoi", True) and (cfg.get("mau_da_dich") or {}).get("trong"):
         #  14/10: cảnh có số đo trước + mô hình Lightroom đạt -> chuỗi MỘT LƯỢT
@@ -9229,7 +9865,9 @@ def dong_bo_cum(items: list, cfg: dict) -> int:
                 r["new_exposure"] = ev
                 r["delta_ev"] = round(ev - get_f({"e": r.get("old_exposure")}, "e", 0.0), 4)
                 doi.append("ev")
-            for k in _CUM_TONE:
+            #  16/10 quy trình Auto: tông Auto (Highlights / Shadows / Contrast / Whites / Blacks) là
+            #  của TỪNG ảnh — không chép của đại diện (xem giu_tong_auto)
+            for k in (() if r.get("lr_auto") else _CUM_TONE):
                 if dd.get(k) is not None and r.get(k) != dd.get(k):
                     r[k] = dd[k]
                     doi.append("tone")
@@ -10659,6 +11297,15 @@ def buoi_dat_lai(items: list, export: dict, folder: Path,
     #   (bo_moc=True) lay catalog hien tai lam moc moi. ]]
     """
     da_ghi = last_applied(folder)
+    #[[ 16/10: lần ghi CUỐI của tool gồm cả job @curve (Exposure vòng kiểm) và bản ghi Auto
+    #   (ghi_auto_* — quy trình Auto), đúng nguồn danh_dau_nguoi_sua dùng (_lich_su_ghi). Thiếu
+    #   thì đồng bộ cả buổi SAU một lượt Auto không được nhận là đặt lại -> cả loạt bị coi là sửa
+    #   tay: TEST 16/10 Synchronize Settings 20:24 -> lượt 20:28 bỏ 366 ảnh vừa Auto. ]]
+    for k_, v_ in lan_ghi_cuoi(folder).items():
+        try:
+            da_ghi[k_] = float(v_["Exposure2012"])
+        except (TypeError, ValueError, KeyError):
+            continue
     if not da_ghi or not export:
         return ""
     if not baseline_path(folder).is_file():
@@ -10696,6 +11343,12 @@ def lan_ghi_cuoi(folder: Path, job_dir: Path | None = None) -> dict:
     return _lich_su_ghi(folder, job_dir)[0]
 
 
+def _thu_tu_ghi(p: Path) -> tuple:
+    """Thứ tự thời gian của một file lịch sử ghi: apply_<giờ>_… / ghi_auto_<giờ>_…"""
+    m = re.search(r"_(\d{8}_\d{6})", p.name)
+    return (m.group(1) if m else "", p.name)
+
+
 def _lich_su_ghi(folder: Path, job_dir: Path | None = None) -> tuple[dict, dict]:
     """{tên ảnh: {ô: giá trị}} — tool ghi gì cho ảnh ở LẦN ÁP CHÍNH GẦN NHẤT có ảnh đó (+ các
     job @curve lượt 2 sau nó: curve / HSL / Luminance Cam); bỏ job khôi phục (xem
@@ -10709,8 +11362,11 @@ def _lich_su_ghi(folder: Path, job_dir: Path | None = None) -> tuple[dict, dict]
     if not d.is_dir():
         return {}, {}
     ten = ten_job(Path(folder).name)
+    #  16/10: + ghi_auto_<giờ>_<buổi>.done (auto_lr.ghi_lich_su — số Auto plugin ghi theo lệnh của
+    #  tool, quy trình Auto) gộp như job @curve; xếp theo GIỜ trong tên (hai tiền tố khác nhau)
     fs = sorted([*d.glob(f"apply_*_{ten}.done"), *d.glob(f"apply_*_{ten}@curve.done"),
-                 *d.glob(f"apply_*_{ten}-khoiphuc.done")], key=lambda p: p.name)
+                 *d.glob(f"apply_*_{ten}-khoiphuc.done"), *d.glob(f"ghi_auto_*_{ten}.done")],
+                key=_thu_tu_ghi)
     out: dict = {}
     #  15/10: số job KHÔI PHỤC (khoi_phuc.py — trả ảnh user sửa tay bị đè) sau lần áp chính
     #  gần nhất của ảnh: còn nguyên trong catalog = trạng thái của USER (SUB_6464 Luminance Cam
@@ -10727,7 +11383,7 @@ def _lich_su_ghi(folder: Path, job_dir: Path | None = None) -> tuple[dict, dict]
             except OSError:
                 pass
             continue
-        chinh = "@curve" not in f.name
+        chinh = "@curve" not in f.name and not f.name.startswith("ghi_auto_")
         try:
             with io.open(f, encoding="utf-8-sig", newline="") as fh:
                 for row in csv.DictReader(fh, delimiter="\t"):
@@ -10842,6 +11498,9 @@ def danh_dau_nguoi_sua(items: list, export: dict, folder: Path,
         return 0
     n = 0
     for r in items:
+        #  16/10: ảnh tool vừa nhờ Lightroom bấm Auto (quy trình Auto) — số đổi là của Auto
+        if r.get("lr_auto"):
+            continue
         key = khoa_duong_dan(r["path"])     # cung khoa voi _read_tsv (xem ham do)
         cur = (hien or {}).get(key) or (export or {}).get(key)
         w = ghi.get(_stem_any(r["path"]))
@@ -11418,6 +12077,7 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         DAT_LAI_BUOI = "" if (cu and not hien) else buoi_dat_lai(items, xuat_dung, Path(folder or "."))
         attach_catalog_settings(items, xuat_dung, Path(folder or "."), persist=False,
                                 bo_moc=DAT_LAI_BUOI == "dat-lai")
+        dat_lai_rgb(items, cfg)              # 16/10: ô Curve R/G/B bật -> R/G/B preset về thẳng
         #[[ As Shot cua tung anh — TRUOC khi bo anh nguoi sua: anh user da mo
         #   trong Develop chinh la anh Lightroom da dung, tuc anh co As Shot
         #   THAT de hoc do lech thang K. Bo chung truoc thi mat gan het cap. ]]
@@ -11495,6 +12155,10 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
                 apply_to_sidecar(r, cfg, None, Path("."), dry=True)
         except Exception as ex:
             r["notes"] = (r.get("notes", "") + f";LOI:{ex}").strip(";")
+    #  16/10: quy trình Auto — số Lightroom Auto là mốc, tool giữ tông Auto
+    if cfg.get("quy_trinh_auto") and cfg.get("source") == "catalog":
+        moc_hien_tai(items, cfg)            # 17/10: chỉ WB / Exposure -> mốc = số hiện tại
+        giu_auto(items, cfg)
     #[[ MAU DA can WB CUOI (new_temp / new_tint) -> SAU compute_values. Chuoi: do
     #   -> HSL kenh da -> do lai -> Color Grading (chinh_mau_da). Hong thi khong
     #   ghi HSL / grade anh nao (va noi ra), khong duoc lam do ca buoi. ]]
@@ -11524,6 +12188,10 @@ def plan(items: list, cfg: dict, folder: Path | None = None,
         dong_bo_cum(items, cfg)
     except Exception as ex:                                  # noqa: BLE001
         print(f"[!] Dong bo cum cung khung loi, bo qua: {ex}", file=sys.stderr)
+    #  16/10: quy trình Auto — chốt CUỐI: tông Auto của từng ảnh không bước nào được đổi
+    giu_tong_auto(items, cfg)
+    #  17/10: chỉ cân WB / Exposure — ô ngoài phạm vi về số hiện tại, job chỉ ghi ô được chọn
+    chot_pham_vi(items, cfg)
 
 
 def write_sidecars(items: list, cfg: dict, root: Path, backup_dir: Path | None = None,
@@ -12215,7 +12883,8 @@ TIEN_DO_PLUGIN = {"xem_lr_tiendo.txt": "lấy preview cho lưới",
                   "duyet_tiendo.txt": "dựng ảnh duyệt",
                   "xuatanh_tiendo.txt": "xuất ảnh",
                   "xempreset_tiendo.txt": "dựng xem preset",
-                  "hocmau_tiendo.txt": "học màu Lightroom"}
+                  "hocmau_tiendo.txt": "học màu Lightroom",
+                  "auto_tiendo.txt": "bấm Auto Lightroom"}
 BAN_GIAY = 30.0
 
 
@@ -12461,6 +13130,11 @@ def write_lr_job(items: list, name: str = "", job_dir: Path | None = None) -> Pa
             *([str(int(round(float(dict(r["hsl_l_moi"]).get(k, 0))))) for k in COT_HSL_L]
               if r.get("hsl_l_ghi") and r.get("hsl_l_moi") else [""] * len(COT_HSL_L)),
         ])
+        #  17/10 phạm vi chỉnh (chỉ WB / Exposure): mọi ô khác để TRỐNG = plugin không đụng
+        if r.get("pham_vi"):
+            duoc = {o for nh in r["pham_vi"] for o in _O_PHAM_VI.get(nh, ())}
+            rows[-1] = rows[-1][:1] + [v if ten in duoc else ""
+                                       for ten, v in zip(LR_JOB_FIELDS, rows[-1][1:])]
     if not rows:
         return None
 

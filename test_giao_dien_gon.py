@@ -435,7 +435,9 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
          f"mặc định Thiết lập={mac_dinh_tl} · bấm → chi tiết={sang_ct}")
     nhom = app._nhom_tuy_chon
     #  13/10: Denoise nằm trong nhóm "Ghìm & bảo vệ" (8 nhóm thì bảng không vừa 1180x680)
-    ktra("bảy nhóm tuỳ chọn", len(nhom) == 7, " · ".join(n.tieu_de for n in nhom.values()))
+    #  17/10: "Giới hạn chỉnh" ẩn hẳn (số cố định 5 / 5 / ×1) -> sáu nhóm
+    ktra("sáu nhóm tuỳ chọn (Giới hạn chỉnh đã ẩn)", len(nhom) == 6 and "tran" not in nhom,
+         " · ".join(n.tieu_de for n in nhom.values()))
     ktra("Denoise mặc định TẮT, ngưỡng ISO 2000, ô ISO chỉ chỉnh được khi bật",
          app.v_denoise.get() is False and app.v_denoise_iso.get() == "2000"
          and app.sp_denoise_iso.trang_thai() == "disabled",
@@ -452,7 +454,7 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
              and n.l_tom.winfo_ismapped() and n.l_tom.cget("text")
              for n in nhom.values()),
          "thu gọn mà không giấu")
-    n = nhom["tran"]
+    n = nhom["loc"]
     n.dau.event_generate("<Button-1>")
     chay(3)
     mo_chuot = n.dang_mo and n.than.winfo_ismapped() and not n.l_tom.winfo_ismapped()
@@ -469,8 +471,7 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     app.v_scenesig.set(False)
     chay(4)
     ktra("dòng tóm tắt chạy theo giá trị",
-         "2.50" in nhom["tran"].l_tom.cget("text")
-         and "trùng khung" in nhom["loc"].l_tom.cget("text")
+         "trùng khung" in nhom["loc"].l_tom.cget("text")
          and nhom["canh"].l_tom.cget("text").startswith("⚠"),
          nhom["canh"].l_tom.cget("text")[:50])
     app.v_maxev.set("1.00")
@@ -608,7 +609,8 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     trong = [w for w in hoi if la_con_cua(w, bang)]
     ktra("dấu ? nào trong bảng điều khiển cũng có chữ",
          len(trong) >= 20 and all(w.goi_y.chu for w in trong), f"{len(trong)} dấu ?")
-    h = next(w for w in trong if "tăng sáng tối đa" in w.goi_y.chu)
+    #  17/10: nhóm Giới hạn chỉnh ("Mức tăng sáng tối đa…") đã ẩn -> thử dấu ? của "Phạm vi chỉnh"
+    h = next(w for w in trong if "chỉ cân lại các thông số đó" in w.goi_y.chu)
     h.event_generate("<Enter>", x=3, y=3)
     chay(2)
     chua = h.goi_y.cua is None
@@ -622,12 +624,12 @@ def _kiem(app, root, chay, tk, at, ag, gd, tam: Path) -> None:
     h.event_generate("<Leave>", x=40, y=40)
     chay(3)
     ktra("rê chuột vào dấu ? thì hiện chú thích (sau một nhịp), rời ra thì tắt",
-         chua and hien and "tăng sáng tối đa" in nhan and h.goi_y.cua is None,
+         chua and hien and "chỉ cân lại các thông số đó" in nhan and h.goi_y.cua is None,
          "không hiện ngay khi chuột lướt qua")
     ktra("chữ phụ không còn in sẵn dưới tính năng",
          not [w for w in ds if la_con_cua(w, bang)
               and w.winfo_class() == "TLabel"
-              and str(w.cget("style")) == "Mo2.TLabel"
+              and str(w.cget("style")) == "Mo2.TLabel" and w.winfo_viewable()
               and not any(w is n2.l_tom for n2 in nhom.values())],
          "chỉ còn dòng tóm tắt của nhóm")
 

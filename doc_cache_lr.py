@@ -132,7 +132,8 @@ def anh_buoi(con: sqlite3.Connection, folder, gom_con: bool = False) -> dict:
         if dn != f and not (gom_con and dn.startswith(f + os.sep)):
             continue
         p = os.path.join(d, f"{ten}.{duoi}" if duoi else str(ten))
-        out[at.khoa_duong_dan(p)] = {"id": int(iid), "digest": dg, "text": txt, "xoay": xoay}
+        out[at.khoa_duong_dan(p)] = {"id": int(iid), "digest": dg, "text": txt, "xoay": xoay,
+                                     "path": p}
     return out
 
 

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""mau_mot_luot.py — CHUỖI MÀU DA MỘT LƯỢT: Tone -> HSL -> Curve -> WB -> CG (14/10).
+"""mau_mot_luot.py — CHUỖI MÀU DA MỘT LƯỢT (14/10; thứ tự 16/10: Curve R/G/B -> Tone Curve -> WB
+-> Tone -> HSL -> CG).
 
 User 14/10: "Việc xử lý 1000 ảnh theo cách hiện tại thì thời gian phải tốn 15 phút. Như
 này đang quá lâu. Hãy thử đổi lại Flow 1 chút. Với mỗi 1 ảnh cần lấy ra được vùng da mặt
@@ -24,6 +25,26 @@ máy / profile / process version của nó (mo_hinh_lr, học trên RAW thật).
   5. CG    — phần da CÒN lệch sau WB, luật grade như cũ, kẹp trang_tran_cg.
   Cuối: r["du_doan_lr"] = da / vùng trắng dự đoán sau cả chuỗi — soát sau khi áp so với
   preview Lightroom thật (lệch nhiều -> lượt 2 chỉ cho ảnh đó).
+
+#[[ 16/10 THỨ TỰ MỚI (user, buổi G:/TestAnhTimmy/TEST — sự kiện, flash, đèn sân khấu xanh: "Tone
+#   Curve làm bức ảnh tăng contrast cao quá ... da bị xanh quá. Thử đổi lại quy trình: Tone Curve
+#   nếu được bật thì sẽ chạy đầu tiên -> WB -> Tone - Check 1 lượt xem lại màu da đã đúng đích
+#   chưa"; chọn "chỉ phần tông" cho Tone Curve):
+#     1. TONE CURVE — chỉ phần TÔNG: nén vùng cháy (curve tổng) trên khung dự đoán;
+#     2. WB         — mẫu có vùng trắng: theo vùng trắng như trên; không có: THEO DA (Temp +
+#                     Tint, Jacobi từ mô hình, kéo mot_luot_wb_da_phan — mô hình ILCE-7M4 phản
+#                     ứng WB mạnh hơn ảnh thật nên không kéo hết; lượt kiểm sau khi áp sửa nốt);
+#     3. TONE       — sáng da (Exposure theo cụm, chặn cháy, Luminance Cam);
+#     4. HSL, 5. CURVE R/G/B (chỉ MÀU da còn lệch, không kéo sáng, giữ nén cháy bước 1), 6. CG.
+#   Trước 16/10 bước WB không chạy khi mẫu không có vùng trắng (mẫu Mặc định): da buổi TEST ra
+#   B/G 1,05 (đích 0,98) — xanh tím — vì không bước nào kéo da theo WB. ]]
+#[[ 16/10 tối (user: "nếu Tone Curve RGB được bật thì sẽ reset Tone Curve RGB của preset mặc định
+#   đi. Sau đó sẽ tinh chỉnh lại phần đó đầu tiên rồi mới chạy tới Tone Curve -> WB - Tone"):
+#     0. ô Curve R/G/B bật -> plan() đã đưa R/G/B của preset về THẲNG (at.dat_lai_rgb);
+#     1. CURVE R/G/B — màu da trên nền R/G/B thẳng, chạy ĐẦU (không kéo sáng);
+#     1b. TONE CURVE — nén vùng cháy ghép lên curve bước 1;
+#     2. WB, 3. TONE, 4. HSL, 5. CG. Bỏ bước curve R/G/B cuối (đã chạy đầu).
+#   Ô tắt: không có bước curve R/G/B (trước đây chuỗi luôn chạy — mot_luot_curve_da). ]]
 
 Chọn đường THEO CẢNH (chon_duong): cảnh nào đa số ảnh có mặt có số đo trước + mô hình thì
 cả cảnh đi chuỗi này (ảnh không đo nhận mức HSL / WB của cảnh, curve của loạt); cảnh khác
@@ -159,7 +180,136 @@ def thong_so_tone(r: dict, cu: dict) -> dict:
             v = (r.get("curve_moc") or {}).get(k)
             if v not in (None, ""):
                 s[k] = v
+    #  16/10: curve bước TONE CURVE (chạy đầu chuỗi) là nền của mọi bước sau
+    if r.get("curve_ghi_mot_luot"):
+        s.update({k: v for k, v in r["curve_ghi_mot_luot"].items() if v not in (None, "")})
     return s
+
+
+def duyet_lai(items: list, mm: dict, cfg: dict) -> dict:
+    """QUY TRÌNH AUTO — DUYỆT LẠI MỘT LẦN, TRƯỚC KHI ÁP, bằng DỰ ĐOÁN (không dựng ảnh).
+
+    #[[ 16/10 tối, user: "... -> Căn chỉnh Tone Curve RGB nếu bật -> Duyệt lại 1 lần ảnh nào da
+    #   chủ thể chưa đúng da đích thì chỉ sửa lại các ảnh đó -> Áp lightroom. Việc xuất ảnh
+    #   preview như hiện tại sẽ rất mất thời gian" — thay vòng kiểm dựng lại ảnh sau khi áp. ]]
+
+    Da dự đoán với thông số job (thong_so_job) từng ảnh đo được; ảnh ngoài vùng ổn (da_on_L /
+    da_on_hue / da_on_chroma) -> CỤM CÙNG KHUNG của nó (nhom_cum — một bộ chỉnh chung, đồng bộ
+    cụm cuối plan() giữ đều) tìm ΔWB (mired, Tint) rồi ΔExposure làm tổng lệch nhỏ nhất, trong
+    trần auto_duyet_* ; ảnh neo WB theo vùng trắng (wb_neo_trang): vùng trắng dự đoán không ra
+    ngoài khoảng đích trắng (như at.wb_da_luot2); ảnh ánh sáng ngày mạnh không neo: lạnh ≤
+    wb_da_l2_ngay_lanh_K, Tint ±wb_da_l2_ngay_tint. Chỉ nhận khi tổng lệch giảm ≥ 20%. Cụm đã
+    ổn không đụng. -> {"xet", "lech", "sua", "dat_sau"}"""
+    kq = {"xet": 0, "lech": 0, "sua": 0, "dat_sau": 0}
+    if not cfg.get("auto_duyet_lai", True):
+        return kq
+    tol_L = float(cfg.get("da_on_L") or 0.02)
+    tol_h = float(cfg.get("da_on_hue") or 3.0)
+    tol_q = float(cfg.get("da_on_chroma") or 0.10)
+    ev_len = float(cfg.get("auto_duyet_ev_len", 0.3))
+    ev_xuong = float(cfg.get("auto_duyet_ev_xuong", 0.6))
+    tran_m = float(cfg.get("auto_duyet_mired", 40.0))
+    tran_ti = float(cfg.get("auto_duyet_tint", 10.0))
+    tol_x = float(cfg.get("wb_da_l2_trang_xanh", 0.006))
+    tol_v = float(cfg.get("wb_da_l2_trang_am", 0.015))
+    tol_a = float(cfg.get("wb_da_l2_trang_tint", 0.006))
+    ngay_K = float(cfg.get("wb_da_l2_ngay_lanh_K", 150.0))
+    ngay_ti = float(cfg.get("wb_da_l2_ngay_tint", 3.0))
+    ln_q = math.log(1.0 + tol_q)
+
+    def chi_so(m, px):
+        L, h, q = _da(px)
+        mau = m["mau"]
+        dL = L - mau["L_t"]
+        dh = at._goc_lech(h - mau["h_t"])                               # noqa: SLF001
+        dq = math.log(max(q, 1e-9) / max(mau["q_t"], 1e-9))
+        return (dL / tol_L) ** 2 + (dh / tol_h) ** 2 + (dq / ln_q) ** 2, \
+            abs(dL) <= tol_L and abs(dh) <= tol_h and abs(math.exp(dq) - 1.0) <= tol_q
+
+    def ngoai_bang(t, dich):
+        """khoảng cách vùng trắng (a, b) ra ngoài khoảng đích (0 = trong khoảng)."""
+        a_t, b_t = dich
+        return (max(0.0, (b_t - tol_x) - t[1]) + max(0.0, t[1] - (b_t + tol_v))
+                + max(0.0, abs(t[0] - a_t) - tol_a))
+
+    ds = [r for r in items if id(r) in mm and not r.get("bw")]
+    for g in at.nhom_cum(ds, cfg):
+        vien = []
+        for r in g:
+            m = mm[id(r)]
+            s0 = thong_so_job(r, m["cu"])
+            px = _bot(m["mau"]["da"], 200)
+            tr = _bot(m["mau"].get("trung"), 400) if r.get("wb_neo_trang") else None
+            e0, on0 = chi_so(m, m["mh"].ap(px, m["cu"], s0))
+            t0 = _trang(m["mh"].ap(tr, m["cu"], s0)) if tr is not None and len(tr) else None
+            vien.append({"r": r, "m": m, "s0": s0, "px": px, "tr": tr, "e0": e0, "on0": on0,
+                         "t0": t0, "dich_tr": at._trang_dich(r, cfg) if t0 else None,  # noqa: SLF001
+                         "ngay": (not r.get("wb_neo_trang")) and at._ngay_manh(r, cfg)})  # noqa: SLF001
+        kq["xet"] += len(vien)
+        lech = sum(1 for v in vien if not v["on0"])
+        if not lech:
+            continue
+        kq["lech"] += lech
+        tong0 = sum(v["e0"] for v in vien)
+
+        def thu(dm, dti, dev):
+            tong = 0.0
+            for v in vien:
+                s0 = v["s0"]
+                K0, ti0 = _f(s0.get("Temperature"), 5000.0), _f(s0.get("Tint"))
+                if v["ngay"] and (1e6 / (1e6 / K0 + dm) < K0 - ngay_K - 1 or abs(dti) > ngay_ti):
+                    return None
+                s = dict(s0, Exposure2012=_f(s0.get("Exposure2012")) + dev)
+                if dm or dti:
+                    s.update(WhiteBalance="Custom", Temperature=1e6 / (1e6 / K0 + dm),
+                             Tint=float(np.clip(ti0 + dti, -150, 150)))
+                if v["t0"] is not None and (dm or dti):
+                    t = _trang(v["m"]["mh"].ap(v["tr"], v["m"]["cu"], s))
+                    if t is not None and ngoai_bang(t, v["dich_tr"]) > ngoai_bang(v["t0"], v["dich_tr"]) + 1e-9:
+                        return None
+                tong += chi_so(v["m"], v["m"]["mh"].ap(v["px"], v["m"]["cu"], s))[0]
+            return tong
+
+        tot = (tong0, 0.0, 0.0, 0.0)
+        #  17/10 phạm vi chỉnh: chỉ WB / chỉ Exposure -> chỉ dò nhóm đó
+        wb_ok, ev_ok = bool(cfg.get("duyet_wb", True)), bool(cfg.get("duyet_ev", True))
+        for dm in (np.arange(-tran_m, tran_m + 0.1, 10.0) if wb_ok else ()):
+            for dti in np.arange(-tran_ti, tran_ti + 0.1, 5.0):
+                e = thu(float(dm), float(dti), 0.0)
+                if e is not None and e < tot[0]:
+                    tot = (e, float(dm), float(dti), 0.0)
+        _e, dm0, dti0, _d = tot
+        for dm in (np.arange(dm0 - 5.0, dm0 + 5.1, 2.5) if wb_ok else ()):
+            for dti in np.arange(dti0 - 2.5, dti0 + 2.6, 1.25):
+                if abs(dm) > tran_m or abs(dti) > tran_ti:
+                    continue
+                e = thu(float(dm), float(dti), 0.0)
+                if e is not None and e < tot[0]:
+                    tot = (e, float(dm), float(dti), 0.0)
+        _e, dm0, dti0, _d = tot
+        for dev in (np.arange(-ev_xuong, ev_len + 0.001, 0.05) if ev_ok else ()):
+            e = thu(dm0, dti0, float(dev))
+            if e is not None and e < tot[0]:
+                tot = (e, dm0, dti0, round(float(dev), 2))
+        e1, dm, dti, dev = tot
+        if not (e1 < 0.8 * tong0) or (abs(dm) < 1e-9 and abs(dti) < 1e-9 and abs(dev) < 1e-9):
+            continue
+        for v in vien:
+            r = v["r"]
+            if dm or dti:
+                K0 = float(r.get("new_temp") or _f(v["s0"].get("Temperature"), 5000.0))
+                r["new_temp"] = int(round(1e6 / (1e6 / K0 + dm)))
+                r["new_tint"] = int(round(float(np.clip(float(r.get("new_tint") or 0) + dti, -150, 150))))
+                r["wb_ep_ghi"] = True
+            if dev:
+                r["new_exposure"] = round(float(r.get("new_exposure") or 0.0) + dev, 2)
+                r["delta_ev"] = round(r["new_exposure"] - _f(r.get("old_exposure")), 4)
+            nhan = f"duyet-lai:EV{dev:+.2f}/mired{dm:+.0f}/tint{dti:+.0f}"
+            r["notes"] = (str(r.get("notes", "")) + ";" + nhan).strip(";")
+            kq["sua"] += 1
+            v["m"]["s"] = thong_so_job(r, v["m"]["cu"])
+            kq["dat_sau"] += int(chi_so(v["m"], v["m"]["mh"].ap(v["px"], v["m"]["cu"], v["m"]["s"]))[1])
+    return kq
 
 
 def thong_so_job(r: dict, cu: dict) -> dict:
@@ -548,16 +698,175 @@ def can_sang_cum(items: list, mm: dict, cfg: dict, du) -> dict:
     return tk
 
 
+# ------------------------------------------------------------------ curve + WB theo da (16/10)
+def _buoc_curve(items: list, mm: dict, cfg: dict, du, da: bool, chay: bool) -> dict:
+    """Một bước curve của chuỗi trên da / khung DỰ ĐOÁN với thông số hiện tại (m["s"]).
+
+    da=False, chay=True : bước TONE CURVE (đầu chuỗi) — chỉ nén vùng cháy (curve tổng).
+    da=True,  chay=False: bước CURVE R/G/B (cuối) — chỉ màu da còn lệch, KHÔNG kéo sáng.
+    Curve mốc của bước sau = curve bước trước (r["curve_ghi_mot_luot"]) -> curve_da.ket_thuc
+    ghép thêm lên nó (nén cháy không mất). Ghi r["curve_ghi_mot_luot"], cập nhật m["s"];
+    ảnh trong loạt không đo được theo curve của loạt (cùng curve mốc)."""
+    import curve_da
+    do_map, ds_cv = {}, []
+    for r in curve_da.chon_anh(items, cfg):
+        if id(r) not in mm:
+            continue
+        m = mm[id(r)]
+        mien_mh = m["mh"].curve["mien"]
+        da_px = du(r, m["s"])
+        tr = du(r, m["s"], "trung")
+        kh = du(r, m["s"], "khung")
+        d0 = r["lr_truoc"]
+        do = {"ok": True, "mien": mien_mh, "mat_na": d0.get("mat_na"), "n_da": d0.get("n_da"),
+              "crop": d0.get("crop"), "trung_ti_le": d0.get("trung_ti_le", 0.0)}
+        P = cl.srgb_sang_mien(da_px, mien_mh)
+        do["da_mn" if m["mau"]["kieu"] == "mn" else "da_cu"] = P
+        if m["mau"]["kieu"] == "mn":
+            do["da_cu"] = P
+        if tr is not None:
+            do["trung"] = cl.srgb_sang_mien(tr, mien_mh)
+        if kh is not None:
+            do["khung"] = cl.srgb_sang_mien(kh, mien_mh)
+            do["chay_pct"] = round(100.0 * float((kh.max(axis=1) * 255 >= curve_da.NGUONG_CHAY).mean()), 3)
+        do["p95_da"] = float(np.percentile(P.max(axis=1), 95))
+        do_map[id(r)] = do
+        ds_cv.append(r)
+    if not ds_cv:
+        return {"doi": 0}
+    m0 = mm[id(ds_cv[0])]["mh"]
+    cfg_cv = dict(cfg, curve_mien=m0.curve["mien"], curve_kieu_tong=m0.curve["kieu"],
+                  curve_chay=chay, curve_da_sang=False, curve_da=da)
+    #  curve mốc tạm = curve bước trước (nếu có) — ghép lên nó, không về số preset
+    goc = {}
+    for r in ds_cv:
+        cv = r.get("curve_ghi_mot_luot")
+        if cv:
+            goc[id(r)] = r.get("curve_moc")
+            r["curve_moc"] = {**dict(r.get("curve_moc") or {}),
+                              **{k: v for k, v in cv.items() if k in at.COT_CURVE}}
+    try:
+        tt = curve_da.ket_thuc(ds_cv, do_map, cfg_cv)
+    finally:
+        for r in ds_cv:
+            if id(r) in goc:
+                r["curve_moc"] = goc[id(r)]
+    for r in ds_cv:
+        g = r.pop("curve_ghi", None)
+        b = r.pop("curve_bao", None)
+        if g:
+            r["curve_ghi_mot_luot"] = g
+            mm[id(r)]["s"] = _ap_curve(mm[id(r)]["s"], g)
+        if b:
+            r.setdefault("curve_bao_mot_luot", {})["da" if da else "tong"] = b
+    #  ảnh trong loạt không đo được: theo curve của loạt (cùng curve mốc gốc)
+    do_id = {id(r) for r in ds_cv}
+    for loat in at.chia_loat(curve_da.chon_anh(items, cfg), cfg):
+        co = [r for r in loat if id(r) in do_id and r.get("curve_ghi_mot_luot")]
+        for r in loat:
+            if id(r) in do_id or not co:
+                continue
+            mau = next((x for x in co if x.get("curve_moc") == r.get("curve_moc")), None)
+            if mau is not None:
+                r["curve_ghi_mot_luot"] = dict(mau["curve_ghi_mot_luot"])
+                if id(r) in mm:
+                    mm[id(r)]["s"] = _ap_curve(mm[id(r)]["s"], r["curve_ghi_mot_luot"])
+    return tt
+
+
+def wb_da_buoc(items: list, mm: dict, cfg: dict, du) -> dict:
+    """Bước WB THEO DA của chuỗi (16/10 — mẫu không có vùng trắng, vd. "Mặc định"): Temp + Tint
+    đưa da DỰ ĐOÁN (sau Tone Curve) về hue / độ đậm đích. Jacobi (hue, log q) theo (K, Tint) từ
+    mô hình, giải từng ảnh mẫu, TRUNG VỊ mỗi cụm cùng khung (at.nhom_cum — một WB mỗi cụm), kéo
+    mot_luot_wb_da_phan (K) / mot_luot_wb_da_phan_tint phần, trần mot_luot_wb_da_tran_K /
+    _tran_tint. Da trong vùng ổn (da_on_hue / da_on_chroma) -> giữ. Ảnh ám xanh nặng (am_mau —
+    WB đã cứu theo da) giữ. Ô "Ngoài trời buổi tối: giữ ấm" chặn chiều LẠNH cho ảnh ngoài trời tối.
+    -> tóm tắt {"cum", "chinh", "on", "k", "tint"}."""
+    on_h = float(cfg.get("da_on_hue") or 3.0)
+    on_c = float(cfg.get("da_on_chroma") or 0.10)
+    phan_k = float(cfg.get("mot_luot_wb_da_phan", 0.5))
+    phan_t = float(cfg.get("mot_luot_wb_da_phan_tint", 0.3))
+    tran_k = float(cfg.get("mot_luot_wb_da_tran_K", 1000.0))
+    tran_t = float(cfg.get("mot_luot_wb_da_tran_tint", 10.0))
+    giu_am = bool(cfg.get("wb_ngoai_toi", True))
+    tk = {"cum": 0, "chinh": 0, "on": 0, "k": [], "tint": []}
+    for g in at.nhom_cum([r for r in items if not r.get("bw")], cfg):
+        dung = [r for r in g if id(r) in mm and r.get("new_temp") and not r.get("am_mau")]
+        if not dung:
+            continue
+        tk["cum"] += 1
+        mau = [dung[int(i)] for i in np.linspace(0, len(dung) - 1, min(len(dung), 6)).round()]
+        giai = []
+        for r in mau:
+            m = mm[id(r)]
+            s = dict(m["s"], WhiteBalance="Custom")
+            _L, h, q = _da(du(r, s))
+            dh = at._goc_lech(m["mau"]["h_t"] - h)                          # noqa: SLF001
+            lq = math.log(max(m["mau"]["q_t"], 1e-9) / max(q, 1e-9))
+            if abs(dh) <= on_h and abs(math.exp(lq) - 1.0) <= on_c:
+                giai.append((0.0, 0.0))
+                continue
+            k0, t0 = _f(s.get("Temperature")) or _f(r.get("new_temp")), _f(s.get("Tint"))
+            if k0 < 1500.0:
+                continue
+            s["Temperature"], s["Tint"] = k0, t0
+            _l, hk, qk = _da(du(r, dict(s, Temperature=k0 + 100.0)))
+            _l, ht, qt = _da(du(r, dict(s, Tint=t0 + 4.0)))
+            J = np.array([[at._goc_lech(hk - h) / 100.0, at._goc_lech(ht - h) / 4.0],   # noqa: SLF001
+                          [math.log(max(qk, 1e-9) / max(q, 1e-9)) / 100.0,
+                           math.log(max(qt, 1e-9) / max(q, 1e-9)) / 4.0]])
+            try:
+                d = np.linalg.solve(J, np.array([dh, lq]))
+            except np.linalg.LinAlgError:
+                continue
+            if not np.all(np.isfinite(d)):
+                continue
+            giai.append((float(d[0]), float(d[1])))
+        if not giai:
+            continue
+        dk = float(np.clip(phan_k * float(np.median([x[0] for x in giai])), -tran_k, tran_k))
+        dt = float(np.clip(phan_t * float(np.median([x[1] for x in giai])), -tran_t, tran_t))
+        if abs(dk) < 50.0:
+            dk = 0.0
+        if abs(dt) < 1.0:
+            dt = 0.0
+        if not dk and not dt:
+            tk["on"] += 1
+            continue
+        tk["chinh"] += 1
+        tk["k"].append(dk)
+        tk["tint"].append(dt)
+        for r in g:
+            if r.get("bw") or not r.get("new_temp") or r.get("am_mau"):
+                continue
+            dk_r = 0.0 if (dk < 0 and giu_am and r.get("ngoai_toi")) else dk
+            if not dk_r and not dt:
+                continue
+            cu_bu = r.get("wb_bu") or (0.0, 0.0)
+            at._dat_wb_bu(r, cfg, (float(cu_bu[0]) + dk_r, float(cu_bu[1]) + dt))   # noqa: SLF001
+            nhan = f"wb-da-mot-luot:{dk_r:+.0f}K/{dt:+.0f}"
+            if nhan not in str(r.get("notes", "")):
+                r["notes"] = (str(r.get("notes", "")) + ";" + nhan).strip(";")
+            if id(r) in mm:
+                m = mm[id(r)]
+                m["wb"], m["bu"] = "da", (dk_r, dt)
+                m["s"] = thong_so_tone(r, m["cu"])
+    tk["k"] = float(np.median(tk["k"])) if tk["k"] else 0.0
+    tk["tint"] = float(np.median(tk["tint"])) if tk["tint"] else 0.0
+    return tk
+
+
 # ------------------------------------------------------------------ chuỗi
 _XOA = ("hsl_ghi", "hsl_moi", "hsl_thieu_cot", "da_lech0", "da_lech1", "da_duyet", "da_goc",
         "mau_da_bao", "_md", "curve_ghi_mot_luot", "curve_bao_mot_luot", "du_doan_lr", "gr_ghi",
-        "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot", "hsl_l_ghi", "hsl_l_moi", "_moc_lum")
+        "gr_mid", "gr_hi", "_gr_v", "gr_thieu_cot", "hsl_l_ghi", "hsl_l_moi", "_moc_lum",
+        #  16/10: WB neo theo vùng trắng (lượt kiểm at.wb_da_luot2 giữ vùng trắng) + vùng trắng mốc
+        "wb_neo_trang", "trang_l2_ref")
 
 
 def chuoi(items: list, cfg: dict, folder=None) -> dict:
     """Chuỗi một lượt cho các ảnh `items` (cả cảnh — xem chon_duong). Trả tóm tắt kiểu
     MAU_DA (+ "mot_luot")."""
-    import curve_da
     on_h = float(cfg.get("da_on_hue") or 3.0)
     on_c = float(cfg.get("da_on_chroma") or 0.10)
     #  14/10: chuỗi một lượt nâng sáng da (Exposure / Luminance) làm da NHẠT đi -> Sat phải bù
@@ -617,11 +926,126 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
         px = m["mau"].get(tap)
         return None if px is None else m["mh"].ap(px, m["cu"], s)
 
-    #  ---- 1. TONE — sáng da về L đích (theo cảnh), rồi chặn cháy TRÊN ẢNH LIGHTROOM
+    for r in items:
+        if id(r) in mm:
+            mm[id(r)]["s"] = thong_so_tone(r, mm[id(r)]["cu"])
+    nen_chay = bool(cfg.get("curve_chay") or cfg.get("mot_luot_nen_chay", True))
+    curve_bat = bool(cfg.get("curve_da") or cfg.get("mot_luot_curve_da", False))
+    #[[ 16/10 QUY TRÌNH AUTO (cfg quy_trinh_auto — số Lightroom Auto đã là mốc, at.giu_auto):
+    #   WB -> TONE (Exposure, không chặn cháy / Luminance — giữ tông Auto) -> CURVE R/G/B; HSL và
+    #   CG về preset; không nén cháy (Auto đã lo vùng sáng). ]]
+    auto = bool(cfg.get("quy_trinh_auto"))
+    #  17/10 PHẠM VI CHỈNH (chỉ WB / Exposure, không bấm Auto — at.moc_hien_tai): bước ngoài phạm
+    #  vi không chạy, không curve; mốc là số hiện tại (không có Auto làm nền) -> trần Exposure rộng
+    pv = at.pham_vi(cfg) if auto else None
+    wb_cho = not pv or "wb" in pv
+    if auto:
+        hsl_bat = grade_bat = False
+        sang_bat = bool(cfg.get("mot_luot_sang_dich", True))
+        cfg = dict(cfg, mot_luot_ev_sang_len=float(cfg.get("auto_ev_sang_len", 0.3)))
+    if pv:
+        tr = float(cfg.get("pham_vi_ev_tran", 1.5))
+        cfg = dict(cfg, mot_luot_ev_sang_len=tr, mot_luot_ev_sang_tran=tr,
+                   duyet_wb="wb" in pv, duyet_ev="ev" in pv)
+        curve_bat = False
+        sang_bat = sang_bat and "ev" in pv
+        wb_bat = wb_bat and wb_cho
+    #  ---- 1. CURVE R/G/B (16/10 chạy ĐẦU TIÊN) — màu da trên nền R/G/B preset đã về thẳng
+    #  (at.dat_lai_rgb trong plan); curve này là nền của mọi bước sau (thong_so_tone mang nó)
+    if curve_bat and not auto:
+        tt0 = _buoc_curve(items, mm, cfg, du, da=True, chay=False)
+        kq["mot_luot"]["curve"] = int(tt0.get("doi", 0))
+    for r in items:
+        if id(r) in mm:
+            m = mm[id(r)]
+            m["L_cv"], m["h_cv"], m["q_cv"] = _da(du(r, m["s"]))
+    #  ---- 1b. TONE CURVE (phần TÔNG) — nén vùng cháy trên khung dự đoán, ghép lên curve bước 1
+    if nen_chay and not auto:
+        tt1 = _buoc_curve(items, mm, cfg, du, da=False, chay=True)
+        kq["mot_luot"]["curve_tong"] = int(tt1.get("doi", 0))
+
+    #  ---- 2. WB (16/10 chạy SAU Tone Curve, TRƯỚC Tone) — mẫu có vùng trắng: theo VÙNG TRẮNG
+    #  (Jacobi từ mô hình); không có: THEO DA (wb_da_buoc)
+    if wb_bat:
+        lech_tat_ca = []
+        for canh, ds in theo_canh.items():
+            ds = [r for r in ds if not r.get("am_mau")]   # 15/10: WB đã cứu theo da — giữ
+            lech = []
+            for r in ds:
+                if id(r) not in mm:
+                    continue
+                m = mm[id(r)]
+                t = _trang(du(r, m["s"], "trung"))
+                tr_dich = (md.get("trang") or {}).get("ngoai" if m["mau"]["ngoai"] else "trong")
+                if t is None or not tr_dich:
+                    continue
+                m["trang_lech"] = (t[0] - float(tr_dich[0]), t[1] - float(tr_dich[1]))
+                lech.append(m["trang_lech"])
+            if len(lech) < min_t:
+                kq["wb_canh_chua_do"] += 1
+                continue
+            med = np.median(np.asarray(lech), axis=0)
+            lech_tat_ca.append(float(np.hypot(*med)))
+            if float(np.hypot(*med)) <= nguong_t:
+                kq["wb_canh_giu"] += 1
+                for r in ds:
+                    if id(r) in mm:
+                        mm[id(r)]["wb"] = "giu"
+                    if not r.get("bw"):
+                        r["wb_neo_trang"] = True       # WB đúng theo vùng trắng — lượt kiểm giữ
+                continue
+            #  Jacobi của vùng trắng theo (K, Tint) — từ mô hình, trung vị cảnh
+            J = []
+            for r in ds:
+                if id(r) not in mm or "trang_lech" not in mm[id(r)]:
+                    continue
+                m = mm[id(r)]
+                s = m["s"]
+                t0 = _trang(du(r, s, "trung"))
+                tk = _trang(du(r, dict(s, Temperature=_f(s.get("Temperature")) + 100.0), "trung"))
+                tt_ = _trang(du(r, dict(s, Tint=_f(s.get("Tint")) + 4.0), "trung"))
+                if t0 and tk and tt_:
+                    J.append(np.column_stack([(np.array(tk) - t0) / 100.0, (np.array(tt_) - t0) / 4.0]))
+            if not J:
+                kq["wb_canh_chua_do"] += 1
+                continue
+            try:
+                dwb = -phan_t * np.linalg.solve(np.median(np.asarray(J), axis=0), med)
+            except np.linalg.LinAlgError:
+                kq["wb_canh_chua_do"] += 1
+                continue
+            kq["wb_canh_chinh"] += 1
+            bu = (float(round(np.clip(dwb[0], -tran_k, tran_k))), float(round(np.clip(dwb[1], -tran_ti, tran_ti))))
+            for r in ds:
+                if r.get("bw") or not r.get("new_temp"):
+                    continue
+                cu_bu = r.get("wb_bu") or (0.0, 0.0)
+                bu_r = (float(np.clip(cu_bu[0] + bu[0], -tran_k, tran_k)),
+                        float(np.clip(cu_bu[1] + bu[1], -tran_ti, tran_ti)))
+                at._dat_wb_bu(r, cfg, bu_r)                           # noqa: SLF001
+                r["wb_neo_trang"] = True               # WB chỉnh theo vùng trắng — lượt kiểm giữ
+                if id(r) in mm:
+                    m = mm[id(r)]
+                    m["wb"], m["bu"] = "chinh", bu_r
+                    m["s"] = dict(m["s"], WhiteBalance="Custom", Temperature=_f(r["new_temp"]),
+                                  Tint=_f(r.get("new_tint")),
+                                  Exposure2012=_f(r.get("new_exposure"), _f(m["s"].get("Exposure2012"))))
+        if lech_tat_ca:
+            kq["trang_lech"] = float(np.median(lech_tat_ca))
+        bus = [mm[id(r)]["bu"] for r in items if id(r) in mm and mm[id(r)].get("wb") == "chinh"]
+        if bus:
+            kq["wb_k"] = float(np.median([b[0] for b in bus]))
+            kq["wb_tint"] = float(np.median([b[1] for b in bus]))
+    elif wb_cho and cfg.get("mot_luot_wb_da", True) and at.wb_da_can(cfg):
+        kq["wb_da"] = wb_da_buoc(items, mm, cfg, du)
+
+
+    #  ---- 3. TONE — sáng da về L đích (theo cụm), rồi chặn cháy TRÊN ẢNH LIGHTROOM (16/10: sau
+    #  Tone Curve + WB)
     #  (chay_lr chạy SAU: hạ phần tăng sáng làm cháy mới, kéo Highlights)
     if sang_bat:
         kq["mot_luot"]["sang"] = sang_dich(items, mm, cfg, du)
-    if cfg.get("highlights", True) and cfg.get("mot_luot_chay", True):
+    if cfg.get("highlights", True) and cfg.get("mot_luot_chay", True) and not auto:
         kq["mot_luot"]["chay"] = chay_lr(items, mm, cfg, du)
 
     def do_lai(r, m):
@@ -637,12 +1061,12 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
         m["L_tone"] = m["L"]
         r["da_lech0"] = (round(m["dh0"], 1), round(math.exp(m["lr0"]), 3))
 
-    #  ---- 2a. HSL Luminance Cam — độ sáng da còn thiếu sau Tone, một mức mỗi LOẠT chụp
+    #  ---- 3a. HSL Luminance Cam — độ sáng da còn thiếu sau Tone, một mức mỗi LOẠT chụp
     #[[ 14/10: theo LOẠT, không theo cảnh — DSC09395 (da đã sáng hơn đích sau Tone) nằm trong
     #   cảnh mà các loạt khác tối hơn: mức cảnh +25 làm nó sáng quá. Loạt = cùng khoảnh khắc,
     #   cùng ánh sáng; loạt không đo được da theo trung vị các loạt của cảnh. ]]
     lum_cua: dict = {}                       # id(r) -> mức
-    if sang_bat:
+    if sang_bat and not auto:
         k_canh: dict = {}
         theo_loat = at.nhom_cum([r for r in items if not r.get("bw")], cfg)
         for loat in theo_loat:
@@ -707,7 +1131,7 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
                 m["lum"] = li
                 do_lai(r, m)
 
-    #  ---- 2. HSL Cam — một mức mỗi LOẠT chụp, hệ số theo mô hình tại hue da
+    #  ---- 4. HSL Cam — một mức mỗi LOẠT chụp, hệ số theo mô hình tại hue da
     #[[ 14/10: theo LOẠT, không theo cảnh. Chạy thật 2709 với một mức mỗi cảnh: dự đoán khớp
     #   Lightroom (lệch 1.1°) mà chỉ 19% da vào vùng ổn — trong một cảnh mỗi loạt (người,
     #   chỗ đứng) da khác nhau, một mức cả cảnh chỉ kéo được trung vị. Loạt = cùng khoảnh
@@ -815,139 +1239,23 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
             m.update(h1=h, q1=q)
             r["da_lech1"] = round(at._goc_lech(m["mau"]["h_t"] - h), 1)     # noqa: SLF001
 
-    #  ---- 3. CURVE — da dự đoán sau HSL, miền curve đã hiệu chỉnh của mô hình
-    nen_chay = bool(cfg.get("curve_chay") or cfg.get("mot_luot_nen_chay", True))
-    #  14/10: chuỗi một lượt luôn có bước Curve da (Tone -> HSL -> CURVE -> WB -> CG — đích R G B,
-    #  bước trước chưa đưa da tới thì Curve chỉnh tiếp) — ô "Curve da" của giao diện cũ chỉ bật /
-    #  tắt lượt 2 của đường cũ
-    curve_bat = bool(cfg.get("curve_da") or cfg.get("mot_luot_curve_da", True))
-    if curve_bat or nen_chay:
-        do_map, ds_cv = {}, []
-        for r in curve_da.chon_anh(items, cfg):
-            if id(r) not in mm:
-                continue
-            m = mm[id(r)]
-            mien_mh, kieu_mh = m["mh"].curve["mien"], m["mh"].curve["kieu"]
-            da = du(r, m["s"])
-            tr = du(r, m["s"], "trung")
-            kh = du(r, m["s"], "khung")
-            d0 = r["lr_truoc"]
-            do = {"ok": True, "mien": mien_mh, "mat_na": d0.get("mat_na"), "n_da": d0.get("n_da"),
-                  "crop": d0.get("crop"), "trung_ti_le": d0.get("trung_ti_le", 0.0)}
-            P = cl.srgb_sang_mien(da, mien_mh)
-            do["da_mn" if m["mau"]["kieu"] == "mn" else "da_cu"] = P
-            if m["mau"]["kieu"] == "mn":
-                do["da_cu"] = P
-            if tr is not None:
-                do["trung"] = cl.srgb_sang_mien(tr, mien_mh)
-            if kh is not None:
-                do["khung"] = cl.srgb_sang_mien(kh, mien_mh)
-                do["chay_pct"] = round(100.0 * float((kh.max(axis=1) * 255 >= curve_da.NGUONG_CHAY).mean()), 3)
-            do["p95_da"] = float(np.percentile(P.max(axis=1), 95))
-            do_map[id(r)] = do
-            ds_cv.append(r)
-        if ds_cv:
-            m0 = mm[id(ds_cv[0])]["mh"]
-            cfg_cv = dict(cfg, curve_mien=m0.curve["mien"], curve_kieu_tong=m0.curve["kieu"],
-                          curve_chay=nen_chay, curve_da_sang=sang_bat, curve_da=curve_bat)
-            tt = curve_da.ket_thuc(ds_cv, do_map, cfg_cv)
-            kq["mot_luot"]["curve"] = int(tt.get("doi", 0))
-            for r in ds_cv:
-                g = r.pop("curve_ghi", None)
-                b = r.pop("curve_bao", None)
-                if g:
-                    r["curve_ghi_mot_luot"] = g
-                    mm[id(r)]["s"] = _ap_curve(mm[id(r)]["s"], g)
-                if b:
-                    r["curve_bao_mot_luot"] = b
-            #  ảnh trong loạt không đo được: theo curve của loạt (cùng curve mốc)
-            for loat in at.chia_loat(curve_da.chon_anh(items, cfg), cfg):
-                co = [r for r in loat if r.get("curve_ghi_mot_luot")]
-                for r in loat:
-                    if r.get("curve_ghi_mot_luot") or not co:
-                        continue
-                    mau = next((x for x in co if x.get("curve_moc") == r.get("curve_moc")), None)
-                    if mau is not None:
-                        r["curve_ghi_mot_luot"] = dict(mau["curve_ghi_mot_luot"])
+    #  (16/10 tối: không còn curve R/G/B cuối — đã chạy ĐẦU chuỗi) — trừ QUY TRÌNH AUTO:
+    #  WB -> Tone -> CURVE R/G/B (cuối)
+    if auto and curve_bat:
+        tt_a = _buoc_curve(items, mm, cfg, du, da=True, chay=False)
+        kq["mot_luot"]["curve"] = int(tt_a.get("doi", 0))
+        for r in items:
+            if id(r) in mm:
+                m = mm[id(r)]
+                m["L_cv"], m["h_cv"], m["q_cv"] = _da(du(r, m["s"]))
+                m["h1"], m["q1"] = m["h_cv"], m["q_cv"]
     for r in items:
         if id(r) in mm:
             m = mm[id(r)]
-            m["L_cv"], m["h_cv"], m["q_cv"] = _da(du(r, m["s"]))
+            m["h_wb"], m["q_wb"] = m["h1"], m["q1"]            # CG xét phần còn lệch sau HSL
+            m.setdefault("wb", "chua_do")
 
-    #  ---- 4. WB — chỉ vùng trắng, dự đoán sau Tone + HSL + Curve
-    if wb_bat:
-        lech_tat_ca = []
-        for canh, ds in theo_canh.items():
-            ds = [r for r in ds if not r.get("am_mau")]   # 15/10: WB đã cứu theo da — giữ
-            lech = []
-            for r in ds:
-                if id(r) not in mm:
-                    continue
-                m = mm[id(r)]
-                t = _trang(du(r, m["s"], "trung"))
-                tr_dich = (md.get("trang") or {}).get("ngoai" if m["mau"]["ngoai"] else "trong")
-                if t is None or not tr_dich:
-                    continue
-                m["trang_lech"] = (t[0] - float(tr_dich[0]), t[1] - float(tr_dich[1]))
-                lech.append(m["trang_lech"])
-            if len(lech) < min_t:
-                kq["wb_canh_chua_do"] += 1
-                continue
-            med = np.median(np.asarray(lech), axis=0)
-            lech_tat_ca.append(float(np.hypot(*med)))
-            if float(np.hypot(*med)) <= nguong_t:
-                kq["wb_canh_giu"] += 1
-                for r in ds:
-                    if id(r) in mm:
-                        mm[id(r)]["wb"] = "giu"
-                continue
-            #  Jacobi của vùng trắng theo (K, Tint) — từ mô hình, trung vị cảnh
-            J = []
-            for r in ds:
-                if id(r) not in mm or "trang_lech" not in mm[id(r)]:
-                    continue
-                m = mm[id(r)]
-                s = m["s"]
-                t0 = _trang(du(r, s, "trung"))
-                tk = _trang(du(r, dict(s, Temperature=_f(s.get("Temperature")) + 100.0), "trung"))
-                tt_ = _trang(du(r, dict(s, Tint=_f(s.get("Tint")) + 4.0), "trung"))
-                if t0 and tk and tt_:
-                    J.append(np.column_stack([(np.array(tk) - t0) / 100.0, (np.array(tt_) - t0) / 4.0]))
-            if not J:
-                kq["wb_canh_chua_do"] += 1
-                continue
-            try:
-                dwb = -phan_t * np.linalg.solve(np.median(np.asarray(J), axis=0), med)
-            except np.linalg.LinAlgError:
-                kq["wb_canh_chua_do"] += 1
-                continue
-            kq["wb_canh_chinh"] += 1
-            bu = (float(round(np.clip(dwb[0], -tran_k, tran_k))), float(round(np.clip(dwb[1], -tran_ti, tran_ti))))
-            for r in ds:
-                if r.get("bw") or not r.get("new_temp"):
-                    continue
-                cu_bu = r.get("wb_bu") or (0.0, 0.0)
-                bu_r = (float(np.clip(cu_bu[0] + bu[0], -tran_k, tran_k)),
-                        float(np.clip(cu_bu[1] + bu[1], -tran_ti, tran_ti)))
-                at._dat_wb_bu(r, cfg, bu_r)                           # noqa: SLF001
-                if id(r) in mm:
-                    m = mm[id(r)]
-                    m["wb"], m["bu"] = "chinh", bu_r
-                    m["s"] = dict(m["s"], WhiteBalance="Custom", Temperature=_f(r["new_temp"]),
-                                  Tint=_f(r.get("new_tint")),
-                                  Exposure2012=_f(r.get("new_exposure"), _f(m["s"].get("Exposure2012"))))
-        if lech_tat_ca:
-            kq["trang_lech"] = float(np.median(lech_tat_ca))
-        bus = [mm[id(r)]["bu"] for r in items if id(r) in mm and mm[id(r)].get("wb") == "chinh"]
-        if bus:
-            kq["wb_k"] = float(np.median([b[0] for b in bus]))
-            kq["wb_tint"] = float(np.median([b[1] for b in bus]))
-    for r in items:
-        if id(r) in mm:
-            m = mm[id(r)]
-            m["h_wb"], m["q_wb"] = _da(du(r, m["s"]))[1:]
-
-    #  ---- 5. COLOR GRADING — phần da còn lệch SAU WB
+    #  ---- 5. COLOR GRADING — phần da còn lệch SAU cả chuỗi
     gain = float(cfg.get("grade_gain_hue", 0.45))
     sat_max = float(cfg.get("grade_sat_max", 12))
     nguong = float(cfg.get("grade_nguong_hue", 0.0) or 0.0)
@@ -966,13 +1274,18 @@ def chuoi(items: list, cfg: dict, folder=None) -> dict:
             continue
         huong = math.radians(m["h_wb"]) + math.copysign(math.pi / 2.0, d)
         r["_gr_v"] = sat / 100.0 * at.GRADE_OKLAB_100 * np.array([math.cos(huong), math.sin(huong)])
-    kq["grade_n"] = at._grade_hoan_tat(items, dict(cfg, grade=True) if grade_bat else cfg,  # noqa: SLF001
-                                       tran_cg)
+    #  quy trình Auto: CG tắt hẳn (cfg của người dùng có thể còn bật "da trắng hồng")
+    kq["grade_n"] = at._grade_hoan_tat(items, dict(cfg, grade=True) if grade_bat  # noqa: SLF001
+                                       else dict(cfg, grade=False) if auto else cfg, tran_cg)
 
     #  ---- cụm cùng khung: cùng ánh sáng / màu (14/10) — TRƯỚC dự đoán cuối; rồi cân da dự
     #  đoán trong cụm (tấm có ánh sáng thật lệch, 15/10)
     kq["mot_luot"]["cum"] = at.dong_bo_cum(items, cfg)
-    kq["mot_luot"]["can_sang"] = can_sang_cum(items, mm, cfg, du)
+    kq["mot_luot"]["can_sang"] = can_sang_cum(items, mm, cfg, du) if not pv or "ev" in pv else {}
+    #  ---- QUY TRÌNH AUTO (16/10 tối): DUYỆT LẠI MỘT LẦN bằng dự đoán — chỉ cụm / ảnh da chưa vào
+    #  vùng ổn được chỉnh thêm WB / Exposure; xong là áp, không dựng lại ảnh sau khi áp
+    if auto:
+        kq["mot_luot"]["duyet"] = duyet_lai(items, mm, cfg)
 
     #  ---- dự đoán cuối + báo cáo
     bao = []
@@ -1163,7 +1476,7 @@ def soat(ds: list, do_mau: dict, cfg: dict, tat_ca: list | None = None) -> dict:
     #  14/10: chuỗi một lượt luôn có bước Curve (kéo cả L — đích R G B): lượt 2 cho ảnh lệch
     #  chạy cả khi ô "Curve da" tắt; tắt hẳn (mot_luot_curve_da False) thì chỉ BÁO, không đánh
     #  dấu ảnh nào là "đã qua lượt 2" (14/10: 888 ảnh bị đánh dấu dù không ghi gì)
-    if not (cfg.get("curve_da") or cfg.get("curve_chay") or cfg.get("mot_luot_curve_da", True)):
+    if not (cfg.get("curve_da") or cfg.get("curve_chay") or cfg.get("mot_luot_curve_da", False)):
         kq["anh_sua"] = []
         kq["can"] = len(can)
         return kq

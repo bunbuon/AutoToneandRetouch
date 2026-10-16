@@ -12,7 +12,11 @@ Mục kiểm (đặc trưng mặt GIẢ — vectơ 128 chiều mỗi người + 
        với B -> B; mặt trong ảnh in trên phông (nhỏ, điểm thấp) không bao giờ là chủ thể;
        meter_boxes / face_rgb / face_p95 đổi theo mặt chủ thể, gọi lại thì trả số gốc
     3. do_mat_chu_the: phép đo mặt = mặt chủ thể; tắt chu_the_chinh -> không đổi gì
-    4. buổi quá ít ảnh có mặt -> tắt
+    4. buổi quá ít ảnh có mặt -> không có nhân vật chính
+    5. (17/10) buổi Cưới: cô dâu (nữ nhiều ảnh nhất) là chủ thể số 1 dù chú rể nhiều ảnh hơn;
+       buổi khác giữ thứ tự số ảnh; cô dâu OUT NÉT -> chú rể
+    6. (17/10) ảnh không có nhân vật chính: mặt ở điểm AF -> mặt vùng giữa sáng thừa nhất;
+       mặt out nét không bao giờ được chọn
 
 Chạy:  python test_chu_the.py
 """
@@ -43,7 +47,8 @@ def ktra(ten, dieu, mo=""):
 
 
 RNG = np.random.default_rng(7)
-NGUOI = {k: RNG.normal(size=128) for k in "ABCP"}
+NGUOI = {k: RNG.normal(size=128) for k in "ABCPXYZ"}
+NU = {"A": 0.02, "B": 0.95, "C": 0.10, "P": 0.5}
 
 
 def dt(k):
@@ -52,14 +57,16 @@ def dt(k):
     return np.clip(np.round(v * 127), -127, 127).astype(np.int8).tobytes().hex()
 
 
-def anh(i, mat):
-    """mat: [(người, x, rộng, ev, điểm)]"""
+def anh(i, mat, them=None, co_dt=True):
+    """mat: [(người, x, rộng, ev, điểm)]; them: [dict ghi đè face_debug từng mặt]"""
     fd, md = [], []
-    for k, x, w, ev, s in mat:
+    for j, (k, x, w, ev, s) in enumerate(mat):
         b = (float(x), 50.0, float(w), float(w) * 1.2)
-        fd.append({"box": b, "score": s, "ev": ev, "sharp": 0.3, "rgb": [0.4 + ev / 10, 0.3, 0.25], "p95": 0.8})
-        md.append({"box": b, "dt": dt(k)})
-    return {"path": f"G:/B/IMG{i:04d}.ARW", "face_debug": fd, "mat_dt": md,
+        fd.append(dict({"box": b, "score": s, "ev": ev, "sharp": 0.3, "rgb": [0.4 + ev / 10, 0.3, 0.25],
+                        "p95": 0.8}, **((them or [{}] * len(mat))[j])))
+        if co_dt:
+            md.append({"box": b, "dt": dt(k), "nu": NU.get(k)})
+    return {"path": f"G:/B/IMG{i:04d}.ARW", "face_debug": fd, "mat_dt": md, "preview_wh": (1000, 700),
             "meter_boxes": [f["box"] + (f["score"],) for f in fd], "face_rgb": [0.5, 0.4, 0.3],
             "face_p95": 0.9, "metered_face_ev": float(np.mean([f["ev"] for f in fd])),
             "metered_ev": float(np.mean([f["ev"] for f in fd])), "notes": ""}
@@ -120,7 +127,50 @@ def main() -> int:
 
     print("4. buổi ít ảnh có mặt")
     it = buoi()[:12]
-    ktra("< chu_the_min_buoi ảnh có mặt -> tắt", at.gan_chu_the(it, cfg) == {} and not any(r.get("chu_the") for r in it))
+    ktra("< chu_the_min_buoi ảnh có mặt -> không có nhân vật chính",
+         not at.gan_chu_the(it, cfg).get("nguoi") and not any(r.get("chu_the") for r in it))
+
+    print("5. buổi Cưới: cô dâu số 1")
+    ds = buoi()
+    kq = at.gan_chu_the(ds, dict(cfg, loai_buoi="cuoi"))
+    ktra("cô dâu = B (nữ 0.95, 30 ảnh) đứng đầu dù A (nam) 50 ảnh",
+         [p["n_anh"] for p in kq["nguoi"]] == [30, 50, 40] and kq["co_dau"]["n_anh"] == 30, str(kq))
+    ktra("ảnh A + B -> mặt cô dâu B", all(ds[i]["chu_the"]["box"][0] == 300 and ds[i]["chu_the"]["co_dau"]
+                                          and ds[i]["mat_mask"] == "co-dau" for i in range(30, 45)))
+    ktra("ảnh chỉ A -> A", all(ds[i]["chu_the"]["box"][0] == 100 for i in range(30)))
+    kq2 = at.gan_chu_the(ds, dict(cfg, loai_buoi="su_kien"))
+    ktra("buổi Sự kiện: vẫn theo số ảnh (A trước B)", kq2.get("co_dau") is None
+         and all(ds[i]["chu_the"]["box"][0] == 100 for i in range(30, 45)))
+    ds = buoi()
+    for i in range(30, 45):                              # cô dâu out nét, AF trên chú rể
+        ds[i]["face_debug"][0].update(on_af=True, sharp=0.30)
+        ds[i]["face_debug"][1].update(on_af=False, sharp=0.10)
+    at.gan_chu_the(ds, dict(cfg, loai_buoi="cuoi"))
+    ktra("cô dâu out nét (0.10 < 0.6 × 0.30) -> chú rể A", all(ds[i]["chu_the"]["box"][0] == 100
+                                                               for i in range(30, 45)), str(ds[30].get("chu_the")))
+    at.gan_chu_the(ds, dict(cfg, loai_buoi="cuoi", mat_out_net_ti=0))
+    ktra("mat_out_net_ti = 0 -> không loại (cô dâu)", all(ds[i]["chu_the"]["box"][0] == 300 for i in range(30, 45)))
+
+    print("6. ảnh không có nhân vật chính")
+    ds = buoi()
+    #   khách lạ (không đặc trưng mặt): góc trái sáng thừa / giữa khung / giữa sáng hơn nhưng out nét
+    ds.append(anh(200, [("X", 20, 60, -0.5, 0.92), ("Y", 470, 60, -0.8, 0.92)],
+                  [{"p95": 0.97}, {"p95": 0.85}], co_dt=False))
+    ds.append(anh(201, [("X", 400, 60, -0.5, 0.92), ("Y", 520, 60, -0.8, 0.92)],
+                  [{"p95": 0.85}, {"p95": 0.93}], co_dt=False))
+    ds.append(anh(202, [("X", 400, 60, -0.5, 0.92), ("Y", 520, 60, -0.8, 0.92)],
+                  [{"p95": 0.85, "sharp": 0.30}, {"p95": 0.97, "sharp": 0.12}], co_dt=False))
+    ds.append(anh(203, [("X", 20, 60, -0.5, 0.92), ("Y", 470, 60, -0.8, 0.92)],
+                  [{"on_af": True}, {"p95": 0.97}], co_dt=False))
+    at.gan_chu_the(ds, cfg)
+    x0 = [ds[-4 + j]["meter_boxes"][0][0] for j in range(4)]
+    ktra("giữa khung thắng góc sáng hơn", x0[0] == 470 and ds[-4]["mat_mask"] == "giua-sang", str(x0))
+    ktra("hai mặt giữa -> mặt sáng thừa hơn (p95 0.93)", x0[1] == 520)
+    ktra("mặt sáng hơn nhưng OUT NÉT -> bỏ", x0[2] == 400)
+    ktra("mặt ở điểm AF thắng (dù ở góc)", x0[3] == 20 and ds[-1]["mat_mask"] == "af")
+    ktra("không nhân vật chính -> phép đo sáng không đổi (chỉ mask)", not ds[-1].get("chu_the"))
+    at.gan_chu_the(ds, dict(cfg, chu_the_chinh=False))
+    ktra("gọi lại (tắt) -> khung đo gốc 2 mặt", len(ds[-1]["meter_boxes"]) == 2 and not ds[-1].get("mat_mask"))
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")
     return 1 if LOI else 0
 

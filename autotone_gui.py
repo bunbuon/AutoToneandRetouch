@@ -148,9 +148,17 @@ MODES, METERS, WBS = (ngon_ngu.dich_bang(MODES), ngon_ngu.dich_bang(METERS),
                       ngon_ngu.dich_bang(WBS))
 MAU_DA_MAC_DINH = ngon_ngu.t(MAU_DA_MAC_DINH)
 FILE_MAU_DA = "mau_da.json"
+#  17/10: 3 mẫu GỢI Ý có sẵn theo loại buổi (at.MAU_DA_GOI_Y) — không nằm trong mau_da.json,
+#  không xoá được; sửa chấm màu của chúng -> thành mẫu riêng mới. {tên hiện: (loại buổi, mẫu)}
+MAU_DA_GOI_Y = {ngon_ngu.t(m["ten"]): (loai, m) for loai, m in at.MAU_DA_GOI_Y.items()}
 #[[ LOAI BUOI (3/10) — cuoi va su kien can muc sang mat KHAC nhau. Chon o day
 #   chi dien so vao o "Bu sang ca buoi"; so do moi la thu duoc tinh. Xem chu
 #   thich bu_sang_ca_buoi trong autotone.DEFAULTS. ]]
+#  17/10: Giới hạn chỉnh (Dìm / Kéo sáng tối đa, Mức độ can thiệp) cố định + ẩn khỏi giao diện
+GIOI_HAN_CO_DINH = {"max_ev": 5.0, "max_ev_up": 5.0, "exposure_gain": 1.0}
+#  17/10: phạm vi chỉnh (at.PHAM_VI) — nhãn hiện, mã
+PHAM_VI_CHON = ngon_ngu.dich_bang([("Đầy đủ", "day_du"), ("WB + Exposure", "wb_ev"),
+                                   ("Chỉ WB", "wb"), ("Chỉ Exposure", "ev")])
 LOAI_BUOI = [("Cưới", "cuoi"),
              ("Sự kiện — sáng hơn", "su_kien"),
              #[[ 8/10: hoc tu anh ky yeu nguoi dung tu sua — xem bu_sang_ky_yeu /
@@ -475,13 +483,29 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
             self.status(f"Không lưu được màu da đích: {ex}", gd.MAU["loi"])
 
     def _ten_mau_da(self) -> list:
-        return [MAU_DA_MAC_DINH] + sorted(k for k, v in self._doc_mau_da().items()
-                                          if not k.startswith("_") and isinstance(v, dict))
+        return ([MAU_DA_MAC_DINH] + list(MAU_DA_GOI_Y)
+                + sorted(k for k, v in self._doc_mau_da().items()
+                         if not k.startswith("_") and isinstance(v, dict) and k not in MAU_DA_GOI_Y))
+
+    def _mau_da_cua(self, ten):
+        """Mẫu theo tên: gợi ý có sẵn (17/10) hoặc mẫu riêng trong mau_da.json; None."""
+        if ten in MAU_DA_GOI_Y:
+            return MAU_DA_GOI_Y[ten][1]
+        m = self._doc_mau_da().get(ten) if ten != MAU_DA_MAC_DINH else None
+        return m if isinstance(m, dict) else None
+
+    def _goi_y_cho_buoi(self) -> str:
+        """Tên mẫu gợi ý của loại buổi đang chọn."""
+        loai = dict(LOAI_BUOI).get(self.v_loai_buoi.get(), "cuoi") if hasattr(self, "v_loai_buoi") else "cuoi"
+        for ten, (lo, _m) in MAU_DA_GOI_Y.items():
+            if lo == loai:
+                return ten
+        return next(iter(MAU_DA_GOI_Y))
 
     def _mau_da_dang_chon(self):
         """cfg["mau_da_dich"] cho mẫu đang chọn; None = đích mặc định của tool."""
         ten = self.v_mau_da.get()
-        m = self._doc_mau_da().get(ten) if ten != MAU_DA_MAC_DINH else None
+        m = self._mau_da_cua(ten)
         if not isinstance(m, dict) or not m.get("trong"):
             return None
         out = {"ten": ten, "trong": list(m["trong"]), "ngoai": list(m.get("ngoai") or m["trong"])}
@@ -521,6 +545,8 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         except Exception:                                    # noqa: BLE001
             cmd = None
         ten = self.v_mau_da.get() if self._mau_da_dang_chon() else None
+        if ten in MAU_DA_GOI_Y:              # 17/10: mẫu gợi ý -> kèm mô tả tông
+            ten = f"{ten} — {ngon_ngu.t(MAU_DA_GOI_Y[ten][1].get('mo') or '')}"
         for khe, c in zip(("trong", "ngoai"), self._dich_hien()):
             cv = cvs[khe]
             cv.delete("all")
@@ -550,6 +576,8 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         except tk.TclError:
             pass
         ten = self.v_mau_da.get() if self._mau_da_dang_chon() else None
+        if ten in MAU_DA_GOI_Y:              # 17/10: mẫu gợi ý sẵn có -> sửa thành mẫu riêng mới
+            ten = None
         goc = self._dich_hien()
 
         def xong(rgb, ten_moi):
@@ -578,7 +606,8 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         m.add_separator()
         m.add_command(label="Tạo từ ảnh đã sửa…", command=self._tao_mau_da)
         m.add_command(label="Xoá mẫu đang chọn", command=self._xoa_mau_da,
-                      state="normal" if self._mau_da_dang_chon() else "disabled")
+                      state="normal" if self._mau_da_dang_chon()
+                      and self.v_mau_da.get() not in MAU_DA_GOI_Y else "disabled")
 
     def _doi_mau_da(self, nho: bool = True):
         if nho:
@@ -599,8 +628,12 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         f = self.folder() if theo_buoi and hasattr(self, "v_folder") else None
         if f:
             ten = (d.get("_theo_buoi") or {}).get(str(f))
+        #  17/10: buổi chưa chọn mẫu, lần trước dùng "Mặc định" / gợi ý -> mẫu GỢI Ý theo loại buổi
+        if not ten and (not d.get("_cuoi") or d.get("_cuoi") == MAU_DA_MAC_DINH
+                        or d.get("_cuoi") in MAU_DA_GOI_Y):
+            ten = self._goi_y_cho_buoi()
         ten = ten or d.get("_cuoi")
-        if ten and (ten == MAU_DA_MAC_DINH or isinstance(d.get(ten), dict)):
+        if ten and (ten == MAU_DA_MAC_DINH or ten in MAU_DA_GOI_Y or isinstance(d.get(ten), dict)):
             self.v_mau_da.set(ten)
         self._ve_mau_da()
 
@@ -2485,14 +2518,14 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.v_target = tk.StringVar(value=self._moc_dich(True))
         self.v_blend = tk.StringVar(value="0.50")
         self.v_gap = tk.StringVar(value="5")
-        self.v_maxev = tk.StringVar(value="1.00")
-        self.v_maxup = tk.StringVar(value="1.00")
-        self.v_gain = tk.StringVar(value="1.00")
+        self.v_maxev = tk.StringVar(value=f"{GIOI_HAN_CO_DINH['max_ev']:.2f}")
+        self.v_maxup = tk.StringVar(value=f"{GIOI_HAN_CO_DINH['max_ev_up']:.2f}")
+        self.v_gain = tk.StringVar(value=f"{GIOI_HAN_CO_DINH['exposure_gain']:.2f}")
         self.v_hl = tk.BooleanVar(value=True)
         self.v_sh = tk.BooleanVar(value=True)
         self.v_grade = tk.BooleanVar(value=False)
         self.v_hsl_da = tk.BooleanVar(value=False)    # 9/10: HSL mau da anh cuoi
-        self.v_curve = tk.BooleanVar(value=True)
+        self.v_curve = tk.BooleanVar(value=False)    # 16/10: đường S tự động mặc định TẮT
         #  13/10: curve điểm đo trên ảnh Lightroom dựng (curve_da.py) — mặc định TẮT
         self.v_curve_da = tk.BooleanVar(value=bool(at.DEFAULTS.get("curve_da", False)))
         self.v_curve_chay = tk.BooleanVar(value=bool(at.DEFAULTS.get("curve_chay", False)))
@@ -2521,6 +2554,19 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         self.v_mot_luot = tk.BooleanVar(value=bool(_tl.doc_kv("mau_mot_luot", False)))
         self.v_mot_luot.trace_add("write", lambda *_a: _tl.ghi_kv(
             "mau_mot_luot", bool(self.v_mot_luot.get())))
+        #  16/10: QUY TRÌNH AUTO LIGHTROOM — Lightroom bấm Auto trước, tool chỉnh WB / Exposure /
+        #  Curve R/G/B theo da (auto_lr.py). Nhớ qua lần mở sau. 17/10 (user: "Chuyển Lightroom
+        #  Auto WorkFlow lên thành bản chạy chính thức"): MẶC ĐỊNH BẬT — khoá mới
+        #  "quy_trinh_auto_chinh" (khoá cũ ghi False từ hồi còn thử nghiệm, không mang sang)
+        self.v_auto_lr = tk.BooleanVar(value=bool(_tl.doc_kv("quy_trinh_auto_chinh", True)))
+        self.v_auto_lr.trace_add("write", lambda *_a: _tl.ghi_kv(
+            "quy_trinh_auto_chinh", bool(self.v_auto_lr.get())))
+        #  17/10: PHẠM VI CHỈNH — chỉ cân WB và / hoặc Exposure (at.pham_vi). Nhớ qua lần mở sau.
+        _pv = str(_tl.doc_kv("pham_vi", "day_du") or "day_du")
+        self.v_pham_vi = tk.StringVar(value=dict((m, n) for n, m in PHAM_VI_CHON).get(
+            _pv, PHAM_VI_CHON[0][0]))
+        self.v_pham_vi.trace_add("write", lambda *_a: _tl.ghi_kv(
+            "pham_vi", dict(PHAM_VI_CHON).get(self.v_pham_vi.get(), "day_du")))
         self.v_blink = tk.BooleanVar(value=False)
         self.v_upright = tk.BooleanVar(value=False)
         self.v_lrpush = tk.BooleanVar(value=True)
@@ -2747,6 +2793,14 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         ct(g_tone, self.v_mot_luot, "Chế độ nhanh một lượt (thử nghiệm)",
            "Tính màu da một lần trên preview Lightroom — nhanh hơn. Cần học màu "
            "Lightroom cho máy ảnh (⋯ › Học màu Lightroom…).")
+        ct(g_tone, self.v_auto_lr, "Quy trình Auto Lightroom",
+           "Lightroom bấm Auto cho cả buổi, rồi tool chỉnh WB, Exposure (và Curve R/G/B khi bật) "
+           "cho da về đích, áp một lần. Cần bộ cài đầy đủ (plugin mới).")
+        self.cb_pham_vi = hop(
+            g_tone, "Phạm vi chỉnh", self.v_pham_vi, [n for n, _m in PHAM_VI_CHON],
+            self.refresh_plan,
+            "Đầy đủ: chạy cả quy trình. Chọn WB / Exposure: tool chỉ cân lại các thông số đó "
+            "cho da về đích, mọi thông số khác giữ nguyên.")
         #[[ Hai o nay chi co nghia voi mode absolute/hybrid — _on_mode_change()
         #   bat/tat chung, nen phai giu dung ten bien lbl_target/sp_target/
         #   lbl_blend/sp_blend. De ngay duoi o "Che do" vi chung phu thuoc no. ]]
@@ -2773,6 +2827,11 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
            "Mức tăng sáng tối đa cho mỗi ảnh (EV).")
         so(g_tran, "Mức độ can thiệp", self.v_gain, 0.1, 1.5, 0.05,
            "Độ mạnh của chỉnh sáng: 1.0 = đủ, nhỏ hơn = nhẹ tay, lớn hơn = mạnh tay.")
+        #[[ 17/10 user: "Phần Adjustment limits. Để Max darken và brighten = 5. Sau đó ẩn luôn
+        #   phần đó đi bao gồm cả Strength k cần chỉnh nữa." — số cố định ở read_cfg
+        #   (GIOI_HAN_CO_DINH); pack_forget cả nhóm + bỏ khỏi danh sách nhóm (tóm tắt / mở-đóng /
+        #   bề ngang không tính nó), biến / thanh vẫn sống. ]]
+        self._nhom_tuy_chon.pop("tran").pack_forget()
 
         #[[ GHIM & BAO VE doi THONG SO cua tung anh (highlights, shadows, mau,
         #   curve) — chung deu tra loi cau "anh nay sang toi dau".
@@ -2901,7 +2960,8 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                   self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
                   self.v_ngoai_toi, self.v_bu_k, self.v_bu_tint, self.v_mau_da,
                   self.v_ap_loai, self.v_denoise, self.v_denoise_iso,
-                  self.v_curve_da, self.v_curve_chay, self.v_mot_luot):
+                  self.v_curve_da, self.v_curve_chay, self.v_mot_luot, self.v_auto_lr,
+                  self.v_pham_vi):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         #  16/10: chấm màu da "Mặc định" theo da trắng hồng / loại buổi (_dich_hien)
         for b in (self.v_grade, self.v_loai_buoi):
@@ -2958,7 +3018,10 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         meter = dict(METERS).get(self.v_meter.get(), "face")
         tone = [self.NGAN_MODE.get(mode, mode), self.NGAN_METER.get(meter, meter),
                 self.NGAN_WB.get(dict(WBS).get(self.v_wb.get(), "skin"), ""),
-                ("da: " + self.v_mau_da.get()) if self.v_mau_da.get() != MAU_DA_MAC_DINH else ""]
+                ("da: " + self.v_mau_da.get()) if self.v_mau_da.get() != MAU_DA_MAC_DINH else "",
+                #  17/10: phạm vi chỉnh khác "Đầy đủ" -> nói rõ trên dòng tóm tắt
+                self.v_pham_vi.get() if dict(PHAM_VI_CHON).get(self.v_pham_vi.get()) != "day_du"
+                else ("Auto Lightroom" if self.v_auto_lr.get() else "")]
         ghim = [T(t) for t, b in (("Highlights", self.v_hl), ("Shadows", self.v_sh),
                                   ("HSL da", self.v_hsl_da),
                                   ("da trắng hồng", self.v_grade),
@@ -5753,8 +5816,9 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                    # 0 = tắt hẳn luật thời gian — xem group_scenes()
                    gap_minutes=(self._num(self.v_gap, 5.0)
                                 if self.v_gap_on.get() else 0.0),
-                   max_ev=self._num(self.v_maxev, 1.0),
-                   exposure_gain=self._num(self.v_gain, 1.0),
+                   #  17/10: Giới hạn chỉnh cố định, đã ẩn (GIOI_HAN_CO_DINH)
+                   max_ev=GIOI_HAN_CO_DINH["max_ev"],
+                   exposure_gain=GIOI_HAN_CO_DINH["exposure_gain"],
                    **({"face_target_ev": self._num(
                        self.v_target, float(at.DEFAULTS["face_target_ev"]))}
                       if dict(METERS).get(self.v_meter.get()) == "face"
@@ -5796,7 +5860,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                    bu_k_ca_buoi=self._num(self.v_bu_k, 0.0),
                    bu_tint_ca_buoi=self._num(self.v_bu_tint, 0.0),
                    mau_da_dich=self._mau_da_dang_chon(),
-                   max_ev_up=self._num(self.v_maxup, 1.0),
+                   max_ev_up=GIOI_HAN_CO_DINH["max_ev_up"],
                    #[[ Anh sang cua buoi — nguoi dung chon o khau 2.
                    #   Thieu dong nay thi o chon la mot cai nut khong noi vao
                    #   dau ca: bam thay doi nhung phan tich khong he doi. ]]
@@ -5810,6 +5874,23 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #  màu da một đích + chế độ một lượt chạy như mẫu có tên (trừ Kỷ yếu) — at.dich_mac_dinh
         if cfg.get("mau_da_dich") is None:
             cfg["mau_da_dich"] = at.dich_mac_dinh(cfg)
+        #  16/10: quy trình Auto Lightroom — chuỗi một lượt (WB -> Tone -> Curve R/G/B, cần số đo
+        #  preview + mô hình), giữ tông Auto: HSL / CG / đường S tắt. 16/10 tối: Curve R/G/B THEO Ô
+        #  (user: "Căn chỉnh Tone Curve RGB nếu bật") — trước đây ép bật
+        if getattr(self, "v_auto_lr", None) is not None and bool(self.v_auto_lr.get()) \
+                and cfg.get("source") == "catalog":
+            cfg.update(quy_trinh_auto=True, mau_mot_luot=True, hsl_da_cuoi=False,
+                       grade=False, curve=False)
+        #  17/10: PHẠM VI CHỈNH chỉ WB / Exposure — đường Auto KHÔNG bấm Auto (mốc = số hiện tại,
+        #  at.moc_hien_tai), chỉ ghi các ô được chọn; không curve / HSL / CG / Denoise
+        pv = dict(PHAM_VI_CHON).get(self.v_pham_vi.get(), "day_du") \
+            if getattr(self, "v_pham_vi", None) is not None else "day_du"
+        if pv != "day_du" and cfg.get("source") == "catalog":
+            cfg.update(pham_vi=pv, quy_trinh_auto=True, mau_mot_luot=True, hsl_da_cuoi=False,
+                       hsl_da_ky_yeu=False, grade=False, curve=False, curve_da=False,
+                       curve_chay=False, denoise=False)
+        else:
+            cfg["pham_vi"] = "day_du"
         return cfg
 
     def _doi_loai_buoi(self):
@@ -5821,6 +5902,12 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         bu = {"su_kien": float(at.DEFAULTS.get("bu_sang_su_kien", 0.30)),
               "ky_yeu": float(at.DEFAULTS.get("bu_sang_ky_yeu", 0.25))}.get(ma, 0.0)
         self.v_bu_sang.set(f"{bu:.2f}")
+        #  17/10: đang dùng mẫu GỢI Ý -> sang mẫu gợi ý của loại buổi mới (mẫu riêng giữ nguyên)
+        if hasattr(self, "v_mau_da") and self.v_mau_da.get() in MAU_DA_GOI_Y \
+                and self.v_mau_da.get() != self._goi_y_cho_buoi():
+            self.v_mau_da.set(self._goi_y_cho_buoi())
+            self._doi_mau_da()
+            return
         #  8/10 vong 3: KHONG tu bat "Day tone ve da trang hong" cho ky yeu nua —
         #  user tat Color Grading vi no am mau ca khung; mau da ky yeu nay lo
         #  bang WB (wb_bu_ky_yeu). Ai can thi van tu tick.
@@ -6856,7 +6943,8 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                       | {str(r.get("path")) for r in cu_failed})
                 can_do = [pr for pr in chon_pairs if str(pr[0]) not in co]
         if chuoi:
-            self._xl_bat_dau(len(can_do), len(cu_items), len(chon_pairs))
+            self._xl_bat_dau(len(can_do), len(cu_items), len(chon_pairs),
+                             anh=[str(pr[0]) for pr in chon_pairs])
         if not can_do:
             #  mọi ảnh đã có kết quả đo -> khỏi đo: chờ bản xuất Lightroom vừa xin
             #  (scan_folder) về rồi tính kế hoạch + áp
@@ -7035,6 +7123,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         #  lại; bỏ đi để lần tính này nhẹ và ĐỒNG BỘ (_xl_sau_do dùng kết quả ngay sau đây)
         for r in items:
             r.pop("lr_truoc", None)
+            r.pop("lr_auto", None)          # 16/10: số Lightroom Auto của lượt trước — đã cũ
         if self.cancel_flag and self._xl_dang():
             #  16/10: Dừng giữa lượt Xử lý ảnh -> đóng lượt NGAY rồi mới tính bảng ở luồng nền
             #  (phần đã đo) — at.plan trên luồng giao diện từng làm hộp đứng thêm vài giây
