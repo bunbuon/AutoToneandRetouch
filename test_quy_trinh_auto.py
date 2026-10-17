@@ -294,7 +294,7 @@ def main() -> int:
             app.folder = lambda: buoi
             doc_cfg = app.read_cfg
             app.source_value = lambda: "catalog"
-            ktra("17/10 bản chính thức: công tắc Quy trình Auto mặc định BẬT (máy mới)",
+            ktra("17/10 bản chính thức: Quy trình Auto luôn BẬT (máy mới)",
                  bool(app.v_auto_lr.get()) is True)
             app.v_auto_lr.set(True)
             c = doc_cfg()
@@ -304,7 +304,9 @@ def main() -> int:
                  and bool(c.get("curve_da")) == bool(app.v_curve_da.get())
                  and not c.get("hsl_da_cuoi") and not c.get("grade") and not c.get("curve"), str({k: c.get(k) for k in (
                      "quy_trinh_auto", "mau_mot_luot", "curve_da", "hsl_da_cuoi", "grade", "curve")}))
-            ktra("…nhớ vào luoi_xem.json", thanh_luoi.doc_kv("quy_trinh_auto_chinh") is True)
+            #  17/10 sáng: bỏ công tắc khỏi giao diện (luôn BẬT) — không còn đọc / ghi kv
+            ktra("…không còn công tắc trên giao diện, không ghi kv",
+                 thanh_luoi.doc_kv("quy_trinh_auto_chinh") is None and thanh_luoi.doc_kv("quy_trinh_auto") is None)
             app.read_cfg = lambda: dict(doc_cfg(), mau_mot_luot=False)     # không mô hình -> không đo trước
             ap_goi = []
             app.do_apply = lambda **kw: ap_goi.append(kw)

@@ -5,8 +5,9 @@ User 17/10: "Tham khảo tư liệu để tạo ra 3 skill tone cho màu da củ
 biến cho cả trong và ngoài nhà dành cho người Việt Nam được ưa chuộng nhất để recomment."
 
 Mục kiểm
-    1. số màu: cả 6 khe là da sáng (L 0.79–0.86), hue trong dải tông da (38–52°), đậm/L 0.05–0.08;
-       Cưới hồng nhất (hue nhỏ nhất) và dịu nhất; ngoài trời ấm hơn trong nhà; có đích vùng trắng
+    1. số màu: cả 6 khe là da sáng (L 0.79–0.86), hue trong dải tông da (30–52°), đậm/L 0.05–0.085;
+       Cưới dịu nhất, Kỷ yếu hồng + đậm nhất (đích học từ 564 ảnh kỷ yếu user sửa), Sự kiện ấm nhất;
+       ba mẫu khác nhau thấy được (ΔE OkLab·100 ≥ 1.5); ngoài trời ấm hơn trong nhà; có vùng trắng
     2. giao diện: danh sách mẫu có 3 gợi ý ngay sau "Mặc định"; mẫu đang chọn -> mau_da_dich đủ khe
     3. tự chọn: buổi chưa chọn mẫu (lần trước "Mặc định" / gợi ý) -> gợi ý theo loại buổi; buổi đã
        chọn mẫu riêng / lần trước dùng mẫu riêng -> giữ; đổi loại buổi khi đang dùng gợi ý -> gợi ý mới
@@ -61,12 +62,23 @@ def main() -> int:
         for khe in ("trong", "ngoai"):
             L, a, b = at.mau_dich_lab(m[khe])
             so[(loai, khe)] = (L, math.degrees(math.atan2(b, a)), math.hypot(a, b) / L)
-    ktra("6 khe: L 0.79–0.86, hue 38–52°, đậm/L 0.05–0.08",
-         all(0.79 <= L <= 0.86 and 38 <= h <= 52 and 0.05 <= c <= 0.08 for L, h, c in so.values()),
+    ktra("6 khe: L 0.79–0.86, hue 30–52°, đậm/L 0.05–0.085",
+         all(0.79 <= L <= 0.86 and 30 <= h <= 52 and 0.05 <= c <= 0.085 for L, h, c in so.values()),
          str({k: tuple(round(x, 3) for x in v) for k, v in so.items()}))
-    ktra("Cưới hồng nhất + dịu nhất (trong nhà)",
-         so[("cuoi", "trong")][1] < min(so[("su_kien", "trong")][1], so[("ky_yeu", "trong")][1])
-         and so[("cuoi", "trong")][2] < min(so[("su_kien", "trong")][2], so[("ky_yeu", "trong")][2]))
+    ktra("Cưới dịu nhất, Kỷ yếu hồng + đậm nhất, Sự kiện ấm nhất (trong nhà)",
+         so[("cuoi", "trong")][2] < min(so[("su_kien", "trong")][2], so[("ky_yeu", "trong")][2])
+         and so[("ky_yeu", "trong")][1] < min(so[("cuoi", "trong")][1], so[("su_kien", "trong")][1])
+         and so[("ky_yeu", "trong")][2] > so[("su_kien", "trong")][2]
+         and so[("su_kien", "trong")][1] > so[("cuoi", "trong")][1])
+    ktra("Kỷ yếu trong nhà = đích học từ ảnh kỷ yếu user sửa (skin_dich_hong)",
+         at.MAU_DA_GOI_Y["ky_yeu"]["trong"] == list(at.DEFAULTS["skin_dich_hong"]))
+    import itertools
+    import numpy as np
+    de = {(x, y, k): 100 * float(np.linalg.norm(np.array(at.mau_dich_lab(at.MAU_DA_GOI_Y[x][k]))
+                                               - np.array(at.mau_dich_lab(at.MAU_DA_GOI_Y[y][k]))))
+          for x, y in itertools.combinations(at.MAU_DA_GOI_Y, 2) for k in ("trong", "ngoai")}
+    ktra("ba mẫu khác nhau thấy được (ΔE OkLab·100 ≥ 1.5 mọi cặp)", min(de.values()) >= 1.5,
+         str({f"{x}-{y}-{k}": round(v, 1) for (x, y, k), v in de.items()}))
     ktra("ngoài trời ấm hơn trong nhà (hue lớn hơn) ở cả 3 mẫu",
          all(so[(lo, "ngoai")][1] > so[(lo, "trong")][1] for lo in at.MAU_DA_GOI_Y))
     ktra("mỗi mẫu có đích vùng trắng (WB theo vùng trắng)",

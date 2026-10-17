@@ -2556,11 +2556,10 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
             "mau_mot_luot", bool(self.v_mot_luot.get())))
         #  16/10: QUY TRÌNH AUTO LIGHTROOM — Lightroom bấm Auto trước, tool chỉnh WB / Exposure /
         #  Curve R/G/B theo da (auto_lr.py). Nhớ qua lần mở sau. 17/10 (user: "Chuyển Lightroom
-        #  Auto WorkFlow lên thành bản chạy chính thức"): MẶC ĐỊNH BẬT — khoá mới
-        #  "quy_trinh_auto_chinh" (khoá cũ ghi False từ hồi còn thử nghiệm, không mang sang)
-        self.v_auto_lr = tk.BooleanVar(value=bool(_tl.doc_kv("quy_trinh_auto_chinh", True)))
-        self.v_auto_lr.trace_add("write", lambda *_a: _tl.ghi_kv(
-            "quy_trinh_auto_chinh", bool(self.v_auto_lr.get())))
+        #  Auto WorkFlow lên thành bản chạy chính thức"): MẶC ĐỊNH BẬT. 17/10 sáng (user: "bỏ quy
+        #  trình Auto Lightroom khỏi giao diện. Mặc định sẽ ON"): KHÔNG còn công tắc, luôn BẬT,
+        #  không đọc / ghi kv — biến giữ lại để read_cfg và bài kiểm luồng thường đặt False
+        self.v_auto_lr = tk.BooleanVar(value=True)
         #  17/10: PHẠM VI CHỈNH — chỉ cân WB và / hoặc Exposure (at.pham_vi). Nhớ qua lần mở sau.
         _pv = str(_tl.doc_kv("pham_vi", "day_du") or "day_du")
         self.v_pham_vi = tk.StringVar(value=dict((m, n) for n, m in PHAM_VI_CHON).get(
@@ -2793,9 +2792,6 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
         ct(g_tone, self.v_mot_luot, "Chế độ nhanh một lượt (thử nghiệm)",
            "Tính màu da một lần trên preview Lightroom — nhanh hơn. Cần học màu "
            "Lightroom cho máy ảnh (⋯ › Học màu Lightroom…).")
-        ct(g_tone, self.v_auto_lr, "Quy trình Auto Lightroom",
-           "Lightroom bấm Auto cho cả buổi, rồi tool chỉnh WB, Exposure (và Curve R/G/B khi bật) "
-           "cho da về đích, áp một lần. Cần bộ cài đầy đủ (plugin mới).")
         self.cb_pham_vi = hop(
             g_tone, "Phạm vi chỉnh", self.v_pham_vi, [n for n, _m in PHAM_VI_CHON],
             self.refresh_plan,
@@ -2960,8 +2956,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                   self.v_upright, self.v_mat_sang_nhat, self.v_dong_bo_chu_the,
                   self.v_ngoai_toi, self.v_bu_k, self.v_bu_tint, self.v_mau_da,
                   self.v_ap_loai, self.v_denoise, self.v_denoise_iso,
-                  self.v_curve_da, self.v_curve_chay, self.v_mot_luot, self.v_auto_lr,
-                  self.v_pham_vi):
+                  self.v_curve_da, self.v_curve_chay, self.v_mot_luot, self.v_pham_vi):
             b.trace_add("write", lambda *_a: self._hen_lai_tom_tat())
         #  16/10: chấm màu da "Mặc định" theo da trắng hồng / loại buổi (_dich_hien)
         for b in (self.v_grade, self.v_loai_buoi):
@@ -3021,7 +3016,7 @@ class App(XuLyAnhMixin, TinDungMixin, HocMauMixin, ChuyenCaiDatMixin, ttk.Frame)
                 ("da: " + self.v_mau_da.get()) if self.v_mau_da.get() != MAU_DA_MAC_DINH else "",
                 #  17/10: phạm vi chỉnh khác "Đầy đủ" -> nói rõ trên dòng tóm tắt
                 self.v_pham_vi.get() if dict(PHAM_VI_CHON).get(self.v_pham_vi.get()) != "day_du"
-                else ("Auto Lightroom" if self.v_auto_lr.get() else "")]
+                else ""]
         ghim = [T(t) for t, b in (("Highlights", self.v_hl), ("Shadows", self.v_sh),
                                   ("HSL da", self.v_hsl_da),
                                   ("da trắng hồng", self.v_grade),

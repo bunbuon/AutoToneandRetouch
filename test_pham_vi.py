@@ -147,9 +147,9 @@ def main() -> int:
          'GIOI_HAN_CO_DINH = {"max_ev": 5.0, "max_ev_up": 5.0, "exposure_gain": 1.0}' in g
          and 'max_ev=GIOI_HAN_CO_DINH["max_ev"]' in g and 'max_ev_up=GIOI_HAN_CO_DINH["max_ev_up"]' in g
          and 'self._nhom_tuy_chon.pop("tran").pack_forget()' in g)
-    ktra("Quy trình Auto Lightroom: chính thức (không 'thử nghiệm'), mặc định BẬT",
-         '"Quy trình Auto Lightroom",' in g and "Quy trình Auto Lightroom (thử nghiệm)" not in g
-         and '_tl.doc_kv("quy_trinh_auto_chinh", True)' in g)
+    ktra("Quy trình Auto Lightroom: không còn công tắc trên giao diện, luôn BẬT",
+         "ct(g_tone, self.v_auto_lr" not in g and "self.v_auto_lr = tk.BooleanVar(value=True)" in g
+         and "quy_trinh_auto_chinh" not in g.split("self.v_auto_lr = tk.BooleanVar(value=True)")[1][:400])
     ktra("read_cfg phạm vi chỉnh: đường Auto + tắt Curve / HSL / CG / Denoise",
          "cfg.update(pham_vi=pv, quy_trinh_auto=True" in g and "curve_da=False" in g and "denoise=False" in g)
     print(f"\n{len(LOI)} LOI" if LOI else "\nTAT CA DAT")

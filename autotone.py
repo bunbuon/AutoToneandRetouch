@@ -7402,7 +7402,11 @@ def dich_da(cfg: dict) -> tuple:
 #   Số (OkLab L, hue, đậm/L) trong -> ngoài trời (ngoài: ấm hơn +4°, đậm +0.004, tối hơn 0.01):
 #     Cưới    0.845 / 40° / 0.058 -> 0.835 / 44° / 0.062   trắng hồng trong trẻo, dịu
 #     Sự kiện 0.810 / 48° / 0.066 -> 0.800 / 51° / 0.070   tự nhiên, ấm nhẹ
-#     Kỷ yếu  0.850 / 42° / 0.064 -> 0.840 / 46° / 0.067   sáng, tươi, hồng hào
+#     Kỷ yếu  0.857 / 34° / 0.073 -> 0.847 / 37° / 0.080   sáng, hồng hào — 17/10 sáng (user hỏi "3 màu
+#             da đề xuất kia có khác nhau không?": bản đầu 0.850 / 42° / 0.064 lệch Cưới chỉ ΔE·100
+#             0.7, không thấy được) = ĐÚNG đích học từ 564 ảnh kỷ yếu user sửa (skin_dich_hong, raw
+#             19.4); ngoài trời giữ màu học (37°, 0.080), độ sáng theo khe trong nhà (như dich_cua
+#             của Mặc định). ΔE·100: Cưới–Kỷ yếu 1.8–2.1, Cưới–Sự kiện 3.6, Sự kiện–Kỷ yếu 5.0.
 #   "trang" = OkLab (a, b) vùng trắng đích (WB theo vùng trắng — chuỗi một lượt). Giao diện chọn
 #   sẵn mẫu theo loại buổi cho buổi chưa chọn mẫu riêng (autotone_gui._nho_mau_da). ]]
 MAU_DA_GOI_Y = {
@@ -7413,7 +7417,7 @@ MAU_DA_GOI_Y = {
                 "trong": [223, 183, 164], "ngoai": [220, 180, 158],
                 "trang": {"trong": [0.003, 0.0], "ngoai": [0.003, 0.0]}},
     "ky_yeu": {"ten": "Gợi ý · Kỷ yếu", "mo": "sáng, tươi, hồng hào",
-               "trong": [238, 195, 178], "ngoai": [235, 192, 172],
+               "trong": [246, 194, 181], "ngoai": [245, 190, 174],
                "trang": {"trong": [0.005, -0.002], "ngoai": [0.005, -0.002]}},
 }
 

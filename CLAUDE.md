@@ -1486,14 +1486,16 @@ kiem_toan_bo (dữ liệu tạm) thì đạt.
   hiện tại, `write_lr_job` để TRỐNG mọi ô khác (`_O_PHAM_VI`) — plugin không đụng. Không Curve / HSL
   / CG / Denoise. Kiểm: `test_pham_vi`, `test_mau_mot_luot` §16, `test_quy_trinh_auto` (luồng).
 - **3 mẫu màu da gợi ý** (`at.MAU_DA_GOI_Y`, gui `MAU_DA_GOI_Y`): Cưới (trắng hồng trong trẻo, OkLab
-  L 0.845 / hue 40° / đậm/L 0.058), Sự kiện (tự nhiên ấm nhẹ, 0.81 / 48° / 0.066), Kỷ yếu (sáng tươi
-  hồng hào, 0.85 / 42° / 0.064); ngoài trời +4° / +0.004 / −0.01; có đích vùng trắng. Căn cứ + nguồn ở
+  L 0.845 / hue 40° / đậm/L 0.058), Sự kiện (tự nhiên ấm nhẹ, 0.81 / 48° / 0.066), Kỷ yếu (sáng hồng
+  hào = đích học từ 564 ảnh kỷ yếu user sửa `skin_dich_hong` 0.857 / 34° / 0.073; bản đầu 0.85 / 42° lệch
+  Cưới chỉ ΔE·100 0.7 — user hỏi "có khác nhau không?"); ngoài trời ấm hơn, cùng độ sáng −0.01; có đích
+  vùng trắng. ΔE·100: Cưới–Kỷ yếu ~2, Cưới–Sự kiện 3.6, Sự kiện–Kỷ yếu 5. Căn cứ + nguồn ở
   chú thích trên MAU_DA_GOI_Y. Không nằm trong `mau_da.json`, không xoá được; sửa chấm màu -> mẫu riêng
   mới. Buổi chưa chọn mẫu (lần trước Mặc định / gợi ý) -> gợi ý theo loại buổi; đổi loại buổi khi
   đang dùng gợi ý -> gợi ý mới. Kiểm: `test_mau_da_goi_y`.
 - **Giới hạn chỉnh** ẩn cả nhóm, số cố định `GIOI_HAN_CO_DINH` (Dìm / Kéo tối đa 5 EV, can thiệp ×1).
-- **Quy trình Auto Lightroom chính thức**: bỏ "(thử nghiệm)", mặc định BẬT, khoá kv mới
-  `quy_trinh_auto_chinh` (khoá cũ `quy_trinh_auto` ghi False hồi thử nghiệm, không mang sang).
+- **Quy trình Auto Lightroom chính thức**: 17/10 sáng (v99) bỏ hẳn công tắc khỏi giao diện, LUÔN BẬT
+  (`v_auto_lr` = True cố định, không kv — bài kiểm luồng thường vẫn đặt False được).
 
 ## Quy trình Auto Lightroom (16/10; chính thức từ 17/10 — xem mục v98) — `auto_lr.py`, `AutoCore.lua`, `at.giu_auto`, `at.tone_da_luot2`
 
